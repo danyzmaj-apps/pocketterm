@@ -5,7 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/ui.dart';
 
-/// Opens the camera to read the code the Mac shows (Settings → Set up phone,
+/// Opens the camera to read the code the computer shows (Settings → Set up phone,
 /// or a reviewer code): a setup link with a sign-in code in it. Pops with
 /// that link, or null when cancelled.
 Future<Uri?> scanSetupCode(BuildContext context) =>
@@ -42,9 +42,9 @@ class _ScanPageState extends State<_ScanPage> {
         Navigator.of(context).pop(link);
         return;
       }
-      problem = 'That code has no sign-in in it. On your Mac: Settings → Set up phone…';
+      problem = 'That code has no sign-in in it. On your computer: Settings → Set up phone…';
     }
-    problem ??= "That's not a PocketTerm code. Scan the one on your Mac.";
+    problem ??= "That's not a PocketTerm code. Scan the one on your computer.";
     if (_notOurs != problem) setState(() => _notOurs = problem);
   }
 
@@ -106,7 +106,7 @@ class _ScanPageState extends State<_ScanPage> {
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(32, box + 80, 32, 0),
                           child: Text(
-                            _notOurs ?? 'On your Mac: Settings → Set up phone.\nPoint this camera at the code.',
+                            _notOurs ?? 'On your computer: Settings → Set up phone.\nPoint this camera at the code.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: _notOurs == null ? Colors.white : C.warn,

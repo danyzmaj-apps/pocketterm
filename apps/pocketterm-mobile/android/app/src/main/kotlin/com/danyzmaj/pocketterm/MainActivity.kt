@@ -19,19 +19,15 @@ import io.flutter.plugin.common.MethodChannel
 
 /**
  * Events for Dart (packages/pocketterm_core/lib/native.dart's Native.listen) from wherever they
- * happen: the activity, a notification's Done, the widget, the push service.
- * Dropped while no engine runs; what matters then waits in PocketTermShared or in
- * [tappedTodo]/[tappedSession] for Dart to take.
+ * happen: the activity, the push service, a followed session's notification.
+ * Dropped while no engine runs; a tapped push's session waits in [tappedSession]
+ * for Dart to take.
  */
 object NativeEvents {
     @Volatile
     var channel: MethodChannel? = null
 
-    /** The todo whose reminder was tapped, until Dart takes it. */
-    @Volatile
-    var tappedTodo: String? = null
-
-    /** The same for a terminal push: the omp session it is about. */
+    /** The session a tapped terminal push is about, until Dart takes it. */
     @Volatile
     var tappedSession: String? = null
 
@@ -77,14 +73,9 @@ class MainActivity : FlutterActivity() {
         super.cleanUpFlutterEngine(flutterEngine)
     }
 
-    /** A reminder or a terminal push was tapped (pocketterm:// links go to app_links). */
+    /** A terminal push was tapped (pocketterm:// links go to app_links). */
     private fun tapped(intent: Intent?) {
         intent ?: return
-        intent.getStringExtra(Notifications.EXTRA_TODO)?.let { id ->
-            NativeEvents.tappedTodo = id
-            NativeEvents.emit("openTodo", mapOf("id" to id))
-            intent.removeExtra(Notifications.EXTRA_TODO)
-        }
         if (intent.hasExtra(Notifications.EXTRA_SESSION)) {
             val session = intent.getStringExtra(Notifications.EXTRA_SESSION)
             NativeEvents.tappedSession = session
@@ -108,49 +99,12 @@ class MainActivity : FlutterActivity() {
                 Settings.Global.getString(contentResolver, Settings.Global.DEVICE_NAME)?.ifBlank { null }
                     ?: Build.MODEL,
             )
-            "setSharedToken" -> {
-                val token = args["token"] as? String
-                PocketTermShared.setToken(this, token)
-                if (token == null) PocketTermShared.setTodos(this, emptyList())
-                TodosWidget.refresh(this)
-                result.success(null)
-            }
-            "setSharedTodos" -> {
-                val todos = (args["todos"] as? List<*> ?: emptyList<Any>()).mapNotNull {
-                    val t = it as? Map<*, *> ?: return@mapNotNull null
-                    val id = t["id"] as? String ?: return@mapNotNull null
-                    val title = t["title"] as? String ?: return@mapNotNull null
-                    PocketTermShared.Todo(id, title)
-                }
-                if (PocketTermShared.setTodos(this, todos)) TodosWidget.refresh(this)
-                result.success(null)
-            }
-            // Actions the widget or a reminder's Done couldn't send; the app replays them.
-            "takePending" -> result.success(PocketTermShared.takePending(this))
             "getBackend" -> result.success(PocketTermShared.backend(this)?.let { mapOf("url" to it.url, "key" to it.key) })
             "setBackend" -> {
                 val url = args["url"] as? String
                 val key = args["key"] as? String
                 PocketTermShared.setBackend(this, if (url != null && key != null) PocketTermShared.Backend(url, key) else null)
                 result.success(null)
-            }
-            "setReminders" -> {
-                val list = (args["reminders"] as? List<*> ?: emptyList<Any>()).filterIsInstance<Map<*, *>>()
-                if (list.isEmpty()) {
-                    Reminders.schedule(this, list)
-                    return result.success(null)
-                }
-                // Like iOS: ask first (once; Android remembers the answer), then
-                // schedule only if they can show. An alarm set before the answer
-                // could go off while notifications were still off, and be lost.
-                askNotifications { granted ->
-                    Reminders.schedule(this, if (granted) list else emptyList())
-                    result.success(null)
-                }
-            }
-            "takeTappedTodo" -> {
-                result.success(NativeEvents.tappedTodo)
-                NativeEvents.tappedTodo = null
             }
             "takeTappedSession" -> {
                 result.success(NativeEvents.tappedSession)
@@ -171,7 +125,7 @@ class MainActivity : FlutterActivity() {
     /**
      * Permission first (a no-op after the first answer), then the FCM token.
      * Null: not allowed, no token, or a build without Firebase
-     * (android/app/google-services.json); the app keeps local reminders then.
+     * (android/app/google-services.json); the phone gets no pushes then.
      */
     private fun registerPush(result: MethodChannel.Result) {
         if (FirebaseApp.getApps(this).isEmpty()) return result.success(null)

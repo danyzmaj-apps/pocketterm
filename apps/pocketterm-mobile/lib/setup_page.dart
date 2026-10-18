@@ -9,7 +9,7 @@ import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/onboarding/scan.dart';
 
 /// What a phone without a session shows: the only way in is a code from the
-/// Mac, scanned (its QR) or pasted (the same setup link as text), which
+/// computer, scanned (its QR) or pasted (the same setup link as text), which
 /// connects to the server and signs in. A phone never signs in with GitHub
 /// and never sets up a server. After a sign-out, a deleted account or a
 /// session the server ended, it says why on top.
@@ -37,7 +37,7 @@ class _SetupPageState extends State<SetupPage> {
     super.dispose();
   }
 
-  /// The Mac's code, read with this phone's camera.
+  /// The computer's code, read with this phone's camera.
   Future<void> _scan() async {
     final link = await scanSetupCode(context);
     if (link != null && mounted) await _signIn(link);

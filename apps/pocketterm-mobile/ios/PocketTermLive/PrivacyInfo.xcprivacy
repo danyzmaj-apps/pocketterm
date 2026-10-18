@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- The widget extension tracks no one and collects nothing (see Runner/PrivacyInfo.xcprivacy). -->
+	<!-- The Live Activity extension tracks no one and collects nothing (see Runner/PrivacyInfo.xcprivacy). -->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>
@@ -10,16 +10,6 @@
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array/>
 	<key>NSPrivacyAccessedAPITypes</key>
-	<array>
-		<dict>
-			<!-- The App Group it shares with the app (Shared/PocketTermShared.swift). -->
-			<key>NSPrivacyAccessedAPIType</key>
-			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
-			<key>NSPrivacyAccessedAPITypeReasons</key>
-			<array>
-				<string>1C8F.1</string>
-			</array>
-		</dict>
-	</array>
+	<array/>
 </dict>
 </plist>

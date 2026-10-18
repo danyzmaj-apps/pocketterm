@@ -36,20 +36,10 @@ class _SetupWizardState extends State<SetupWizard> {
   final _name = TextEditingController(text: 'pocketterm');
   final _githubId = TextEditingController();
   final _githubSecret = TextEditingController();
-  final _aiKey = TextEditingController();
-  final _aiUrl = TextEditingController();
-  final _aiModel = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _aiUrl.text = flow.aiBaseUrl;
-    _aiModel.text = flow.aiModel;
-  }
 
   @override
   void dispose() {
-    for (final c in [_token, _name, _githubId, _githubSecret, _aiKey, _aiUrl, _aiModel]) {
+    for (final c in [_token, _name, _githubId, _githubSecret]) {
       c.dispose();
     }
     super.dispose();
@@ -78,7 +68,6 @@ class _SetupWizardState extends State<SetupWizard> {
                   WizardStep.token => _tokenStep(),
                   WizardStep.project => _projectStep(),
                   WizardStep.github => _githubStep(),
-                  WizardStep.ai => _aiStep(),
                   WizardStep.setup => _setupStep(),
                 },
                 if (flow.error case final e?) ...[
@@ -96,7 +85,7 @@ class _SetupWizardState extends State<SetupWizard> {
   // ---------------------------------------------------------------- pieces
 
   Widget _progress() {
-    const steps = [WizardStep.token, WizardStep.project, WizardStep.github, WizardStep.ai, WizardStep.setup];
+    const steps = [WizardStep.token, WizardStep.project, WizardStep.github, WizardStep.setup];
     final at = steps.indexOf(flow.step);
     return Padding(
       padding: const EdgeInsets.only(bottom: 22),
@@ -202,9 +191,9 @@ class _SetupWizardState extends State<SetupWizard> {
     ),
     const SizedBox(height: 10),
     const Text(
-      'PocketTerm keeps your ideas, todos and notes on your own free Supabase server, so nobody else '
-      'holds your data. This sets one up for you in about five minutes: you create two free '
-      'accounts and paste a few keys, the app does the rest.',
+      "PocketTerm puts this computer's coding sessions on your phone. They go through your own free "
+      'Supabase server, so nobody else holds your data. This sets one up for you in about five minutes: '
+      'you create two free accounts and paste a few keys, the app does the rest.',
       textAlign: TextAlign.center,
       style: TextStyle(color: C.dim, height: 1.5),
     ),
@@ -350,7 +339,7 @@ class _SetupWizardState extends State<SetupWizard> {
       onSubmitted: (_) => unawaited(flow.submitGithub()),
     ),
     const SizedBox(height: 16),
-    _primary('Continue', () => unawaited(flow.submitGithub())),
+    _primary('Set up my server', () => unawaited(flow.submitGithub())),
     _back(WizardStep.project),
   ];
 
@@ -360,104 +349,42 @@ class _SetupWizardState extends State<SetupWizard> {
     'oauth_application[callback_url]': flow.githubCallback,
   }).toString();
 
-  List<Widget> _aiStep() {
-    final preset = flow.aiPreset;
-    return [
-      ..._header(
-        '4. AI for quick questions (optional)',
-        'Ask answers short questions using an AI service you choose; you pay it directly, usually '
-            'cents a month. Skip this and connect one later in Settings → AI.',
-      ),
-      Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        children: [
-          for (final p in aiPresets)
-            ChoiceChip(
-              label: Text(p.name),
-              selected: preset == p,
-              onSelected: (_) {
-                flow.pickAi(p);
-                _aiUrl.text = p.baseUrl;
-                _aiModel.text = p.model;
-              },
-            ),
-          ChoiceChip(label: const Text('Other'), selected: preset == null, onSelected: (_) => flow.pickAi(null)),
-        ],
-      ),
-      const SizedBox(height: 12),
-      if (preset != null) _link('Get a ${preset.name} API key', preset.keysUrl),
-      if (preset == null) ...[
-        TextField(
-          controller: _aiUrl,
-          autocorrect: false,
-          decoration: setupField('API base URL (OpenAI-compatible)'),
-          onChanged: (v) => flow.aiBaseUrl = v,
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _aiModel,
-          autocorrect: false,
-          decoration: setupField('Model'),
-          onChanged: (v) => flow.aiModel = v,
-        ),
-        const SizedBox(height: 8),
-      ],
-      TextField(
-        controller: _aiKey,
-        autocorrect: false,
-        obscureText: true,
-        decoration: setupField('API key'),
-        onChanged: (v) => flow.aiKey = v,
-      ),
-      const SizedBox(height: 16),
-      _primary('Set up my server', () => unawaited(flow.setUp(withAi: true))),
-      const SizedBox(height: 4),
-      TextButton(
-        onPressed: flow.busy ? null : () => unawaited(flow.setUp(withAi: false)),
-        child: const Text('Skip AI for now'),
-      ),
-      _back(WizardStep.github),
-    ];
-  }
-
   List<Widget> _setupStep() {
     final finished = flow.ready;
     final failed = !finished && flow.error != null && !flow.busy;
     return [
       ..._header(
-        finished ? 'Your server is ready' : '5. Setting up your server',
+        finished ? 'Your server is ready' : '4. Setting up your server',
         finished
             ? 'Connect, then sign in with GitHub. The first account to sign in owns this server. '
                   'To add your phone afterwards: Settings → Set up phone, and scan the code.'
             : 'This takes about a minute.',
       ),
       for (final s in ProvisionStep.values)
-        if (s != ProvisionStep.ai || flow.usesAi || flow.done.contains(s))
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: flow.done.contains(s) || (finished && s == ProvisionStep.keys)
-                      ? const Icon(Icons.check_circle, size: 18, color: C.ok)
-                      : flow.current == s && flow.busy
-                      ? const CircularProgressIndicator(strokeWidth: 2)
-                      : flow.current == s && failed
-                      ? const Icon(Icons.error_outline, size: 18, color: Color(0xFFFCA5A5))
-                      : const Icon(Icons.circle_outlined, size: 18, color: C.dim2),
-                ),
-                const SizedBox(width: 10),
-                Text(s.label),
-              ],
-            ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: flow.done.contains(s) || (finished && s == ProvisionStep.keys)
+                    ? const Icon(Icons.check_circle, size: 18, color: C.ok)
+                    : flow.current == s && flow.busy
+                    ? const CircularProgressIndicator(strokeWidth: 2)
+                    : flow.current == s && failed
+                    ? const Icon(Icons.error_outline, size: 18, color: Color(0xFFFCA5A5))
+                    : const Icon(Icons.circle_outlined, size: 18, color: C.dim2),
+              ),
+              const SizedBox(width: 10),
+              Text(s.label),
+            ],
           ),
+        ),
       const SizedBox(height: 18),
       // A failed connect shows its error below, and the button tries again.
       if (finished) ...[_primary('Connect and sign in', () => unawaited(flow.connect(widget.onConnect)))],
-      if (failed) ...[_primary('Retry', () => unawaited(flow.setUp())), _back(WizardStep.ai)],
+      if (failed) ...[_primary('Retry', () => unawaited(flow.setUp())), _back(WizardStep.github)],
     ];
   }
 

@@ -81,7 +81,9 @@ void main() {
     ('a new phone', null),
     ('a phone that knows its server', const Backend(url: _server, key: 'sb_publishable_x')),
   ]) {
-    testWidgets('$name without a session offers only the Mac’s code, scanned or pasted, never GitHub', (tester) async {
+    testWidgets('$name without a session offers only the computer’s code, scanned or pasted, never GitHub', (
+      tester,
+    ) async {
       phoneSize(tester);
       SharedPreferences.setMockInitialValues({});
       await tester.pumpWidget(MobileApp(session: _Phone(await SharedPreferences.getInstance(), known: known)));

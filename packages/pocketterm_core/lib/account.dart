@@ -1,5 +1,5 @@
-/// Signing in with GitHub (the Mac only: phones sign in with the Mac's code)
-/// and who is signed in (the avatar, Mac and phones).
+/// Signing in with GitHub (the computer only: phones sign in with its code)
+/// and who is signed in (the avatar, computer and phones).
 library;
 
 import 'dart:async';
@@ -39,7 +39,7 @@ class SignInPage extends StatelessWidget {
           const Text('PocketTerm', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           const Text(
-            'Sign in to sync your ideas across your Mac and phone.',
+            'Sign in to connect this computer to your phone.',
             textAlign: TextAlign.center,
             style: TextStyle(color: C.dim),
           ),
@@ -55,7 +55,7 @@ class SignInPage extends StatelessWidget {
           TextButton(
             onPressed: () => unawaited(session.disconnect()),
             child: Text(
-              'Syncing through ${session.backend?.host ?? '?'} · Use a different project',
+              'Connected to ${session.backend?.host ?? '?'} · Use a different project',
               style: const TextStyle(fontSize: 11, color: C.dim2),
             ),
           ),

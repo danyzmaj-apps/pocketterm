@@ -1,5 +1,5 @@
 name: pocketterm_desktop
-description: "PocketTerm: a hotkey idea inbox for macOS, synced through Supabase."
+description: "PocketTerm: this computer's coding sessions and terminals on your phone, through Supabase."
 publish_to: 'none'
 version: 0.5.0+5
 resolution: workspace
@@ -29,8 +29,6 @@ flutter:
   # the user's Supabase project.
   assets:
     - supabase/migrations/
-    - supabase/functions/ask/
-    - supabase/functions/device/
     - supabase/functions/pair/
     - supabase/functions/push/
     # The coding agents' PocketTerm integrations, for Settings to install

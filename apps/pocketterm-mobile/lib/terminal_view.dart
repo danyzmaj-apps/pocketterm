@@ -98,7 +98,7 @@ Widget _badged(TermWindow? w, Widget line) => w == null
         ],
       );
 
-/// Closes [w] on the Mac (callers ask first: [CloseConfirm]); true once it's
+/// Closes [w] on the computer (callers ask first: [CloseConfirm]); true once it's
 /// closed.
 Future<bool> closeWindow(BuildContext context, TerminalRemote remote, TermWindow w) async {
   try {
@@ -110,8 +110,8 @@ Future<bool> closeWindow(BuildContext context, TerminalRemote remote, TermWindow
   }
 }
 
-/// Asks in place, before [window] closes: it closes on the Mac, and what runs
-/// in it ends with it; [closing]: the close went, and the Mac hasn't answered.
+/// Asks in place, before [window] closes: it closes on the computer, and what runs
+/// in it ends with it; [closing]: the close went, and the computer hasn't answered.
 class CloseConfirm extends StatelessWidget {
   const CloseConfirm({
     required this.remote,
@@ -146,7 +146,7 @@ class CloseConfirm extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text(
-                  'Close this window on the Mac?',
+                  'Close this window on the computer?',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 15),
@@ -190,9 +190,9 @@ Widget? linkNote(TerminalRemote r, {Color color = C.bar}) {
   final at = r.stateAt;
   final (text, busy) = switch (r.link) {
     TerminalLink.connecting => ('connecting…', true),
-    TerminalLink.waiting => ('asking the Mac…', true),
+    TerminalLink.waiting => ('asking the computer…', true),
     TerminalLink.offline => (
-      "the Mac isn't answering. It has to be awake (lid open), with PocketTerm running and "
+      "the computer isn't answering. It has to be awake, with PocketTerm running and "
           'Settings → Terminal from phone on.',
       false,
     ),
@@ -287,26 +287,16 @@ String sessionState(LiveSummary s) => s.ask != null
 
 Color sessionColor(LiveSummary s) => s.ask != null ? C.warn : (s.busy ? C.accent : C.dim2);
 
-/// The Terminal tab's body: the Mac's coding sessions by project, each with
-/// its + for a new one there, and its other terminal windows.
+/// The home page's body: the computer's coding sessions by project, each
+/// with its + for a new one there, and its other terminal windows.
 class TerminalList extends StatefulWidget {
-  const TerminalList({
-    required this.remote,
-    required this.folded,
-    required this.onFolded,
-    this.active = true,
-    super.key,
-  });
+  const TerminalList({required this.remote, required this.folded, required this.onFolded, super.key});
   final TerminalRemote remote;
 
   /// Projects (folders) showing only their heading, as kept; [onFolded]
   /// keeps them when they change.
   final Set<String> folded;
   final ValueChanged<Set<String>> onFolded;
-
-  /// Its tab is the one showing: only then does the screen stay on (the
-  /// tabs stay mounted).
-  final bool active;
 
   @override
   State<TerminalList> createState() => _TerminalListState();
@@ -325,7 +315,7 @@ class _TerminalListState extends State<TerminalList> {
   String? _confirming;
   Timer? _confirmTimer;
 
-  /// The windows a close went for, until the Mac answers: they can't be
+  /// The windows a close went for, until the computer answers: they can't be
   /// closed again meanwhile.
   final _closing = <String>{};
 
@@ -346,7 +336,7 @@ class _TerminalListState extends State<TerminalList> {
   Future<void> _launchHere(String cwd) async {
     if (_launching != null) return;
     setState(() => _launching = cwd);
-    // The app's navigator, which outlives this tab if it's left meanwhile:
+    // The app's navigator, which outlives this list if it's left meanwhile:
     // the session still opens, or what went wrong still shows.
     final nav = Navigator.of(context);
     try {
@@ -571,13 +561,13 @@ class _TerminalListState extends State<TerminalList> {
   static String _stateWord(TermState s) => switch (s) {
     TermState.ready => 'ready',
     TermState.limited => 'limited',
-    TermState.setup => 'needs setup on the Mac',
+    TermState.setup => 'needs setup on the computer',
     TermState.idle => 'not running',
     TermState.missing => 'not installed',
   };
 
   @override
-  Widget build(BuildContext context) => _KeepAwake(active: widget.active, child: _list());
+  Widget build(BuildContext context) => _KeepAwake(child: _list());
 
   Widget _list() => ListenableBuilder(
     listenable: remote,
@@ -601,7 +591,7 @@ class _TerminalListState extends State<TerminalList> {
                 await Future<void>.delayed(const Duration(milliseconds: 600));
               },
               child: ListView(
-                padding: const EdgeInsets.only(bottom: AppTabBar.contentInset),
+                padding: const EdgeInsets.only(bottom: AddButton.contentInset),
                 children: [
                   if (groups.isEmpty && windows.isEmpty) _empty(),
                   for (final g in groups) _project(g),
@@ -620,12 +610,12 @@ class _TerminalListState extends State<TerminalList> {
                           child: Text(switch (agent) {
                             Agent.omp =>
                               'These omp windows show only as screens: PocketTerm’s omp extension isn’t reporting from '
-                                  'them. It may be out of date (update it in PocketTerm’s Settings on the Mac), or omp there '
+                                  'them. It may be out of date (update it in PocketTerm’s Settings on the computer), or omp there '
                                   'started before it was installed. Then quit omp there and start it again (omp -c '
                                   'picks the conversation back up) to see it above, as a conversation.',
                             Agent.claude =>
                               'These Claude windows show only as screens: PocketTerm’s Claude Code plugin isn’t reporting '
-                                  'from them. It may be out of date (update it in PocketTerm’s Settings on the Mac), or '
+                                  'from them. It may be out of date (update it in PocketTerm’s Settings on the computer), or '
                                   'Claude there started before it was installed. Then quit Claude there and start it '
                                   'again (claude -c picks the conversation back up) to see it above, as a conversation.',
                           }, style: const TextStyle(fontSize: 12, color: C.dim2, height: 1.4)),
@@ -642,11 +632,10 @@ class _TerminalListState extends State<TerminalList> {
   );
 }
 
-/// The screen stays on while the Terminal tab is up (and the session and
+/// The screen stays on while the Terminal list is up (and the session and
 /// screen pages pushed over it): a terminal is something you watch.
 class _KeepAwake extends StatefulWidget {
-  const _KeepAwake({required this.active, required this.child});
-  final bool active;
+  const _KeepAwake({required this.child});
   final Widget child;
 
   @override
@@ -657,18 +646,12 @@ class _KeepAwakeState extends State<_KeepAwake> {
   @override
   void initState() {
     super.initState();
-    if (widget.active) unawaited(Native.setKeepAwake(on: true));
-  }
-
-  @override
-  void didUpdateWidget(_KeepAwake old) {
-    super.didUpdateWidget(old);
-    if (old.active != widget.active) unawaited(Native.setKeepAwake(on: widget.active));
+    unawaited(Native.setKeepAwake(on: true));
   }
 
   @override
   void dispose() {
-    if (widget.active) unawaited(Native.setKeepAwake(on: false));
+    unawaited(Native.setKeepAwake(on: false));
     super.dispose();
   }
 
@@ -704,7 +687,7 @@ class _TerminalPageState extends State<TerminalPage> {
   /// The close button was tapped: the page asks above its bar.
   bool _closing = false;
 
-  /// A close was sent, and the Mac hasn't answered yet.
+  /// A close was sent, and the computer hasn't answered yet.
   bool _closeSent = false;
 
   /// Lines numbered from the first one the phone saw: the ones from
@@ -1061,9 +1044,9 @@ class _TerminalPageState extends State<TerminalPage> {
   );
 }
 
-/// A new terminal window in one of the Mac's projects (or any folder typed in),
-/// or in a new project folder made under one of the Mac's Project folders,
-/// starting the Mac's coding agent unless turned off. Pops the new window's
+/// A new terminal window in one of the computer's projects (or any folder typed in),
+/// or in a new project folder made under one of the computer's Project folders,
+/// starting the computer's coding agent unless turned off. Pops the new window's
 /// key and whether the agent runs in it.
 class NewSessionSheet extends StatefulWidget {
   const NewSessionSheet({required this.remote, super.key});
@@ -1078,7 +1061,7 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
   bool _agent = true;
   String? _launching;
 
-  /// Making a new project: its [_name] and the Mac's root it goes in (the
+  /// Making a new project: its [_name] and the computer's root it goes in (the
   /// first while none is picked or the picked one is gone).
   bool _creating = false;
   final _name = TextEditingController();
@@ -1109,7 +1092,7 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
   );
 
-  /// `~/x` and `/x` typed in, as the Mac's path.
+  /// `~/x` and `/x` typed in, as the computer's path.
   String? get _typed {
     final q = _query.text.trim();
     if (q.startsWith('~')) return '${remote.home}${q.substring(1)}';
@@ -1131,7 +1114,7 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
     }
   }
 
-  /// Makes [_name] under [root] on the Mac and opens a window there, as [_launch].
+  /// Makes [_name] under [root] on the computer and opens a window there, as [_launch].
   Future<void> _create(String root) async {
     if (_launching != null) return;
     setState(() => _launching = root);
@@ -1215,7 +1198,7 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
       ...remote.projects.where((p) => !open.contains(p)),
     ].where((p) => words.every(shortPath(remote, p).toLowerCase().contains)).toList();
     final typed = _typed;
-    // null: a Mac that predates Project folders, and can't make a project.
+    // null: a computer that predates Project folders, and can't make a project.
     final roots = remote.roots;
     final noRoots = roots != null && roots.isEmpty;
     final noRootsHint = remote.online && noRoots && places.isEmpty && typed == null;
@@ -1237,7 +1220,7 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
           key: ValueKey('no-roots'),
           padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
           child: Text(
-            'No project folders yet. On your Mac, open PocketTerm → Settings → Project folders and add '
+            'No project folders yet. On your computer, open PocketTerm → Settings → Project folders and add '
             'the folders that hold your projects. You can still type a ~/path above.',
             style: TextStyle(fontSize: 13, color: C.dim, height: 1.4),
           ),
@@ -1258,7 +1241,7 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
                 // The hint above says it already.
                 subtitle: noRoots && !noRootsHint
                     ? const Text(
-                        'Add a project folder in PocketTerm on your Mac: Settings → Project folders',
+                        'Add a project folder in PocketTerm on your computer: Settings → Project folders',
                         style: TextStyle(fontSize: 12, color: C.dim),
                       )
                     : null,

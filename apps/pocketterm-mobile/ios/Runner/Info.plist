@@ -7,9 +7,9 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Pick images to attach to a question or to a coding session on your Mac.</string>
+	<string>Pick images to attach to a coding session on your computer.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Scan the setup code your Mac shows, to connect and sign in.</string>
+	<string>Scan the setup code your computer shows, to connect and sign in.</string>
 	<key>CFBundleDisplayName</key>
 	<string>PocketTerm</string>
 	<key>CFBundleExecutable</key>

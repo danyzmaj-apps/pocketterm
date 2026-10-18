@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- PocketTerm tracks no one and collects nothing for itself: everything syncs to
+	<!-- PocketTerm tracks no one and collects nothing for itself: everything goes through
 	     the user's own Supabase project. -->
 	<key>NSPrivacyTracking</key>
 	<false/>
@@ -13,7 +13,7 @@
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
 		<dict>
-			<!-- The app's settings, and the App Group it shares with its widget. -->
+			<!-- The app's settings, and the App Group it shares with its push extension. -->
 			<key>NSPrivacyAccessedAPIType</key>
 			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
 			<key>NSPrivacyAccessedAPITypeReasons</key>

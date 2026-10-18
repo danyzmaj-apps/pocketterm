@@ -8,7 +8,7 @@ plugins {
 
 // Push (FCM) needs the Firebase project's google-services.json here (git-ignored;
 // docs/BUILDING.md). Without it a debug build runs with push off (registerPush
-// answers null, reminders stay local); a release build stops (below).
+// answers null, so the phone gets no pushes); a release build stops (below).
 val firebase = file("google-services.json").exists()
 if (firebase) apply(plugin = "com.google.gms.google-services")
 
@@ -90,8 +90,6 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging")
     // The newest that compiles against Flutter's compileSdk (36); 1.19 wants 37.
     implementation("androidx.core:core-ktx:1.18.0")
-    // RemoteViewsCompat: the Todos widget's list without a RemoteViewsService of our own.
-    implementation("androidx.core:core-remoteviews:1.1.0")
 }
 
 flutter {

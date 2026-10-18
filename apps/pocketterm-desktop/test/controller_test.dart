@@ -10,10 +10,10 @@ void main() {
     expect(AppController.kittyDir({'POCKETTERM_KITTY_DIR': '/tmp/pocketterm-e2e'}), '/tmp/pocketterm-e2e');
   });
 
-  testWidgets('the server ending the session clears the desktop widget and the Dock count too', (tester) async {
+  testWidgets('signed out, nothing goes to the phone, and the computer is not even asked', (tester) async {
     final app = await FakeApp.create();
-    // Not through signOut(): the server refused a refresh, or the account was deleted on another device.
-    await app.signedOutByServer();
-    expect(app.calls, containsAll(['setTodoCount', 'setSharedTodos']));
+    app.fakeUser = null;
+    expect(await app.notifyPhone('omp finished · app', 'Done.', session: 'kitty:/tmp/k/1'), isFalse);
+    expect(app.calls, isEmpty);
   });
 }

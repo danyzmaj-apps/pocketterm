@@ -8,31 +8,7 @@ import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_desktop/onboarding/provision.dart';
 import 'package:pocketterm_desktop/onboarding/supabase_admin.dart';
 
-enum WizardStep { welcome, token, project, github, ai, setup }
-
-/// An AI provider the wizard knows; "Other" takes a typed URL and model.
-typedef AiPreset = ({String name, String baseUrl, String model, String keysUrl});
-
-const aiPresets = <AiPreset>[
-  (
-    name: 'DeepSeek',
-    baseUrl: 'https://api.deepseek.com',
-    model: 'deepseek-flash',
-    keysUrl: 'https://platform.deepseek.com/api_keys',
-  ),
-  (
-    name: 'OpenAI',
-    baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-5-mini',
-    keysUrl: 'https://platform.openai.com/api-keys',
-  ),
-  (
-    name: 'OpenRouter',
-    baseUrl: 'https://openrouter.ai/api/v1',
-    model: 'openai/gpt-5-mini',
-    keysUrl: 'https://openrouter.ai/keys',
-  ),
-];
+enum WizardStep { welcome, token, project, github, setup }
 
 /// Supabase regions the wizard offers, nearest-first guesses by time zone.
 const regions = <(String, String)>[
@@ -96,7 +72,7 @@ Future<String?> checkGithubApp(
   }
 }
 
-/// The setup wizard: Supabase access → a project → GitHub sign-in → AI →
+/// The setup wizard: Supabase access → a project → GitHub sign-in →
 /// [Provisioner] does the rest. The access token and the secrets only live
 /// in this object; nothing here is saved.
 class SetupFlow extends ChangeNotifier {
@@ -164,16 +140,6 @@ class SetupFlow extends ChangeNotifier {
   // ---- GitHub
   String githubId = '';
   String githubSecret = '';
-
-  // ---- AI
-  AiPreset? aiPreset = aiPresets.first;
-  String aiBaseUrl = aiPresets.first.baseUrl;
-  String aiModel = aiPresets.first.model;
-  String aiKey = '';
-
-  /// False after "Skip AI for now", for Retry too.
-  bool withAi = true;
-  bool get usesAi => withAi && aiKey.trim().isNotEmpty;
 
   // ---- setup
   final Set<ProvisionStep> done = {};
@@ -288,45 +254,37 @@ class SetupFlow extends ChangeNotifier {
     step = WizardStep.github;
   });
 
-  /// Moves on once GitHub takes the credentials.
-  Future<void> submitGithub() => _busy(() async {
-    if (githubId.trim().isEmpty || githubSecret.trim().isEmpty) {
-      throw const AdminException('Paste both the Client ID and the client secret.');
-    }
-    final problem = await checkGithubApp(
-      _web,
-      clientId: githubId.trim(),
-      secret: githubSecret.trim(),
-      callback: githubCallback,
-    );
-    if (problem != null) throw AdminException(problem);
-    step = WizardStep.ai;
-  });
-
-  void pickAi(AiPreset? preset) => update(() {
-    aiPreset = preset;
-    if (preset != null) {
-      aiBaseUrl = preset.baseUrl;
-      aiModel = preset.model;
-    }
-  });
+  /// Sets the server up once GitHub takes the credentials.
+  Future<void> submitGithub() async {
+    var accepted = false;
+    await _busy(() async {
+      if (githubId.trim().isEmpty || githubSecret.trim().isEmpty) {
+        throw const AdminException('Paste both the Client ID and the client secret.');
+      }
+      final problem = await checkGithubApp(
+        _web,
+        clientId: githubId.trim(),
+        secret: githubSecret.trim(),
+        callback: githubCallback,
+      );
+      if (problem != null) throw AdminException(problem);
+      accepted = true;
+    });
+    if (accepted) await setUp();
+  }
 
   Object? _inputs(ProvisionStep s) => switch (s) {
     ProvisionStep.signIn => (ref, githubId.trim(), githubSecret.trim()),
-    ProvisionStep.ai => (ref, aiBaseUrl.trim(), aiModel.trim(), aiKey.trim()),
     _ => ref,
   };
 
-  /// Runs the setup ([withAi] as last chosen when left out, like Retry); a
-  /// retry continues after the last finished step, and redoes the ones
-  /// whose values changed.
-  Future<void> setUp({bool? withAi}) async {
-    if (withAi != null) this.withAi = withAi;
+  /// Runs the setup; a retry continues after the last finished step, and
+  /// redoes the ones whose values changed.
+  Future<void> setUp() async {
     step = WizardStep.setup;
     ready = false;
     current = null;
     done.removeWhere((s) => _doneWith[s] != _inputs(s));
-    final ai = usesAi ? (baseUrl: aiBaseUrl, model: aiModel, key: aiKey) : null;
     final inputs = {for (final s in ProvisionStep.values) s: _inputs(s)};
     void finish() {
       if (current case final s?) {
@@ -340,7 +298,6 @@ class SetupFlow extends ChangeNotifier {
       final b = backend = await p.run(
         githubClientId: githubId,
         githubSecret: githubSecret,
-        ai: ai,
         done: done,
         onStep: (s) {
           finish();

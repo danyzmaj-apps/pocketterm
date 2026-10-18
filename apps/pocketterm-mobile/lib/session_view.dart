@@ -49,7 +49,7 @@ class _SessionPageState extends State<SessionPage> {
   String? _anchorEpoch;
   bool _atBottom = true;
 
-  /// The session has been in the Mac's state since the page opened.
+  /// The session has been in the computer's state since the page opened.
   bool _seen = false;
   bool _sending = false;
   bool _stopping = false;
@@ -59,7 +59,7 @@ class _SessionPageState extends State<SessionPage> {
   /// The close button was tapped: the page asks above the composer.
   bool _closing = false;
 
-  /// A close was sent, and the Mac hasn't answered yet.
+  /// A close was sent, and the computer hasn't answered yet.
   bool _closeSent = false;
 
   /// The composer, which toasts keep clear of.
@@ -105,7 +105,7 @@ class _SessionPageState extends State<SessionPage> {
   bool _can(String? window, TermCap cap) => window != null && (remote.window(window)?.can(cap) ?? true);
 
   /// The session's agent: as it reports, else its window's program, else the
-  /// one the Mac starts (a just-launched session).
+  /// one the computer starts (a just-launched session).
   Agent _agent(LiveSummary? s) => s?.agent ?? remote.window(key)?.agent ?? remote.agent;
 
   Future<void> _attach(String from) async {
@@ -156,7 +156,7 @@ class _SessionPageState extends State<SessionPage> {
   /// Why [agent]'s slash commands can't be sent from here.
   static String _noCommands(Agent agent) =>
       'Slash commands are typed into ${agent.label}’s terminal window, and PocketTerm can’t reach this one: it isn’t in '
-      'kitty, tmux, WezTerm, iTerm2, Terminal or Ghostty. Run them on the Mac.';
+      'kitty, tmux, WezTerm, iTerm2, Terminal or Ghostty. Run them on the computer.';
 
   Future<void> _close(TermWindow w) async {
     setState(() => _closeSent = true);
@@ -167,8 +167,8 @@ class _SessionPageState extends State<SessionPage> {
   }
 
   /// A command's picker (/resume, /model, /tree …) shows here as a menu once
-  /// the Mac has read it off the agent's screen; when none comes (a command
-  /// without one, or one the Mac can't read), its screen opens instead.
+  /// the computer has read it off the agent's screen; when none comes (a command
+  /// without one, or one the computer can't read), its screen opens instead.
   Future<void> _menuOrScreen(String window) async {
     final until = DateTime.now().add(const Duration(seconds: 3));
     while (DateTime.now().isBefore(until)) {
@@ -900,7 +900,7 @@ class _ToolCard extends StatelessWidget {
 
 /// What the agent asks, answered from the phone: the `ask` tool's questions,
 /// an approval, or the plan review at the end of plan mode (its options as
-/// the Mac read them off the agent's screen; the plan itself is read there).
+/// the computer read them off the agent's screen; the plan itself is read there).
 class _AskCard extends StatefulWidget {
   const _AskCard({
     required this.remote,
@@ -1172,7 +1172,7 @@ class _AskCardState extends State<_AskCard> {
 }
 
 /// A picker a slash command opened in the agent's terminal UI (/resume, /model,
-/// /tree …), as the Mac read it off the screen: its items to pick from, a
+/// /tree …), as the computer read it off the screen: its items to pick from, a
 /// search when it has one, Cancel (Esc) and the screen itself.
 class _MenuCard extends StatefulWidget {
   const _MenuCard({

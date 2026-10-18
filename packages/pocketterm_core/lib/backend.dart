@@ -5,11 +5,11 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/native.dart';
 
-/// The Supabase project PocketTerm syncs through: each user runs their own (see
-/// docs/SELF_HOSTING.md). The Mac enters it on its setup screen or opens a
-/// setup link (`pocketterm://setup?url=…&key=…`, printed by
+/// The Supabase project PocketTerm connects through: each user runs their own
+/// (see docs/SELF_HOSTING.md). The computer enters it on its setup screen or
+/// opens a setup link (`pocketterm://setup?url=…&key=…`, printed by
 /// apps/pocketterm-desktop/tool/setup-backend.sh); a phone learns it only from the
-/// Mac's code, a setup link with a sign-in code in it (`…&code=…`,
+/// computer's code, a setup link with a sign-in code in it (`…&code=…`,
 /// functions/pair). Kept where the native side reads it too: the App Group on
 /// Apple platforms (apps/pocketterm-mobile/ios/Shared/PocketTermShared.swift), shared
 /// preferences on Android (PocketTermShared.kt).

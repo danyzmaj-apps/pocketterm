@@ -1,14 +1,14 @@
-# Signs the app in with a code from the Mac, a phone's only way in: pastes
-# SETUP_LINK (a reviewer code's link from Settings → Reviewer access, or a
-# fresh Settings → Set up phone… code) into "Paste a code instead". Does
+# Signs the app in with a code from the computer, a phone's only way in:
+# pastes SETUP_LINK (a reviewer code's link from Settings → Reviewer access,
+# or a fresh Settings → Set up phone… code) into "Paste a code instead". Does
 # nothing when the app is signed in already, so it's safe in a full run.
 #   maestro test -e SETUP_LINK='pocketterm://setup?url=…&key=…&code=…' sign_in.yaml
 appId: com.danyzmaj.pocketterm
 ---
 - launchApp
-# A signed-in app shows its tabs once its store is read.
+# A signed-in app opens on its Terminal list.
 - extendedWaitUntil:
-    visible: "(\\d+\n)?Pocket(\nTab.*)?"
+    visible: "Terminal"
     timeout: 5000
     optional: true
 - runFlow:
@@ -20,5 +20,5 @@ appId: com.danyzmaj.pocketterm
       - inputText: ${SETUP_LINK}
       - tapOn: "Sign in"
 - extendedWaitUntil:
-    visible: "(\\d+\n)?Pocket(\nTab.*)?"
+    visible: "Terminal"
     timeout: 20000

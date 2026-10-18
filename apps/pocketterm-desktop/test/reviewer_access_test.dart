@@ -35,7 +35,7 @@ void main() {
     await tester.pumpWidget(
       window(
         Stack(
-          children: [SettingsSheet(app: app, integrations: integrations)],
+          children: [SettingsPage(app: app, integrations: integrations)],
         ),
       ),
     );
@@ -53,7 +53,7 @@ void main() {
       existing: [ReviewerCode(id: 'old', label: 'Play review', expiresAt: DateTime(2026, 11, 20))],
     );
     expect(find.textContaining('signs a phone into a separate demo account'), findsOneWidget);
-    expect(find.textContaining('can use Ask'), findsOneWidget);
+    expect(find.textContaining('can\u2019t see your terminals'), findsOneWidget);
     expect(find.text('Play review'), findsOneWidget);
     expect(find.textContaining('Until 20 Nov 2026 · not used yet'), findsOneWidget);
 

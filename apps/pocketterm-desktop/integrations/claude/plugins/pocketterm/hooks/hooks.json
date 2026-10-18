@@ -1,4 +1,4 @@
 {
-  "description": "PocketTerm: /idea, /do and /note, and this session live on your phone",
+  "description": "This session live on your phone through PocketTerm",
   "modules": ["./pocketterm.ts"]
 }

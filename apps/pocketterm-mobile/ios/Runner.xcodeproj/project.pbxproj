@@ -10,7 +10,6 @@
 		0D8A2CC3F8EBCB30E3060484 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F6AAE2D3AE02F294270C2A9D /* SwiftUI.framework */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		183FC9797C99AE135BEB7429 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 770E96D4F039B2FC6387DC94 /* WidgetKit.framework */; };
-		2911FC697F720799C277815A /* PocketTermShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F282ABC65C3976B71350A6FA /* PocketTermShared.swift */; };
 		2A4EF77519D735760060E234 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 271103C8B51654A058C807AB /* Pods_Runner.framework */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
@@ -27,9 +26,9 @@
 		A22F99F5DB1A0C87B20A98C0 /* PocketTermShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F282ABC65C3976B71350A6FA /* PocketTermShared.swift */; };
 		D4D28887640318B87505ACB3 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B07F5FDC52D9D055C579F441 /* Foundation.framework */; };
 		EE55FF83F5BEB2B72B07637F /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B07F5FDC52D9D055C579F441 /* Foundation.framework */; };
+		F1A2B3C4D5E6F7A8B9C0D1E3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A8B9C0D1E2 /* PrivacyInfo.xcprivacy */; };
 		F1A2B3C4D5E6F7A8B9C0D1F1 /* SessionActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A8B9C0D1F0 /* SessionActivity.swift */; };
 		F1A2B3C4D5E6F7A8B9C0D1F2 /* SessionActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A8B9C0D1F0 /* SessionActivity.swift */; };
-		F1A2B3C4D5E6F7A8B9C0D1E3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A8B9C0D1E2 /* PrivacyInfo.xcprivacy */; };
 		F1A2B3C4D5E6F7A8B9C0D2A1 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A8B9C0D2A0 /* PrivacyInfo.xcprivacy */; };
 		F1A2B3C4D5E6F7A8B9C0D2A3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A8B9C0D2A2 /* PrivacyInfo.xcprivacy */; };
 		F52923C8703C13E38558B605 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2E6DCE7634C573C852A2FA7F /* Pods_RunnerTests.framework */; };
@@ -117,15 +116,14 @@
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B04F24C543C64395BA257B95 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		B07F5FDC52D9D055C579F441 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
-		D649B0C14B0E29605AC57344 /* PocketTermLive.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = PocketTermLive.entitlements; sourceTree = "<group>"; };
 		D649B0C14B0E29605AC57345 /* PocketTermLive.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = PocketTermLive.xcconfig; sourceTree = "<group>"; };
 		D7F963ECF0CF4A09CDBB1DD3 /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
 		DA086895D1496E904500F046 /* PocketTermLive.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PocketTermLive.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		F1A2B3C4D5E6F7A8B9C0D1E2 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		F1A2B3C4D5E6F7A8B9C0D1F0 /* SessionActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SessionActivity.swift; sourceTree = "<group>"; };
 		F1A2B3C4D5E6F7A8B9C0D2A0 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		F1A2B3C4D5E6F7A8B9C0D2A2 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		F282ABC65C3976B71350A6FA /* PocketTermShared.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PocketTermShared.swift; sourceTree = "<group>"; };
-		F1A2B3C4D5E6F7A8B9C0D1F0 /* SessionActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SessionActivity.swift; sourceTree = "<group>"; };
 		F6AAE2D3AE02F294270C2A9D /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		F92AF8CCFA21587D43A34AA6 /* NotificationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -182,7 +180,6 @@
 				5E38265C13E6F0BF70250A40 /* PocketTermLive.swift */,
 				84F37C0AC7B09835A57B155E /* Info.plist */,
 				F1A2B3C4D5E6F7A8B9C0D2A0 /* PrivacyInfo.xcprivacy */,
-				D649B0C14B0E29605AC57344 /* PocketTermLive.entitlements */,
 				D649B0C14B0E29605AC57345 /* PocketTermLive.xcconfig */,
 			);
 			name = PocketTermLive;
@@ -570,7 +567,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				97514C1BAA21D2DA5D20CDE3 /* PocketTermLive.swift in Sources */,
-				2911FC697F720799C277815A /* PocketTermShared.swift in Sources */,
 				F1A2B3C4D5E6F7A8B9C0D1F2 /* SessionActivity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -771,7 +767,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AppIcon;
 				CLANG_ENABLE_OBJC_WEAK = NO;
-				CODE_SIGN_ENTITLEMENTS = PocketTermLive/PocketTermLive.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
@@ -1020,7 +1015,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AppIcon;
 				CLANG_ENABLE_OBJC_WEAK = NO;
-				CODE_SIGN_ENTITLEMENTS = PocketTermLive/PocketTermLive.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
@@ -1078,7 +1072,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AppIcon;
 				CLANG_ENABLE_OBJC_WEAK = NO;
-				CODE_SIGN_ENTITLEMENTS = PocketTermLive/PocketTermLive.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";

@@ -2,4 +2,4 @@
 #   fvm flutter test --tags screenshots --run-skipped
 tags:
   screenshots:
-    skip: "Renders docs/images/phone-*.png and hero.png; run with --tags screenshots --run-skipped"
+    skip: "Renders docs/images/phone-*.png; run with --tags screenshots --run-skipped"

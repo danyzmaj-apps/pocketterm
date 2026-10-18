@@ -28,21 +28,17 @@ class AssetBackendSource implements BackendSource {
   Future<String> function(String slug) => rootBundle.loadString('supabase/functions/$slug/index.ts');
 }
 
-/// `…/20261006140000_ideas.sql` → version `20261006140000`, name `ideas`.
+/// `…/20261101000000_server.sql` → version `20261101000000`, name `server`.
 Migration migrationFromFile(String path, String sql) {
   final file = path.split('/').last.replaceFirst(RegExp(r'\.sql$'), '');
   final cut = file.indexOf('_');
   return (version: cut < 0 ? file : file.substring(0, cut), name: cut < 0 ? '' : file.substring(cut + 1), sql: sql);
 }
 
-/// The OpenAI-compatible API the Ask feature uses; null skips it.
-typedef AiSettings = ({String baseUrl, String model, String key});
-
 enum ProvisionStep {
   database('Database'),
   signIn('GitHub sign-in'),
   functions('Server functions'),
-  ai('AI for quick questions'),
   keys('Connection key');
 
   const ProvisionStep(this.label);
@@ -199,17 +195,11 @@ create table if not exists supabase_migrations.schema_migrations (version text p
 
   Future<void> deployFunctions() async {
     // relay is the publisher's alone (tool/deploy-relay.sh): never on a user's server.
-    for (final slug in ['ask', 'device', 'pair', 'push']) {
-      // All check the caller themselves (a user token, a device token, the scheduler's secret).
+    for (final slug in ['pair', 'push']) {
+      // Both check the caller themselves (a user token).
       await admin.deployFunction(ref, slug, await source.function(slug), verifyJwt: false);
     }
   }
-
-  Future<void> setAi(AiSettings ai) => admin.setSecrets(ref, {
-    'AI_BASE_URL': ai.baseUrl.trim(),
-    'AI_MODEL': ai.model.trim(),
-    'AI_API_KEY': ai.key.trim(),
-  });
 
   Future<Backend> backend() async => Backend(url: url, key: await admin.publishableKey(ref));
 
@@ -218,7 +208,6 @@ create table if not exists supabase_migrations.schema_migrations (version text p
   Future<Backend> run({
     required String githubClientId,
     required String githubSecret,
-    required AiSettings? ai,
     void Function(ProvisionStep step)? onStep,
     Set<ProvisionStep> done = const {},
   }) async {
@@ -231,7 +220,6 @@ create table if not exists supabase_migrations.schema_migrations (version text p
     await step(ProvisionStep.database, migrate);
     await step(ProvisionStep.signIn, () => configureSignIn(githubClientId: githubClientId, githubSecret: githubSecret));
     await step(ProvisionStep.functions, deployFunctions);
-    if (ai != null) await step(ProvisionStep.ai, () => setAi(ai));
     onStep?.call(ProvisionStep.keys);
     return await backend();
   }

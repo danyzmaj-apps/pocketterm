@@ -430,7 +430,7 @@ class TerminalRemote extends ChangeNotifier {
     Duration wait = const Duration(seconds: 10),
     void Function(Map<String, dynamic> reply)? onLate,
   }) async {
-    if (!online) throw const TerminalException('The Mac is not answering.');
+    if (!online) throw const TerminalException('The computer is not answering.');
     final id = const Uuid().v4();
     final done = _pending[id] = Completer();
     final Map<String, dynamic> reply;
@@ -450,7 +450,7 @@ class TerminalRemote extends ChangeNotifier {
               .whenComplete(() => _pending.remove(id)),
         );
       }
-      throw const TerminalException('The Mac did not answer.');
+      throw const TerminalException('The computer did not answer.');
     } finally {
       if (!later) _pending.remove(id);
     }
@@ -515,7 +515,7 @@ class TerminalRemote extends ChangeNotifier {
   /// which pass through Storage. While omp works the prompt steers it, or
   /// waits for the turn to end if [followUp]; Claude Code always waits.
   Future<void> prompt(String session, String text, {List<Uint8List> images = const [], bool followUp = false}) async {
-    if (!online) throw const TerminalException('The Mac is not answering.');
+    if (!online) throw const TerminalException('The computer is not answering.');
     final bucket = _client.storage.from(imageBucket);
     final paths = <String>[];
     void forget() {

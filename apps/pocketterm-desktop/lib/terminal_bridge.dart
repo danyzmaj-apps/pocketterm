@@ -470,7 +470,7 @@ class TerminalBridge {
     } on LiveException catch (e) {
       error = e.message;
     } on Object catch (e) {
-      error = 'The Mac could not do that: $e';
+      error = 'The computer could not do that: $e';
     }
     _send('ran', {'id': id, 'error': ?error, 'window': ?window});
     unawaited(_poll(windows: p['op'] == 'launch' || p['op'] == 'create' || p['op'] == 'close'));
@@ -525,7 +525,7 @@ class TerminalBridge {
       final input = File('${dir.path}/in')..writeAsBytesSync(bytes);
       final png = '${dir.path}/out.png';
       final conv = await Process.run('/usr/bin/sips', ['-s', 'format', 'png', input.path, '--out', png]);
-      if (conv.exitCode != 0) throw const LiveException("The Mac couldn't read that image.");
+      if (conv.exitCode != 0) throw const LiveException("The computer couldn't read that image.");
       return (bytes: await File(png).readAsBytes(), mimeType: 'image/png');
     } finally {
       await dir.delete(recursive: true);
@@ -592,11 +592,11 @@ class TerminalBridge {
       final review = parsePlanReview(await _terms.plainScreen(window), agent: agent);
       if (review == null) {
         throw const LiveException(
-          "The plan review isn't ready on the Mac's screen. Open the screen to answer it there.",
+          "The plan review isn't ready on the computer's screen. Open the screen to answer it there.",
         );
       }
       if (pick >= review.options.length || (pick < ask.options.length && review.options[pick] != ask.options[pick])) {
-        throw const LiveException('The plan review on the Mac has changed. Open the screen to answer it there.');
+        throw const LiveException('The plan review on the computer has changed. Open the screen to answer it there.');
       }
       if (agent == Agent.claude) {
         await _terms.pressKeys(window, [claudeRowKey(pick)]);
@@ -693,7 +693,7 @@ class TerminalBridge {
     final w = _menus[key];
     final menu = parseMenu(await _terms.plainScreen(window));
     if (w == null || menu == null || menu.title != ask.title) {
-      throw const LiveException("The menu isn't on the Mac's screen anymore. Open the screen to see what is.");
+      throw const LiveException("The menu isn't on the computer's screen anymore. Open the screen to see what is.");
     }
     final query = answer?.custom;
     if (query != null && answer!.picks.isEmpty) {
@@ -714,7 +714,7 @@ class TerminalBridge {
     var shown = menu;
     for (var tries = 0; tries < 4; tries++) {
       if (pick >= shown.items.length || shown.items[pick].label != ask.items[pick].label) {
-        throw const LiveException('The menu on the Mac has changed. Pick again.');
+        throw const LiveException('The menu on the computer has changed. Pick again.');
       }
       if (shown.current == pick) {
         await _terms.pressKeys(window, const ['enter']);
@@ -727,7 +727,7 @@ class TerminalBridge {
       await Future<void>.delayed(const Duration(milliseconds: 150));
       final again = parseMenu(await _terms.plainScreen(window));
       if (again == null || again.title != ask.title) {
-        throw const LiveException("The menu isn't on the Mac's screen anymore. Open the screen to see what is.");
+        throw const LiveException("The menu isn't on the computer's screen anymore. Open the screen to see what is.");
       }
       shown = again;
     }
@@ -744,7 +744,7 @@ class TerminalBridge {
     final window = s.window;
     if (window == null) {
       throw const LiveException(
-        "PocketTerm can't tell which terminal window this session runs in: answer it on the Mac.",
+        "PocketTerm can't tell which terminal window this session runs in: answer it on the computer.",
       );
     }
     if (cantAnswer(_terms, window) case final why?) throw LiveException(why);
@@ -757,7 +757,7 @@ class TerminalBridge {
       agent: s.agent,
     );
     if (!askOnScreen(ask, await _terms.plainScreen(window), agent: s.agent)) {
-      throw const LiveException("The question isn't on the Mac's screen. Open the screen to answer it there.");
+      throw const LiveException("The question isn't on the computer's screen. Open the screen to answer it there.");
     }
     for (final step in steps) {
       switch (step) {
@@ -827,7 +827,7 @@ String? cantAnswer(Terminals terms, String window) {
   final read = terms.can(window, TermCap.read);
   if (read && terms.can(window, TermCap.keys)) return null;
   final label = terms.hostOf(window)?.label ?? 'This terminal';
-  return "$label can't ${read ? 'press keys' : 'show its screen'}, so answer this on the Mac. "
+  return "$label can't ${read ? 'press keys' : 'show its screen'}, so answer this on the computer. "
       '${terms.tmux.installed ? 'Sessions you start from the phone run in tmux there, which can.' : 'With tmux (brew install tmux), sessions you start from the phone can.'}';
 }
 
@@ -837,10 +837,10 @@ String? cantAnswer(Terminals terms, String window) {
 String? cantCommand(Terminals terms, String? window) {
   if (window == null) {
     return "Slash commands are typed into the agent's terminal window, and PocketTerm can't reach this one: it isn't in "
-        'kitty, tmux, WezTerm, iTerm2, Terminal or Ghostty. Run it on the Mac.';
+        'kitty, tmux, WezTerm, iTerm2, Terminal or Ghostty. Run it on the computer.';
   }
   if (terms.can(window, TermCap.line)) return null;
-  return "${terms.hostOf(window)?.label ?? 'This terminal'} can't take a typed line, so run the command on the Mac.";
+  return "${terms.hostOf(window)?.label ?? 'This terminal'} can't take a typed line, so run the command on the computer.";
 }
 
 /// One session's screen followed for pickers: when it was last told to look

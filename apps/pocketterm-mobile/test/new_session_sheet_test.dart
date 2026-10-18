@@ -27,7 +27,7 @@ void main() {
   });
   tearDown(() => dir.deleteSync(recursive: true));
 
-  /// The Mac online with [roots] as its Project folders; null: a Mac that
+  /// The computer online with [roots] as its Project folders; null: a computer that
   /// predates them.
   void macState(List<String>? roots) => remote.handle('state', {
     'windows': <Object>[],
@@ -86,7 +86,9 @@ void main() {
     remote.flush();
   });
 
-  testWidgets('a Mac without Project folders: no New project…, and no hint about a setting it lacks', (tester) async {
+  testWidgets('a computer without Project folders: no New project…, and no hint about a setting it lacks', (
+    tester,
+  ) async {
     macState(null);
     await pumpSheet(tester);
     expect(find.byKey(const ValueKey('new-project')), findsNothing);
@@ -102,7 +104,7 @@ void main() {
     expect(find.text('New project'), findsOneWidget);
     await tester.tap(find.text('~/Work'));
     await tester.pump();
-    // The Mac adds a folder in front of the picked one meanwhile.
+    // The computer adds a folder in front of the picked one meanwhile.
     macState(const ['/Users/me/New', '/Users/me/Code', '/Users/me/Work']);
     await tester.pump();
     expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '~/Work')).selected, isTrue);
@@ -127,7 +129,7 @@ void main() {
     remote.flush();
   });
 
-  testWidgets("the Mac's refusal shows, and the form stays to try again", (tester) async {
+  testWidgets("the computer's refusal shows, and the form stays to try again", (tester) async {
     macState(const ['/Users/me/Code']);
     await pumpSheet(tester);
     await openNewProject(tester, 'demo');

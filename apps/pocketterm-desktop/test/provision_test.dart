@@ -12,7 +12,6 @@ class FakeApi {
   final queries = <String>[];
   Map<String, dynamic> auth = {'uri_allow_list': 'https://example.com', 'site_url': 'http://localhost:3000'};
   final deployed = <String, Map<String, dynamic>>{};
-  final secrets = <String, String>{};
 
   late final client = MockClient((req) async {
     final path = req.url.path;
@@ -34,12 +33,6 @@ class FakeApi {
     if (path.endsWith('/config/auth')) {
       if (req.method == 'PATCH') auth = {...auth, ...jsonDecode(req.body) as Map<String, dynamic>};
       return http.Response(jsonEncode(auth), 200);
-    }
-    if (path.endsWith('/secrets')) {
-      for (final s in jsonDecode(req.body) as List) {
-        secrets[(s as Map)['name'] as String] = s['value'] as String;
-      }
-      return http.Response('', 201);
     }
     if (path.endsWith('/api-keys')) {
       return http.Response(
@@ -81,8 +74,8 @@ class FakeSource implements BackendSource {
 
 void main() {
   test('migration files read as version and name', () {
-    final m = migrationFromFile('supabase/migrations/20261012090000_notes.sql', 'sql');
-    expect((m.version, m.name), ('20261012090000', 'notes'));
+    final m = migrationFromFile('supabase/migrations/20261101000100_terminal.sql', 'sql');
+    expect((m.version, m.name), ('20261101000100', 'terminal'));
   });
 
   test('a fresh run applies only missing migrations, in order, and records them', () async {
@@ -105,7 +98,7 @@ void main() {
     expect(await p.migrate(), 0);
   });
 
-  test('the whole setup configures sign-in, functions, AI and returns the publishable key', () async {
+  test('the whole setup configures sign-in and functions and returns the publishable key', () async {
     final api = FakeApi();
     final p = Provisioner(
       admin: SupabaseAdmin('sbp_x', client: api.streaming),
@@ -114,12 +107,7 @@ void main() {
     );
     final seen = <ProvisionStep>[];
 
-    final backend = await p.run(
-      githubClientId: ' Iv1.id ',
-      githubSecret: 'secret',
-      ai: (baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', key: 'sk-1'),
-      onStep: seen.add,
-    );
+    final backend = await p.run(githubClientId: ' Iv1.id ', githubSecret: 'secret', onStep: seen.add);
 
     expect(seen, ProvisionStep.values);
     expect(backend.url, 'https://abc.supabase.co');
@@ -131,16 +119,11 @@ void main() {
     expect(api.auth['uri_allow_list'], 'https://example.com,pocketterm://login-callback');
     expect(api.auth['hook_before_user_created_enabled'], isTrue);
     expect(api.auth['external_email_enabled'], isFalse);
-    expect(api.deployed.keys, {'ask', 'device', 'pair', 'push'});
+    expect(api.deployed.keys, {'pair', 'push'});
     expect(api.deployed.values.every((m) => m['verify_jwt'] == false), isTrue);
-    expect(api.secrets, {
-      'AI_BASE_URL': 'https://api.deepseek.com',
-      'AI_MODEL': 'deepseek-flash',
-      'AI_API_KEY': 'sk-1',
-    });
   });
 
-  test('a retry skips the steps already done; no AI skips the secrets', () async {
+  test('a retry skips the steps already done', () async {
     final api = FakeApi();
     final p = Provisioner(
       admin: SupabaseAdmin('sbp_x', client: api.streaming),
@@ -152,14 +135,12 @@ void main() {
     await p.run(
       githubClientId: 'id',
       githubSecret: 's',
-      ai: null,
       onStep: seen.add,
       done: {ProvisionStep.database, ProvisionStep.signIn},
     );
 
     expect(seen, [ProvisionStep.functions, ProvisionStep.keys]);
     expect(api.queries, isEmpty);
-    expect(api.secrets, isEmpty);
   });
 
   test('API errors read as something a person can act on', () async {

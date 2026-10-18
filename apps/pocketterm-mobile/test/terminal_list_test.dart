@@ -286,7 +286,7 @@ void main() {
 
     await swipe('kitty-1/3');
     expect(find.byType(AlertDialog), findsNothing);
-    expect(find.text('Close this window on the Mac?'), findsOneWidget);
+    expect(find.text('Close this window on the computer?'), findsOneWidget);
     expect(find.text('The omp session in ~/b ends with it.'), findsOneWidget);
     expect(session('kitty-1/3'), findsNothing);
 
@@ -304,7 +304,7 @@ void main() {
     await tester.pump(Duration.zero);
     final closeB = runs('close').single;
     expect(closeB, containsPair('window', 'kitty-1/3'));
-    // Until the Mac answers, it shows the close going, with nothing to ask
+    // Until the computer answers, it shows the close going, with nothing to ask
     // or send again; another row's close doesn't change that.
     expect(sent('kitty-1/3'), findsOneWidget);
     expect(find.byKey(const ValueKey('close-confirm')), findsNothing);
@@ -326,7 +326,7 @@ void main() {
     remote.flush();
   });
 
-  testWidgets("with the Mac out of reach, neither a + nor a row's question can be used", (tester) async {
+  testWidgets("with the computer out of reach, neither a + nor a row's question can be used", (tester) async {
     macState();
     await pumpList(tester);
     await tester.drag(session('kitty-1/3'), const Offset(-600, 0));
@@ -334,7 +334,7 @@ void main() {
     expect(find.byKey(const ValueKey('close-confirm')), findsOneWidget);
     expect(tester.widget<IconButton>(plus(_b)).onPressed, isNotNull);
 
-    // Nothing heard from the Mac any more, and the list looks again (the
+    // Nothing heard from the computer any more, and the list looks again (the
     // app's link check does, every few seconds).
     remote
       ..attach()
@@ -359,12 +359,12 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
     expect(find.byType(AlertDialog), findsNothing);
-    expect(find.text('Close this window on the Mac?'), findsOneWidget);
+    expect(find.text('Close this window on the computer?'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('close-confirm')));
     await tester.pump(Duration.zero);
     final close = runs('close').single;
     expect(close, containsPair('window', 'kitty-1/3'));
-    // Until the Mac answers: the close shows going, and can't go again.
+    // Until the computer answers: the close shows going, and can't go again.
     expect(find.byKey(const ValueKey('close-sent')), findsOneWidget);
     expect(find.byKey(const ValueKey('close-confirm')), findsNothing);
     expect(tester.widget<IconButton>(find.byKey(const ValueKey('close-window'))).onPressed, isNull);
@@ -425,7 +425,7 @@ void main() {
     await tester.pump();
 
     expect(runs('prompt'), isEmpty);
-    expect(find.textContaining('Run them on the Mac.'), findsWidgets);
+    expect(find.textContaining('Run them on the computer.'), findsWidgets);
     expect(find.text('/new'), findsOneWidget, reason: 'what was typed stays');
     remote.flush();
   });

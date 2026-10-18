@@ -33,7 +33,6 @@ class FakeSupabase {
   Map<String, dynamic> auth = {'site_url': 'http://localhost:3000', 'uri_allow_list': ''};
   int authPatches = 0;
   final deploys = <String>[];
-  final secrets = <String, String>{};
 
   /// Function deploys fail while this is above zero, one at a time.
   int failDeploys = 0;
@@ -95,12 +94,6 @@ class FakeSupabase {
       }
       return _json(auth);
     }
-    if (path.endsWith('/secrets')) {
-      for (final s in jsonDecode(req.body) as List) {
-        secrets[(s as Map)['name'] as String] = s['value'] as String;
-      }
-      return http.Response('', 201);
-    }
     if (path.endsWith('/api-keys')) {
       return _json([
         {'name': 'default', 'type': 'publishable', 'api_key': 'sb_publishable_abc'},
@@ -128,12 +121,12 @@ class FakeSource implements BackendSource {
   @override
   Future<List<Migration>> migrations() async => [
     migrationFromFile(
-      'supabase/migrations/20261006140000_ideas.sql',
-      'create table public.ideas (id uuid);\ncreate index ideas_user_updated on public.ideas (id);\n'
-          r'create function public.ideas_touch() returns trigger language plpgsql as $$ begin end $$;',
+      'supabase/migrations/20261101000000_server.sql',
+      'create table public.pairing_codes (id uuid);\ncreate index pairing_codes_expiry on public.pairing_codes (id);\n'
+          r'create function public.redeem_pairing_code() returns uuid language plpgsql as $$ begin end $$;',
     ),
     migrationFromFile(
-      'supabase/migrations/20261009120000_terminal_images.sql',
+      'supabase/migrations/20261101000100_terminal.sql',
       "insert into storage.buckets (id, name, public) values ('terminal', 'terminal', false);",
     ),
   ];
@@ -159,8 +152,9 @@ void main() {
     checkPause: Duration.zero,
   );
 
-  /// A flow at the AI step on the account's existing, empty project.
-  Future<SetupFlow> atAi() async {
+  /// A flow past the GitHub step on the account's existing, empty project:
+  /// the setup has run.
+  Future<SetupFlow> setUpServer() async {
     final flow = newFlow();
     await flow.submitToken('sbp_token');
     flow
@@ -171,7 +165,7 @@ void main() {
       ..githubId = 'Iv1.id'
       ..githubSecret = 'secret';
     await flow.submitGithub();
-    expect(flow.step, WizardStep.ai, reason: flow.error);
+    expect(flow.step, WizardStep.setup, reason: flow.error);
     return flow;
   }
 
@@ -274,13 +268,13 @@ void main() {
     });
 
     test('one with tables of the same names is refused, naming them', () async {
-      api.taken = 'ideas, storage bucket terminal';
+      api.taken = 'pairing_codes, storage bucket terminal';
       final flow = await pick();
-      expect(flow.error, contains('ideas, storage bucket terminal'));
+      expect(flow.error, contains('pairing_codes, storage bucket terminal'));
       expect(flow.step, WizardStep.project);
       // It asked about what the migrations make.
       final asked = api.queries.singleWhere((q) => q.contains('as taken'));
-      for (final name in ["'ideas'", "'ideas_user_updated'", "'ideas_touch'", "'terminal'"]) {
+      for (final name in ["'pairing_codes'", "'pairing_codes_expiry'", "'redeem_pairing_code'", "'terminal'"]) {
         expect(asked, contains(name));
       }
     });
@@ -331,6 +325,7 @@ void main() {
       final flow = await atGithub(github('incorrect_client_credentials'));
       expect(flow.error, contains('client secret'));
       expect(flow.step, WizardStep.github);
+      expect(api.deploys, isEmpty);
     });
 
     test('an unknown Client ID is caught', () async {
@@ -346,45 +341,40 @@ void main() {
     test("GitHub unreachable doesn't hold the setup up", () async {
       final flow = await atGithub(MockClient((_) async => throw http.ClientException('offline')));
       expect(flow.error, isNull);
-      expect(flow.step, WizardStep.ai);
+      expect(flow.ready, isTrue);
     });
   });
 
   group('setup', () {
-    test('runs everything and is ready', () async {
-      final flow = await atAi();
-      flow.aiKey = 'sk-1';
-      await flow.setUp(withAi: true);
+    test('runs everything right after GitHub takes the app, and is ready', () async {
+      final flow = await setUpServer();
 
       expect(flow.error, isNull);
+      expect(flow.step, WizardStep.setup);
       expect(flow.ready, isTrue);
-      expect(api.deploys, ['ask', 'device', 'pair', 'push']);
-      expect(api.secrets['AI_API_KEY'], 'sk-1');
+      expect(api.deploys, ['pair', 'push']);
       expect(flow.backend?.key, 'sb_publishable_abc');
     });
 
     test('an edit after Back runs that step again, and only that one', () async {
-      final flow = await atAi();
-      await flow.setUp(withAi: false);
+      final flow = await setUpServer();
       expect(flow.ready, isTrue);
-      expect((api.authPatches, api.deploys.length), (1, 4));
+      expect((api.authPatches, api.deploys.length), (1, 2));
 
       flow
         ..go(WizardStep.github)
         ..githubSecret = 'new secret';
       await flow.submitGithub();
-      await flow.setUp(withAi: false);
 
       expect(flow.ready, isTrue);
       expect(api.authPatches, 2);
       expect(api.auth['external_github_secret'], 'new secret');
-      expect(api.deploys.length, 4);
+      expect(api.deploys.length, 2);
     });
 
     test('another project gets every step', () async {
       api.projects.add({'id': 'second', 'name': 'spare', 'status': 'ACTIVE_HEALTHY'});
-      final flow = await atAi();
-      await flow.setUp(withAi: false);
+      final flow = await setUpServer();
 
       // The fake's settings are the first project's; the second one is fresh.
       api.auth = {'site_url': 'http://localhost:3000'};
@@ -393,16 +383,14 @@ void main() {
         ..existingRef = 'second';
       await flow.submitProject();
       await flow.submitGithub();
-      await flow.setUp(withAi: false);
 
       expect(flow.ref, 'second');
-      expect((api.authPatches, api.deploys.length), (2, 8));
+      expect((api.authPatches, api.deploys.length), (2, 4));
     });
 
     test('a step that fails again is still not done', () async {
       api.failDeploys = 2;
-      final flow = await atAi();
-      await flow.setUp(withAi: false);
+      final flow = await setUpServer();
       expect(flow.error, contains('Bundling failed'));
       await flow.setUp();
       expect(flow.error, contains('Bundling failed'));
@@ -410,46 +398,30 @@ void main() {
 
       await flow.setUp();
       expect(flow.ready, isTrue);
-      expect(api.deploys, ['ask', 'device', 'pair', 'push']);
-    });
-
-    test('Retry after "Skip AI" still skips it, with a key typed', () async {
-      api.failDeploys = 1;
-      final flow = await atAi();
-      flow.aiKey = 'sk-typed';
-      await flow.setUp(withAi: false);
-      expect(flow.error, isNotNull);
-
-      await flow.setUp();
-      expect(flow.ready, isTrue);
-      expect(api.secrets, isEmpty);
-      expect(flow.usesAi, isFalse);
+      expect(api.deploys, ['pair', 'push']);
     });
 
     test('the check waits a little for the auth service to pick up the settings', () async {
       checks = ['GitHub sign-in is off on this project.', 'GitHub sign-in is off on this project.'];
-      final flow = await atAi();
-      await flow.setUp(withAi: false);
+      final flow = await setUpServer();
       expect(flow.ready, isTrue);
       expect(api.authPatches, 1);
     });
 
     test('a check that keeps failing makes Retry set sign-in up again', () async {
       checks = List.filled(10, 'GitHub sign-in is off on this project.', growable: true);
-      final flow = await atAi();
-      await flow.setUp(withAi: false);
+      final flow = await setUpServer();
       expect(flow.error, contains('GitHub sign-in is off'));
       expect(flow.ready, isFalse);
 
       await flow.setUp();
       expect(flow.ready, isTrue);
       expect(api.authPatches, 2);
-      expect(api.deploys.length, 4);
+      expect(api.deploys.length, 2);
     });
 
     test('a failed connect shows why and can be tried again; the server stays ready', () async {
-      final flow = await atAi();
-      await flow.setUp(withAi: false);
+      final flow = await setUpServer();
 
       await flow.connect((_) async => throw StateError('Sign out before switching projects.'));
       expect(flow.error, contains("Couldn't connect"));
@@ -463,11 +435,7 @@ void main() {
   });
 
   testWidgets('the finished screen shows a failed connect and keeps its button', (tester) async {
-    final flow = await tester.runAsync(() async {
-      final flow = await atAi();
-      await flow.setUp(withAi: false);
-      return flow;
-    });
+    final flow = await tester.runAsync(setUpServer);
     addTearDown(flow!.dispose);
     var tries = 0;
     await tester.pumpWidget(

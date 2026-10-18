@@ -5,13 +5,11 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
-import 'package:pocketterm_core/idea.dart';
-import 'package:pocketterm_core/store.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 
-/// The terminal's way in (`/idea`, `/do` and `/note` in omp and Claude
-/// Code, and their live sessions): HTTP on 127.0.0.1 at a random port,
-/// guarded by a random token. Both are written to `~/.config/pocketterm/cli.json`
+/// The terminal's way in (the live sessions of omp and Claude Code): HTTP
+/// on 127.0.0.1 at a random port, guarded by a random token. Both are
+/// written to `~/.config/pocketterm/cli.json`
 /// (mode 600; `POCKETTERM_CLI_JSON` names another file) for the clients to read,
 /// and taken out again when PocketTerm quits.
 ///
@@ -19,24 +17,15 @@ import 'package:pocketterm_desktop/live_hub.dart';
 ///                                  [pingProof], so a client knows it's this PocketTerm
 ///                                  before its token goes anywhere
 ///   GET   /v1/ping                 → {"app": "pocketterm", "pid"}: this PocketTerm is up
-///   GET   /v1/ideas?project=NAME   → {"ideas": [...]}, oldest first
-///   GET   /v1/ideas?kind=todo      → {"ideas": [...]}, open todos, oldest first
-///   GET   /v1/ideas?kind=note      → {"ideas": [...]}, notes, oldest first
-///   POST  /v1/ideas                {title, kind?, notes?, project?} → {"idea": {...}}
-///                                  (a note: its text in title, or title + notes)
-///   PATCH /v1/ideas/ID             {done} (todos only) → {"idea": {...}}
 ///   GET   /v1/live                 WebSocket: a coding session reporting itself (omp's
 ///                                  integrations/omp/pocketterm-live.ts, lib/live_hub.dart)
 ///   POST  /v1/live/http            {conn?, frames, wait?} → {conn, frames}: the same over
 ///                                  HTTP long polls (the Claude Code plugin); packages/pocketterm_core/lib/live.dart
-///
-/// Writes go through the [IdeaStore], so they sync like any other edit.
 class LocalApi {
-  LocalApi(this._store, this._live, {File? file})
+  LocalApi(this._live, {File? file})
     : file = file ?? _defaultFile(),
       _ownFolder = file == null && !_named(Platform.environment);
 
-  final IdeaStore? Function() _store;
   final LiveHub _live;
   HttpServer? _server;
   late final String _token = List.generate(
@@ -257,7 +246,7 @@ class LocalApi {
   Future<void> _handle(HttpRequest req) async {
     final res = req.response..headers.contentType = ContentType.json;
     try {
-      final (status, body) = await _route(req);
+      final (status, body) = _route(req);
       res
         ..statusCode = status
         ..write(jsonEncode(body));
@@ -270,7 +259,7 @@ class LocalApi {
     await res.close();
   }
 
-  Future<(int, Map<String, dynamic>)> _route(HttpRequest req) async {
+  (int, Map<String, dynamic>) _route(HttpRequest req) {
     final path = req.uri.pathSegments;
     final ping = req.method == 'GET' && path.length == 2 && path[0] == 'v1' && path[1] == 'ping';
     // Before the token: a client asks this way whether to send it here.
@@ -280,53 +269,7 @@ class LocalApi {
     }
     if (req.headers.value('authorization') != 'Bearer $_token') return (403, {'error': 'Bad token.'});
     if (ping) return (200, {'app': 'pocketterm', 'pid': pid});
-    final store = _store();
-    if (store == null) return (401, {'error': 'Sign in to PocketTerm first.'});
-
-    if (path.length < 2 || path[0] != 'v1' || path[1] != 'ideas') return (404, {'error': 'Not found.'});
-
-    if (req.method == 'GET' && path.length == 2) {
-      final query = req.uri.queryParameters;
-      final project = query['project'];
-      final ideas =
-          (switch (query['kind']) {
-              'todo' => store.openTodos,
-              'note' => store.notes,
-              _ => store.ideas,
-            }).where((i) => project == null || i.project == project).toList()
-            ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-      return (
-        200,
-        {
-          'ideas': [for (final i in ideas) i.toApi()],
-        },
-      );
-    }
-
-    final body = jsonDecode(await utf8.decodeStream(req)) as Map<String, dynamic>;
-
-    if (req.method == 'POST' && path.length == 2) {
-      final title = (body['title'] as String? ?? '').trim();
-      if (title.isEmpty) return (400, {'error': 'title is required.'});
-      final notes = (body['notes'] as String? ?? '').trim();
-      final idea = switch (Kind.parse(body['kind'])) {
-        Kind.note => store.addNote(notes.isEmpty ? title : '$title\n$notes'),
-        final kind => store.add(title: title, kind: kind, notes: notes, project: body['project'] as String? ?? ''),
-      };
-      return (201, {'idea': idea.toApi()});
-    }
-
-    if (req.method == 'PATCH' && path.length == 3) {
-      final idea = store.byId(path[2]);
-      if (idea == null) return (404, {'error': 'No such item.'});
-      if (!idea.isTodo) return (400, {'error': 'Only todos can be marked done.'});
-      final done = body['done'];
-      if (done is! bool) return (400, {'error': 'done (true/false) is required.'});
-      store.update(idea, done: done);
-      return (200, {'idea': idea.toApi()});
-    }
-
-    return (405, {'error': 'Method not allowed.'});
+    return (404, {'error': 'Not found.'});
   }
 }
 

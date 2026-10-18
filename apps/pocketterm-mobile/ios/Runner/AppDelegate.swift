@@ -2,11 +2,10 @@ import ActivityKit
 import Flutter
 import UIKit
 import UserNotifications
-import WidgetKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
-  private let reminders = Reminders()
+  private let notifications = Notifications()
   private let activities = SessionActivities()
 
   /// Waiting for APNs to hand over this iPhone's device token (registerPush).
@@ -17,8 +16,8 @@ import WidgetKit
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     let launched = super.application(application, didFinishLaunchingWithOptions: launchOptions)
-    // Before launch ends: the tap or Done that launched the app comes next.
-    reminders.install()
+    // Before launch ends: the tap that launched the app comes next.
+    notifications.install()
     return launched
   }
 
@@ -27,7 +26,7 @@ import WidgetKit
   ) {
     super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
     let token = deviceToken.map { String(format: "%02x", $0) }.joined()
-    // No key, no sealed pushes: reminders stay on the phone.
+    // No key, no sealed pushes.
     pushWaiter?(PocketTermShared.makePushKey().map { ["token": token, "key": $0.base64EncodedString()] })
     pushWaiter = nil
   }
@@ -42,14 +41,14 @@ import WidgetKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    // The iPhone half of packages/pocketterm_core/lib/native.dart: device name, the App Group the
-    // widget reads (ios/Shared/PocketTermShared.swift), reminders.
+    // The iPhone half of packages/pocketterm_core/lib/native.dart: device name, the App Group
+    // the push extension reads (ios/Shared/PocketTermShared.swift), pushes, Live Activities.
     let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "PocketTermNative")!
     let channel = FlutterMethodChannel(name: "pocketterm/native", binaryMessenger: registrar.messenger())
-    reminders.channel = channel
+    notifications.channel = channel
     activities.channel = channel
     activities.install()
-    channel.setMethodCallHandler { [reminders, activities, weak self] call, result in
+    channel.setMethodCallHandler { [notifications, activities, weak self] call, result in
       let args = call.arguments as? [String: Any] ?? [:]
       switch call.method {
       case "setKeepAwake":
@@ -57,28 +56,6 @@ import WidgetKit
         result(nil)
       case "deviceName":
         result(UIDevice.current.name)
-      case "setSharedToken":
-        if let token = args["token"] as? String {
-          PocketTermShared.defaults.set(token, forKey: "token")
-        } else {
-          PocketTermShared.defaults.removeObject(forKey: "token")
-          PocketTermShared.todos = []
-        }
-        WidgetCenter.shared.reloadAllTimelines()
-        result(nil)
-      case "setSharedTodos":
-        let todos = (args["todos"] as? [[String: String]] ?? []).compactMap { t -> PocketTermShared.Todo? in
-          guard let id = t["id"], let title = t["title"] else { return nil }
-          return PocketTermShared.Todo(id: id, title: title)
-        }
-        if todos != PocketTermShared.todos {
-          PocketTermShared.todos = todos
-          WidgetCenter.shared.reloadTimelines(ofKind: "PocketTermTodos")
-        }
-        result(nil)
-      case "takePending":
-        // Actions the widget or a notification couldn't send; the app replays them.
-        result(PocketTermShared.takePending())
       case "getBackend":
         result(PocketTermShared.backend.map { ["url": $0.url, "key": $0.key] })
       case "setBackend":
@@ -88,15 +65,11 @@ import WidgetKit
           PocketTermShared.backend = nil
         }
         result(nil)
-      case "setReminders":
-        reminders.schedule(args["reminders"] as? [[String: Any]] ?? []) { result(nil) }
-      case "takeTappedTodo":
-        result(reminders.takeTapped())
       case "takeTappedSession":
-        result(reminders.takeTappedSession())
+        result(notifications.takeTappedSession())
       case "registerPush":
         // Permission first (a no-op after the first answer), then APNs. nil:
-        // not allowed or no token (the app keeps local reminders then).
+        // not allowed or no token (the phone gets no pushes then).
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
           DispatchQueue.main.async {
             guard granted, let self else { return result(nil) }
@@ -121,7 +94,7 @@ import WidgetKit
 }
 
 /// Coding sessions on the Lock Screen and in the Dynamic Island
-/// (ios/Shared/SessionActivity.swift, drawn by the widget extension). Dart
+/// (ios/Shared/SessionActivity.swift, drawn by the PocketTermLive extension). Dart
 /// starts, updates and ends them while the app runs (packages/pocketterm_core/lib/live_activity.dart);
 /// otherwise the server updates them by push, at each one's push token,
 /// which goes to Dart as `activityToken {key, token}`. One per session key.
@@ -136,8 +109,8 @@ final class SessionActivities {
   /// Activities whose token and state are followed.
   private var watched: Set<String> = []
 
-  /// Pushes stop making sense after this long without one (the Mac asleep,
-  /// or gone); the widget shows the activity as stale.
+  /// Pushes stop making sense after this long without one (the computer asleep,
+  /// or gone); the Live Activity shows as stale.
   private static let staleAfter: TimeInterval = 8 * 3600
 
   /// After a launch: the activities still running from before.
@@ -199,7 +172,7 @@ final class SessionActivities {
   }
 
   /// {key, immediate?}: shows Ended, gone at once (the person ended it) or
-  /// after 10 minutes (the session ended on the Mac).
+  /// after 10 minutes (the session ended on the computer).
   func end(_ args: [String: Any], result: @escaping FlutterResult) {
     guard let key = args["key"] as? String else { return result(nil) }
     let list = active(key)
@@ -238,57 +211,18 @@ final class SessionActivities {
   }
 }
 
-/// Todo reminders as local notifications. Dart picks them (packages/pocketterm_core/lib/remind.dart)
-/// and hands over the whole set on every change. A tap opens the app on that
-/// todo; Done ticks it off the way the Todos widget does, so it works with
-/// the app closed (and the app replays it if the server can't be reached).
-final class Reminders: NSObject, UNUserNotificationCenterDelegate {
+/// Notification taps and banners. A terminal push's tap opens the app on its
+/// coding session; the tap that launched the app arrives before Dart
+/// listens, so the session waits until Dart takes it.
+final class Notifications: NSObject, UNUserNotificationCenterDelegate {
   /// The app's channel, once its Flutter engine is up.
   var channel: FlutterMethodChannel?
 
-  /// The todo whose notification was tapped, until Dart takes it: a tap that
-  /// launched the app arrives before Dart listens.
-  private var tapped: String?
-
-  /// The same for a terminal push: the coding session it is about.
+  /// The coding session a tapped terminal push is about, until Dart takes it.
   private var tappedSession: String?
 
   func install() {
-    let center = UNUserNotificationCenter.current()
-    center.delegate = self
-    let done = UNNotificationAction(identifier: "done", title: "Done", options: [])
-    center.setNotificationCategories([
-      UNNotificationCategory(identifier: "todo", actions: [done], intentIdentifiers: [], options: [])
-    ])
-  }
-
-  /// Replaces every pending reminder with `list` ({id, title, at: ms since
-  /// 1970}); the identifier is the todo's id. A non-empty set asks for
-  /// permission first, which only prompts the first time.
-  func schedule(_ list: [[String: Any]], then done: @escaping () -> Void) {
-    let center = UNUserNotificationCenter.current()
-    center.removeAllPendingNotificationRequests()
-    guard !list.isEmpty else { return done() }
-    center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
-      let added = DispatchGroup()
-      for r in granted ? list : [] {
-        guard let id = r["id"] as? String, let title = r["title"] as? String, let at = r["at"] as? Int else { continue }
-        let content = UNMutableNotificationContent()
-        content.body = title
-        content.sound = .default
-        content.categoryIdentifier = "todo"
-        let wait = Date(timeIntervalSince1970: Double(at) / 1000).timeIntervalSinceNow
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, wait), repeats: false)
-        added.enter()
-        center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger)) { _ in added.leave() }
-      }
-      added.notify(queue: .main, execute: done)
-    }
-  }
-
-  func takeTapped() -> String? {
-    defer { tapped = nil }
-    return tapped
+    UNUserNotificationCenter.current().delegate = self
   }
 
   func takeTappedSession() -> String? {
@@ -296,7 +230,7 @@ final class Reminders: NSObject, UNUserNotificationCenterDelegate {
     return tappedSession
   }
 
-  /// A reminder going off while PocketTerm is open still shows.
+  /// A push arriving while PocketTerm is open still shows.
   func userNotificationCenter(
     _ center: UNUserNotificationCenter, willPresent notification: UNNotification,
     withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
@@ -308,39 +242,13 @@ final class Reminders: NSObject, UNUserNotificationCenterDelegate {
     _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
-    // A push carries its todo in userInfo (PocketTermPush); a local reminder is
-    // identified by it.
+    // A push carries its kind and session in userInfo (PocketTermPush).
     let info = response.notification.request.content.userInfo
-    let id = info["todo"] as? String ?? response.notification.request.identifier
-    if info["kind"] as? String == "terminal" {
-      let session = info["session"] as? String
-      DispatchQueue.main.async {
-        self.tappedSession = session
-        self.channel?.invokeMethod("openTerminal", arguments: session.map { ["session": $0] })
-        completionHandler()
-      }
-      return
-    }
-    switch response.actionIdentifier {
-    case "done":
-      PocketTermShared.todos.removeAll { $0.id == id }
-      WidgetCenter.shared.reloadTimelines(ofKind: "PocketTermTodos")
-      let action = ["action": "done", "id": id]
-      Task {
-        if await PocketTermShared.send(action) == .failed {
-          PocketTermShared.queue(action)
-          // Running: the app replays it now instead of at its next start.
-          await MainActor.run { self.channel?.invokeMethod("pending", arguments: nil) }
-        }
-        completionHandler()
-      }
-    case UNNotificationDefaultActionIdentifier:
-      DispatchQueue.main.async {
-        self.tapped = id
-        self.channel?.invokeMethod("openTodo", arguments: ["id": id])
-        completionHandler()
-      }
-    default:
+    guard info["kind"] as? String == "terminal" else { return completionHandler() }
+    let session = info["session"] as? String
+    DispatchQueue.main.async {
+      self.tappedSession = session
+      self.channel?.invokeMethod("openTerminal", arguments: session.map { ["session": $0] })
       completionHandler()
     }
   }

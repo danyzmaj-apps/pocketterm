@@ -20,20 +20,20 @@ void main() {
   tearDown(() => Directory(home).deleteSync(recursive: true));
 
   group('omp', () {
-    test('installs both extensions, and tells an outdated copy from a current one', () async {
+    test('installs the extension, and tells an outdated copy from a current one', () async {
       final integrations = Integrations(home: home);
       expect(await integrations.state(Agent.omp), (installed: false, current: false, problem: null));
 
       await integrations.install(Agent.omp);
       final dir = '$home/.omp/agent/extensions';
       expect(filesIn(dir), filesIn('integrations/omp'));
-      expect(filesIn(dir).keys, containsAll(['idea.ts', 'pocketterm-live.ts']));
+      expect(filesIn(dir).keys, ['pocketterm-live.ts']);
       expect(await integrations.state(Agent.omp), (installed: true, current: true, problem: null));
 
       File('$dir/pocketterm-live.ts').writeAsStringSync('// older');
       expect(await integrations.state(Agent.omp), (installed: true, current: false, problem: null));
 
-      File('$dir/idea.ts').deleteSync();
+      File('$dir/pocketterm-live.ts').deleteSync();
       expect((await integrations.state(Agent.omp)).installed, isFalse);
     });
 

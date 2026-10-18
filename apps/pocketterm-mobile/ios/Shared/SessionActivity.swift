@@ -2,9 +2,8 @@ import ActivityKit
 import Foundation
 
 /// A coding session (omp or Claude Code) followed on the Lock Screen and in the Dynamic Island
-/// (the app starts it: ios/Runner/AppDelegate.swift; the widget extension
-/// draws it: ios/PocketTermLive/PocketTermLive.swift). iPhone only: the Mac targets
-/// don't compile this file.
+/// (the app starts it: ios/Runner/AppDelegate.swift; the PocketTermLive
+/// extension draws it: ios/PocketTermLive/PocketTermLive.swift).
 ///
 /// What it's called is fixed when it starts; pushes carry only the
 /// ContentState. They can't carry text: the notification extension that

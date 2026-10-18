@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Android 12+: nothing of PocketTerm's goes to a cloud backup or to a new phone in a
      device-to-device transfer. allowBackup="false" alone doesn't stop the transfer on
-     every phone, and the widget's device token, the push key and the session must stay
-     on this one: the new phone pairs with its own code. -->
+     every phone, and the push key and the session must stay on this one: the new
+     phone pairs with its own code. -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="root" path="." />

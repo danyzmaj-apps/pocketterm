@@ -157,8 +157,8 @@ class _ConnectServerFormState extends State<ConnectServerForm> {
 
 /// A setup link from outside the app to another server
 /// ([Session.linkToConfirm]): nothing happens until the person says yes.
-/// Anyone can send such a link, and whatever this device saves afterwards
-/// would go to that server.
+/// Anyone can send such a link, and this device's sessions would then go
+/// through that server.
 class ConfirmLink extends StatelessWidget {
   const ConfirmLink({required this.session, required this.link, super.key});
   final Session session;
@@ -182,7 +182,7 @@ class ConfirmLink extends StatelessWidget {
           const SizedBox(height: 8),
           const Text(
             'A link asks to connect PocketTerm to this server. Only connect if you opened it yourself, from your own '
-            'Mac or server: everything you save afterwards goes there.',
+            'computer or server: your sessions and the images you send go through it.',
             style: TextStyle(color: C.dim, height: 1.4),
           ),
           const SizedBox(height: 14),

@@ -28,7 +28,7 @@ void main() {
       final dir = Directory.systemTemp.createTempSync('pocketterm-cli');
       addTearDown(() => dir.deleteSync(recursive: true));
       final file = File('${dir.path}/cli.json');
-      final api = LocalApi(() => null, LiveHub(), file: file);
+      final api = LocalApi(LiveHub(), file: file);
       await api.start();
       addTearDown(api.stop);
       final written = file.readAsStringSync();
@@ -43,7 +43,7 @@ void main() {
     test('PocketTerm proves it is the one at its port without the token being sent', () async {
       final dir = Directory.systemTemp.createTempSync('pocketterm-cli');
       addTearDown(() => dir.deleteSync(recursive: true));
-      final api = LocalApi(() => null, LiveHub(), file: File('${dir.path}/cli.json'));
+      final api = LocalApi(LiveHub(), file: File('${dir.path}/cli.json'));
       await api.start();
       addTearDown(api.stop);
       final token = (jsonDecode(api.file.readAsStringSync()) as Map)['token'] as String;
@@ -65,12 +65,12 @@ void main() {
       final dir = Directory.systemTemp.createTempSync('pocketterm-cli');
       addTearDown(() => dir.deleteSync(recursive: true));
       final file = File('${dir.path}/cli.json');
-      final api = LocalApi(() => null, LiveHub(), file: file);
+      final api = LocalApi(LiveHub(), file: file);
       await api.start();
       await api.stop();
       expect(file.existsSync(), isFalse);
 
-      final again = LocalApi(() => null, LiveHub(), file: file);
+      final again = LocalApi(LiveHub(), file: file);
       await again.start();
       file.writeAsStringSync('{"port":6000,"token":"other","pid":2}');
       await again.stop();
@@ -81,7 +81,7 @@ void main() {
       final dir = Directory.systemTemp.createTempSync('pocketterm-cli');
       addTearDown(() => dir.deleteSync(recursive: true));
       await Process.run('/bin/chmod', ['755', dir.path]);
-      final api = LocalApi(() => null, LiveHub(), file: File('${dir.path}/pocketterm.json'));
+      final api = LocalApi(LiveHub(), file: File('${dir.path}/pocketterm.json'));
       await api.start();
       addTearDown(api.stop);
       expect(dir.statSync().modeString(), 'rwxr-xr-x');
@@ -98,7 +98,7 @@ void main() {
     setUp(() async {
       dir = Directory.systemTemp.createTempSync('pocketterm-poll');
       hub = LiveHub();
-      api = LocalApi(() => null, hub, file: File('${dir.path}/cli.json'));
+      api = LocalApi(hub, file: File('${dir.path}/cli.json'));
       await api.start();
       token = (jsonDecode(api.file.readAsStringSync()) as Map)['token'] as String;
     });
@@ -205,10 +205,7 @@ void main() {
 
       for (final (method, path) in [
         ('GET', '/v1/ping'),
-        ('GET', '/v1/ideas?kind=todo'),
-        ('GET', '/v1/ideas?project=x'),
-        ('POST', '/v1/ideas'),
-        ('PATCH', '/v1/ideas/x'),
+        ('GET', '/v1/nothing'),
         ('GET', '/v1/live'),
         ('POST', '/v1/live/http'),
       ]) {
@@ -221,8 +218,11 @@ void main() {
         }
       }
       expect(await status('GET', '/v1/ping?nonce=0123456789abcdef'), 200);
+      // With the token, anything but the live routes and the ping isn't there.
+      expect(await status('GET', '/v1/nothing', auth: token), 404);
+      expect(await status('POST', '/v1/ideas', auth: token, body: '{"title":"x"}'), 404);
 
-      // Nothing listens on this Mac's other addresses.
+      // Nothing listens on this computer's other addresses.
       final others = [
         for (final i in await NetworkInterface.list())
           for (final a in i.addresses)

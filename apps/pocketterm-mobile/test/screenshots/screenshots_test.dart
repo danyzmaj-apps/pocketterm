@@ -1,8 +1,7 @@
 // The phone screenshots in the docs: the real screens on made-up data, as an iPhone (393×852 at 2×) and, for the
 // Android look, an Android phone of the same size.
 // Run from apps/pocketterm-mobile: `fvm flutter test --tags screenshots --run-skipped` (dart_test.yaml skips them otherwise).
-// They land in the repo's docs/images/phone-*.png, with hero.png: the Pocket tab's todos in a phone's frame next to
-// the Mac's popup, which apps/pocketterm-desktop's screenshots render first (build/screenshots/hero-popup.png).
+// They land in the repo's docs/images/phone-*.png.
 @Tags(['screenshots'])
 library;
 
@@ -14,11 +13,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pocketterm_core/chat.dart';
-import 'package:pocketterm_core/idea.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
-import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/mobile.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -26,174 +22,15 @@ import 'fakes.dart';
 import 'fonts.dart';
 
 final _out = Directory('../../docs/images');
-final _heroPopup = File('../pocketterm-desktop/build/screenshots/hero-popup.png');
 final _ios = TargetPlatformVariant.only(TargetPlatform.iOS);
 final _android = TargetPlatformVariant.only(TargetPlatform.android);
-
-/// Today at [hour]:[minute], [days] from now (local time, as the rows read it).
-DateTime _day(int days, int hour, [int minute = 0]) {
-  final now = DateTime.now();
-  return DateTime(now.year, now.month, now.day + days, hour, minute);
-}
-
-FakeStore _store() {
-  var n = 0;
-  final store = FakeStore();
-  void put(
-    Kind kind,
-    String title,
-    DateTime at, {
-    String notes = '',
-    String project = '',
-    DateTime? remind,
-    DateTime? done,
-  }) => store.put(
-    Idea(
-      id: 'i${n++}',
-      kind: kind,
-      title: title,
-      notes: notes,
-      project: project,
-      remindAt: remind,
-      doneAt: done,
-      createdAt: at,
-      updatedAt: at,
-    ),
-  );
-
-  // Todos: newest first; reminders tomorrow, in four days, and one gone off.
-  put(Kind.todo, 'Renew the domain for pocketterm-site', _day(0, 8, 41), remind: _day(1, 9));
-  put(Kind.todo, 'Review Marko’s pull request on garden-api', _day(0, 8, 12));
-  put(Kind.todo, 'Buy basil and tomato seedlings', _day(-1, 18, 5), remind: _day(4, 15));
-  put(Kind.todo, 'Book the dentist for next month', _day(-1, 12, 30));
-  put(Kind.todo, 'Call Ana about the garden plan', _day(-2, 9, 20), remind: _day(-1, 17));
-  put(Kind.todo, 'Write release notes for 0.4', _day(-3, 16, 2));
-  put(Kind.todo, 'Pay the electricity bill', _day(-4, 10), done: _day(-1, 11));
-  put(Kind.todo, 'Back up the photos to the NAS', _day(-5, 21), done: _day(-2, 20));
-
-  // Ideas, across three projects.
-  put(
-    Kind.idea,
-    'Watering schedule from the soil sensors',
-    _day(0, 9, 3),
-    notes: 'Skip watering for a day after rain.',
-    project: 'garden-api',
-  );
-  put(
-    Kind.idea,
-    'Dark-mode screenshots on the landing page',
-    _day(0, 7, 48),
-    notes: 'Match the README’s look.',
-    project: 'pocketterm-site',
-  );
-  put(
-    Kind.idea,
-    'Rate-limit the public plant search',
-    _day(-1, 21, 14),
-    notes: '60 requests a minute per key.',
-    project: 'garden-api',
-  );
-  put(
-    Kind.idea,
-    'Changelog page built from GitHub releases',
-    _day(-1, 10, 2),
-    notes: 'One page per minor version.',
-    project: 'pocketterm-site',
-  );
-  put(
-    Kind.idea,
-    'Raspberry Pi as a tiny Grafana box',
-    _day(-3, 19, 40),
-    notes: 'Greenhouse humidity on the kitchen tablet.',
-    project: 'home-lab',
-  );
-  put(
-    Kind.idea,
-    'Offline-first seed catalogue',
-    _day(-6, 14, 25),
-    notes: 'Sync orders when back online.',
-    project: 'garden-api',
-  );
-  put(Kind.idea, 'Name a plant by photo', _day(-9, 11, 10), notes: 'Try an on-device model first.');
-
-  // Notes: the first line is the title.
-  put(
-    Kind.note,
-    'Trip to Ljubljana',
-    _day(0, 7, 55),
-    notes: 'Trip to Ljubljana\nTrain at 7:42 from platform 3. Bring the charger and the blue backpack.',
-  );
-  put(
-    Kind.note,
-    'garden-api sync',
-    _day(-1, 15, 30),
-    notes: 'garden-api sync\nShip the sensor endpoints first. Ana takes the docs, Marko the migrations.',
-  );
-  put(
-    Kind.note,
-    'Sourdough',
-    _day(-2, 20, 10),
-    notes: 'Sourdough\n500\u00A0g flour, 350\u00A0g water, 100\u00A0g starter, 10\u00A0g salt. Fold every 30\u00A0min, four times.',
-  );
-  put(
-    Kind.note,
-    'Books to read',
-    _day(-4, 22, 5),
-    notes: 'Books to read\nThe Overstory · Piranesi · A Psalm for the Wild-Built · The Dispossessed',
-  );
-  put(
-    Kind.note,
-    'Cabin checklist',
-    _day(-8, 18, 45),
-    notes: 'Cabin checklist\nTurn the water on at the main valve, then the boiler. Firewood is behind the shed.',
-  );
-  put(
-    Kind.note,
-    'Gift ideas',
-    _day(-12, 12, 20),
-    notes: 'Gift ideas\nMarko: the new Le Guin box set. Mum: a pocket knife sharpener.',
-  );
-  return store;
-}
-
-FakeChats _chats() => FakeChats()
-  ..chats.add(
-    Conversation(
-      id: 'c1',
-      createdAt: _day(0, 9, 12),
-      updatedAt: _day(0, 9, 14),
-      messages: [
-        ChatMessage(fromUser: true, text: 'Cold frame or greenhouse for spring seedlings?'),
-        ChatMessage(
-          fromUser: false,
-          text:
-              'For seedlings in spring, a **cold frame** is usually enough.\n\n'
-              '- **Cold frame**: a low, unheated box with a clear lid. It keeps off frost and wind and '
-              'warms up in the sun. Cheap, and you can build one in an afternoon.\n'
-              '- **Greenhouse**: room to walk in and grow all year, but it costs more, and it needs '
-              'ventilation and often heating.\n\n'
-              'Start seeds indoors, then move them to the cold frame for a week or two to *harden off* '
-              'before planting out.',
-        ),
-        ChatMessage(fromUser: true, text: 'How hot does a cold frame get on a sunny day?'),
-        ChatMessage(
-          fromUser: false,
-          text:
-              'Easily **10–15\u00A0°C warmer** than outside, and over 30\u00A0°C by midday. Open the lid:\n\n'
-              '1. a hand’s width once it is above 15\u00A0°C outside,\n'
-              '2. fully on warm, sunny days,\n'
-              '3. and close it again in the late afternoon to keep the heat in overnight.',
-        ),
-      ],
-    ),
-  );
 
 const _home = '/Users/demo';
 const _garden = '$_home/Dev/garden-api';
 const _site = '$_home/Dev/pocketterm-site';
 const _seeds = '$_home/Dev/seed-catalog';
 
-/// The Mac's state: three coding sessions (finished, needing you, working)
+/// The computer's state: three coding sessions (finished, needing you, working)
 /// and three plain terminal windows.
 Map<String, dynamic> _state() {
   final now = DateTime.now();
@@ -257,7 +94,7 @@ Map<String, dynamic> _state() {
   };
 }
 
-/// The finished session's transcript, as the Mac sends it to this phone.
+/// The finished session's transcript, as the computer sends it to this phone.
 Map<String, dynamic> _items() {
   var order = 0;
   Map<String, dynamic> item(
@@ -338,7 +175,7 @@ void main() {
 
   setUp(() {
     cache = Directory.systemTemp.createTempSync('pocketterm_shots');
-    // Reminders, pushes, keep-awake: nothing on the native side to answer.
+    // Pushes, keep-awake: nothing on the native side to answer.
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       ..setMockMethodCallHandler(const MethodChannel('pocketterm/native'), (_) async => null)
       ..setMockMethodCallHandler(const MethodChannel('com.llfbandit.app_links/messages'), (_) async => null)
@@ -346,8 +183,8 @@ void main() {
         const EventChannel('com.llfbandit.app_links/events'),
         MockStreamHandler.inline(onListen: (_, _) {}),
       )
-      // The home page's own Terminal tab waits here for good: it would join
-      // the Mac over Supabase (the Terminal shot feeds its own remote instead).
+      // The home page's own remote waits here for good: it would join the
+      // computer over Supabase (the shots feed their own remote instead).
       ..setMockMethodCallHandler(
         const MethodChannel('plugins.flutter.io/path_provider'),
         (_) => Completer<Object?>().future,
@@ -382,17 +219,10 @@ void main() {
     debugDisableShadows = true;
   }
 
-  /// Taps [target] and lets what it animates (a pill, the tab bar) finish: the first frame starts it.
-  Future<void> tap(WidgetTester tester, Finder target) async {
-    await tester.tap(target);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
-  }
-
-  /// The app, signed in, on [tab] (the Terminal tab it opens on, fed by [terminal]).
-  Future<void> app(WidgetTester tester, {String? tab, TerminalRemote? terminal}) async {
+  /// The app, signed in, its Terminal list fed by [terminal].
+  Future<void> app(WidgetTester tester, {required TerminalRemote terminal}) async {
     phone(tester);
-    final session = await FakeSession.create(_store(), _chats());
+    final session = await FakeSession.create();
     await tester.pumpWidget(
       RepaintBoundary(
         key: shot,
@@ -401,16 +231,9 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
-    if (tab != null) await tap(tester, find.descendant(of: find.byType(AppTabBar), matching: find.text(tab)));
   }
 
-  /// The Pocket tab, on [show] (a pill's label).
-  Future<void> pocket(WidgetTester tester, String show) async {
-    await app(tester, tab: 'Pocket');
-    await tap(tester, find.text(show).first);
-  }
-
-  /// The Mac, answering: its state and the finished session's transcript.
+  /// The computer, answering: its state and the finished session's transcript.
   TerminalRemote remote() =>
       TerminalRemote(
           // Never used: the remote talks through `send`.
@@ -427,59 +250,6 @@ void main() {
     if (missingFont case final missing?) markTestSkipped('No $missing to draw with.');
     return missingFont != null;
   }
-
-  testWidgets('hero', variant: _ios, (tester) async {
-    if (skipped()) return;
-    if (!_heroPopup.existsSync()) {
-      return markTestSkipped('No ${_heroPopup.path}: run the Mac screenshots first.');
-    }
-    final popup = (await tester.runAsync(() async {
-      final codec = await ui.instantiateImageCodec(_heroPopup.readAsBytesSync());
-      return (await codec.getNextFrame()).image;
-    }))!;
-    addTearDown(popup.dispose);
-    final canvas = _Hero.canvas(popup);
-    tester.view
-      ..physicalSize = canvas * 2
-      ..devicePixelRatio = 2;
-    addTearDown(tester.view.reset);
-    debugDisableShadows = false;
-    final session = await FakeSession.create(_store(), _chats());
-    await tester.pumpWidget(
-      RepaintBoundary(
-        key: shot,
-        child: _Hero(
-          popup: popup,
-          phone: MobileApp(session: session),
-        ),
-      ),
-    );
-    await tester.pump();
-    // The phone on its todos, as the popup next to it.
-    await tap(tester, find.descendant(of: find.byType(AppTabBar), matching: find.text('Pocket')));
-    await tap(tester, find.byKey(const ValueKey('show-todos')));
-    await save(tester, 'hero.png');
-  });
-
-  testWidgets('pocket', variant: _ios, (tester) async {
-    if (skipped()) return;
-    await pocket(tester, 'All');
-    await save(tester, 'phone-pocket.png');
-  });
-
-  testWidgets('pocket on Android', variant: _android, (tester) async {
-    if (skipped()) return;
-    await pocket(tester, 'All');
-    await save(tester, 'phone-pocket-android.png');
-  });
-
-  testWidgets('ask', variant: _ios, (tester) async {
-    if (skipped()) return;
-    await app(tester, tab: 'Ask');
-    await tester.tap(find.textContaining('Cold frame or greenhouse'));
-    await tester.pumpAndSettle();
-    await save(tester, 'phone-ask.png');
-  });
 
   testWidgets('terminal', variant: _ios, (tester) async {
     if (skipped()) return;
@@ -509,96 +279,4 @@ void main() {
     await save(tester, 'phone-session.png');
     r.flush();
   });
-}
-
-/// The README's hero on a transparent canvas: the Mac's [popup] (a 2× PNG
-/// with its shadow) next to [phone] in an iPhone's frame, both at their
-/// real size in points.
-class _Hero extends StatelessWidget {
-  const _Hero({required this.popup, required this.phone});
-  final ui.Image popup;
-  final Widget phone;
-
-  static const _screen = Size(393, 852);
-  static const _bezel = 12.0;
-  static const _radius = 55.0;
-
-  /// Around the phone, for its shadow; the popup brings its own.
-  static const _margin = EdgeInsets.fromLTRB(4, 44, 40, 52);
-
-  static Size _frame() => Size(_screen.width + 2 * _bezel, _screen.height + 2 * _bezel);
-
-  static Size canvas(ui.Image popup) =>
-      Size(popup.width / 2 + _margin.horizontal + _frame().width, _margin.vertical + _frame().height);
-
-  @override
-  Widget build(BuildContext context) {
-    const white = Color(0xFFF2F3F5);
-    const status = TextStyle(
-      fontFamily: 'CupertinoSystemText',
-      fontSize: 17,
-      fontWeight: FontWeight.w600,
-      color: white,
-    );
-    return Directionality(
-      textDirection: TextDirection.ltr,
-      child: Row(
-        children: [
-          RawImage(image: popup, scale: 2),
-          Padding(
-            padding: _margin,
-            child: Container(
-              width: _frame().width,
-              height: _frame().height,
-              padding: const EdgeInsets.all(_bezel),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0A0A0C),
-                borderRadius: BorderRadius.circular(_radius + _bezel),
-                border: Border.all(color: const Color(0xFF45474D), width: 1.5),
-                boxShadow: const [BoxShadow(color: Color(0x4D000000), blurRadius: 36, offset: Offset(0, 14))],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(_radius),
-                child: Stack(
-                  children: [
-                    MediaQuery(
-                      data: MediaQueryData.fromView(View.of(context)).copyWith(
-                        size: _screen,
-                        padding: const EdgeInsets.only(top: 59, bottom: 34),
-                        viewPadding: const EdgeInsets.only(top: 59, bottom: 34),
-                      ),
-                      child: phone,
-                    ),
-                    // The status bar and the Dynamic Island, which iOS draws over the app.
-                    const Positioned(left: 52, top: 18, child: Text('9:41', style: status)),
-                    const Positioned(
-                      right: 30,
-                      top: 19,
-                      child: Row(
-                        spacing: 5,
-                        children: [
-                          Icon(Icons.signal_cellular_alt, size: 18, color: white),
-                          Icon(Icons.wifi, size: 18, color: white),
-                          Icon(Icons.battery_full, size: 20, color: white),
-                        ],
-                      ),
-                    ),
-                    Positioned(
-                      top: 11,
-                      left: (_screen.width - 125) / 2,
-                      child: Container(
-                        width: 125,
-                        height: 37,
-                        decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(19)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

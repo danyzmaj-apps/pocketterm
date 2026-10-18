@@ -3,120 +3,23 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/agent.dart';
-import 'package:pocketterm_core/chat.dart';
-import 'package:pocketterm_core/idea.dart';
 import 'package:pocketterm_core/native.dart';
 import 'package:pocketterm_core/session.dart';
-import 'package:pocketterm_core/store.dart';
-import 'package:pocketterm_core/tabs.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:pocketterm_desktop/terminal_bridge.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
-/// The popup's modes, switched with ⌘1–⌘4 in the strip's order
-/// ([AppController.popupTabs]).
-enum PopupMode { idea, todo, note, ask }
-
-/// The Mac app: [Session] plus its windows (the ⇧⌘Space popup panel, the
-/// main window and the note window, each its own Flutter view) and the
-/// hotkey.
+/// The desktop app: [Session] plus its main window and the terminal bridge.
 class AppController extends Session {
   AppController(this._prefs, super.device);
 
   final SharedPreferences _prefs;
 
-  /// The popup panel is on screen.
-  bool get popupOpen => _popupOpen;
-  bool _popupOpen = false;
-
   /// The main window is open (PocketTerm is a regular app with a Dock icon then).
   bool get mainOpen => _mainOpen;
   bool _mainOpen = false;
-
-  /// The note window is on screen: one note, floating apart from the app.
-  bool get noteOpen => _noteOpen;
-  bool _noteOpen = false;
-
-  /// The note it shows; null for a new one until something is written.
-  String? noteId;
-
-  /// Bumped on every note window open, so it starts over on its note.
-  int noteSession = 0;
-
-  /// The note window has the keyboard. macOS says so; Flutter can't tell,
-  /// all the windows sharing one FocusManager.
-  bool noteKey = false;
-
-  /// The main window gave way to the note window: it comes back when that
-  /// closes.
-  bool _mainAfterNote = false;
-
-  /// Bumped on every popup open so it resets (focus, selection).
-  int popupSession = 0;
-
-  bool settingsOpen = false;
-
-  /// Idea the main window should select next (from the popup's list).
-  String? pendingSelect;
-
-  /// The list the main window should show next (popup ⌘O: Ideas, Todos or
-  /// Notes, the popup's mode).
-  Kind? pendingSection;
-
-  /// Conversation the main window's Chats should show next (popup ⌘O).
-  Conversation? pendingChat;
-
-  /// The main window should show Ask next (popup ⌘O in Ask, even with no
-  /// chat to show yet).
-  bool pendingChats = false;
-
-  /// The next popup open goes straight to the chat (Continue in popup).
-  bool askNext = false;
-
-  /// The main window should open the sheet that connects an AI next (the
-  /// popup's Ask, which has no room for it).
-  bool pendingConnectAi = false;
-
-  /// What the popup opens on: the mode it was last used in, or the first
-  /// showing one when that is hidden.
-  PopupMode get popupMode {
-    final saved = PopupMode.values.asNameMap()[_prefs.getString('popup_mode')];
-    final tabs = popupTabs;
-    return saved != null && tabs.shows(saved) ? saved : tabs.visible.first;
-  }
-
-  void setPopupMode(PopupMode mode) => unawaited(_prefs.setString('popup_mode', mode.name));
-
-  static const _popupTabsKey = 'popup_tabs';
-
-  /// Which modes the popup's strip shows, and in what order (Settings →
-  /// Popup tabs). ⌘1 is the first showing one, and so on.
-  TabChoice<PopupMode> get popupTabs => TabChoice.parse(
-    PopupMode.values,
-    order: _prefs.getStringList('${_popupTabsKey}_order'),
-    hidden: _prefs.getStringList('${_popupTabsKey}_hidden'),
-  );
-
-  Future<void> setPopupTabs(TabChoice<PopupMode> tabs) async {
-    await _prefs.setStringList('${_popupTabsKey}_order', tabs.orderNames);
-    await _prefs.setStringList('${_popupTabsKey}_hidden', tabs.hiddenNames);
-    notifyListeners();
-  }
-
-  /// The keys that open the popup in [mode] from anywhere ('⇧⌘Space then
-  /// ⌘2'; just the shortcut when it is the only mode), or null when [mode]
-  /// is hidden.
-  String? popupKeys(PopupMode mode) {
-    final shown = popupTabs.visible;
-    final i = shown.indexOf(mode);
-    if (i < 0) return null;
-    return shown.length == 1 ? hotKey.label : '${hotKey.label} then ⌘${i + 1}';
-  }
-
-  HotKey get hotKey => _hotKey;
-  late HotKey _hotKey = _loadHotKey();
-  bool hotKeyRegistered = false;
 
   static const _terminalKey = 'terminal_bridge';
 
@@ -231,53 +134,18 @@ class AppController extends Session {
   @override
   Future<void> start() async {
     Native.listen(_onNative);
-    hotKeyRegistered = await Native.setHotKey(_hotKey);
     await super.start();
     // Not set up or signed out: there's nothing to do but that, so say so.
     if (user == null) await openMain();
   }
 
   @override
-  Future<void> signOut() async {
-    settingsOpen = false;
-    _mainAfterNote = false;
-    await closeNoteWindow();
-    await super.signOut();
-  }
-
-  int _shownTodoCount = 0;
-
-  @override
-  Future<void> onSignedIn(IdeaStore store) async {
-    void update() {
-      if (this.store != store) return;
-      final open = store.openTodos;
-      // The desktop widget's snapshot; Swift reloads the widget only on a change.
-      unawaited(
-        Native.setSharedTodos([
-          for (final t in open) {'id': t.id, 'title': t.title},
-        ]),
-      );
-      if (open.length == _shownTodoCount) return;
-      _shownTodoCount = open.length;
-      unawaited(Native.setTodoCount(open.length));
-    }
-
-    store.addListener(update);
-    update();
-    // Ticks the widget queued while PocketTerm wasn't running.
-    await drainPending();
-    await _startBridge();
-  }
+  Future<void> onSignedIn(User user) => _startBridge();
 
   /// However the user went (signed out here, the server refused a refresh,
-  /// the account was deleted on another device): the desktop widget and the
-  /// Dock badge stop showing their todos, and the terminal bridge stops.
+  /// the account was deleted on another device): the terminal bridge stops.
   @override
   Future<void> onSignedOut() async {
-    _shownTodoCount = 0;
-    await Native.setTodoCount(0);
-    await Native.setSharedTodos(null);
     try {
       await _startBridge();
     } on Object catch (e) {
@@ -297,133 +165,31 @@ class AppController extends Session {
 
   FutureOr<void> _onNative(String event, Map<Object?, Object?> args) {
     switch (event) {
-      case 'hotKey' || 'togglePopup':
-        unawaited(_popupOpen ? closePopup() : openPopup());
-      case 'openMain':
+      // Settings is the window while signed in.
+      case 'openMain' || 'openSettings':
         unawaited(openMain());
-      case 'openSettings':
-        settingsOpen = true;
-        unawaited(openMain());
-      case 'blur':
-        // Clicking elsewhere dismisses the popup, like Spotlight; a file
-        // dialog the popup opened doesn't.
-        if (_popupOpen && !_holdPopup) unawaited(closePopup());
       case 'mainClosed':
         _mainOpen = false;
         notifyListeners();
-      case 'closeNote':
-        unawaited(closeNoteWindow());
-      case 'noteKey':
-        noteKey = args['key'] == true;
-        notifyListeners();
-      case 'openTodo':
-        // A reminder notification clicked: that todo, selected.
-        unawaited(openMain(select: args['id'] as String?));
-      case 'pending':
-        // Ticks from outside Dart (the desktop widget) wait in the App Group.
-        unawaited(drainPending());
       case 'quitting':
         return onQuit?.call();
     }
   }
 
-  bool _holdPopup = false;
-
-  /// Runs [pick] (a file dialog) from the popup: it takes the focus, which
-  /// would otherwise close the popup; the popup takes it back after.
-  Future<void> pickFromPopup(Future<void> Function() pick) async {
-    _holdPopup = true;
-    try {
-      await pick();
-    } finally {
-      _holdPopup = false;
-      if (_popupOpen) await Native.showPopup();
-    }
-  }
-
-  Future<void> openPopup() async {
-    popupSession++;
-    _popupOpen = true;
-    notifyListeners();
-    await Native.showPopup();
-  }
-
-  Future<void> closePopup() async {
-    _popupOpen = false;
-    notifyListeners();
-    await Native.hidePopup();
-  }
-
-  /// Shows [c] in the popup's chat.
-  Future<void> openAsk(Conversation c) async {
-    chats?.resume(c);
-    askNext = true;
-    await openPopup();
-  }
-
-  /// Shows the main window; [select] an item, [conversation] a chat, or
-  /// [section] that kind's list, or [chats] Ask.
-  Future<void> openMain({String? select, Conversation? conversation, Kind? section, bool chats = false}) async {
-    if (select != null) pendingSelect = select;
-    if (conversation != null) pendingChat = conversation;
-    if (chats) pendingChats = true;
-    if (section != null) pendingSection = section;
-    if (_popupOpen) await closePopup();
-    // Back already: closing the note window leaves it be.
-    _mainAfterNote = false;
+  /// Shows the main window.
+  Future<void> openMain() async {
     _mainOpen = true;
     notifyListeners();
     await Native.showMain();
   }
 
-  /// The main window on Ask, with the sheet that connects an AI.
-  Future<void> connectAi() {
-    pendingConnectAi = true;
-    return openMain(chats: true);
-  }
-
-  /// Shows note [id] (null: a new one) in the note window. From the main
-  /// window ([fromMain]) the app hides until the note window closes; from
-  /// the popup it stays as it was.
-  Future<void> openNoteWindow({String? id, bool fromMain = false}) async {
-    if (_popupOpen) await closePopup();
-    noteId = id;
-    noteSession++;
-    _noteOpen = true;
-    final hideMain = fromMain && _mainOpen;
-    if (hideMain) {
-      _mainOpen = false;
-      _mainAfterNote = true;
-    }
-    notifyListeners();
-    await Native.showNote(hideMain: hideMain);
-  }
-
-  /// Closes the note window; the main window comes back on that note if it
-  /// gave way to it.
-  Future<void> closeNoteWindow() async {
-    if (!_noteOpen) return;
-    _noteOpen = false;
-    noteKey = false;
-    final back = _mainAfterNote;
-    _mainAfterNote = false;
-    notifyListeners();
-    await Native.hideNote();
-    if (back) await openMain(select: noteId);
-  }
-
-  void setSettingsOpen({required bool open}) {
-    settingsOpen = open;
-    notifyListeners();
-  }
-
   /// Pushes [title] / [body] to the user's phones (functions/push) when
-  /// nobody has touched this Mac for a minute: at the desk, the Mac's own
+  /// nobody has touched this computer for a minute: at the desk, its own
   /// screen says it already. [session]: the coding session a tap opens,
   /// whose Live Activities move to [activity] (done, needs). False if it
   /// didn't go.
   Future<bool> notifyPhone(String title, String body, {String? session, String? activity}) async {
-    if (store == null || await Native.idleSeconds() < 60) return false;
+    if (user == null || await Native.idleSeconds() < 60) return false;
     try {
       final res = await client.functions.invoke(
         'push',
@@ -435,32 +201,5 @@ class AppController extends Session {
       debugPrint('PocketTerm: notify failed: $e');
       return false;
     }
-  }
-
-  // ---------------------------------------------------------------- hotkey
-
-  HotKey _loadHotKey() {
-    final saved = _prefs.getString('hotkey');
-    if (saved == null) return HotKey.fallback;
-    try {
-      return HotKey.decode(saved);
-    } on Object {
-      return HotKey.fallback;
-    }
-  }
-
-  /// False when macOS refused it (another app owns the combo); the old one
-  /// stays then.
-  Future<bool> setHotKey(HotKey key) async {
-    final ok = await Native.setHotKey(key);
-    if (ok) {
-      _hotKey = key;
-      hotKeyRegistered = true;
-      await _prefs.setString('hotkey', key.encode());
-    } else {
-      hotKeyRegistered = await Native.setHotKey(_hotKey);
-    }
-    notifyListeners();
-    return ok;
   }
 }

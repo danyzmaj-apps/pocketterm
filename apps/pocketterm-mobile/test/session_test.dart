@@ -13,15 +13,10 @@ class _Phone extends MobileSession {
 }
 
 void main() {
-  testWidgets("the server ending the session takes the account's widget token and followed sessions off the phone", (
+  testWidgets("the server ending the session takes the account's push token and followed sessions off the phone", (
     tester,
   ) async {
-    SharedPreferences.setMockInitialValues({
-      'pocketterm_device_token': 'widget-token',
-      'pocketterm_device_token_user': 'u1',
-      'pocketterm_push_token': 'push-token',
-      'pocketterm_push_user': 'u1',
-    });
+    SharedPreferences.setMockInitialValues({'pocketterm_push_token': 'push-token'});
     final prefs = await SharedPreferences.getInstance();
     final calls = <MethodCall>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('pocketterm/native'), (
@@ -37,11 +32,7 @@ void main() {
 
     await _Phone(prefs).signedOutByServer();
 
-    expect(calls.where((c) => c.method == 'setSharedToken').map((c) => c.arguments), [
-      {'token': null},
-    ], reason: "the widgets can't tick the gone account's todos, and stop showing them");
     expect(calls.where((c) => c.method == 'endActivity').map((c) => (c.arguments as Map)['key']), ['kitty-1/2']);
-    expect(prefs.getString('pocketterm_device_token'), isNull);
-    expect(prefs.getString('pocketterm_push_user'), isNull, reason: 'the next account registers for push afresh');
+    expect(prefs.getString('pocketterm_push_token'), isNull, reason: 'the next account registers for push afresh');
   });
 }

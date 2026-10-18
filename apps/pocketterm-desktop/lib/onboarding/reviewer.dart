@@ -147,9 +147,8 @@ class _ReviewerAccessSheetState extends State<ReviewerAccessSheet> {
           children: [
             const Text(
               'For App Store or Google Play review: a code that signs a phone into a separate demo account '
-              'on your server, so reviewers don\u2019t need your Mac. The demo account can\u2019t see your ideas, '
-              'todos, notes or chats, but it can use Ask, which runs on your AI key. Revoke the code when the '
-              'review is done.',
+              'on your server, so reviewers don\u2019t need this computer. The demo account can\u2019t see your '
+              'terminals or coding sessions. Revoke the code when the review is done.',
               style: TextStyle(color: C.dim, height: 1.45),
             ),
             const SizedBox(height: 14),

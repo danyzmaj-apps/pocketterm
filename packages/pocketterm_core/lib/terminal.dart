@@ -719,7 +719,8 @@ String automationDenied(String app) =>
 /// macOS is asking the person whether PocketTerm may control [app]: nothing goes
 /// to it until they answer.
 class AutomationPending extends TerminalException {
-  AutomationPending(this.app) : super('macOS is asking whether PocketTerm may control $app: answer it on the Mac.');
+  AutomationPending(this.app)
+    : super('macOS is asking whether PocketTerm may control $app: answer it on the computer.');
   final String app;
 }
 

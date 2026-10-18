@@ -43,8 +43,6 @@
 			</array>
 		</dict>
 	</array>
-	<key>PocketTermAppGroup</key>
-	<string>$(POCKETTERM_APP_GROUP)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<!-- Sparkle: updates come from the latest GitHub release's appcast, signed

@@ -17,16 +17,12 @@ import {
 	windowKey,
 } from "./items.ts";
 
-// PocketTerm (github.com/danyzmaj-apps/pocketterm) for Claude Code, the twin of its omp extensions:
-//
-// - /idea, /do and /note talk to the PocketTerm menu-bar app over its localhost API, without a Claude turn and
-//   while Claude works. Ideas land under the current repo's name as their @project; todos are one global
-//   work list; notes are free text. The todo command is /do, as in omp (whose own /todo wins there).
-// - This session goes to the phone through PocketTerm: the transcript as items, the answer as it's written,
-//   whether Claude is busy, and the questions, approvals and plan reviews it waits on (answered on the phone
-//   by keys PocketTerm types into this terminal window). From the phone you can prompt (with images), stop, and page
-//   back through older history. The protocol is described in packages/pocketterm_core/lib/live.dart; mods have no
-//   WebSocket, so it goes over HTTP long polls (POST /v1/live/http).
+// PocketTerm (github.com/danyzmaj-apps/pocketterm) for Claude Code, the twin of its omp extension: this session goes
+// to the phone through PocketTerm. The transcript as items, the answer as it's written, whether Claude is busy, and
+// the questions, approvals and plan reviews it waits on (answered on the phone by keys PocketTerm types into this
+// terminal window). From the phone you can prompt (with images), stop, and page back through older history. The
+// protocol is described in packages/pocketterm_core/lib/live.dart; mods have no WebSocket, so it goes over HTTP long
+// polls (POST /v1/live/http).
 //
 // Only an interactive session talks, and only to PocketTerm's local API on 127.0.0.1 (port and token from
 // ~/.config/pocketterm/cli.json, or the file POCKETTERM_CLI_JSON names), once whatever answers at that port has proved it
@@ -36,18 +32,11 @@ const VERSION = 1;
 const HELLO_ITEMS = 300;
 const RETRY_MS = 3000;
 const APPEND_MS = 100;
-const NOT_RUNNING = "PocketTerm isn't running. Open it (it lives in the menu bar), then try again.";
-const IDEA_USAGE = "Usage: /idea <text> | /idea list | /idea do <n|text>";
-const DO_USAGE = "Usage: /do <text> | /do list | /do done <n|text>";
 
 type Cli = { port: number; token: string };
-type Idea = { id: string; title: string; notes: string; project: string; created_at: string };
-type Numbered = Idea & { index: number };
 type Frame = Record<string, unknown>;
 /** The answer being written: one text block of one model request. */
 type Stream = { id: string; text: string; pending: string; created: boolean; timer?: Timer };
-
-class PocketTermError extends Error {}
 
 // Live ids: unique to this module, so never confused with row ids or another connection's.
 const instance = Math.random().toString(36).slice(2, 10);
@@ -108,170 +97,6 @@ async function proven($: EngineInterface, c: Cli): Promise<boolean> {
 		return res.ok && proof === (await pingProof(c.token, c.port, nonce));
 	} catch {
 		return false;
-	}
-}
-
-async function call<T>($: EngineInterface, method: string, path: string, body?: unknown): Promise<T> {
-	const c = await readCli($);
-	if (!c || !(await proven($, c))) throw new PocketTermError(NOT_RUNNING);
-	let res: { status: number; ok: boolean; text: string };
-	try {
-		res = await $.http.fetch(`http://127.0.0.1:${c.port}${path}`, {
-			method,
-			headers: { authorization: `Bearer ${c.token}`, "content-type": "application/json" },
-			body: body === undefined ? undefined : JSON.stringify(body),
-		});
-	} catch {
-		throw new PocketTermError(NOT_RUNNING);
-	}
-	let json: T & { error?: string };
-	try {
-		json = JSON.parse(res.text);
-	} catch {
-		json = {} as T & { error?: string };
-	}
-	if (!res.ok) throw new PocketTermError(json.error ?? `PocketTerm answered ${res.status}.`);
-	return json;
-}
-
-/** The repo the session works in (the nearest folder with .git), else its folder: an idea's @project. */
-async function project($: EngineInterface): Promise<string> {
-	const cwd = await $.session.cwd();
-	let dir = cwd.replace(/\/+$/, "") || "/";
-	for (;;) {
-		if (await $.fs.exists(`${dir}/.git`)) return dir.split("/").pop() || dir;
-		const parent = dir.slice(0, dir.lastIndexOf("/")) || "/";
-		if (parent === dir) return cwd.split("/").filter(Boolean).pop() ?? cwd;
-		dir = parent;
-	}
-}
-
-/** The project's ideas, oldest first, numbered 1..n: the numbers /idea list prints. */
-async function ideas($: EngineInterface, proj: string): Promise<Numbered[]> {
-	const { ideas } = await call<{ ideas: Idea[] }>($, "GET", `/v1/ideas?project=${encodeURIComponent(proj)}`);
-	return ideas.map((idea, i) => ({ ...idea, index: i + 1 }));
-}
-
-/** Open todos, oldest first, numbered like /do list prints them. */
-async function todos($: EngineInterface): Promise<Numbered[]> {
-	const { ideas } = await call<{ ideas: Idea[] }>($, "GET", "/v1/ideas?kind=todo");
-	return ideas.map((todo, i) => ({ ...todo, index: i + 1 }));
-}
-
-/** The one of [items] that [selector] names: its number, or words in it. */
-export function find(items: Numbered[], selector: string, what: string, text: (i: Numbered) => string): Numbered {
-	const hits = /^\d+$/.test(selector)
-		? items.filter((i) => i.index === Number(selector))
-		: items.filter((i) => text(i).toLowerCase().includes(selector.toLowerCase()));
-	if (hits.length === 0) {
-		throw new PocketTermError(/^\d+$/.test(selector) ? `${what} #${selector} not found.` : `No ${what.toLowerCase()} matches "${selector}".`);
-	}
-	if (hits.length > 1) throw new PocketTermError(`Ambiguous — matches ${hits.map((i) => `#${i.index}`).join(", ")}. Use the number.`);
-	return hits[0] as Numbered;
-}
-
-/** "14:02" today, "7 Oct 14:02" otherwise — the same stamp the app shows. */
-export function stamp(iso: string): string {
-	const d = new Date(iso);
-	const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-	if (d.toDateString() === new Date().toDateString()) return time;
-	return `${d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${time}`;
-}
-
-/** /idea: capture an idea under this repo's project, list them, or start one. */
-async function idea($: EngineInterface, args: string): Promise<{ text?: string }> {
-	const raw = args.trim();
-	if (!raw) {
-		$.ui.toast(IDEA_USAGE);
-		return {};
-	}
-	const proj = await project($);
-	const head = raw.split(/\s+/)[0] ?? "";
-	const sub = head.toLowerCase();
-	const rest = raw.slice(head.length).trim();
-	if (sub === "list") {
-		const list = await ideas($, proj);
-		if (list.length === 0) return { text: `PocketTerm · @${proj}\n\nNo ideas for this repo yet.` };
-		const rows = list.map((i) => {
-			const notes = i.notes ? `\n     ${i.notes.split("\n")[0]}` : "";
-			return `${i.index}. ${i.title}  · ${stamp(i.created_at)}${notes}`;
-		});
-		return { text: `PocketTerm · @${proj}\n\n${rows.join("\n")}` };
-	}
-	if (sub === "do") {
-		if (!rest) {
-			$.ui.toast("Usage: /idea do <n|text>");
-			return {};
-		}
-		const hit = find(await ideas($, proj), rest, "Idea", (i) => `${i.title} ${i.notes}`);
-		$.ui.toast(`Idea #${hit.index} — starting: ${hit.title}`);
-		const notes = hit.notes ? `\n\n${hit.notes}` : "";
-		// A command can't start a turn itself: the prompt goes once it has finished.
-		$.clock.after(0, () => submit($, `Work on idea #${hit.index}: ${hit.title}${notes}`));
-		return {};
-	}
-	const text = (sub === "new" ? rest : raw).replace(/\s+/g, " ").trim();
-	if (!text) {
-		$.ui.toast("Usage: /idea new <text>");
-		return {};
-	}
-	await call($, "POST", "/v1/ideas", { title: text, project: proj });
-	$.ui.toast(`Idea captured in PocketTerm under @${proj}`);
-	return {};
-}
-
-/** /do: add a todo, list the open ones, or mark one done. */
-async function todo($: EngineInterface, args: string): Promise<{ text?: string }> {
-	const raw = args.trim();
-	if (!raw) {
-		$.ui.toast(DO_USAGE);
-		return {};
-	}
-	const head = raw.split(/\s+/)[0] ?? "";
-	const sub = head.toLowerCase();
-	const rest = raw.slice(head.length).trim();
-	if (sub === "list") {
-		const open = await todos($);
-		if (open.length === 0) return { text: "PocketTerm · todos\n\nNothing open." };
-		return { text: `PocketTerm · todos\n\n${open.map((t) => `${t.index}. [ ] ${t.title}  · ${stamp(t.created_at)}`).join("\n")}` };
-	}
-	if (sub === "done") {
-		if (!rest) {
-			$.ui.toast("Usage: /do done <n|text>");
-			return {};
-		}
-		const hit = find(await todos($), rest, "Todo", (t) => t.title);
-		await call($, "PATCH", `/v1/ideas/${hit.id}`, { done: true });
-		$.ui.toast(`Done: ${hit.title}`);
-		return {};
-	}
-	await call($, "POST", "/v1/ideas", { title: raw.replace(/\s+/g, " ").trim(), kind: "todo" });
-	$.ui.toast("Todo added to PocketTerm");
-	return {};
-}
-
-/** /note: a quick note. */
-async function note($: EngineInterface, args: string): Promise<{ text?: string }> {
-	const text = args.trim();
-	if (!text) {
-		$.ui.toast("Usage: /note <text>");
-		return {};
-	}
-	await call($, "POST", "/v1/ideas", { title: text, kind: "note" });
-	$.ui.toast("Note saved to PocketTerm");
-	return {};
-}
-
-/** Runs a command; PocketTerm's own errors (not running, nothing matches) are a toast, not a failure. */
-async function command($: EngineInterface, name: "idea" | "do" | "note", args: string): Promise<{ text?: string }> {
-	try {
-		if (name === "idea") return await idea($, args);
-		if (name === "do") return await todo($, args);
-		return await note($, args);
-	} catch (e) {
-		if (!(e instanceof PocketTermError)) throw e;
-		$.ui.toast(e.message);
-		return {};
 	}
 }
 
@@ -654,21 +479,8 @@ export function register(on: On): void {
 		const result = await next(e);
 		active = e.isInteractive && e.surface === "terminal";
 		if (active) $.clock.after(0, () => void connect($));
-		for (const spec of [
-			{ name: "idea", description: "Capture an idea into PocketTerm (under this repo's project), or /idea list, /idea do <n|text>", argumentHint: "<text> | list | do <n|text>" },
-			{ name: "do", description: "Add a todo to PocketTerm, or /do list, /do done <n|text>", argumentHint: "<text> | list | done <n|text>" },
-			{ name: "note", description: "Write a quick note into PocketTerm", argumentHint: "<text>" },
-		]) {
-			try {
-				await $.command.register({ ...spec, immediate: true });
-			} catch {}
-		}
 		return result;
 	});
-
-	on("command.run", { command: "idea" }, async ($, e) => command($, "idea", e.args));
-	on("command.run", { command: "do" }, async ($, e) => command($, "do", e.args));
-	on("command.run", { command: "note" }, async ($, e) => command($, "note", e.args));
 
 	on("session.end", async ($, e, next) => {
 		if (active) {

@@ -27,7 +27,7 @@ object SessionActivities {
         val state: String,
         val kind: String?,
         val since: Long,
-        /** When the Mac last said anything about it (start, update, push). */
+        /** When the computer last said anything about it (start, update, push). */
         val updated: Long = System.currentTimeMillis(),
     )
 
@@ -118,7 +118,7 @@ object SessionActivities {
 
     /**
      * Stops following [key]: gone at once ([immediate]: the person ended it),
-     * or Ended for 10 minutes (the session ended on the Mac). Either way Dart
+     * or Ended for 10 minutes (the session ended on the computer). Either way Dart
      * hears activityEnded, as from the iPhone.
      */
     @Synchronized

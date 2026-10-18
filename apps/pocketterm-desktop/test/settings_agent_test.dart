@@ -16,7 +16,7 @@ void main() {
   tearDown(() => Directory(home).deleteSync(recursive: true));
 
   /// Settings over nothing, its integrations in [home], with no `claude` on
-  /// this "Mac" unless [claude] is one.
+  /// this computer unless [claude] is one.
   Future<void> pumpSettings(WidgetTester tester, {FakeClaude? claude}) async {
     tester.view
       ..physicalSize = const Size(1000, 1400)
@@ -33,7 +33,7 @@ void main() {
         ListenableBuilder(
           listenable: app,
           builder: (_, _) => Stack(
-            children: [SettingsSheet(app: app, integrations: integrations)],
+            children: [SettingsPage(app: app, integrations: integrations)],
           ),
         ),
       ),

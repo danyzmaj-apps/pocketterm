@@ -164,14 +164,6 @@ class SupabaseAdmin {
   Future<void> updateAuthConfig(String ref, Map<String, Object?> changes) =>
       _send('PATCH', '/v1/projects/$ref/config/auth', body: changes);
 
-  Future<void> setSecrets(String ref, Map<String, String> secrets) => _send(
-    'POST',
-    '/v1/projects/$ref/secrets',
-    body: [
-      for (final MapEntry(:key, :value) in secrets.entries) {'name': key, 'value': value},
-    ],
-  );
-
   /// The key apps use: the publishable one, else the legacy anon key.
   Future<String> publishableKey(String ref) async {
     final keys = await _list('/v1/projects/$ref/api-keys', query: {'reveal': 'false'});

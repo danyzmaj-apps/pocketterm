@@ -8,14 +8,11 @@ import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/ansi.dart';
 import 'package:pocketterm_core/apple_terminal.dart';
 import 'package:pocketterm_core/backend.dart';
-import 'package:pocketterm_core/chat.dart';
 import 'package:pocketterm_core/chat_images.dart';
 import 'package:pocketterm_core/ghostty.dart';
-import 'package:pocketterm_core/idea.dart';
 import 'package:pocketterm_core/iterm.dart';
 import 'package:pocketterm_core/kitty.dart';
 import 'package:pocketterm_core/live.dart';
-import 'package:pocketterm_core/remind.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/tmux.dart';
 import 'package:pocketterm_core/wezterm.dart';
@@ -182,7 +179,6 @@ void property(String name, void Function(Gen g) body, {int rounds = 300, bool co
 }
 
 void main() {
-  final now = DateTime.utc(2026, 10, 15, 9);
   final colors = TermColors(foreground: Colors.white, background: Colors.black, palette: List.filled(16, Colors.grey));
 
   group('setup links and pairing codes', () {
@@ -200,16 +196,6 @@ void main() {
         }
         Backend.parse(raw, g.text());
       }
-    });
-  });
-
-  group('typed text', () {
-    property('titles, notes and reminders', (g) {
-      final s = g.any();
-      parseTitle(s);
-      noteTitle(s);
-      parseReminder(s, now);
-      parseWhen(s, now);
     });
   });
 
@@ -255,8 +241,6 @@ void main() {
               },
       );
       liveCommands(g.json());
-      AiStatus.fromJson(g.json());
-      Kind.parse(g.json());
     });
   });
 

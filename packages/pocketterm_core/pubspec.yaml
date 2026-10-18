@@ -1,7 +1,7 @@
 name: pocketterm_core
 description: "PocketTerm: the code the desktop app and the phone app share (sign-in, the terminal protocol, UI pieces)."
 publish_to: 'none'
-version: 0.3.0
+version: 0.1.0
 resolution: workspace
 
 environment:

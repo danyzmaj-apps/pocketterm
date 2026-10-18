@@ -40,7 +40,8 @@ jobs:
         working-directory: apps/pocketterm-desktop
         run: |
           $v = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
-          if ("v$v" -ne $env:TAG) { throw "pubspec.yaml is at $v but the release is $env:TAG" }
+          # v<version>, or a prerelease of it (v<version>-rc.1) to try the pipeline before the real release.
+          if ($env:TAG -notmatch "^v$([regex]::Escape($v))(-[0-9A-Za-z.]+)?$") { throw "pubspec.yaml is at $v but the release is $env:TAG" }
           echo "version=$v" >> $env:GITHUB_OUTPUT
       - working-directory: apps/pocketterm-desktop
         run: |

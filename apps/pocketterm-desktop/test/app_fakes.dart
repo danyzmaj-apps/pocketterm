@@ -79,7 +79,8 @@ class FakeApp extends AppController {
   final Terminals? _givenTerminals;
   late final _terminals = Terminals(
     home: '/nonexistent-pocketterm-test',
-    kitty: Kitty(socketDir: '/nonexistent-pocketterm-test', home: '/nonexistent-pocketterm-test'),
+    // A fixed uid: looking up getuid would fail on Windows, where these tests run too.
+    kitty: Kitty(socketDir: '/nonexistent-pocketterm-test', home: '/nonexistent-pocketterm-test', uid: 501),
     tmux: Tmux(executable: '/nonexistent-pocketterm-test/tmux', socketDirs: const []),
     wezterm: WezTerm(executable: '/nonexistent-pocketterm-test/wezterm', socketDir: '/nonexistent-pocketterm-test'),
     iterm: ITerm(appPath: '/nonexistent-pocketterm-test/iTerm.app'),

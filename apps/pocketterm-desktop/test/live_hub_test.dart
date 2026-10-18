@@ -1,3 +1,7 @@
+// tmux's /tmp socket paths.
+@Tags(['posix'])
+library;
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';

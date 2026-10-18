@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:pocketterm_core/account.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/connect.dart' show ConfirmLink;
-import 'package:pocketterm_core/native.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_desktop/controller.dart';
@@ -16,22 +15,14 @@ import 'package:pocketterm_desktop/onboarding/reviewer.dart';
 import 'package:pocketterm_desktop/setup_page.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// Drag strip for the transparent title bar.
-class TitleDrag extends StatelessWidget {
-  const TitleDrag({super.key});
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    behavior: HitTestBehavior.translucent,
-    onPanStart: (_) => unawaited(Native.startDrag()),
-    child: const SizedBox(height: 28),
-  );
-}
-
-/// The window: the setup wizard, then sign-in, then Settings.
+/// The window: the setup wizard, then sign-in, then Settings. Closing it
+/// only hides it (lib/desktop_host.dart); the app keeps running.
 class MainWindow extends StatelessWidget {
-  const MainWindow({required this.app, super.key});
+  const MainWindow({required this.app, this.integrations, super.key});
   final AppController app;
+
+  /// Settings' [SettingsPage.integrations].
+  final Integrations? integrations;
 
   @override
   Widget build(BuildContext context) {
@@ -45,8 +36,18 @@ class MainWindow extends StatelessWidget {
           else if (!signedIn)
             SignInPage(session: app)
           else
-            SettingsPage(app: app),
-          const Positioned(top: 0, left: 80, right: 0, child: TitleDrag()),
+            SettingsPage(app: app, integrations: integrations),
+          Positioned(
+            top: 0,
+            left: 80,
+            right: 0,
+            // The drag strip for the transparent title bar.
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onPanStart: (_) => unawaited(app.host.startDrag()),
+              child: const SizedBox(height: 28),
+            ),
+          ),
           if (!signedIn && app.linkToConfirm != null)
             ColoredBox(
               color: Colors.black54,
@@ -78,7 +79,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  bool? _launchAtLogin;
+  /// Why Launch at login didn't change, when the system refused.
   String? _launchError;
 
   /// The terminals as the bridge would find them, and their windows.
@@ -104,7 +105,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    unawaited(Native.launchAtLogin().then((v) => mounted ? setState(() => _launchAtLogin = v) : null));
+    unawaited(app.refreshLaunchAtLogin());
     unawaited(_checkTerminals());
     unawaited(_checkIntegration());
   }
@@ -182,7 +183,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Settings → Project folders → Add folder…: the picked folders join the
   /// list, each once.
   Future<void> _addFolders() async {
-    final picked = await Native.pickFolders();
+    final picked = await app.host.pickFolders();
     if (picked.isEmpty) return;
     await app.setProjectRoots({...app.projectRoots, ...picked}.toList());
   }
@@ -334,6 +335,16 @@ class _SettingsPageState extends State<SettingsPage> {
             const Center(
               child: Text('Settings', style: TextStyle(fontWeight: FontWeight.w600)),
             ),
+            if (app.updates?.update case final u?)
+              _group('UPDATE', [
+                _row(
+                  label: 'PocketTerm ${u.version} is out',
+                  trailing: _button(
+                    'Download',
+                    () => unawaited(launchUrl(u.url, mode: LaunchMode.externalApplication)),
+                  ),
+                ),
+              ]),
             _group('ACCOUNT', [
               _row(
                 leading: Avatar(url: app.avatarUrl, name: app.userName),
@@ -370,21 +381,18 @@ class _SettingsPageState extends State<SettingsPage> {
                 sub: _launchError,
                 subError: _launchError != null,
                 trailing: Switch(
-                  value: _launchAtLogin ?? false,
-                  onChanged: _launchAtLogin == null
+                  value: app.launchAtLogin ?? false,
+                  onChanged: app.launchAtLogin == null
                       ? null
                       : (v) => unawaited(
-                          Native.setLaunchAtLogin(enabled: v).then(
-                            (r) => mounted
-                                ? setState(() {
-                                    _launchAtLogin = r;
-                                    _launchError = null;
-                                  })
-                                : null,
-                            onError: (Object e) => mounted
-                                ? setState(() => _launchError = e is PlatformException ? e.message : '$e')
-                                : null,
-                          ),
+                          app
+                              .setLaunchAtLogin(on: v)
+                              .then(
+                                (_) => mounted ? setState(() => _launchError = null) : null,
+                                onError: (Object e) => mounted
+                                    ? setState(() => _launchError = e is PlatformException ? e.message : '$e')
+                                    : null,
+                              ),
                         ),
                 ),
               ),
@@ -464,7 +472,7 @@ class _SettingsPageState extends State<SettingsPage> {
               _projectFolders(),
             ]),
             const SizedBox(height: 18),
-            Align(alignment: Alignment.centerLeft, child: _button('Quit PocketTerm', () => unawaited(Native.quit()))),
+            Align(alignment: Alignment.centerLeft, child: _button('Quit PocketTerm', () => unawaited(app.host.quit()))),
           ],
         ),
       ),

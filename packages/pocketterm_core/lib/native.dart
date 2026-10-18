@@ -7,35 +7,22 @@ import 'package:flutter/services.dart';
 /// Android.
 String get pushPlatform => Platform.isAndroid ? 'android' : 'ios';
 
-/// The native side: the Mac's (apps/pocketterm-desktop/macos/Runner/MainFlutterWindow.swift: the
-/// main window, menu-bar icon, launch at login), the iPhone's (apps/pocketterm-mobile/ios/Runner/AppDelegate.swift) and Android's
-/// (apps/pocketterm-mobile/android/app/src/main/kotlin/com/danyzmaj/pocketterm/MainActivity.kt).
+/// The phone's native side: the iPhone's (apps/pocketterm-mobile/ios/Runner/AppDelegate.swift) and
+/// Android's (apps/pocketterm-mobile/android/app/src/main/kotlin/com/danyzmaj/pocketterm/MainActivity.kt).
+/// The computer's is apps/pocketterm-desktop/lib/desktop_host.dart.
 class Native {
   static const _channel = MethodChannel('pocketterm/native');
 
-  /// Events from the native side: openMain, openSettings, mainClosed (⌘W),
-  /// openTerminal ({session}: a terminal push was tapped; see
-  /// [takeTappedSession]), activityToken ({key, token}: a followed
-  /// session's push token, new or changed), activityEnded ({key, token?}: it
-  /// ended or was swiped away), pushToken (Android: FCM changed this
-  /// phone's token; register again) and quitting (the Mac app is about to
-  /// quit: it waits up to a second for what [onEvent] returns).
+  /// Events from the native side: openTerminal ({session}: a terminal push
+  /// was tapped; see [takeTappedSession]), activityToken ({key, token}: a
+  /// followed session's push token, new or changed), activityEnded ({key,
+  /// token?}: it ended or was swiped away) and pushToken (Android: FCM
+  /// changed this phone's token; register again).
   static void listen(FutureOr<void> Function(String event, Map<Object?, Object?> args) onEvent) {
     _channel.setMethodCallHandler((call) async {
       await onEvent(call.method, call.arguments as Map<Object?, Object?>? ?? const {});
     });
   }
-
-  static Future<void> showMain() => _channel.invokeMethod('showMain');
-  static Future<void> quit() => _channel.invokeMethod('quit');
-  static Future<void> startDrag() => _channel.invokeMethod('startDrag');
-
-  /// Mac: seconds since the last keyboard or mouse input.
-  static Future<double> idleSeconds() async => await _channel.invokeMethod<double>('idleSeconds') ?? 0;
-
-  /// Mac: a folder picker (sheet on the main window); the folders chosen,
-  /// none if cancelled.
-  static Future<List<String>> pickFolders() async => await _channel.invokeListMethod<String>('pickFolders') ?? const [];
 
   /// Phone: the coding session (its key) whose terminal push was tapped,
   /// once (a tap that launched the app lands before Dart listens, so
@@ -115,11 +102,9 @@ class Native {
   static Future<void> setBackend({String? url, String? key}) =>
       _channel.invokeMethod('setBackend', {'url': url, 'key': key});
 
-  static Future<String> deviceName() async => await _channel.invokeMethod<String>('deviceName') ?? 'Mac';
+  /// This phone's name: the label of its push registration.
+  static Future<String> deviceName() async => await _channel.invokeMethod<String>('deviceName') ?? 'Phone';
 
-  /// Phone: keeps the screen from dimming and locking while [on].
+  /// Keeps the screen from dimming and locking while [on].
   static Future<void> setKeepAwake({required bool on}) => _channel.invokeMethod('setKeepAwake', {'on': on});
-  static Future<bool> launchAtLogin() async => await _channel.invokeMethod<bool>('launchAtLogin') ?? false;
-  static Future<bool> setLaunchAtLogin({required bool enabled}) async =>
-      await _channel.invokeMethod<bool>('setLaunchAtLogin', {'enabled': enabled}) ?? false;
 }

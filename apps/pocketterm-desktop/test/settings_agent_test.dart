@@ -1,3 +1,7 @@
+// Paths joined with `/`, shown with `~`.
+@Tags(['posix'])
+library;
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';

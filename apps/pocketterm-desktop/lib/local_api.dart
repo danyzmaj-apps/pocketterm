@@ -5,14 +5,15 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/terminal.dart' show homeDir;
 import 'package:pocketterm_desktop/live_hub.dart';
 
 /// The terminal's way in (the live sessions of omp and Claude Code): HTTP
 /// on 127.0.0.1 at a random port, guarded by a random token. Both are
 /// written to `~/.config/pocketterm/cli.json`
-/// (mode 600; `POCKETTERM_CLI_JSON` names another file) for the clients to read,
-/// and taken out again when PocketTerm quits.
+/// (mode 600 off Windows; `POCKETTERM_CLI_JSON` names another file) for the
+/// clients to read, and taken out again when PocketTerm quits.
 ///
 ///   GET   /v1/ping?nonce=N         → {"app": "pocketterm", "proof"}: no token; proof is
 ///                                  [pingProof], so a client knows it's this PocketTerm
@@ -23,9 +24,12 @@ import 'package:pocketterm_desktop/live_hub.dart';
 ///   POST  /v1/live/http            {conn?, frames, wait?} → {conn, frames}: the same over
 ///                                  HTTP long polls (the Claude Code plugin); packages/pocketterm_core/lib/live.dart
 class LocalApi {
-  LocalApi(this._live, {File? file})
-    : file = file ?? _defaultFile(),
-      _ownFolder = file == null && !_named(Platform.environment);
+  /// [windows]: Windows' rules for [file] (no chmod; the per-user profile
+  /// keeps it private), else the running platform's.
+  LocalApi(this._live, {File? file, bool? windows})
+    : file = file ?? _defaultFile(windows: windows),
+      _ownFolder = file == null && !_named(Platform.environment),
+      _windows = windows ?? Platform.isWindows;
 
   final LiveHub _live;
   HttpServer? _server;
@@ -55,11 +59,17 @@ class LocalApi {
   /// One `POCKETTERM_CLI_JSON` names (a home folder, a project) keeps its mode.
   final bool _ownFolder;
 
+  final bool _windows;
+
   static bool _named(Map<String, String> env) => env['POCKETTERM_CLI_JSON']?.isNotEmpty ?? false;
 
-  static File _defaultFile() {
+  static File _defaultFile({bool? windows}) {
     final env = Platform.environment;
-    return File(_named(env) ? env['POCKETTERM_CLI_JSON']! : '${homeDir(env: env)}/.config/pocketterm/cli.json');
+    return File(
+      _named(env)
+          ? env['POCKETTERM_CLI_JSON']!
+          : p.join(homeDir(env: env, windows: windows), '.config', 'pocketterm', 'cli.json'),
+    );
   }
 
   /// The port it listens on, once started.
@@ -100,17 +110,25 @@ class LocalApi {
   }
 
   /// Writes [_written] to [file] as a whole (a reader never sees half of it),
-  /// private before the token goes in: a chmod that fails stops it.
+  /// private before the token goes in: a chmod that fails stops it. Windows
+  /// has no chmod; the file is as private as the user's profile it's in.
   Future<void> _write() async {
     final f = file;
     await f.parent.create(recursive: true);
-    if (_ownFolder) await _chmod('700', f.parent.path);
+    if (_ownFolder && !_windows) await _chmod('700', f.parent.path);
     final tmp = File('${f.path}.$pid.tmp');
     await tmp.writeAsString('');
     try {
-      await _chmod('600', tmp.path);
+      if (!_windows) await _chmod('600', tmp.path);
       await tmp.writeAsString(_written!, flush: true);
-      await tmp.rename(f.path);
+      try {
+        await tmp.rename(f.path);
+      } on FileSystemException {
+        // Windows may refuse to rename onto a file that exists.
+        if (!_windows || !f.existsSync()) rethrow;
+        await f.delete();
+        await tmp.rename(f.path);
+      }
     } on Object {
       if (tmp.existsSync()) await tmp.delete();
       rethrow;

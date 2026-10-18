@@ -5,29 +5,55 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/live.dart';
-import 'package:pocketterm_core/native.dart';
 import 'package:pocketterm_core/session.dart';
 import 'package:pocketterm_core/terminals.dart';
+import 'package:pocketterm_desktop/desktop_host.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:pocketterm_desktop/terminal_bridge.dart';
+import 'package:pocketterm_desktop/update_check.dart';
+import 'package:pocketterm_desktop/windows_host.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
 /// The desktop app: [Session] plus its main window and the terminal bridge.
 class AppController extends Session {
-  AppController(this._prefs, super.device);
+  AppController(this._prefs, super.device, this.host);
 
   final SharedPreferences _prefs;
 
-  /// The main window is open (PocketTerm is a regular app with a Dock icon then).
-  bool get mainOpen => _mainOpen;
-  bool _mainOpen = false;
+  /// The computer's side: the window, the menu-bar or tray item, launch at
+  /// login, keeping awake.
+  final DesktopHost host;
+
+  /// Whether PocketTerm starts at login, as the system has it; null until
+  /// [refreshLaunchAtLogin] asked.
+  bool? get launchAtLogin => _launchAtLogin;
+  bool? _launchAtLogin;
+
+  Future<void> refreshLaunchAtLogin() async {
+    _launchAtLogin = await host.launchAtLogin();
+    notifyListeners();
+  }
+
+  /// Throws what the system said when it refused; [launchAtLogin] is then
+  /// how it stands still.
+  Future<void> setLaunchAtLogin({required bool on}) async {
+    try {
+      await host.setLaunchAtLogin(on: on);
+    } finally {
+      await refreshLaunchAtLogin();
+    }
+  }
+
+  /// Set once this computer has had its first sign-in ([onSignedIn]).
+  static const _firstSignInKey = 'first_sign_in_done';
 
   static const _terminalKey = 'terminal_bridge';
 
-  /// The phone may see and type into the Mac's terminals and the coding
-  /// sessions (lib/terminal_bridge.dart). Off until turned on in Settings:
-  /// whoever holds the account can then type here.
+  /// The phone may see and type into this computer's terminals and the
+  /// coding sessions (lib/terminal_bridge.dart): whoever holds the account
+  /// can then type here. Turned on by the first sign-in ([onSignedIn]), then
+  /// as Settings has it.
   bool get terminalOn => _prefs.getBool(_terminalKey) ?? false;
   TerminalBridge? _bridge;
 
@@ -145,6 +171,7 @@ class AppController extends Session {
         id,
         terminals,
         live,
+        host,
         () => codingAgent,
         () => terminalApp,
         () => projectRoots,
@@ -183,16 +210,49 @@ class AppController extends Session {
     await notifyPhone(title, body, session: s.key, activity: state);
   }
 
+  /// Windows' check for a newer PocketTerm (the Mac has Sparkle): Settings
+  /// and the tray offer it while there is one.
+  final UpdateCheck? updates = Platform.isWindows ? UpdateCheck() : null;
+
   @override
   Future<void> start() async {
-    Native.listen(_onNative);
+    await host.start(onEvent: _onHost);
+    if (updates case final u?) {
+      u
+        ..addListener(() {
+          if (host case final WindowsHost w) w.setUpdate(u.update);
+          notifyListeners();
+        })
+        ..start();
+    }
     await super.start();
     // Not set up or signed out: there's nothing to do but that, so say so.
     if (user == null) await openMain();
   }
 
   @override
-  Future<void> onSignedIn(User user) => _startBridge();
+  void dispose() {
+    updates?.dispose();
+    super.dispose();
+  }
+
+  /// The first sign-in on this computer turns on Terminal from phone and
+  /// Launch at login (what PocketTerm is for); after that they stay as the
+  /// user leaves them.
+  @override
+  Future<void> onSignedIn(User user) async {
+    if (_prefs.getBool(_firstSignInKey) ?? false) return await _startBridge();
+    try {
+      await setLaunchAtLogin(on: true);
+    } on Object catch (e) {
+      debugPrint('PocketTerm: launch at login not turned on: $e');
+    }
+    try {
+      await setTerminal(on: true);
+    } finally {
+      await _prefs.setBool(_firstSignInKey, true);
+    }
+  }
 
   /// The phone stops listing this computer (unless the account went, and
   /// the row with it).
@@ -227,25 +287,20 @@ class AppController extends Session {
   /// local API takes itself out of cli.json (lib/main.dart).
   Future<void> Function()? onQuit;
 
-  FutureOr<void> _onNative(String event, Map<Object?, Object?> args) {
+  /// What the host says: the menu-bar or tray item, the Dock icon, quitting.
+  /// A closed window (mainClosed) is only hidden: nothing changes here.
+  FutureOr<void> _onHost(String event) {
     switch (event) {
       // Settings is the window while signed in.
       case 'openMain' || 'openSettings':
         unawaited(openMain());
-      case 'mainClosed':
-        _mainOpen = false;
-        notifyListeners();
       case 'quitting':
         return onQuit?.call();
     }
   }
 
   /// Shows the main window.
-  Future<void> openMain() async {
-    _mainOpen = true;
-    notifyListeners();
-    await Native.showMain();
-  }
+  Future<void> openMain() => host.showMain();
 
   /// Pushes [title] / [body] to the user's phones (functions/push) when
   /// nobody has touched this computer for a minute: at the desk, its own
@@ -253,7 +308,7 @@ class AppController extends Session {
   /// whose Live Activities move to [activity] (done, needs). False if it
   /// didn't go.
   Future<bool> notifyPhone(String title, String body, {String? session, String? activity}) async {
-    if (user == null || await Native.idleSeconds() < 60) return false;
+    if (user == null || await host.idleSeconds() < 60) return false;
     try {
       final res = await client.functions.invoke(
         'push',

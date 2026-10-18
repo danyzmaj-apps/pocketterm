@@ -3,8 +3,9 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
-import 'package:pocketterm_core/terminal.dart' show homeDir;
+import 'package:pocketterm_core/terminal.dart' show findExecutable, homeDir;
 
 /// Runs [executable] with [arguments], as [Process.run] does.
 typedef Run = Future<ProcessResult> Function(String executable, List<String> arguments);
@@ -26,17 +27,21 @@ class IntegrationException implements Exception {
 /// Installs the coding agents' PocketTerm integrations (integrations/) from the
 /// copies bundled with the app: omp's extensions, Claude Code's plugin.
 class Integrations {
-  Integrations({String? home, AssetBundle? bundle, Run? run, this._claudePaths})
-    : home = home ?? homeDir(),
+  /// [windows]: look for `claude` as on Windows (PATH, then the native
+  /// installer's `claude.exe`; no login shell), else as the running platform.
+  Integrations({String? home, AssetBundle? bundle, Run? run, this._claudePaths, bool? windows})
+    : _windows = windows ?? Platform.isWindows,
+      home = home ?? homeDir(windows: windows),
       _bundle = bundle ?? rootBundle,
       _run = run ?? Process.run;
 
   final String home;
   final AssetBundle _bundle;
   final Run _run;
+  final bool _windows;
 
-  /// Where `claude` may be, before asking a login shell; the usual install
-  /// places if null.
+  /// Where `claude` may be: on macOS before asking a login shell, on Windows
+  /// after PATH. The usual install places if null.
   final List<String>? _claudePaths;
 
   /// What Settings calls the agent: Claude's product name in full.
@@ -49,11 +54,11 @@ class Integrations {
   static const minClaude = [2, 1, 287];
 
   /// Where omp loads extensions from.
-  String get ompDir => '$home/.omp/agent/extensions';
+  String get ompDir => p.join(home, '.omp', 'agent', 'extensions');
 
   /// The marketplace Claude Code is pointed at: a stable copy of the bundled
   /// one, which it loads the plugin from in place.
-  String get claudeDir => '$home/.config/pocketterm/claude-plugin';
+  String get claudeDir => p.join(home, '.config', 'pocketterm', 'claude-plugin');
 
   static const _plugin = 'pocketterm@pocketterm';
 
@@ -61,7 +66,7 @@ class Integrations {
     switch (agent) {
       case Agent.omp:
         final files = await _bundled('integrations/omp/');
-        final installed = files.keys.every((f) => File('$ompDir/$f').existsSync());
+        final installed = files.keys.every((f) => File(_under(ompDir, f)).existsSync());
         return (installed: installed, current: installed && await _same(files, ompDir), problem: null);
       case Agent.claude:
         final claude = await _claude();
@@ -133,10 +138,13 @@ class Integrations {
     };
   }
 
+  /// [f], a bundled path with `/`, under [dir].
+  static String _under(String dir, String f) => p.joinAll([dir, ...f.split('/')]);
+
   /// [files] are in [dir] as they are here ([exact]: and nothing else is).
   static Future<bool> _same(Map<String, Uint8List> files, String dir, {bool exact = false}) async {
     for (final MapEntry(key: f, value: bytes) in files.entries) {
-      final file = File('$dir/$f');
+      final file = File(_under(dir, f));
       if (!file.existsSync() || !listEquals(await file.readAsBytes(), bytes)) return false;
     }
     if (!exact) return true;
@@ -148,7 +156,7 @@ class Integrations {
   /// replaced rather than written through and nothing reads half a file.
   static Future<void> _write(Map<String, Uint8List> files, String dir) async {
     for (final MapEntry(key: f, value: bytes) in files.entries) {
-      final file = File('$dir/$f');
+      final file = File(_under(dir, f));
       await file.parent.create(recursive: true);
       final tmp = File('${file.path}.pocketterm-tmp');
       await tmp.writeAsBytes(bytes, flush: true);
@@ -157,16 +165,31 @@ class Integrations {
   }
 
   /// The `claude` executable and whether it's new enough. A GUI app has no
-  /// login shell's PATH: the usual install places first, then the shell.
+  /// login shell's PATH: on macOS the usual install places first, then the
+  /// shell; on Windows PATH, then the native installer's place.
   Future<({String? path, String? problem})> _claude() async {
-    final candidates =
-        _claudePaths ??
-        ['$home/.local/bin/claude', '$home/.claude/local/claude', '/opt/homebrew/bin/claude', '/usr/local/bin/claude'];
-    var path = candidates.where((p) => File(p).existsSync()).firstOrNull;
-    if (path == null) {
-      final r = await _run('/bin/zsh', ['-lc', 'command -v claude']);
-      final found = '${r.stdout}'.trim();
-      if (r.exitCode == 0 && found.isNotEmpty) path = found;
+    String? path;
+    if (_windows) {
+      path = findExecutable(
+        'claude',
+        extra: _claudePaths ?? [p.join(home, '.local', 'bin', 'claude.exe')],
+        windows: true,
+      );
+    } else {
+      final candidates =
+          _claudePaths ??
+          [
+            '$home/.local/bin/claude',
+            '$home/.claude/local/claude',
+            '/opt/homebrew/bin/claude',
+            '/usr/local/bin/claude',
+          ];
+      path = candidates.where((c) => File(c).existsSync()).firstOrNull;
+      if (path == null) {
+        final r = await _run('/bin/zsh', ['-lc', 'command -v claude']);
+        final found = '${r.stdout}'.trim();
+        if (r.exitCode == 0 && found.isNotEmpty) path = found;
+      }
     }
     if (path == null) return (path: null, problem: "Claude Code isn't installed");
     final r = await _run(path, ['--version']);
@@ -193,7 +216,10 @@ class Integrations {
 
   /// [entry] loads from [claudeDir] (not from a marketplace elsewhere that is
   /// also called pocketterm, such as a checkout of this repo).
-  bool _loadsOurs(Map<String, Object?>? entry) => entry?['readFromFolder'] == '$claudeDir/plugins/pocketterm';
+  bool _loadsOurs(Map<String, Object?>? entry) => switch (entry?['readFromFolder']) {
+    final String folder => p.equals(folder, p.join(claudeDir, 'plugins', 'pocketterm')),
+    _ => false,
+  };
 
   Future<ProcessResult> _claudeRun(String claude, List<String> args) async {
     final r = await _run(claude, args);

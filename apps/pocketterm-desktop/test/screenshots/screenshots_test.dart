@@ -2,7 +2,7 @@
 // Run from apps/pocketterm-desktop: fvm flutter test --tags screenshots --run-skipped
 // They're written to docs/images/mac-*.png and wizard-*.png; a plain `fvm flutter test` skips
 // them (dart_test.yaml).
-@Tags(['screenshots'])
+@Tags(['screenshots', 'posix'])
 library;
 
 import 'dart:async';

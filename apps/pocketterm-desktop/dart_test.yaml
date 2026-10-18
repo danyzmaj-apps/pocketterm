@@ -1,3 +1,6 @@
 tags:
   screenshots:
     skip: "Screenshots for the docs: fvm flutter test --tags screenshots --run-skipped"
+  # Tests that need a POSIX system (/bin/sh, chmod, /tmp, symlinks, the
+  # Mac's paths and fonts); Windows CI runs `flutter test --exclude-tags posix`.
+  posix:

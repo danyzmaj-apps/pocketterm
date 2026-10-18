@@ -76,7 +76,8 @@ let planPath: string | undefined;
 
 async function readCli($: EngineInterface): Promise<Cli | undefined> {
 	try {
-		const path = (await $.env.get("POCKETTERM_CLI_JSON")) || `${await $.env.get("HOME")}/.config/pocketterm/cli.json`;
+		const home = (await $.env.get("HOME")) || (await $.env.get("USERPROFILE"));
+		const path = (await $.env.get("POCKETTERM_CLI_JSON")) || `${home}/.config/pocketterm/cli.json`;
 		const json = JSON.parse(await $.fs.read(path)) as { port?: unknown; token?: unknown };
 		return typeof json.port === "number" && typeof json.token === "string"
 			? { port: json.port, token: json.token }

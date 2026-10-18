@@ -1,3 +1,7 @@
+// chmod and file modes.
+@Tags(['posix'])
+library;
+
 import 'dart:convert';
 import 'dart:io';
 

@@ -9,6 +9,7 @@ import 'package:pocketterm_core/live_activity.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_channel.dart';
 import 'package:pocketterm_core/terminals.dart';
+import 'package:pocketterm_desktop/desktop_host.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -25,6 +26,7 @@ class TerminalBridge {
     this._desktopId,
     this._terms,
     this._hub,
+    this._host,
     this._agent,
     this._app,
     this._roots,
@@ -37,6 +39,9 @@ class TerminalBridge {
   final String _desktopId;
   final Terminals _terms;
   final LiveHub _hub;
+
+  /// Keeps this computer awake while the bridge runs.
+  final DesktopHost _host;
 
   /// The agent a new session from the phone starts (the Mac's setting).
   final Agent Function() _agent;
@@ -65,7 +70,6 @@ class TerminalBridge {
     'sync': _onSync,
     'run': (m) => unawaited(_onRun(m)),
   }, name: 'terminal bridge');
-  Process? _awake;
   Timer? _tick;
   int _ticks = 0;
   bool _polling = false;
@@ -158,13 +162,9 @@ class TerminalBridge {
           }
         }),
       );
-    // Away from the Mac, an idle sleep would end the bridge; the lid still
-    // sleeps it. `-w`: caffeinate goes when PocketTerm does.
-    try {
-      _awake = await Process.start('/usr/bin/caffeinate', ['-i', '-w', '$pid']);
-    } on Object catch (e) {
-      debugPrint('PocketTerm: caffeinate: $e');
-    }
+    // Away from the computer, an idle sleep would end the bridge; the lid
+    // still sleeps it.
+    await _host.setKeepAwake(on: true);
   }
 
   Future<void> stop() async {
@@ -184,8 +184,7 @@ class TerminalBridge {
       t.cancel();
     }
     _activitySoon.clear();
-    _awake?.kill();
-    _awake = null;
+    await _host.setKeepAwake(on: false);
     _phones.clear();
     await _ch.close();
   }
@@ -509,7 +508,7 @@ class TerminalBridge {
     }
     final bucket = _client.storage.from(imageBucket);
     try {
-      final images = [for (final path in paths) await _image(await bucket.download(path))];
+      final images = [for (final path in paths) await image(await bucket.download(path))];
       await _hub.prompt(
         p['session'] as String,
         p['text'] as String? ?? '',
@@ -525,13 +524,16 @@ class TerminalBridge {
     }
   }
 
-  /// PNG and JPEG go as they are; anything else (HEIC from Photos) becomes
-  /// PNG first, which every model reads.
-  static Future<({Uint8List bytes, String mimeType})> _image(Uint8List bytes) async {
+  /// PNG and JPEG go as they are; on a Mac anything else (HEIC from Photos)
+  /// becomes PNG first, which every model reads. Elsewhere (no `sips`) only
+  /// PNG and JPEG do; the phone sends JPEG anyway.
+  @visibleForTesting
+  static Future<({Uint8List bytes, String mimeType})> image(Uint8List bytes, {bool? macos}) async {
     bool starts(List<int> magic) =>
         bytes.length > magic.length && Iterable<int>.generate(magic.length).every((i) => bytes[i] == magic[i]);
     if (starts(const [0x89, 0x50, 0x4E, 0x47])) return (bytes: bytes, mimeType: 'image/png');
     if (starts(const [0xFF, 0xD8, 0xFF])) return (bytes: bytes, mimeType: 'image/jpeg');
+    if (!(macos ?? Platform.isMacOS)) throw const LiveException('This computer reads PNG and JPEG images only.');
     final dir = await Directory.systemTemp.createTemp('pocketterm-image');
     try {
       final input = File('${dir.path}/in')..writeAsBytesSync(bytes);

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/terminal.dart';
@@ -305,7 +306,7 @@ class LiveHub {
   /// Where images for an agent that reads them from disk (Claude Code) wait
   /// for it; the ones older than a day go when more come.
   @visibleForTesting
-  static Directory imageDir = Directory('${Directory.systemTemp.path}/pocketterm-images');
+  static Directory imageDir = Directory(p.join(Directory.systemTemp.path, 'pocketterm-images'));
 
   /// Sends [text] (and [images]) as the person's prompt. While omp works it
   /// steers the run, or waits for the run to end with [followUp]; Claude
@@ -334,7 +335,8 @@ class LiveHub {
     final dir = imageDir;
     if (!dir.existsSync()) {
       dir.createSync(recursive: true);
-      await Process.run('chmod', ['700', dir.path]);
+      // Private to this user; Windows' per-user temp folder already is.
+      if (!Platform.isWindows) await Process.run('chmod', ['700', dir.path]);
     }
     final dayAgo = DateTime.now().subtract(const Duration(days: 1));
     for (final f in dir.listSync().whereType<File>()) {
@@ -344,8 +346,11 @@ class LiveHub {
     return [
       for (final i in images)
         (File(
-          '${dir.path}/${List.generate(12, (_) => random.nextInt(36).toRadixString(36)).join()}'
-          '.${i.mimeType == 'image/jpeg' ? 'jpg' : 'png'}',
+          p.join(
+            dir.path,
+            '${List.generate(12, (_) => random.nextInt(36).toRadixString(36)).join()}'
+            '.${i.mimeType == 'image/jpeg' ? 'jpg' : 'png'}',
+          ),
         )..writeAsBytesSync(i.bytes)).path,
     ];
   }

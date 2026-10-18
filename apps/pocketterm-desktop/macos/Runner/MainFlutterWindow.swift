@@ -47,6 +47,9 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     case "showMain":
       showMain()
       result(nil)
+    case "hideMain":
+      hideMain()
+      result(nil)
     case "deviceName":
       result(Host.current().localizedName ?? "Mac")
     case "launchAtLogin":
@@ -67,23 +70,6 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       result(nil)
     case "idleSeconds":
       result(CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!))
-    case "getBackend":
-      let defaults = UserDefaults.standard
-      if let url = defaults.string(forKey: "backendUrl"), let key = defaults.string(forKey: "backendKey") {
-        result(["url": url, "key": key])
-      } else {
-        result(nil)
-      }
-    case "setBackend":
-      let defaults = UserDefaults.standard
-      if let url = args["url"] as? String, let key = args["key"] as? String {
-        defaults.set(url, forKey: "backendUrl")
-        defaults.set(key, forKey: "backendKey")
-      } else {
-        defaults.removeObject(forKey: "backendUrl")
-        defaults.removeObject(forKey: "backendKey")
-      }
-      result(nil)
     case "quit":
       NSApp.terminate(nil)
       result(nil)
@@ -126,6 +112,12 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     activate()
   }
 
+  /// Back to the menu bar: no Dock icon, no menu bar of its own.
+  private func hideMain() {
+    orderOut(nil)
+    NSApp.setActivationPolicy(.accessory)
+  }
+
   /// Makes PocketTerm the active app, so the menu bar, ⌘W and ⌘Q are PocketTerm's.
   ///
   /// Since macOS 14 `NSApp.activate()` is only a request, and macOS turns it
@@ -166,8 +158,7 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
 
   func windowShouldClose(_ sender: NSWindow) -> Bool {
     // ⌘W / the red button: hide (the window is reused), back to the menu bar.
-    orderOut(nil)
-    NSApp.setActivationPolicy(.accessory)
+    hideMain()
     channel.invokeMethod("mainClosed", arguments: nil)
     return false
   }

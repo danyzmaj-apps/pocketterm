@@ -15,6 +15,7 @@ dependencies:
   image_picker: ^1.2.4
   pasteboard: ^0.5.0
   path: ^1.9.1
+  shared_preferences: ^2.5.6
   supabase_flutter: ^2.18.0
   url_launcher: ^6.3.3
   uuid: ^4.6.0

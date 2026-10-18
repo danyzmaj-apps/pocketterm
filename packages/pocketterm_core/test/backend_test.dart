@@ -1,7 +1,9 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/backend.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('Backend.parse', () {
@@ -69,5 +71,39 @@ void main() {
     });
     final problem = await Backend(url: 'http://127.0.0.1:${server.port}', key: 'k').check();
     expect(problem, contains("Couldn't reach"));
+  });
+
+  group('where the backend is kept', () {
+    const backend = Backend(url: 'https://abc.supabase.co', key: 'sb_publishable_x');
+
+    test("a computer's is in its shared preferences", () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues({});
+      expect(await Backend.load(desktop: true), isNull);
+      await backend.save(desktop: true);
+      expect(await Backend.load(desktop: true), backend);
+      await Backend.clear(desktop: true);
+      expect(await Backend.load(desktop: true), isNull);
+    });
+
+    test("a phone's is where its native side reads it", () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues({});
+      Map<Object?, Object?>? native;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('pocketterm/native'),
+        (call) async => switch (call.method) {
+          'setBackend' => native = call.arguments as Map<Object?, Object?>,
+          'getBackend' => native?['url'] == null ? null : native,
+          _ => null,
+        },
+      );
+      await backend.save(desktop: false);
+      expect(native, {'url': backend.url, 'key': backend.key});
+      expect(await Backend.load(desktop: true), isNull);
+      expect(await Backend.load(desktop: false), backend);
+      await Backend.clear(desktop: false);
+      expect(await Backend.load(desktop: false), isNull);
+    });
   });
 }

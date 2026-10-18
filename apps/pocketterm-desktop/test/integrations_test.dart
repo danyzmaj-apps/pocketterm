@@ -1,3 +1,7 @@
+// Symlinks and paths joined with `/`.
+@Tags(['posix'])
+library;
+
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -140,6 +144,26 @@ void main() {
       final found = Integrations(home: home, run: onPath.run, claudePaths: [claude.path]);
       expect(await found.state(Agent.claude), (installed: false, current: false, problem: null));
       expect(onPath.calls, ['--version', 'plugin list --json']);
+    });
+
+    test("on Windows claude is the native installer's claude.exe, and no login shell is asked", () async {
+      final exe = FakeClaude('$home/.local/bin/claude.exe')..onPath = '$home/claude\n';
+      File(exe.path).createSync(recursive: true);
+      final ran = <String>[];
+      final windows = Integrations(
+        home: home,
+        run: (e, args) {
+          ran.add(e);
+          return exe.run(e, args);
+        },
+        windows: true,
+      );
+      expect(await windows.state(Agent.claude), (installed: false, current: false, problem: null));
+      expect(exe.calls, ['--version', 'plugin list --json']);
+
+      File(exe.path).deleteSync();
+      expect((await windows.state(Agent.claude)).problem, "Claude Code isn't installed");
+      expect(ran, isNot(contains('/bin/zsh')));
     });
 
     test('a Claude Code older than mods is too old', () async {

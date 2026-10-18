@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -16,27 +17,23 @@ import 'package:pocketterm_core/tmux.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_core/wezterm.dart';
 import 'package:pocketterm_desktop/controller.dart';
+import 'package:pocketterm_desktop/desktop_host.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
-/// An [AppController] signed in as [fakeUser], its native side answered by
-/// [calls].
+/// An [AppController] signed in as [fakeUser], its computer's side [host].
 class FakeApp extends AppController {
-  FakeApp._(SharedPreferences prefs, this._givenTerminals) : super(prefs, 'Mac');
+  FakeApp._(SharedPreferences prefs, this._givenTerminals) : super(prefs, 'Mac', FakeDesktopHost());
 
   /// [terminals] stand in for the computer's; none found by default.
-  static Future<FakeApp> create({Terminals? terminals}) async {
-    SharedPreferences.setMockInitialValues({});
-    final app = FakeApp._(await SharedPreferences.getInstance(), terminals);
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-      const MethodChannel('pocketterm/native'),
-      (call) async {
-        app.calls.add(call.method);
-        return null;
-      },
-    );
-    return app;
+  /// [prefs]: what this computer had saved.
+  static Future<FakeApp> create({Terminals? terminals, Map<String, Object> prefs = const {}}) async {
+    SharedPreferences.setMockInitialValues(prefs);
+    return FakeApp._(await SharedPreferences.getInstance(), terminals);
   }
+
+  @override
+  FakeDesktopHost get host => super.host as FakeDesktopHost;
 
   /// The signed-in user's name; Session's own when null.
   String? name;
@@ -53,14 +50,25 @@ class FakeApp extends AppController {
     createdAt: '2026-10-01T10:00:00Z',
   );
 
-  /// What Dart asked the native side, in order.
-  final calls = <String>[];
-
   /// What runs when the user goes without [signOut] here.
   Future<void> signedOutByServer() => onSignedOut();
 
+  /// What runs when [fakeUser] signs in (or is restored at launch).
+  Future<void> signedIn() => onSignedIn(fakeUser!);
+
+  /// Without a server there's no bridge to start: Terminal from phone is
+  /// only its setting.
   @override
-  Backend get backend => const Backend(url: 'https://example.supabase.co', key: 'test');
+  Future<void> setTerminal({required bool on}) async {
+    await (await SharedPreferences.getInstance()).setBool('terminal_bridge', on);
+    notifyListeners();
+  }
+
+  /// The server this computer is set up with; null: none yet.
+  Backend? fakeBackend = const Backend(url: 'https://example.supabase.co', key: 'test');
+
+  @override
+  Backend? get backend => fakeBackend;
 
   @override
   User? get user => fakeUser;
@@ -101,7 +109,7 @@ class FakeApp extends AppController {
       id: id,
       label: label,
       expiresAt: expiresAt,
-      link: backend.linkWithCode('REVW-${madeCodes.length}AAA-BBBB-CCCC-DDDD-EEEE-FFFF'),
+      link: backend!.linkWithCode('REVW-${madeCodes.length}AAA-BBBB-CCCC-DDDD-EEEE-FFFF'),
     );
   }
 
@@ -114,6 +122,78 @@ class FakeApp extends AppController {
     revoked.add(id);
     reviewer.removeWhere((c) => c.id == id);
   }
+}
+
+/// The computer's side, recording what it was asked in [calls].
+class FakeDesktopHost implements DesktopHost {
+  final calls = <String>[];
+
+  /// What [idleSeconds] answers.
+  int idle = 0;
+
+  /// Whether PocketTerm is a login item.
+  bool loginItem = false;
+
+  /// Makes [setLaunchAtLogin] fail with this.
+  String? loginItemRefused;
+
+  /// What [pickFolders] answers.
+  List<String> folders = const [];
+
+  /// What [start] was given.
+  FutureOr<void> Function(String event)? onEvent;
+
+  @override
+  Future<void> start({required FutureOr<void> Function(String event) onEvent}) async {
+    calls.add('start');
+    this.onEvent = onEvent;
+  }
+
+  @override
+  Future<void> showMain() async => calls.add('showMain');
+
+  @override
+  Future<void> hideMain() async => calls.add('hideMain');
+
+  @override
+  Future<void> quit() async => calls.add('quit');
+
+  @override
+  Future<String> deviceName() async {
+    calls.add('deviceName');
+    return 'Mac';
+  }
+
+  @override
+  Future<int> idleSeconds() async {
+    calls.add('idleSeconds');
+    return idle;
+  }
+
+  @override
+  Future<bool> launchAtLogin() async {
+    calls.add('launchAtLogin');
+    return loginItem;
+  }
+
+  @override
+  Future<void> setLaunchAtLogin({required bool on}) async {
+    calls.add('setLaunchAtLogin($on)');
+    if (loginItemRefused case final reason?) throw PlatformException(code: 'launch_at_login', message: reason);
+    loginItem = on;
+  }
+
+  @override
+  Future<List<String>> pickFolders() async {
+    calls.add('pickFolders');
+    return folders;
+  }
+
+  @override
+  Future<void> setKeepAwake({required bool on}) async => calls.add('setKeepAwake($on)');
+
+  @override
+  Future<void> startDrag() async => calls.add('startDrag');
 }
 
 /// A `claude` that answers from [list] (its `plugin list --json`) and records

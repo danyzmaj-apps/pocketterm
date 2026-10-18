@@ -4,15 +4,17 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/native.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// The Supabase project PocketTerm connects through: each user runs their own
 /// (see docs/SELF_HOSTING.md). The computer enters it on its setup screen or
 /// opens a setup link (`pocketterm://setup?url=…&key=…`, printed by
 /// apps/pocketterm-desktop/tool/setup-backend.sh); a phone learns it only from the
 /// computer's code, a setup link with a sign-in code in it (`…&code=…`,
-/// functions/pair). Kept where the native side reads it too: the App Group on
-/// Apple platforms (apps/pocketterm-mobile/ios/Shared/PocketTermShared.swift), shared
-/// preferences on Android (PocketTermShared.kt).
+/// functions/pair). A computer keeps it in its shared preferences; a phone
+/// where its native side reads it too: the App Group on iOS
+/// (apps/pocketterm-mobile/ios/Shared/PocketTermShared.swift, read by the push
+/// extension), shared preferences on Android (PocketTermShared.kt).
 @immutable
 class Backend {
   const Backend({required this.url, required this.key});
@@ -133,15 +135,38 @@ class Backend {
   }
 
   /// The backend this device was connected to, if any.
-  static Future<Backend?> load() async {
+  static Future<Backend?> load({bool? desktop}) async {
+    if (_inPrefs(desktop)) {
+      final prefs = await SharedPreferences.getInstance();
+      final url = prefs.getString(_urlKey);
+      final key = prefs.getString(_keyKey);
+      return url == null || key == null ? null : parse(url, key).backend;
+    }
     final saved = await Native.getBackend();
     if (saved == null) return null;
     return parse(saved.url, saved.key).backend;
   }
 
-  Future<void> save() => Native.setBackend(url: url, key: key);
+  Future<void> save({bool? desktop}) async {
+    if (!_inPrefs(desktop)) return await Native.setBackend(url: url, key: key);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_urlKey, url);
+    await prefs.setString(_keyKey, key);
+  }
 
-  static Future<void> clear() => Native.setBackend();
+  static Future<void> clear({bool? desktop}) async {
+    if (!_inPrefs(desktop)) return await Native.setBackend();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_urlKey);
+    await prefs.remove(_keyKey);
+  }
+
+  /// A computer ([desktop], macOS and Windows unless told) keeps it in its
+  /// shared preferences under these keys; a phone where its native side
+  /// reads it too.
+  static bool _inPrefs(bool? desktop) => desktop ?? (Platform.isMacOS || Platform.isWindows);
+  static const _urlKey = 'backend_url';
+  static const _keyKey = 'backend_key';
 
   @override
   bool operator ==(Object other) => other is Backend && other.url == url && other.key == key;

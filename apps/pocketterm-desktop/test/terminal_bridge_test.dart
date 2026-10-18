@@ -1,3 +1,8 @@
+// /bin/sh stands in for an installed tmux.
+@Tags(['posix'])
+library;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/apple_terminal.dart';
 import 'package:pocketterm_core/ghostty.dart';
@@ -7,6 +12,7 @@ import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/tmux.dart';
 import 'package:pocketterm_core/wezterm.dart';
+import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:pocketterm_desktop/terminal_bridge.dart';
 
 /// Terminals that touch nothing on this Mac; [tmux]: an executable that exists.
@@ -69,5 +75,19 @@ void main() {
       expect(cantCommand(terms, key), isNull, reason: key);
     }
     expect(cantCommand(terms, null), startsWith("Slash commands are typed into the agent's terminal window"));
+  });
+
+  test('a phone image goes as PNG or JPEG; off the Mac nothing else is read', () async {
+    final png = Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 0x0D]);
+    final jpeg = Uint8List.fromList([0xFF, 0xD8, 0xFF, 0xE0]);
+    final heic = Uint8List.fromList([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63]);
+    expect((await TerminalBridge.image(png, macos: false)).mimeType, 'image/png');
+    expect((await TerminalBridge.image(jpeg, macos: false)).mimeType, 'image/jpeg');
+    await expectLater(
+      TerminalBridge.image(heic, macos: false),
+      throwsA(
+        isA<LiveException>().having((e) => e.message, 'message', 'This computer reads PNG and JPEG images only.'),
+      ),
+    );
   });
 }

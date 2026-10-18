@@ -41,8 +41,10 @@ ActivityStatus summaryStatus(LiveSummary? s) =>
 /// The `state` and `kind` of a push or a channel call.
 Map<String, dynamic> activityJson(ActivityStatus s) => {'state': s.state.name, 'kind': ?s.kind?.name};
 
-/// Phone: the followed sessions, kept current from [TerminalRemote] while
-/// the app is in front, and their push tokens handed to the server.
+/// Phone: the sessions followed on [TerminalRemote]'s computer, kept current
+/// from it while the app is in front, and their push tokens handed to the
+/// server. The native side and the server know a session by its routedKey
+/// (lib/live.dart), this by its own key.
 class LiveActivities extends ChangeNotifier {
   LiveActivities(this._client, this._remote) {
     _remote.addListener(_sync);
@@ -61,18 +63,28 @@ class LiveActivities extends ChangeNotifier {
   final _prompted = <String, DateTime>{};
   static const _promptWait = Duration(seconds: 30);
 
-  /// Sessions whose push token the server has, as `key\ntoken`: on Android
-  /// one token serves every followed session.
+  /// Sessions whose push token the server has, as `routed key\ntoken`: on
+  /// Android one token serves every followed session.
   final _registered = <String>{};
 
   bool following(String key) => _shown.containsKey(key);
 
+  String _routed(String key) => routedKey(_remote.desktopId, key);
+
+  /// [routed]'s session key if it's on this computer.
+  String? _mine(String routed) {
+    final r = splitRoutedKey(routed);
+    return r != null && r.desktop == _remote.desktopId ? r.key : null;
+  }
+
   /// The activities running from before (and tokens iOS handed over before
-  /// Dart listened).
+  /// Dart listened); the server learns every token, whichever computer its
+  /// session is on.
   Future<void> _load() async {
     try {
       for (final a in await Native.liveActivities()) {
-        _shown.putIfAbsent(a.key, () => null);
+        if (splitRoutedKey(a.key) == null) continue;
+        if (_mine(a.key) case final key?) _shown.putIfAbsent(key, () => null);
         final token = a.token;
         if (token != null) unawaited(_register(a.key, token));
       }
@@ -91,9 +103,9 @@ class LiveActivities extends ChangeNotifier {
     if (s == null) return false;
     final shown = (status: status ?? summaryStatus(s), since: DateTime.now());
     final started = await Native.startActivity(
-      key: key,
+      key: _routed(key),
       title: title,
-      project: s.cwd.split('/').lastWhere((p) => p.isNotEmpty, orElse: () => s.cwd),
+      project: s.cwd.split(RegExp(r'[\\/]')).lastWhere((p) => p.isNotEmpty, orElse: () => s.cwd),
       state: shown.status.state.name,
       kind: shown.status.kind?.name,
       since: shown.since,
@@ -120,32 +132,34 @@ class LiveActivities extends ChangeNotifier {
   Future<void> stop(String key) async {
     _shown.remove(key);
     notifyListeners();
-    await Native.endActivity(key, immediate: true);
+    await Native.endActivity(_routed(key), immediate: true);
   }
 
-  /// From the native side: activityToken, activityEnded.
+  /// From the native side: activityToken, activityEnded, for a [routedKey].
   void onNative(String event, Map<Object?, Object?> args) {
-    final key = args['key'] as String?;
+    final routed = args['key'] as String?;
     final token = args['token'] as String?;
-    if (key == null) return;
+    if (routed == null || splitRoutedKey(routed) == null) return;
     switch (event) {
       case 'activityToken' when token != null:
-        unawaited(_register(key, token));
+        unawaited(_register(routed, token));
       case 'activityEnded':
         if (token != null) {
-          _registered.remove('$key\n$token');
-          unawaited(_push({'action': 'activity_end', 'token': token, 'session': key}));
+          _registered.remove('$routed\n$token');
+          unawaited(_push({'action': 'activity_end', 'token': token, 'session': routed}));
         }
-        _shown.remove(key);
-        _prompted.remove(key);
-        notifyListeners();
+        if (_mine(routed) case final key?) {
+          _shown.remove(key);
+          _prompted.remove(key);
+          notifyListeners();
+        }
     }
   }
 
-  Future<void> _register(String key, String token) async {
-    if (!_registered.add('$key\n$token')) return;
-    final body = {'action': 'activity_register', 'token': token, 'session': key, 'platform': pushPlatform};
-    if (!await _push(body)) _registered.remove('$key\n$token');
+  Future<void> _register(String routed, String token) async {
+    if (!_registered.add('$routed\n$token')) return;
+    final body = {'action': 'activity_register', 'token': token, 'session': routed, 'platform': pushPlatform};
+    if (!await _push(body)) _registered.remove('$routed\n$token');
   }
 
   Future<bool> _push(Map<String, dynamic> body) async {
@@ -161,7 +175,7 @@ class LiveActivities extends ChangeNotifier {
   Future<void> _show(String key, ActivityStatus status) async {
     final since = DateTime.now();
     _shown[key] = (status: status, since: since);
-    await Native.updateActivity(key: key, state: status.state.name, kind: status.kind?.name, since: since);
+    await Native.updateActivity(key: _routed(key), state: status.state.name, kind: status.kind?.name, since: since);
   }
 
   /// The Mac's state changed: each followed session's activity follows it.
@@ -173,7 +187,7 @@ class LiveActivities extends ChangeNotifier {
         if (!macState) continue;
         _shown.remove(key);
         _prompted.remove(key);
-        unawaited(Native.endActivity(key));
+        unawaited(Native.endActivity(_routed(key)));
         notifyListeners();
         continue;
       }

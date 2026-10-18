@@ -20,7 +20,7 @@ class Kitty extends TerminalHost {
     this.timeout = const Duration(seconds: 5),
     this.restoreFront = true,
     int? uid,
-  }) : home = home ?? Platform.environment['HOME'] ?? '',
+  }) : home = home ?? homeDir(),
        uid = uid ?? _getuid();
 
   final String home;

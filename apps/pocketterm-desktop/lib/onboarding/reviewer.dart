@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pocketterm_core/session.dart';
+import 'package:pocketterm_core/terminal.dart' show homeDir;
 import 'package:pocketterm_core/ui.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -117,7 +118,7 @@ class _ReviewerAccessSheetState extends State<ReviewerAccessSheet> {
 
   Future<void> _save(ReviewerCode code) async {
     try {
-      final dir = widget.downloads ?? Directory('${Platform.environment['HOME']}/Downloads');
+      final dir = widget.downloads ?? Directory('${homeDir()}/Downloads');
       final base = 'PocketTerm reviewer code${code.label.isEmpty ? '' : ' – ${code.label}'}'.replaceAll(
         RegExp('[/:]'),
         '-',

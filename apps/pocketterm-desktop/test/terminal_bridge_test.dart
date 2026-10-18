@@ -11,6 +11,7 @@ import 'package:pocketterm_desktop/terminal_bridge.dart';
 
 /// Terminals that touch nothing on this Mac; [tmux]: an executable that exists.
 Terminals _terms({bool tmux = false}) => Terminals(
+  home: '/nonexistent-pocketterm',
   kitty: Kitty(socketDir: '/nonexistent-pocketterm', home: '/nonexistent-pocketterm', restoreFront: false),
   tmux: Tmux(executable: tmux ? '/bin/sh' : '/nonexistent-pocketterm/tmux', socketDirs: const []),
   wezterm: WezTerm(executable: '/nonexistent-pocketterm/wezterm', socketDir: '/nonexistent-pocketterm'),

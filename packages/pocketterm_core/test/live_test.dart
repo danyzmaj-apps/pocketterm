@@ -16,6 +16,24 @@ LiveView _follow(LiveLog log, List<LiveOp> ops, {LiveView? view}) {
 }
 
 void main() {
+  group('routed keys', () {
+    test('a routed key splits back into its computer and session', () {
+      for (final key in ['kitty-1/2', 'tmux:default/0', 'ghostty:CB2035E7-67BF-48C7-8D0A-83F3FA5B8074']) {
+        expect(splitRoutedKey(routedKey('ab12cd34', key)), (desktop: 'ab12cd34', key: key), reason: key);
+      }
+    });
+
+    test('anything else splits into nothing', () {
+      expect(splitRoutedKey('kitty-1/2'), isNull, reason: 'a bare key');
+      expect(splitRoutedKey('ab12cd3/kitty-1/2'), isNull, reason: 'id too short');
+      expect(splitRoutedKey('ab12cd345/kitty-1/2'), isNull, reason: 'id too long');
+      expect(splitRoutedKey('AB12CD34/kitty-1/2'), isNull, reason: 'uppercase');
+      expect(splitRoutedKey('ab12cd34kitty-1'), isNull, reason: 'no slash');
+      expect(splitRoutedKey('ab12cd34/'), isNull, reason: 'no session');
+      expect(splitRoutedKey(''), isNull);
+    });
+  });
+
   group('LiveLog → LiveView', () {
     test('a phone that follows every op ends with what the Mac has', () {
       final log = LiveLog([_text('u1', 'hi', kind: ItemKind.user)], older: false);

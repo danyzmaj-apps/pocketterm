@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:pocketterm_core/agent.dart';
+import 'package:pocketterm_core/terminal.dart' show homeDir;
 
 /// Runs [executable] with [arguments], as [Process.run] does.
 typedef Run = Future<ProcessResult> Function(String executable, List<String> arguments);
@@ -26,7 +27,7 @@ class IntegrationException implements Exception {
 /// copies bundled with the app: omp's extensions, Claude Code's plugin.
 class Integrations {
   Integrations({String? home, AssetBundle? bundle, Run? run, this._claudePaths})
-    : home = home ?? Platform.environment['HOME'] ?? '',
+    : home = home ?? homeDir(),
       _bundle = bundle ?? rootBundle,
       _run = run ?? Process.run;
 

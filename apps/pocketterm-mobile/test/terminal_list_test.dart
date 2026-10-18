@@ -31,6 +31,7 @@ void main() {
       SupabaseClient('http://localhost:1', 'anon'),
       'u1',
       dir,
+      desktopId: 'abcd1234',
       from: 'phone',
       send: (event, payload) => sent.add((event, payload)),
     );

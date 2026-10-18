@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/terminal_channel.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -21,7 +22,7 @@ class _FakeRealtime {
   final joins = StreamController<int>.broadcast();
   int joinCount = 0;
 
-  static const topic = 'realtime:terminal:u1';
+  static const topic = 'realtime:terminal:u1:abcd1234';
 
   int get port => _server.port;
 
@@ -110,7 +111,7 @@ void main() {
     received = [];
     channel = TerminalChannel(
       client,
-      'u1',
+      terminalTopic('u1', 'abcd1234'),
       {'state': received.add},
       name: 'test',
       onJoined: ({required joined}) => states.add(joined),

@@ -3,18 +3,35 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/terminal.dart';
 
 /// WezTerm, through `wezterm cli` against each running GUI's socket
-/// (`~/.local/share/wezterm/gui-sock-<pid>`). Window keys:
+/// (`~/.local/share/wezterm/gui-sock-<pid>`, on Windows too). Window keys:
 /// `wezterm:<gui pid>/<pane id>`.
 class WezTerm extends TerminalHost {
-  WezTerm({String? executable, String? socketDir, String? home})
-    : _exe = executable ?? findExecutable('wezterm', extra: const ['/Applications/WezTerm.app/Contents/MacOS/wezterm']),
-      _dir = socketDir ?? '${home ?? Platform.environment['HOME'] ?? ''}/.local/share/wezterm';
+  WezTerm({String? executable, String? socketDir, String? home, bool? windows})
+    : this._(executable, socketDir, home, windows ?? Platform.isWindows);
+
+  WezTerm._(String? executable, String? socketDir, String? home, this._windows)
+    : _exe = executable ?? _find(windows: _windows),
+      _dir = socketDir ?? p.join(home ?? homeDir(windows: _windows), '.local', 'share', 'wezterm');
+
+  static String? _find({required bool windows}) => findExecutable(
+    'wezterm',
+    windows: windows,
+    extra: windows
+        ? ['${Platform.environment['ProgramFiles'] ?? r'C:\Program Files'}\\WezTerm\\wezterm.exe']
+        : const ['/Applications/WezTerm.app/Contents/MacOS/wezterm'],
+  );
 
   final String? _exe;
   final String _dir;
+  final bool _windows;
+
+  /// Sockets that stopped answering (Windows, where a GUI's socket outlives
+  /// it): not asked again.
+  final _dead = <String>{};
 
   @override
   String get id => 'wezterm';
@@ -36,15 +53,18 @@ class WezTerm extends TerminalHost {
 
   bool get installed => _exe != null && File(_exe).existsSync();
 
-  /// GUI pid → its socket, for each socket whose GUI still runs.
+  /// GUI pid → its socket, for each socket whose GUI still runs (when
+  /// [procs] tell: on Windows, an empty process list tells nothing) and
+  /// that didn't stop answering.
   Map<String, String> _sockets(Procs? procs) {
     final d = Directory(_dir);
     if (!d.existsSync()) return const {};
     final out = <String, String>{};
+    final check = procs != null && !(_windows && procs.all.isEmpty);
     for (final e in d.listSync(followLinks: false)) {
       final m = RegExp(r'^gui-sock-(\d+)$').firstMatch(e.uri.pathSegments.last);
-      if (m == null) continue;
-      if (procs != null && procs.byPid(int.parse(m[1]!)) == null) continue;
+      if (m == null || _dead.contains(e.path)) continue;
+      if (check && procs.byPid(int.parse(m[1]!)) == null) continue;
       out[m[1]!] = e.path;
     }
     return out;
@@ -61,6 +81,7 @@ class WezTerm extends TerminalHost {
         environment: {'WEZTERM_UNIX_SOCKET': socket},
       ).timeout(const Duration(seconds: 5));
     } on TimeoutException {
+      if (_windows) _dead.add(socket);
       throw const TerminalException('WezTerm did not answer.');
     }
     if (r.exitCode != 0) {
@@ -68,6 +89,7 @@ class WezTerm extends TerminalHost {
       if (err.contains('is not valid') || err.contains('pane') && err.contains('not found')) {
         throw const TerminalException('That window is gone.');
       }
+      if (_windows) _dead.add(socket);
       throw TerminalException('WezTerm: ${err.split('\n').last}');
     }
     return r.stdout as String;
@@ -82,7 +104,11 @@ class WezTerm extends TerminalHost {
 
   @override
   Future<TermStatus> status(Procs procs) async {
-    if (!installed) return TermStatus(id, label, TermState.missing);
+    if (!installed) {
+      return _windows
+          ? TermStatus(id, label, TermState.missing, note: 'winget install wez.wezterm', fix: TermFix.install)
+          : TermStatus(id, label, TermState.missing);
+    }
     if (_sockets(procs).isEmpty) return TermStatus(id, label, TermState.idle, note: 'Not running');
     final n = (await windows(procs)).length;
     return TermStatus(id, label, TermState.ready, note: '$n window${n == 1 ? '' : 's'}');
@@ -101,7 +127,7 @@ class WezTerm extends TerminalHost {
       out.addAll(parseWezTermList(pid, json, procs));
     }
     // The foreground program's own folder, where the shell's report is older.
-    final cwds = await Procs.cwds([
+    final cwds = await Procs.cwds(windows: _windows, [
       for (final w in out)
         if (procs.foreground(w.tty) case final p?) p.pid,
     ]);
@@ -169,17 +195,28 @@ class WezTerm extends TerminalHost {
 
   /// A new tab in WezTerm's newest window (a new window would take the
   /// focus), or a new window if it has none. A WezTerm not running is
-  /// started in the background, and its first window is the new one.
+  /// started in the background (on Windows, its GUI in [cwd]), and its first
+  /// window is the new one.
   @override
   Future<String> launch(String cwd, {List<String>? command}) async {
     if (!Directory(cwd).existsSync()) throw TerminalException('No such folder: $cwd');
-    var sockets = _sockets(await Procs.snapshot());
+    var sockets = _sockets(await Procs.snapshot(windows: _windows));
     final fresh = sockets.isEmpty;
     if (fresh) {
-      await Process.run('/usr/bin/open', ['-g', '-a', 'WezTerm']);
+      if (_windows) {
+        final exe = _exe;
+        if (exe == null) throw const TerminalException('WezTerm is not installed.');
+        await Process.start(p.join(p.dirname(exe), 'wezterm-gui.exe'), [
+          'start',
+          '--cwd',
+          cwd,
+        ], mode: ProcessStartMode.detached);
+      } else {
+        await Process.run('/usr/bin/open', ['-g', '-a', 'WezTerm']);
+      }
       for (var i = 0; i < 40 && sockets.isEmpty; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 250));
-        sockets = _sockets(await Procs.snapshot());
+        sockets = _sockets(await Procs.snapshot(windows: _windows));
       }
       if (sockets.isEmpty) throw const TerminalException("WezTerm didn't start.");
     }
@@ -189,7 +226,8 @@ class WezTerm extends TerminalHost {
     ];
     if (fresh && command == null && panes.length == 1) {
       final key = 'wezterm:$pid/${panes.single['pane_id']}';
-      await type(key, ' cd -- ${shellQuote(cwd)} && clear\r');
+      // Windows' GUI started in cwd already.
+      if (!_windows) await type(key, ' cd -- ${shellQuote(cwd)} && clear\r');
       return key;
     }
     final newest = panes.isEmpty ? null : panes.map((p) => p['window_id'] as int).reduce(max);
@@ -200,28 +238,38 @@ class WezTerm extends TerminalHost {
       cwd,
       if (command != null) ...['--', ...command],
     ]);
-    final pane = (newest != null ? await spawn() : await keepFront(spawn, app: bundleId)).trim();
+    final pane = (newest != null ? await spawn() : await keepFront(spawn, app: bundleId, windows: _windows)).trim();
     return 'wezterm:$pid/$pane';
   }
 }
 
-/// `wezterm cli list --format json` (the GUI with pid [pid]) as windows.
+/// `wezterm cli list --format json` (the GUI with pid [pid]) as windows. A
+/// pane with no tty (Windows) names its program by its title.
 List<TermWindow> parseWezTermList(String pid, String json, [Procs? procs]) => [
   for (final p in jsonDecode(json) as List)
     () {
       final pane = p as Map;
       final tty = (pane['tty_name'] as String? ?? '').replaceFirst('/dev/', '');
+      final title = pane['title'] as String? ?? '';
       final fg = procs?.foreground(tty);
       final cwd = Uri.tryParse(pane['cwd'] as String? ?? '');
       return TermWindow(
         key: 'wezterm:$pid/${pane['pane_id']}',
-        title: pane['title'] as String? ?? '',
+        title: title,
         tab: pane['tab_title'] as String? ?? '',
-        cwd: cwd != null && cwd.scheme == 'file' ? cwd.path : '',
-        program: fg?.program ?? '',
+        cwd: cwd != null && cwd.scheme == 'file' ? cwdOfUri(cwd) : '',
+        program: fg?.program ?? (tty.isEmpty ? programOfTitle(title) : ''),
         focused: pane['is_active'] == true,
         app: 'wezterm',
         tty: tty,
       );
     }(),
 ];
+
+/// A `file:` URI's folder: a Mac's path as is; `file:///C:/Users/x/` (any
+/// host dropped) as `C:\Users\x`, a drive's root as `C:\`.
+String cwdOfUri(Uri u) {
+  if (!RegExp('^/[A-Za-z]:/').hasMatch(u.path)) return u.path;
+  final path = Uri(path: u.path.substring(1)).toFilePath(windows: true);
+  return path.length > 3 && path.endsWith(r'\') ? path.substring(0, path.length - 1) : path;
+}

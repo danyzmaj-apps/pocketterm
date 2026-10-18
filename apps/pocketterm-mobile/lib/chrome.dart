@@ -86,32 +86,52 @@ EdgeInsets toastMargin(GlobalKey? above) {
   return EdgeInsets.fromLTRB(15, 5, 15, 10 + height);
 }
 
-/// A screen's big title, with what goes on its right.
+/// A screen's big title, with what goes on its right; [onTap]: it picks
+/// something (a chevron after it says so).
 class PageTitle extends StatelessWidget {
-  const PageTitle(this.title, {this.trailing = const [], super.key});
+  const PageTitle(this.title, {this.trailing = const [], this.onTap, super.key});
   final String title;
   final List<Widget> trailing;
+  final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 10, 12, 6),
-    child: Row(
-      children: [
-        // Large text sizes: the title gives way, never the account button.
-        Expanded(
-          child: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: isIos
-                ? const TextStyle(fontSize: 34, fontWeight: FontWeight.w700, letterSpacing: .4)
-                : const TextStyle(fontSize: 28, fontWeight: FontWeight.w500),
+  Widget build(BuildContext context) {
+    final text = Text(
+      title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: isIos
+          ? const TextStyle(fontSize: 34, fontWeight: FontWeight.w700, letterSpacing: .4)
+          : const TextStyle(fontSize: 28, fontWeight: FontWeight.w500),
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 12, 6),
+      child: Row(
+        children: [
+          // Large text sizes: the title gives way, never the account button.
+          Expanded(
+            child: onTap == null
+                ? text
+                : Semantics(
+                    button: true,
+                    child: GestureDetector(
+                      onTap: onTap,
+                      behavior: HitTestBehavior.opaque,
+                      child: Row(
+                        children: [
+                          Flexible(child: text),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.keyboard_arrow_down_rounded, color: C.dim, size: 28),
+                        ],
+                      ),
+                    ),
+                  ),
           ),
-        ),
-        ...trailing,
-      ],
-    ),
-  );
+          ...trailing,
+        ],
+      ),
+    );
+  }
 }
 
 /// A group of rows: an inset rounded card (iOS's inset grouped list, or a

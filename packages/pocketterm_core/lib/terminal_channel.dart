@@ -7,8 +7,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// `event` and `type`.
 typedef TopicHandler = void Function(Map<String, dynamic> payload);
 
-/// The private Realtime topic `terminal:<user id>` (RLS: the user's own
-/// topic only), kept joined while open.
+/// A private Realtime [topic] (`terminal:<user id>:<desktop id>`, see
+/// terminalTopic in lib/live.dart; RLS: the user's own topics only), kept
+/// joined while open.
 ///
 /// realtime_client drops a channel for good once the server closes it, and a
 /// rejoin with a token that expired while the Mac slept or the phone was away
@@ -17,10 +18,12 @@ typedef TopicHandler = void Function(Map<String, dynamic> payload);
 /// that times out or never answers), this makes a new one, with a fresh token,
 /// after 1 s, 2 s, 4 s … up to [_maxWait].
 class TerminalChannel {
-  TerminalChannel(this._client, this._userId, this._handlers, {required this.name, this.onJoined});
+  TerminalChannel(this._client, this.topic, this._handlers, {required this.name, this.onJoined});
 
   final SupabaseClient _client;
-  final String _userId;
+
+  /// The topic joined.
+  final String topic;
   final Map<String, TopicHandler> _handlers;
 
   /// Who this is, in the log.
@@ -106,7 +109,7 @@ class TerminalChannel {
       final token = _client.auth.currentSession?.accessToken;
       if (token != null) await _client.realtime.setAuth(token);
       if (stale()) return;
-      final ch = _client.channel('terminal:$_userId', opts: const RealtimeChannelConfig(private: true));
+      final ch = _client.channel(topic, opts: const RealtimeChannelConfig(private: true));
       for (final MapEntry(:key, :value) in _handlers.entries) {
         ch.onBroadcast(event: key, callback: value);
       }

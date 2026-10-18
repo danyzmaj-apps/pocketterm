@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pocketterm_core/account.dart' show Avatar;
+import 'package:pocketterm_core/desktops.dart';
+import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/live_activity.dart';
 import 'package:pocketterm_core/native.dart';
 import 'package:pocketterm_core/session.dart';
@@ -35,6 +38,31 @@ class MobileSession extends Session {
   Set<String> get collapsedProjects => {...?_prefs.getStringList(_foldedKey)};
 
   Future<void> setCollapsedProjects(Set<String> cwds) => _prefs.setStringList(_foldedKey, [...cwds]);
+
+  static const _desktopKey = 'pocketterm_desktop';
+  static const _desktopsKey = 'pocketterm_desktops';
+
+  /// The account's computers, starting from the list and the choice this
+  /// phone kept, and keeping them as they change.
+  Desktops desktops() {
+    var cached = const <Desktop>[];
+    try {
+      cached = [
+        for (final d in jsonDecode(_prefs.getString(_desktopsKey) ?? '[]') as List) Desktop.fromJson((d as Map).cast()),
+      ];
+    } on Object catch (e) {
+      debugPrint('PocketTerm: computers cache: $e');
+    }
+    return Desktops(
+      client,
+      cached: cached,
+      saved: _prefs.getString(_desktopKey),
+      onChanged: (all, selected) {
+        unawaited(_prefs.setString(_desktopsKey, jsonEncode([for (final d in all) d.toJson()])));
+        unawaited(selected == null ? _prefs.remove(_desktopKey) : _prefs.setString(_desktopKey, selected));
+      },
+    );
+  }
 
   @override
   Future<void> onSignedIn(User user) => _registerPush(user.id);
@@ -103,6 +131,8 @@ class MobileSession extends Session {
   /// sessions.
   Future<List<({String key, String? token})>> _forgetHere() async {
     await _prefs.remove(_pushTokenKey);
+    await _prefs.remove(_desktopKey);
+    await _prefs.remove(_desktopsKey);
     final activities = await Native.liveActivities();
     for (final a in activities) {
       await Native.endActivity(a.key, immediate: true);
@@ -122,11 +152,19 @@ class MobileSession extends Session {
 }
 
 class MobileApp extends StatelessWidget {
-  const MobileApp({required this.session, @visibleForTesting this.terminal, super.key});
+  const MobileApp({
+    required this.session,
+    @visibleForTesting this.desktops,
+    @visibleForTesting this.remoteFor,
+    super.key,
+  });
   final MobileSession session;
 
-  /// See [HomePage.terminal].
-  final TerminalRemote? terminal;
+  /// See [HomePage.desktops].
+  final Desktops? desktops;
+
+  /// See [HomePage.remoteFor].
+  final TerminalRemote Function(String desktopId)? remoteFor;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -143,7 +181,7 @@ class MobileApp extends StatelessWidget {
             body: SafeArea(child: SetupPage(session: session)),
           );
         }
-        return HomePage(session: session, userId: user.id, terminal: terminal);
+        return HomePage(session: session, userId: user.id, desktops: desktops, remoteFor: remoteFor);
       },
     ),
   );
@@ -175,16 +213,28 @@ class MobileApp extends StatelessWidget {
 
 // ==================================================================== home
 
-/// The signed-in phone: the computer's coding sessions and terminal
-/// windows, with a + for a new session.
+/// The signed-in phone: the selected computer's coding sessions and
+/// terminal windows, with a + for a new session; the title picks the
+/// computer.
 class HomePage extends StatefulWidget {
-  const HomePage({required this.session, required this.userId, @visibleForTesting this.terminal, super.key});
+  const HomePage({
+    required this.session,
+    required this.userId,
+    @visibleForTesting this.desktops,
+    @visibleForTesting this.remoteFor,
+    super.key,
+  });
   final MobileSession session;
   final String userId;
 
-  /// A remote fed by hand (tests, screenshots); otherwise the home page
-  /// joins the computer over the session's server.
-  final TerminalRemote? terminal;
+  /// Computers handed in (tests, screenshots), never refreshed from a
+  /// server; otherwise the session's.
+  final Desktops? desktops;
+
+  /// Makes the remotes fed by hand (tests, screenshots), never attached or
+  /// disposed here; otherwise each joins its computer over the session's
+  /// server.
+  final TerminalRemote Function(String desktopId)? remoteFor;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -193,41 +243,111 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   StreamSubscription<Uri>? _links;
 
-  /// The computer's coding sessions and terminal windows, through PocketTerm
-  /// there; live while the app is in front. Null until its cache folder is
-  /// known.
+  late final Desktops _desktops = widget.desktops ?? widget.session.desktops();
+
+  /// While the Terminal list is in front, the list of computers is fetched
+  /// this often (and on coming to the front).
+  static const _refreshEvery = Duration(seconds: 30);
+  Timer? _refreshTimer;
+
+  /// Where remotes keep their caches; null until known.
+  Directory? _supportDir;
+
+  /// The selected computer's coding sessions and terminal windows, through
+  /// PocketTerm there; live while the app is in front. Null with no
+  /// computer, and until its cache folder is known.
   TerminalRemote? _terminal;
   bool _terminalAttached = false;
 
-  /// A tapped terminal push's session, waiting for [_terminal].
-  String? _sessionToOpen;
+  /// A tapped push's or link's session, waiting for its computer's remote.
+  ({String desktop, String key})? _sessionToOpen;
 
-  Future<void> _startTerminal() async {
+  bool get _resumed {
+    final state = WidgetsBinding.instance.lifecycleState;
+    return state == null || state == AppLifecycleState.resumed;
+  }
+
+  /// One remote, for the selected computer: another computer selected, the
+  /// old one goes (with any page on it) and a new one comes.
+  void _syncRemote() {
+    final d = _desktops.selected;
+    final old = _terminal;
+    if (old != null && old.desktopId == d?.id) {
+      old.desktopName = d?.name;
+      return;
+    }
+    TerminalRemote? next;
+    if (d != null) {
+      if (widget.remoteFor case final make?) {
+        next = make(d.id);
+      } else if (_supportDir case final dir?) {
+        next = TerminalRemote(widget.session.client, widget.userId, dir, desktopId: d.id);
+        next.activities = LiveActivities(widget.session.client, next);
+      } else {
+        return; // Made once the cache folder is known.
+      }
+      next.desktopName = d.name;
+    }
+    if (old != null) {
+      if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+      _dropRemote(old);
+    }
+    _terminal = next;
+    if (mounted) setState(() {});
+    if (next == null) return;
+    if (_resumed) _attachTerminal(attach: true);
+    if (_sessionToOpen case (:final desktop, :final key) when desktop == next.desktopId) {
+      _sessionToOpen = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openSession(desktop, key);
+      });
+    }
+  }
+
+  void _dropRemote(TerminalRemote t) {
+    _terminalAttached = false;
+    if (widget.remoteFor != null) return;
+    t.activities?.dispose();
+    t.dispose();
+  }
+
+  Future<void> _findSupportDir() async {
     final dir = await getApplicationSupportDirectory();
     if (!mounted) return;
-    final remote = TerminalRemote(widget.session.client, widget.userId, Directory('${dir.path}/terminal'));
-    remote.activities = LiveActivities(widget.session.client, remote);
-    setState(() => _terminal = remote);
-    final state = WidgetsBinding.instance.lifecycleState;
-    if (state == null || state == AppLifecycleState.resumed) _attachTerminal(attach: true);
-    final key = _sessionToOpen;
-    _sessionToOpen = null;
-    if (key != null) _openSession(key);
+    _supportDir = dir;
+    _syncRemote();
   }
 
   void _attachTerminal({required bool attach}) {
     final t = _terminal;
-    if (t == null || attach == _terminalAttached || widget.terminal != null) return;
+    if (t == null || attach == _terminalAttached || widget.remoteFor != null) return;
     _terminalAttached = attach;
     attach ? t.attach() : t.detach();
   }
 
-  /// Coding session [key] (from a tapped push or Live Activity), over the
-  /// Terminal list.
-  void _openSession(String key) {
+  /// The list of computers, unless a session or a sheet is over it or the
+  /// app is away.
+  void _refreshIfInFront() {
+    if (widget.desktops != null || !_resumed || !(ModalRoute.of(context)?.isCurrent ?? true)) return;
+    unawaited(_desktops.refresh());
+  }
+
+  /// A session of one of the computers ([routedKey]: a tapped push or Live
+  /// Activity), over the Terminal list of that computer. One on no computer
+  /// listed opens nothing.
+  Future<void> _openRouted(String routed) async {
+    final r = splitRoutedKey(routed);
+    if (r == null) return;
+    if (!_desktops.all.any((d) => d.id == r.desktop)) await _desktops.refresh();
+    if (!mounted || !_desktops.all.any((d) => d.id == r.desktop)) return;
+    _desktops.select(r.desktop);
+    _openSession(r.desktop, r.key);
+  }
+
+  void _openSession(String desktop, String key) {
     final t = _terminal;
-    if (t == null) {
-      _sessionToOpen = key;
+    if (t == null || t.desktopId != desktop) {
+      _sessionToOpen = (desktop: desktop, key: key);
       return;
     }
     Navigator.of(context).popUntil((r) => r.isFirst);
@@ -237,7 +357,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// Opens the session whose terminal push was tapped, if one was.
   Future<void> _openTappedSession() async {
     final key = await Native.takeTappedSession();
-    if (key != null && mounted) _openSession(key);
+    if (key != null && mounted) await _openRouted(key);
   }
 
   @override
@@ -251,21 +371,26 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     Native.listen(_onNative);
     // A terminal push tap that launched the app.
     WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_openTappedSession()));
-    if (widget.terminal case final t?) {
-      _terminal = t;
+    _desktops.addListener(_syncRemote);
+    if (widget.remoteFor != null) {
+      _syncRemote();
     } else {
-      unawaited(_startTerminal());
+      unawaited(_findSupportDir());
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _refreshIfInFront();
+    });
+    _refreshTimer = Timer.periodic(_refreshEvery, (_) => _refreshIfInFront());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_links?.cancel());
-    if (widget.terminal == null) {
-      _terminal?.activities?.dispose();
-      _terminal?.dispose();
-    }
+    _refreshTimer?.cancel();
+    _desktops.removeListener(_syncRemote);
+    if (_terminal case final t?) _dropRemote(t);
+    if (widget.desktops == null) _desktops.dispose();
     super.dispose();
   }
 
@@ -274,6 +399,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     switch (state) {
       case AppLifecycleState.resumed:
         _attachTerminal(attach: true);
+        _refreshIfInFront();
         unawaited(_openTappedSession());
       case AppLifecycleState.hidden || AppLifecycleState.paused:
         _attachTerminal(attach: false);
@@ -302,12 +428,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _onLink(Uri? uri) {
     if (uri == null || uri.scheme != 'pocketterm' || uri.host != 'session' || !mounted) return;
     final key = uri.queryParameters['key'];
-    if (key != null && key.isNotEmpty) _openSession(key);
+    if (key != null && key.isNotEmpty) unawaited(_openRouted(key));
   }
 
   @override
   Widget build(BuildContext context) {
     final terminal = _terminal;
+    final selected = _desktops.selected;
     return Scaffold(
       backgroundColor: screenColor,
       floatingActionButton: AddButton(
@@ -319,7 +446,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             PageTitle(
-              'Terminal',
+              selected?.name ?? 'Terminal',
+              onTap: () => unawaited(_pickDesktop()),
               trailing: [
                 IconButton(
                   tooltip: 'Account',
@@ -331,16 +459,77 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             Expanded(
               child: switch (terminal) {
                 final t? => TerminalList(
+                  // A new list for each computer: what it scrolled and
+                  // folded is that computer's.
+                  key: ObjectKey(t),
                   remote: t,
                   folded: widget.session.collapsedProjects,
                   onFolded: (f) => unawaited(widget.session.setCollapsedProjects(f)),
                 ),
-                null => const Center(
-                  child: Text('Reaching your computer…', style: TextStyle(color: C.dim)),
+                null => Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Text(
+                      selected != null
+                          ? 'Reaching ${selected.name}…'
+                          : _desktops.loaded
+                          ? _noDesktop
+                          : 'Looking for your computers…',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: C.dim, height: 1.5),
+                    ),
+                  ),
                 ),
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  static const _noDesktop =
+      'No computer yet. Install PocketTerm on your Mac or Windows PC and sign in; its sessions show up here.';
+
+  /// The account's computers, to show another one's sessions.
+  Future<void> _pickDesktop() {
+    if (widget.desktops == null) unawaited(_desktops.refresh());
+    return showAppSheet<void>(
+      context,
+      builder: (sheet) => SafeArea(
+        child: ListenableBuilder(
+          listenable: _desktops,
+          builder: (_, _) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
+                child: Text('Computers', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+              ),
+              if (_desktops.all.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 4, 20, 20),
+                  child: Text(_noDesktop, style: TextStyle(color: C.dim, height: 1.5)),
+                ),
+              for (final d in _desktops.all)
+                ListTile(
+                  key: ValueKey('desktop-${d.id}'),
+                  leading: Icon(d.windows ? Icons.desktop_windows : Icons.laptop_mac, color: C.dim),
+                  title: Text(d.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(
+                    d.online ? 'Online' : 'Seen ${ago(d.seenAt)}',
+                    style: TextStyle(color: d.online ? C.accent : C.dim),
+                  ),
+                  trailing: d.id == _desktops.selected?.id ? const Icon(Icons.check, color: C.accent) : null,
+                  onTap: () {
+                    Navigator.of(sheet).pop();
+                    _desktops.select(d.id);
+                  },
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );

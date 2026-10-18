@@ -36,14 +36,27 @@ void termToast(BuildContext context, Object e, {GlobalKey? above}) => ScaffoldMe
     ),
   );
 
-/// `/Users/me/Dev/x` as `~/Dev/x`.
+/// `/Users/me/Dev/x` as `~/Dev/x` (`C:\Users\me\x` as `~\x`).
 String shortPath(TerminalRemote r, String path) =>
     r.home.isNotEmpty && path.startsWith(r.home) ? '~${path.substring(r.home.length)}' : path;
 
-/// A folder's last part: the project.
+/// A folder's last part: the project. A Windows computer's paths take `\`.
 String baseName(String path) {
-  final parts = path.split('/').where((p) => p.isNotEmpty);
+  final parts = path.split(RegExp(r'[\\/]')).where((p) => p.isNotEmpty);
   return parts.isEmpty ? path : parts.last;
+}
+
+final _drive = RegExp(r'^[A-Za-z]:[\\/]');
+
+/// A folder typed in as the computer's path: `~/x` (from [home]), `/x`, or
+/// `C:\x` on a Windows computer; null for anything else (a search).
+String? typedPath(String typed, String home) {
+  final q = typed.trim();
+  if (q.startsWith('~')) {
+    final rest = q.substring(1);
+    return '$home${_drive.hasMatch(home) ? rest.replaceAll('/', r'\') : rest}';
+  }
+  return q.startsWith('/') || _drive.hasMatch(q) ? q : null;
 }
 
 /// How long ago [t] was: "just now", "5 min ago", "3 h ago", "2 d ago".
@@ -188,11 +201,12 @@ class CloseConfirm extends StatelessWidget {
 /// it isn't live. Keyed by its text, so a [Reveal] cross-fades a change.
 Widget? linkNote(TerminalRemote r, {Color color = C.bar}) {
   final at = r.stateAt;
+  final who = r.desktopName ?? 'the computer';
   final (text, busy) = switch (r.link) {
     TerminalLink.connecting => ('connecting…', true),
-    TerminalLink.waiting => ('asking the computer…', true),
+    TerminalLink.waiting => ('asking $who…', true),
     TerminalLink.offline => (
-      "the computer isn't answering. It has to be awake, with PocketTerm running and "
+      "$who isn't answering. It has to be awake, with PocketTerm running and "
           'Settings → Terminal from phone on.',
       false,
     ),
@@ -1092,12 +1106,7 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
   );
 
-  /// `~/x` and `/x` typed in, as the computer's path.
-  String? get _typed {
-    final q = _query.text.trim();
-    if (q.startsWith('~')) return '${remote.home}${q.substring(1)}';
-    return q.startsWith('/') ? q : null;
-  }
+  String? get _typed => typedPath(_query.text, remote.home);
 
   Future<void> _launch(String cwd) async {
     if (_launching != null) return;

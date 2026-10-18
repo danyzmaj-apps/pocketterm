@@ -16,11 +16,14 @@ create function pg_temp.sign_out() returns void language sql as $$
   select set_config('role', 'none', true), set_config('request.jwt.claims', '', true)
 $$;
 
--- What each account has: a phone, a followed session and a session of its own.
+-- What each account has: a phone, a followed session, a computer and a session of its own.
 insert into public.push_devices (token, user_id, key) values
   ('owner-phone', '00000000-0000-0000-0000-00000000000a', 'k'), ('demo-phone', '00000000-0000-0000-0000-00000000000d', 'k');
 insert into public.activity_tokens (token, user_id, session) values
   ('owner-activity', '00000000-0000-0000-0000-00000000000a', 's'), ('demo-activity', '00000000-0000-0000-0000-00000000000d', 's');
+insert into public.desktops (user_id, id, name, platform) values
+  ('00000000-0000-0000-0000-00000000000a', 'owner001', 'Owner''s Mac', 'macos'),
+  ('00000000-0000-0000-0000-00000000000d', 'demo0001', 'Demo PC', 'windows');
 insert into auth.sessions (id, user_id) values
   ('00000000-0000-0000-0000-0000000005a1', '00000000-0000-0000-0000-00000000000a'),
   ('00000000-0000-0000-0000-0000000005d1', '00000000-0000-0000-0000-00000000000d'),
@@ -36,6 +39,7 @@ insert into public.pairing_codes (id, code_hash, user_id, created_by, reusable, 
 create function pg_temp.rows_of(owner uuid) returns bigint language sql as $$
   select (select count(*) from public.push_devices where user_id = owner)
        + (select count(*) from public.activity_tokens where user_id = owner)
+       + (select count(*) from public.desktops where user_id = owner)
 $$;
 
 -- Reviewer access while codes work.
@@ -52,7 +56,7 @@ select is(pg_temp.rows_of('00000000-0000-0000-0000-00000000000d'), 0::bigint, 'i
 select ok(exists (select 1 from auth.users where id = '00000000-0000-0000-0000-00000000000d'), 'the demo account stays');
 select is((select count(*) from public.pairing_codes where reusable), 2::bigint, 'the reviewer codes survive');
 select ok(not exists (select 1 from public.pairing_codes where code_hash = 'demo-phone'), 'its own phone code is gone');
-select is(pg_temp.rows_of('00000000-0000-0000-0000-00000000000a'), 2::bigint, 'the owner''s rows are untouched');
+select is(pg_temp.rows_of('00000000-0000-0000-0000-00000000000a'), 3::bigint, 'the owner''s rows are untouched');
 select is(public.redeem_pairing_code('app-store', null), '{"user_id": "00000000-0000-0000-0000-00000000000d"}'::jsonb,
   'the next reviewer still signs in with the same code');
 

@@ -50,13 +50,22 @@ class _Watch {
   final String? window;
 }
 
-/// The phone side: the Mac's coding sessions (structured, per [LiveView]) and
-/// terminal windows (as screens). The channel and the hellos run between
-/// [attach] and [detach]: while the app is in front.
+/// The phone side for one computer ([desktopId]): its coding sessions
+/// (structured, per [LiveView]) and terminal windows (as screens). The
+/// channel and the hellos run between [attach] and [detach]: while the app is
+/// in front. Its disk cache is `terminal/<desktopId>` in the given support
+/// directory.
 class TerminalRemote extends ChangeNotifier {
-  TerminalRemote(this._client, this._userId, this._cacheDir, {@visibleForTesting TerminalSend? send, String? from})
-    : _transmit = send,
-      from = from ?? const Uuid().v4() {
+  TerminalRemote(
+    this._client,
+    this._userId,
+    Directory supportDir, {
+    required this.desktopId,
+    @visibleForTesting TerminalSend? send,
+    String? from,
+  }) : _cacheDir = Directory('${supportDir.path}/terminal/$desktopId'),
+       _transmit = send,
+       from = from ?? const Uuid().v4() {
     _load();
   }
 
@@ -64,6 +73,19 @@ class TerminalRemote extends ChangeNotifier {
   final String _userId;
   final Directory _cacheDir;
   final TerminalSend? _transmit;
+
+  /// The computer this talks to (lib/desktops.dart).
+  final String desktopId;
+
+  /// What the phone calls that computer (its name in the list), for "asking
+  /// MacBook Pro…"; null while not known.
+  String? get desktopName => _desktopName;
+  String? _desktopName;
+  set desktopName(String? name) {
+    if (name == _desktopName) return;
+    _desktopName = name;
+    notifyListeners();
+  }
 
   /// This phone, to the Mac.
   final String from;
@@ -82,7 +104,7 @@ class TerminalRemote extends ChangeNotifier {
 
   late final TerminalChannel _ch = TerminalChannel(
     _client,
-    _userId,
+    terminalTopic(_userId, desktopId),
     {
       for (final event in const ['state', 'items', 'live', 'screen', 'ran']) event: (p) => _receive(event, p),
     },

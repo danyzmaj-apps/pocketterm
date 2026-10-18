@@ -1,0 +1,3 @@
+tags:
+  # Needs a POSIX system (/bin/sh, unix sockets, /tmp); Windows CI excludes it.
+  posix:

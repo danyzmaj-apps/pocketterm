@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/apple_terminal.dart';
 import 'package:pocketterm_core/ghostty.dart';
@@ -10,53 +11,66 @@ import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/tmux.dart';
 import 'package:pocketterm_core/wezterm.dart';
 
-/// Every terminal on this Mac as one (lib/terminal.dart): their windows
+/// Every terminal on this computer as one (lib/terminal.dart): their windows
 /// merged (a terminal window showing tmux gives way to the tmux pane, which
 /// can do more), each request routed to the window's own terminal, and new
-/// windows opened where the person works.
+/// windows opened where the person works. A host this platform lacks is
+/// null (Windows has WezTerm only).
 class Terminals {
   Terminals({
-    required this.kitty,
-    required this.tmux,
-    required this.wezterm,
-    required this.iterm,
-    required this.terminal,
-    required this.ghostty,
+    required this.home,
+    this.kitty,
+    this.tmux,
+    this.wezterm,
+    this.iterm,
+    this.terminal,
+    this.ghostty,
     this.recency = appsByRecency,
     this.snapshot = Procs.snapshot,
   });
 
-  /// The terminals of this Mac; kitty's sockets in [kittyDir].
-  factory Terminals.standard({String kittyDir = '/tmp', String? home}) => Terminals(
-    kitty: Kitty(socketDir: kittyDir, home: home),
-    tmux: Tmux(),
-    wezterm: WezTerm(home: home),
-    iterm: ITerm(),
-    terminal: AppleTerminal(),
-    ghostty: Ghostty(),
-  );
+  /// The terminals of this computer: all six on a Mac (kitty's sockets in
+  /// [kittyDir]), WezTerm alone on Windows.
+  factory Terminals.standard({String kittyDir = '/tmp', String? home, bool? windows}) {
+    final h = home ?? homeDir(windows: windows);
+    if (windows ?? Platform.isWindows) {
+      return Terminals(
+        home: h,
+        wezterm: WezTerm(home: h, windows: true),
+      );
+    }
+    return Terminals(
+      home: h,
+      kitty: Kitty(socketDir: kittyDir, home: h),
+      tmux: Tmux(),
+      wezterm: WezTerm(home: h),
+      iterm: ITerm(),
+      terminal: AppleTerminal(),
+      ghostty: Ghostty(),
+    );
+  }
 
-  final Kitty kitty;
-  final Tmux tmux;
-  final WezTerm wezterm;
-  final ITerm iterm;
-  final AppleTerminal terminal;
-  final Ghostty ghostty;
+  /// The home folder, which the phone shows as ~.
+  final String home;
+  final Kitty? kitty;
+  final Tmux? tmux;
+  final WezTerm? wezterm;
+  final ITerm? iterm;
+  final AppleTerminal? terminal;
+  final Ghostty? ghostty;
 
   /// App names, most recently used first (`lsappinfo`); tests pass their own.
   final Future<List<String>> Function() recency;
 
-  /// The Mac's processes now (`ps`); tests pass their own.
+  /// The computer's processes now (`ps`); tests pass their own.
   final Future<Procs> Function() snapshot;
 
   /// In the order their windows are listed.
-  List<TerminalHost> get hosts => [kitty, tmux, wezterm, iterm, terminal, ghostty];
+  List<TerminalHost> get hosts => [?kitty, ?tmux, ?wezterm, ?iterm, ?terminal, ?ghostty];
 
   /// The terminal apps (tmux isn't one), in the order Auto prefers them
   /// when none was used lately.
-  List<TerminalHost> get apps => [kitty, iterm, wezterm, ghostty, terminal];
-
-  String get home => kitty.home;
+  List<TerminalHost> get apps => [?kitty, ?iterm, ?wezterm, ?ghostty, ?terminal];
 
   /// Terminal windows PocketTerm opened to show a tmux session: their key → the
   /// pane's (Ghostty tells no tty to match them by).
@@ -87,7 +101,7 @@ class Terminals {
         }),
     ]);
     this.problems = problems;
-    return merge(hosts, lists, tmux.clients, _shows);
+    return merge(hosts, lists, tmux?.clients ?? const {}, _shows);
   }
 
   /// [lists] (one per host of [hosts]) as one list: a window whose tty is a
@@ -131,10 +145,11 @@ class Terminals {
   Future<String?> locate(Map<String, dynamic>? term, {String cwd = ''}) async {
     if (term == null) return null;
     final socket = term['TMUX'];
-    if (socket is String && socket.isNotEmpty) tmux.learn(socket.split(',').first);
+    if (socket is String && socket.isNotEmpty) tmux?.learn(socket.split(',').first);
     final key = windowOfTerm(term);
     if (key != null) return key;
-    if (term['TERM_PROGRAM'] != 'ghostty') return null;
+    final ghostty = this.ghostty;
+    if (ghostty == null || term['TERM_PROGRAM'] != 'ghostty') return null;
     final tty = term['tty'] is String ? term['tty'] as String : '';
     final known = tty.isEmpty ? null : ghostty.byTty(tty);
     if (known != null) return known;
@@ -223,7 +238,7 @@ class Terminals {
   /// Whether a window [host] opens runs in tmux: the app can't press keys
   /// or show its screen, and tmux can.
   bool viaTmux(TerminalHost host) =>
-      tmux.installed && !(host.caps.contains(TermCap.keys) && host.caps.contains(TermCap.read));
+      (tmux?.installed ?? false) && !(host.caps.contains(TermCap.keys) && host.caps.contains(TermCap.read));
 
   /// How the phone names where a new session opens: "kitty", "Terminal (in tmux)".
   String describe(TerminalHost host) => viaTmux(host) ? '${host.label} (in tmux)' : host.label;
@@ -234,6 +249,7 @@ class Terminals {
     if (!Directory(cwd).existsSync()) throw TerminalException('No such folder: $cwd');
     final String key;
     if (viaTmux(host)) {
+      final tmux = this.tmux!;
       key = await tmux.launch(cwd);
       try {
         final gui = await host.launch(cwd, command: tmux.attach(tmux.lastSession!));
@@ -285,13 +301,16 @@ class Terminals {
   String createProject(String root, String name, {required List<String> roots}) {
     if (!roots.contains(root)) throw TerminalException('Not one of your project folders: $root');
     final n = name.trim();
-    if (n.isEmpty || n.contains('/') || n.startsWith('.') || n.codeUnits.any((c) => c < 0x20 || c == 0x7f)) {
+    if (n.isEmpty ||
+        n.contains(RegExp(r'[/\\:]')) ||
+        n.startsWith('.') ||
+        n.codeUnits.any((c) => c < 0x20 || c == 0x7f)) {
       throw const TerminalException(
-        'A project name can’t be empty, contain / or control characters, or start with a dot.',
+        r'A project name can’t be empty, contain /, \, : or control characters, or start with a dot.',
       );
     }
     if (!Directory(root).existsSync()) throw TerminalException('No such folder: $root');
-    final path = '$root/$n';
+    final path = p.join(root, n);
     if (FileSystemEntity.typeSync(path) != FileSystemEntityType.notFound) {
       throw TerminalException('There is already something named $n there.');
     }

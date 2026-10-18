@@ -1,3 +1,6 @@
+@Tags(['posix'])
+library;
+
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -39,6 +42,7 @@ const _wezList = '''
 
 /// Hosts that touch nothing on this Mac (paths that don't exist).
 Terminals _terms() => Terminals(
+  home: '/nonexistent-pocketterm',
   kitty: Kitty(socketDir: '/nonexistent-pocketterm', home: '/nonexistent-pocketterm', restoreFront: false),
   tmux: Tmux(executable: '/nonexistent-pocketterm/tmux', socketDirs: const []),
   wezterm: WezTerm(executable: '/nonexistent-pocketterm/wezterm', socketDir: '/nonexistent-pocketterm'),
@@ -217,8 +221,9 @@ void main() {
 
   test('new sessions run in tmux only where the app lacks screen or keys, and only with tmux', () {
     final terms = _terms();
-    expect(terms.viaTmux(terms.terminal), isFalse); // no tmux here
+    expect(terms.viaTmux(terms.terminal!), isFalse); // no tmux here
     final withTmux = Terminals(
+      home: terms.home,
       kitty: terms.kitty,
       tmux: Tmux(executable: '/bin/sh', socketDirs: const []),
       wezterm: terms.wezterm,
@@ -226,11 +231,11 @@ void main() {
       terminal: terms.terminal,
       ghostty: terms.ghostty,
     );
-    expect(withTmux.viaTmux(withTmux.terminal), isTrue);
-    expect(withTmux.viaTmux(withTmux.ghostty), isTrue);
-    expect(withTmux.viaTmux(withTmux.iterm), isFalse);
-    expect(withTmux.describe(withTmux.ghostty), 'Ghostty (in tmux)');
-    expect(withTmux.describe(withTmux.kitty), 'kitty');
+    expect(withTmux.viaTmux(withTmux.terminal!), isTrue);
+    expect(withTmux.viaTmux(withTmux.ghostty!), isTrue);
+    expect(withTmux.viaTmux(withTmux.iterm!), isFalse);
+    expect(withTmux.describe(withTmux.ghostty!), 'Ghostty (in tmux)');
+    expect(withTmux.describe(withTmux.kitty!), 'kitty');
   });
 
   group('projects', () {
@@ -268,7 +273,7 @@ void main() {
         throwsA(isA<TerminalException>().having((e) => e.message, 'message', contains('already'))),
       );
       expect(() => terms.createProject(root, 'other', roots: const []), throwsA(isA<TerminalException>()));
-      for (final name in ['', '  ', 'a/b', '.x', '..', 'a\x00b', 'a\nb']) {
+      for (final name in ['', '  ', 'a/b', r'a\b', 'C:x', '.x', '..', 'a\x00b', 'a\nb']) {
         expect(() => terms.createProject(root, name, roots: [root]), throwsA(isA<TerminalException>()), reason: name);
       }
       // A Project folder deleted since it was added.
@@ -280,7 +285,7 @@ void main() {
 
     test('launchNewProject takes the folder back when no window opens, so trying again works', () async {
       // kitty isn't listening here: the launch fails.
-      Future<String> attempt() => terms.launchNewProject(root, 'demo', roots: [root], host: terms.kitty);
+      Future<String> attempt() => terms.launchNewProject(root, 'demo', roots: [root], host: terms.kitty!);
       await expectLater(attempt(), throwsA(isA<TerminalException>()));
       expect(Directory('$root/demo').existsSync(), isFalse);
       // The same failure again, not "already something named demo there".

@@ -138,6 +138,7 @@ Future<void> fillField(WidgetTester tester, int index, String text) async {
 class DemoTerminals extends Terminals {
   DemoTerminals()
     : super(
+        home: '/nonexistent-pocketterm-demo',
         kitty: Kitty(socketDir: '/nonexistent-pocketterm-demo', home: '/nonexistent-pocketterm-demo'),
         tmux: Tmux(executable: '/nonexistent-pocketterm-demo/tmux', socketDirs: const []),
         wezterm: WezTerm(executable: '/nonexistent-pocketterm-demo/wezterm', socketDir: '/nonexistent-pocketterm-demo'),
@@ -150,12 +151,12 @@ class DemoTerminals extends Terminals {
 
   @override
   Future<List<TermStatus>> statuses() async => [
-    TermStatus(kitty.id, kitty.label, TermState.ready, note: '3 windows'),
-    TermStatus(tmux.id, tmux.label, TermState.ready, note: '2 panes'),
-    TermStatus(wezterm.id, wezterm.label, TermState.ready, note: '1 window'),
-    TermStatus(iterm.id, iterm.label, TermState.limited, note: '2 windows · ${iterm.limits}'),
-    TermStatus(terminal.id, terminal.label, TermState.limited, note: '1 window · ${terminal.limits}'),
-    TermStatus(ghostty.id, ghostty.label, TermState.limited, note: '1 window · ${ghostty.limits}'),
+    TermStatus(kitty!.id, kitty!.label, TermState.ready, note: '3 windows'),
+    TermStatus(tmux!.id, tmux!.label, TermState.ready, note: '2 panes'),
+    TermStatus(wezterm!.id, wezterm!.label, TermState.ready, note: '1 window'),
+    TermStatus(iterm!.id, iterm!.label, TermState.limited, note: '2 windows · ${iterm!.limits}'),
+    TermStatus(terminal!.id, terminal!.label, TermState.limited, note: '1 window · ${terminal!.limits}'),
+    TermStatus(ghostty!.id, ghostty!.label, TermState.limited, note: '1 window · ${ghostty!.limits}'),
   ];
 
   @override

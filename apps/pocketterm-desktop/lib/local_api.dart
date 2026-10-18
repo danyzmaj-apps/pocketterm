@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:pocketterm_core/terminal.dart' show homeDir;
 import 'package:pocketterm_desktop/live_hub.dart';
 
 /// The terminal's way in (the live sessions of omp and Claude Code): HTTP
@@ -58,7 +59,7 @@ class LocalApi {
 
   static File _defaultFile() {
     final env = Platform.environment;
-    return File(_named(env) ? env['POCKETTERM_CLI_JSON']! : '${env['HOME']}/.config/pocketterm/cli.json');
+    return File(_named(env) ? env['POCKETTERM_CLI_JSON']! : '${homeDir(env: env)}/.config/pocketterm/cli.json');
   }
 
   /// The port it listens on, once started.

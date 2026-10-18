@@ -239,6 +239,7 @@ begin
   if exists (select 1 from auth.users u where u.id = uid and u.raw_app_meta_data ->> 'pocketterm_demo' = 'true') then
     delete from public.push_devices where user_id = uid;
     delete from public.activity_tokens where user_id = uid;
+    delete from public.desktops where user_id = uid;
     -- Phone codes it made for itself; reviewer codes are the owner's.
     delete from public.pairing_codes where user_id = uid and not reusable;
     return;

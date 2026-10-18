@@ -57,7 +57,7 @@ class LiveSession {
   final _pending = <int, Completer<Map<String, dynamic>>>{};
 
   /// The folder's name, for notifications.
-  String get project => cwd.split('/').lastWhere((s) => s.isNotEmpty, orElse: () => cwd);
+  String get project => cwd.split(RegExp(r'[\\/]')).lastWhere((s) => s.isNotEmpty, orElse: () => cwd);
 
   LiveSummary get summary => LiveSummary(
     key: key,

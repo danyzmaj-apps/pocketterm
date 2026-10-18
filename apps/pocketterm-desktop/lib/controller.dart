@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/agent.dart';
+import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/native.dart';
 import 'package:pocketterm_core/session.dart';
 import 'package:pocketterm_core/terminals.dart';
@@ -29,11 +31,38 @@ class AppController extends Session {
   bool get terminalOn => _prefs.getBool(_terminalKey) ?? false;
   TerminalBridge? _bridge;
 
-  /// Whose `terminal:<uid>` channel [_bridge] is on.
+  /// Whose `terminal:<uid>:<desktop id>` channel [_bridge] is on.
   String? _bridgeUser;
 
   /// [_startBridge] calls, one after the other.
   Future<void> _bridging = Future.value();
+
+  /// While the bridge runs: this computer tells the server it's there
+  /// ([_seen]) every [_seenEvery], so the phone lists it.
+  Timer? _seenTimer;
+  Future<void> _seenOut = Future.value();
+  static const _seenEvery = Duration(seconds: 60);
+
+  static const _idChars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+
+  /// This computer among [userId]'s (table `desktops`): made up the first
+  /// time, then kept.
+  String desktopId(String userId) {
+    final key = 'desktop_id_$userId';
+    if (_prefs.getString(key) case final id?) return id;
+    final r = Random.secure();
+    final id = String.fromCharCodes([for (var i = 0; i < 8; i++) _idChars.codeUnitAt(r.nextInt(_idChars.length))]);
+    unawaited(_prefs.setString(key, id));
+    return id;
+  }
+
+  /// What the phone calls this computer: its name, as the server takes it.
+  @visibleForTesting
+  static String desktopName(String device) {
+    final name = device.trim();
+    if (name.isEmpty) return 'Computer';
+    return name.length <= 80 ? name : name.substring(0, 80);
+  }
 
   /// The Mac's terminals (kitty's sockets in [kittyDir]).
   late final Terminals terminals = Terminals.standard(kittyDir: kittyDir(Platform.environment));
@@ -104,19 +133,42 @@ class AppController extends Session {
     final old = _bridge;
     _bridge = null;
     _bridgeUser = null;
+    _seenTimer?.cancel();
+    _seenTimer = null;
     await old?.stop();
     if (want != null) {
       _bridgeUser = want;
+      final id = desktopId(want);
       await (_bridge = TerminalBridge(
         client,
         want,
+        id,
         terminals,
         live,
         () => codingAgent,
         () => terminalApp,
         () => projectRoots,
       )).start();
+      _seen(id);
+      _seenTimer = Timer.periodic(_seenEvery, (_) => _seen(id));
     }
+  }
+
+  /// Tells the server this computer [id] is there now; a failure waits for
+  /// the next beat.
+  void _seen(String id) {
+    _seenOut = _seenOut.then((_) async {
+      try {
+        await client.from('desktops').upsert({
+          'id': id,
+          'name': desktopName(device),
+          'platform': Platform.isWindows ? 'windows' : 'macos',
+          'seen_at': DateTime.now().toUtc().toIso8601String(),
+        }, onConflict: 'user_id,id');
+      } on Object catch (e) {
+        debugPrint('PocketTerm: computer not listed: $e');
+      }
+    });
   }
 
   /// A run ended, or the agent waits for an answer: the phones hear about
@@ -141,6 +193,18 @@ class AppController extends Session {
 
   @override
   Future<void> onSignedIn(User user) => _startBridge();
+
+  /// The phone stops listing this computer (unless the account went, and
+  /// the row with it).
+  @override
+  Future<void> onSigningOut({required bool accountDeleted}) async {
+    _seenTimer?.cancel();
+    _seenTimer = null;
+    await _seenOut;
+    final id = _prefs.getString('desktop_id_${user?.id}');
+    if (accountDeleted || id == null) return;
+    await client.from('desktops').delete().eq('id', id);
+  }
 
   /// However the user went (signed out here, the server refused a refresh,
   /// the account was deleted on another device): the terminal bridge stops.
@@ -193,7 +257,13 @@ class AppController extends Session {
     try {
       final res = await client.functions.invoke(
         'push',
-        body: {'action': 'notify', 'title': title, 'body': body, 'session': ?session, 'state': ?activity},
+        body: {
+          'action': 'notify',
+          'title': title,
+          'body': body,
+          if (session != null) 'session': routedKey(desktopId(user!.id), session),
+          'state': ?activity,
+        },
       );
       final data = res.data;
       return data is Map && (data['sent'] as int? ?? 0) > 0;

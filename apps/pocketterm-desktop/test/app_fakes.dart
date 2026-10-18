@@ -70,6 +70,7 @@ class FakeApp extends AppController {
   Terminals get terminals => _givenTerminals ?? _terminals;
   final Terminals? _givenTerminals;
   late final _terminals = Terminals(
+    home: '/nonexistent-pocketterm-test',
     kitty: Kitty(socketDir: '/nonexistent-pocketterm-test', home: '/nonexistent-pocketterm-test'),
     tmux: Tmux(executable: '/nonexistent-pocketterm-test/tmux', socketDirs: const []),
     wezterm: WezTerm(executable: '/nonexistent-pocketterm-test/wezterm', socketDir: '/nonexistent-pocketterm-test'),

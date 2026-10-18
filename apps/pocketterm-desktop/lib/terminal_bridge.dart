@@ -14,15 +14,27 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// The Mac side of Terminal from the phone (protocol: packages/pocketterm_core/lib/live.dart): the
 /// coding sessions [LiveHub] knows and the terminals' windows
-/// (packages/pocketterm_core/lib/terminals.dart) go out on the user's private
-/// topic; what the phone asks for is done here, where the window's
-/// terminal can do it. The terminals are polled only while a phone has said
-/// hello lately.
+/// (packages/pocketterm_core/lib/terminals.dart) go out on this computer's
+/// private topic (`terminal:<user id>:<desktop id>`); what the phone asks
+/// for is done here, where the window's terminal can do it. The terminals
+/// are polled only while a phone has said hello lately.
 class TerminalBridge {
-  TerminalBridge(this._client, this._userId, this._terms, this._hub, this._agent, this._app, this._roots);
+  TerminalBridge(
+    this._client,
+    this._userId,
+    this._desktopId,
+    this._terms,
+    this._hub,
+    this._agent,
+    this._app,
+    this._roots,
+  );
 
   final SupabaseClient _client;
   final String _userId;
+
+  /// This computer, among the user's (lib/controller.dart).
+  final String _desktopId;
   final Terminals _terms;
   final LiveHub _hub;
 
@@ -48,7 +60,7 @@ class TerminalBridge {
   /// Realtime refuses big messages; a full screen is cut to this much JSON.
   static const _maxScreenJson = 90000;
 
-  late final TerminalChannel _ch = TerminalChannel(_client, _userId, {
+  late final TerminalChannel _ch = TerminalChannel(_client, terminalTopic(_userId, _desktopId), {
     'hello': _onHello,
     'sync': _onSync,
     'run': (m) => unawaited(_onRun(m)),
@@ -302,7 +314,7 @@ class TerminalBridge {
     }
     unawaited(
       _client.functions
-          .invoke('push', body: {'action': 'activity', 'session': key, ...activityJson(status)})
+          .invoke('push', body: {'action': 'activity', 'session': routedKey(_desktopId, key), ...activityJson(status)})
           .then((_) {}, onError: (Object e) => debugPrint('PocketTerm: Live Activity push: $e')),
     );
   }
@@ -828,7 +840,7 @@ String? cantAnswer(Terminals terms, String window) {
   if (read && terms.can(window, TermCap.keys)) return null;
   final label = terms.hostOf(window)?.label ?? 'This terminal';
   return "$label can't ${read ? 'press keys' : 'show its screen'}, so answer this on the computer. "
-      '${terms.tmux.installed ? 'Sessions you start from the phone run in tmux there, which can.' : 'With tmux (brew install tmux), sessions you start from the phone can.'}';
+      '${(terms.tmux?.installed ?? false) ? 'Sessions you start from the phone run in tmux there, which can.' : 'With tmux (brew install tmux), sessions you start from the phone can.'}';
 }
 
 /// Why a slash command for the session in [window] can't be run from the

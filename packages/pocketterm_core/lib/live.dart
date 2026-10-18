@@ -15,8 +15,9 @@ import 'package:pocketterm_core/agent.dart';
 //   iTerm2, Terminal, Ghostty): shells and anything else,
 //   and the agents' own menus when the phone needs them.
 //
-// Mac ↔ phone: the private Realtime broadcast topic `terminal:<user id>`
-// (RLS: the user's own topic only). Nothing is stored on the server.
+// Computer ↔ phone: the private Realtime broadcast topic
+// `terminal:<user id>:<desktop id>` ([terminalTopic]; RLS: the user's own
+// topics only), one per computer. Nothing is stored on the server.
 //
 //   phone → Mac   hello  {from, session?, window?}   every 4 s while the app is in front;
 //                        session: the live session it shows, window: the screen it shows
@@ -62,6 +63,24 @@ import 'package:pocketterm_core/agent.dart';
 
 /// The private Storage bucket images from the phone pass through.
 const imageBucket = 'terminal';
+
+/// The topic one computer ([desktopId], lib/desktops.dart) and the phones
+/// talk on.
+String terminalTopic(String userId, String desktopId) => 'terminal:$userId:$desktopId';
+
+/// A session [key] as pushes and links carry it: with the computer it's on,
+/// so a tap on the phone opens it there.
+String routedKey(String desktopId, String key) => '$desktopId/$key';
+
+final _desktopId = RegExp(r'^[a-z0-9]{8}$');
+
+/// The computer and the session of a [routedKey]; null if [s] isn't one.
+({String desktop, String key})? splitRoutedKey(String s) {
+  if (s.length < 10 || s[8] != '/') return null;
+  final desktop = s.substring(0, 8);
+  if (!_desktopId.hasMatch(desktop)) return null;
+  return (desktop: desktop, key: s.substring(9));
+}
 
 enum ItemKind { user, assistant, tool, notice }
 

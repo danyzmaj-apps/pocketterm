@@ -1,7 +1,7 @@
 -- Row level security: every account sees and changes only its own rows (supabase test db).
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(19);
+select plan(24);
 
 insert into auth.users (id, email, raw_app_meta_data) values
   ('00000000-0000-0000-0000-00000000000a', 'a@example.com', '{"provider": "github"}'),
@@ -23,6 +23,7 @@ insert into public.pairing_failures (ip) values ('192.0.2.1');
 insert into public.pairing_codes (id, code_hash, user_id, created_by, reusable, expires_at) values
   ('00000000-0000-0000-0000-0000000003b0', 'b-code', '00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000b', true, now() + interval '1 day');
 insert into storage.objects (bucket_id, name) values ('terminal', '00000000-0000-0000-0000-00000000000b/b.png');
+insert into public.desktops (user_id, id, name, platform) values ('00000000-0000-0000-0000-00000000000b', 'bbbbbbbb', 'B''s PC', 'windows');
 
 select pg_temp.sign_in('00000000-0000-0000-0000-00000000000a');
 
@@ -46,6 +47,17 @@ select throws_ok('select code_hash from public.pairing_codes', '42501', null, 'n
 select throws_ok($$insert into public.pairing_codes (code_hash, user_id, created_by, expires_at)
   values ('mine', '00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000a', now() + interval '1 day')$$,
   '42501', null, 'codes are made only by functions/pair');
+
+-- Computers: one's own, with a well-formed id, a name and a known platform.
+select is((select count(*) from public.desktops), 0::bigint, 'B''s computers are hidden');
+select lives_ok($$insert into public.desktops (id, name, platform) values ('a1b2c3d4', 'A''s Mac', 'macos')$$,
+  'A registers a computer');
+select throws_ok($$insert into public.desktops (id, name, platform) values ('A1B2C3D4', 'x', 'macos')$$,
+  '23514', null, 'a computer id is 8 lowercase letters and digits');
+select throws_ok($$insert into public.desktops (id, name, platform) values ('e5f6g7h8', 'x', 'linux')$$,
+  '23514', null, 'a computer is a Mac or a Windows PC');
+select throws_ok($$insert into public.desktops (id, name, platform) values ('i9j0k1l2', '', 'windows')$$,
+  '23514', null, 'a computer has a name');
 
 -- Storage: one's own folder of the terminal bucket.
 select is((select count(*) from storage.objects), 0::bigint, 'B''s images are hidden');

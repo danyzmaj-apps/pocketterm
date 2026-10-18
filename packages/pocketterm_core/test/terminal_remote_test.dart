@@ -11,8 +11,14 @@ void main() {
   late List<(String, Map<String, dynamic>)> sent;
   final client = SupabaseClient('http://localhost:1', 'anon');
 
-  TerminalRemote remote() =>
-      TerminalRemote(client, 'u1', dir, from: 'phone', send: (event, payload) => sent.add((event, payload)));
+  TerminalRemote remote({String desktopId = 'abcd1234'}) => TerminalRemote(
+    client,
+    'u1',
+    dir,
+    desktopId: desktopId,
+    from: 'phone',
+    send: (event, payload) => sent.add((event, payload)),
+  );
 
   List<Map<String, dynamic>> syncs() => [
     for (final (e, p) in sent)
@@ -81,6 +87,17 @@ void main() {
     // The first state from the Mac replaces the cached one.
     b.handle('state', state());
     expect(b.fromCache, isFalse);
+  });
+
+  test("each computer has its own cache: another's state never shows", () {
+    remote()
+      ..handle('state', state())
+      ..handle('items', items())
+      ..flush();
+    final other = remote(desktopId: 'zzzz9999');
+    expect(other.fromCache, isFalse);
+    expect(other.sessions, isEmpty);
+    expect(other.view('kitty-1/1'), isNull);
   });
 
   test("where sessions open, the Mac's terminals and Project folders survive the cache; an older Mac has none", () {
@@ -229,7 +246,7 @@ void main() {
     remote()
       ..handle('items', items())
       ..flush();
-    final file = Directory('${dir.path}/sessions').listSync().whereType<File>().single
+    final file = Directory('${dir.path}/terminal/abcd1234/sessions').listSync().whereType<File>().single
       ..setLastModifiedSync(DateTime.now().subtract(const Duration(days: 15)));
     expect(remote().view('kitty-1/1'), isNull);
     expect(file.existsSync(), isFalse);

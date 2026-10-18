@@ -5,7 +5,6 @@
 @Tags(['screenshots'])
 library;
 
-import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -13,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/desktops.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_mobile/mobile.dart';
@@ -182,12 +182,6 @@ void main() {
       ..setMockStreamHandler(
         const EventChannel('com.llfbandit.app_links/events'),
         MockStreamHandler.inline(onListen: (_, _) {}),
-      )
-      // The home page's own remote waits here for good: it would join the
-      // computer over Supabase (the shots feed their own remote instead).
-      ..setMockMethodCallHandler(
-        const MethodChannel('plugins.flutter.io/path_provider'),
-        (_) => Completer<Object?>().future,
       );
   });
 
@@ -226,7 +220,15 @@ void main() {
     await tester.pumpWidget(
       RepaintBoundary(
         key: shot,
-        child: MobileApp(session: session, terminal: terminal),
+        child: MobileApp(
+          session: session,
+          desktops: Desktops(
+            SupabaseClient('http://localhost:1', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false)),
+            cached: [Desktop(id: 'abcd1234', name: 'MacBook Pro', platform: 'macos', seenAt: DateTime.now())],
+            saved: 'abcd1234',
+          ),
+          remoteFor: (_) => terminal,
+        ),
       ),
     );
     await tester.pump();
@@ -240,6 +242,7 @@ void main() {
           SupabaseClient('http://localhost:1', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false)),
           'user',
           cache,
+          desktopId: 'abcd1234',
           from: 'phone',
           send: (_, _) {},
         )

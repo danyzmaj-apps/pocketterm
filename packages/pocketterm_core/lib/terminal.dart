@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/terminals.dart' show Terminals;
 
@@ -166,6 +167,9 @@ enum TermFix {
 
   /// Open System Settings → Privacy & Security → Automation.
   automation,
+
+  /// Open the terminal's install page (WezTerm on Windows).
+  install,
 }
 
 class TermStatus {
@@ -450,13 +454,27 @@ String programOf(String args) {
   return first;
 }
 
-/// A snapshot of the processes on this Mac (one `ps`), to tell a tty's
-/// foreground program and whether an app runs.
+/// The program a window [title] names, for terminals that tell no tty
+/// (WezTerm on Windows): its first word (or its path, up to `.exe`), the
+/// last part of that path, without `.exe`, lowercased.
+String programOfTitle(String title) {
+  final t = title.trim();
+  final exe = RegExp(r'^.*?\.exe\b', caseSensitive: false).firstMatch(t)?[0];
+  final word = exe ?? t.split(RegExp(r'\s+')).first;
+  return word.split(RegExp(r'[\\/]')).last.replaceFirst(RegExp(r'\.exe$', caseSensitive: false), '').toLowerCase();
+}
+
+/// A snapshot of the computer's processes (one `ps`; `tasklist` on Windows),
+/// to tell a tty's foreground program and whether an app runs.
 class Procs {
   Procs(this.all);
 
-  static Future<Procs> snapshot() async {
+  static Future<Procs> snapshot({bool? windows}) async {
     try {
+      if (windows ?? Platform.isWindows) {
+        final r = await Process.run('tasklist', ['/fo', 'csv', '/nh']);
+        return Procs(parseTasklist(r.stdout as String));
+      }
       final r = await Process.run('/bin/ps', ['-Ao', 'pid=,ppid=,pgid=,tpgid=,tty=,stat=,args=']);
       return Procs(parsePs(r.stdout as String));
     } on ProcessException {
@@ -485,8 +503,9 @@ class Procs {
   /// The pid of the first process whose command starts with [exe].
   int? pidOf(String exe) => all.where((p) => p.args.startsWith(exe)).firstOrNull?.pid;
 
-  /// Working directories of [pids], in one `lsof`.
-  static Future<Map<int, String>> cwds(Iterable<int> pids) async {
+  /// Working directories of [pids], in one `lsof`; none on Windows.
+  static Future<Map<int, String>> cwds(Iterable<int> pids, {bool? windows}) async {
+    if (windows ?? Platform.isWindows) return const {};
     final list = pids.toSet();
     if (list.isEmpty) return const {};
     try {
@@ -516,6 +535,18 @@ List<Proc> parsePs(String out) {
   ];
 }
 
+/// `tasklist /fo csv /nh` (`"image","pid","session","session#","memory"`
+/// lines) as [Proc]s: only the pid and the image name are known.
+List<Proc> parseTasklist(String csv) {
+  final field = RegExp('"((?:[^"]|"")*)"');
+  return [
+    for (final l in const LineSplitter().convert(csv))
+      if ([for (final m in field.allMatches(l)) m[1]!.replaceAll('""', '"')] case [final image, final pid, ...])
+        if (int.tryParse(pid) case final pid?)
+          Proc(pid: pid, ppid: 0, pgid: 0, tpgid: -1, tty: '', stat: '', args: image),
+  ];
+}
+
 /// `lsof -a -d cwd -Fpn -p …` as pid → directory.
 Map<int, String> parseLsofCwd(String out) {
   final cwds = <int, String>{};
@@ -527,22 +558,34 @@ Map<int, String> parseLsofCwd(String out) {
   return cwds;
 }
 
+/// The home folder: `USERPROFILE` on Windows, else `HOME`; empty if unset.
+String homeDir({Map<String, String>? env, bool? windows}) =>
+    (env ?? Platform.environment)[(windows ?? Platform.isWindows) ? 'USERPROFILE' : 'HOME'] ?? '';
+
 /// An executable named [name] in the usual places (a GUI app's PATH is
-/// short), or in [extra]; null if none.
-String? findExecutable(String name, {List<String> extra = const [], Map<String, String>? env}) {
+/// short), or in [extra]; null if none. On Windows: PATH (split on `;`),
+/// `<name>.exe` before `<name>` in each folder.
+String? findExecutable(String name, {List<String> extra = const [], Map<String, String>? env, bool? windows}) {
   final path = (env ?? Platform.environment)['PATH'] ?? '';
-  for (final dir in [
-    ...path.split(':').where((d) => d.isNotEmpty),
-    '/opt/homebrew/bin',
-    '/usr/local/bin',
-    '/opt/local/bin',
-    '/usr/bin',
-  ]) {
-    final f = File('$dir/$name');
-    if (f.existsSync()) return f.path;
-  }
-  for (final p in extra) {
-    if (File(p).existsSync()) return p;
+  final candidates = (windows ?? Platform.isWindows)
+      ? [
+          for (final dir in path.split(';').where((d) => d.isNotEmpty)) ...[
+            p.join(dir, '$name.exe'),
+            p.join(dir, name),
+          ],
+        ]
+      : [
+          for (final dir in [
+            ...path.split(':').where((d) => d.isNotEmpty),
+            '/opt/homebrew/bin',
+            '/usr/local/bin',
+            '/opt/local/bin',
+            '/usr/bin',
+          ])
+            '$dir/$name',
+        ];
+  for (final f in [...candidates, ...extra]) {
+    if (File(f).existsSync()) return f;
   }
   return null;
 }
@@ -745,8 +788,10 @@ String shellQuote(String s) => "'${s.replaceAll("'", r"'\''")}'";
 
 // ------------------------------------------------------------ focus
 
-/// The app in front (its pid and bundle id), if it can be told.
-Future<({int pid, String bundle})?> frontApp() async {
+/// The app in front (its pid and bundle id), if it can be told; none off
+/// macOS.
+Future<({int pid, String bundle})?> frontApp({bool? windows}) async {
+  if (windows ?? Platform.isWindows) return null;
   try {
     final asn = ((await Process.run('/usr/bin/lsappinfo', ['front'])).stdout as String).trim();
     if (asn.isEmpty) return null;
@@ -767,8 +812,9 @@ Future<({int pid, String bundle})?> frontApp() async {
 /// pid, so a second instance of the same app (a second kitty) counts too.
 /// The watching runs in an osascript of its own, which starts while
 /// [action] does and answers within a few hundredths of a second, so the
-/// focus is gone for about a tenth of a second.
-Future<T> keepFront<T>(Future<T> Function() action, {String? app}) async {
+/// focus is gone for about a tenth of a second. Off macOS, just [action].
+Future<T> keepFront<T>(Future<T> Function() action, {String? app, bool? windows}) async {
+  if (windows ?? Platform.isWindows) return await action();
   final before = await frontApp();
   Process? watch;
   if (before != null) {
@@ -814,8 +860,10 @@ function run(argv) {
 }''';
 
 /// Terminal apps by recent use, most recent first: names as
-/// `lsappinfo visibleProcessList` gives them ("kitty", "iTerm2").
-Future<List<String>> appsByRecency() async {
+/// `lsappinfo visibleProcessList` gives them ("kitty", "iTerm2"); none off
+/// macOS.
+Future<List<String>> appsByRecency({bool? windows}) async {
+  if (windows ?? Platform.isWindows) return const [];
   try {
     final out = (await Process.run('/usr/bin/lsappinfo', ['visibleProcessList'])).stdout as String;
     return [for (final m in RegExp('"([^"]+)"').allMatches(out)) m[1]!.replaceAll('_', ' ')];

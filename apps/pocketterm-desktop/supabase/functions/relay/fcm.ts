@@ -19,7 +19,7 @@ export const tokenAudience = "https://oauth2.googleapis.com/token";
 /** An FCM registration token. */
 export const fcmToken = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_:\-]{100,4096}$/.test(v);
 
-export const fcmKinds = ["reminder", "terminal", "activity"] as const;
+export const fcmKinds = ["terminal", "activity"] as const;
 export type FcmKind = (typeof fcmKinds)[number];
 
 /** The service account from FCM_SERVICE_ACCOUNT's JSON; a string says what's wrong. */
@@ -82,7 +82,7 @@ export function fcmMessage(token: string, kind: FcmKind, enc: string, collapse?:
       android: {
         priority: "high",
         ...(collapse ? { collapse_key: collapse } : {}),
-        // A session's state is stale within the hour; a reminder or an alert keeps a day.
+        // A session's state is stale within the hour; an alert keeps a day.
         ttl: kind === "activity" ? "3600s" : "86400s",
       },
     },

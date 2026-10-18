@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Sets up your own PocketTerm backend on a Supabase project you created at
-# https://supabase.com/dashboard (the free plan is plenty): database, sign-in,
-# edge functions and the AI key. Safe to run again, e.g. after pulling a new
+# https://supabase.com/dashboard (the free plan is plenty): database, sign-in
+# and edge functions. Safe to run again, e.g. after pulling a new
 # version (it applies new migrations and redeploys the functions).
 #
 #   apps/pocketterm-desktop/tool/setup-backend.sh [project-ref]
@@ -19,21 +19,6 @@ ask() { # ask VAR "prompt" [default] [secret]
   if [[ "${4:-}" == secret ]]; then read -rsp "$2: " reply && echo; else read -rp "$2${3:+ [$3]}: " reply; fi
   printf -v "$1" '%s' "${reply:-${3:-}}"
 }
-# Function secrets go to the CLI in a mode-600 file, never as arguments,
-# which any local user could read with ps while it runs.
-SECRETS_FILE=""
-trap '[[ -z "$SECRETS_FILE" ]] || rm -f "$SECRETS_FILE"' EXIT
-set_secrets() { # set_secrets NAME=value …
-  SECRETS_FILE=$(mktemp) && chmod 600 "$SECRETS_FILE"
-  local pair value
-  for pair in "$@"; do
-    value=${pair#*=}
-    [[ "$value" != *"'"* && "$value" != *$'\n'* ]] || die "${pair%%=*} can't contain ' or a line break"
-    printf "%s='%s'\n" "${pair%%=*}" "$value" >>"$SECRETS_FILE"
-  done
-  supabase secrets set --env-file "$SECRETS_FILE"
-  rm -f "$SECRETS_FILE"
-}
 
 command -v supabase >/dev/null || die "install the Supabase CLI first: brew install supabase/tap/supabase"
 command -v jq >/dev/null || die "install jq first: brew install jq (or your package manager's jq)"
@@ -48,10 +33,10 @@ fi
 [[ "$REF" =~ ^[a-z0-9]{20}$ ]] || die "'$REF' isn't a project ref (20 lowercase letters and digits)"
 URL="https://$REF.supabase.co"
 
-say "1/6  Linking $REF"
+say "1/5  Linking $REF"
 supabase link --project-ref "$REF"
 
-say "2/6  GitHub sign-in"
+say "2/5  GitHub sign-in"
 ENV=supabase/.env
 touch "$ENV" && chmod 600 "$ENV"
 if grep -q '^GITHUB_CLIENT_SECRET=.' "$ENV"; then
@@ -72,36 +57,15 @@ EOF
   mv "$ENV.tmp" "$ENV" && chmod 600 "$ENV"
 fi
 
-say "3/6  Database"
+say "3/5  Database"
 supabase db push --yes
 
-say "4/6  Auth settings (GitHub, the pocketterm:// redirect, private sign-up)"
+say "4/5  Auth settings (GitHub, the pocketterm:// redirect, private sign-up)"
 supabase config push --yes
 
-say "5/6  Edge functions"
-supabase functions deploy ask --no-verify-jwt
-supabase functions deploy device --no-verify-jwt
+say "5/5  Edge functions"
 supabase functions deploy pair --no-verify-jwt
 supabase functions deploy push --no-verify-jwt
-
-say "6/6  AI for quick questions"
-if supabase secrets list 2>/dev/null | grep -q AI_API_KEY; then
-  echo "AI_API_KEY is already set (change it with: supabase secrets set AI_API_KEY=…)."
-else
-  cat <<EOF
-Any OpenAI-compatible API works. Examples:
-  DeepSeek     https://api.deepseek.com        deepseek-flash   (default)
-  OpenAI       https://api.openai.com/v1       gpt-5-mini
-  OpenRouter   https://openrouter.ai/api/v1    anthropic/claude-haiku-4.5
-Leave the key empty to skip; connect one later from the Mac app (Settings → AI).
-EOF
-  ask AI_BASE_URL "API base URL" "https://api.deepseek.com"
-  ask AI_MODEL "Model" "deepseek-flash"
-  ask AI_API_KEY "API key" "" secret
-  if [[ -n "$AI_API_KEY" ]]; then
-    set_secrets "AI_BASE_URL=$AI_BASE_URL" "AI_MODEL=$AI_MODEL" "AI_API_KEY=$AI_API_KEY"
-  fi
-fi
 
 KEY=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r 'map(select(.type == "publishable"))[0].api_key // empty')
 [[ -n "$KEY" ]] || die "no publishable key on this project (Project Settings → API Keys → create one)"
@@ -113,8 +77,8 @@ LINK="pocketterm://setup?url=$(printf %s "$URL" | sed 's/:/%3A/g; s#/#%2F#g')&ke
 say "Done. Your backend is ready."
 cat <<EOF
 
-Connect PocketTerm on this Mac by opening the setup link (or paste it into PocketTerm's
-setup screen). Phones sign in with a code from the Mac: once you're signed in
+Connect PocketTerm on this computer by opening the setup link (or paste it into PocketTerm's
+setup screen). Phones sign in with a code from the computer: once you're signed in
 there, Settings → Set up phone….
 
   $LINK

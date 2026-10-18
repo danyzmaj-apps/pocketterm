@@ -26,17 +26,17 @@ const apns = (status = 200, reason?: string) => () =>
 
 Deno.test("an iPhone alert goes to APNs with generic text and the ciphertext", async () => {
   network(apns());
-  const res = await relay(post({ token: hex(1), kind: "reminder", enc: "c2VhbGVk", collapse: "todo-1" }));
+  const res = await relay(post({ token: hex(1), kind: "terminal", enc: "c2VhbGVk", collapse: "s1" }));
   assertEquals(res.status, 200);
   assertEquals(sent.length, 1);
   const [push] = sent;
   assertEquals(push.url.href, `https://api.push.apple.com/3/device/${hex(1)}`);
   assertEquals(push.headers.get("apns-topic"), "com.example.pocketterm");
   assertEquals(push.headers.get("apns-push-type"), "alert");
-  assertEquals(push.headers.get("apns-collapse-id"), "todo-1");
+  assertEquals(push.headers.get("apns-collapse-id"), "s1");
   assertMatch(push.headers.get("authorization") ?? "", /^bearer [\w-]+\.[\w-]+\.[\w-]+$/);
   assertEquals(JSON.parse(push.body), {
-    aps: { alert: { title: "PocketTerm", body: "Reminder" }, sound: "default", "mutable-content": 1, category: "todo" },
+    aps: { alert: { title: "PocketTerm", body: "Terminal" }, sound: "default", "mutable-content": 1 },
     enc: "c2VhbGVk",
   });
 });
@@ -50,9 +50,9 @@ Deno.test("a sandbox token is tried on the sandbox after production calls it bad
 
 Deno.test("a token Apple calls gone answers 410, so the server forgets the phone", async () => {
   network(apns(410, "Unregistered"));
-  assertEquals((await relay(post({ token: hex(3), kind: "reminder", enc: "x" }))).status, 410);
+  assertEquals((await relay(post({ token: hex(3), kind: "terminal", enc: "x" }))).status, 410);
   network(apns(400, "BadDeviceToken"));
-  assertEquals((await relay(post({ token: hex(4), kind: "reminder", enc: "x" }))).status, 410);
+  assertEquals((await relay(post({ token: hex(4), kind: "terminal", enc: "x" }))).status, 410);
 });
 
 Deno.test("a Live Activity push carries only a state rebuilt from checked fields", async () => {
@@ -95,16 +95,18 @@ Deno.test("working waits at low priority; an ended activity is dismissed later",
 
 Deno.test("malformed pushes are refused before anything reaches Apple or Google", async () => {
   const bad: unknown[] = [
-    { token: "not-hex", kind: "reminder", enc: "x" },
-    { token: hex(7, 300), kind: "reminder", enc: "x" }, // too long for a device token
-    { token: hex(7), kind: "reminder" },
-    { token: hex(7), kind: "reminder", enc: "x".repeat(3001) },
+    { token: "not-hex", kind: "terminal", enc: "x" },
+    { token: hex(7, 300), kind: "terminal", enc: "x" }, // too long for a device token
+    { token: hex(7), kind: "terminal" },
+    { token: hex(7), kind: "terminal", enc: "x".repeat(3001) },
+    { token: hex(7), kind: "reminder", enc: "x" },
     { token: hex(7, 160), kind: "liveactivity", event: "update", state: { state: "exploded", since: now() } },
     { token: hex(7, 160), kind: "liveactivity", event: "update", state: { state: "done", since: now(), kind: "plan" } },
     { token: hex(7, 160), kind: "liveactivity", event: "update", state: { state: "done", since: now() - 30 * 86400 } },
     { token: hex(7, 160), kind: "liveactivity", event: "start", state: { state: "done", since: now() } },
-    { platform: "windows", token: hex(7), kind: "reminder", enc: "x" },
-    { platform: "android", token: "short", kind: "reminder", enc: "x" },
+    { platform: "windows", token: hex(7), kind: "terminal", enc: "x" },
+    { platform: "android", token: "short", kind: "terminal", enc: "x" },
+    { platform: "android", token: "f".repeat(160), kind: "reminder", enc: "x" },
     { platform: "android", token: "f".repeat(160), kind: "liveactivity", enc: "x" },
     "a string",
     [1, 2],
@@ -123,9 +125,9 @@ Deno.test("an Android push goes to FCM as a data-only message", async () => {
   const android = {
     platform: "android",
     token: "f".repeat(160),
-    kind: "reminder",
+    kind: "terminal",
     enc: "c2VhbGVk",
-    collapse: "todo-1",
+    collapse: "s1",
   };
   assertEquals((await relay(post(android))).status, 501, "without a service account");
 
@@ -155,8 +157,8 @@ Deno.test("an Android push goes to FCM as a data-only message", async () => {
   assertEquals(JSON.parse(message.body), {
     message: {
       token: "f".repeat(160),
-      data: { kind: "reminder", enc: "c2VhbGVk" },
-      android: { priority: "high", collapse_key: "todo-1", ttl: "86400s" },
+      data: { kind: "terminal", enc: "c2VhbGVk" },
+      android: { priority: "high", collapse_key: "s1", ttl: "86400s" },
     },
   });
 
@@ -187,25 +189,25 @@ Deno.test("a caller guessing tokens is turned away; others are not", async () =>
   network(apns(400, "BadDeviceToken"));
   const guesser = { "cf-connecting-ip": "203.0.113.9" };
   for (let i = 0; i < 15; i++) {
-    assertEquals((await relay(post({ token: hex(100 + i), kind: "reminder", enc: "x" }, guesser))).status, 410);
+    assertEquals((await relay(post({ token: hex(100 + i), kind: "terminal", enc: "x" }, guesser))).status, 410);
   }
   for (let i = 0; i < 15; i++) {
-    assertEquals((await relay(post({ token: "nope", kind: "reminder", enc: "x" }, guesser))).status, 400);
+    assertEquals((await relay(post({ token: "nope", kind: "terminal", enc: "x" }, guesser))).status, 400);
   }
   network(apns());
   assertEquals(
-    (await relay(post({ token: hex(200), kind: "reminder", enc: "x" }, guesser))).status,
+    (await relay(post({ token: hex(200), kind: "terminal", enc: "x" }, guesser))).status,
     429,
     "even a good push waits",
   );
   assertEquals(sent.length, 0);
   assertEquals(
-    (await relay(post({ token: hex(200), kind: "reminder", enc: "x" }, { "cf-connecting-ip": "203.0.113.10" }))).status,
+    (await relay(post({ token: hex(200), kind: "terminal", enc: "x" }, { "cf-connecting-ip": "203.0.113.10" }))).status,
     200,
   );
   // x-forwarded-for is the client's to write: it names no caller.
   assertEquals(
-    (await relay(post({ token: hex(201), kind: "reminder", enc: "x" }, { "x-forwarded-for": "203.0.113.9" }))).status,
+    (await relay(post({ token: hex(201), kind: "terminal", enc: "x" }, { "x-forwarded-for": "203.0.113.9" }))).status,
     200,
   );
 });

@@ -16,18 +16,7 @@ create function pg_temp.sign_out() returns void language sql as $$
   select set_config('role', 'none', true), set_config('request.jwt.claims', '', true)
 $$;
 
--- What each account has: an idea, a chat with a message, a device token, a
--- phone, a followed session and a session of its own.
-insert into public.ideas (id, user_id, title)
-  select gen_random_uuid(), u, 'x' from unnest(array['00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000d']::uuid[]) u;
-insert into public.chats (id, user_id) values
-  ('00000000-0000-0000-0000-0000000000ca', '00000000-0000-0000-0000-00000000000a'),
-  ('00000000-0000-0000-0000-0000000000cd', '00000000-0000-0000-0000-00000000000d');
-insert into public.chat_messages (chat_id, user_id, role) values
-  ('00000000-0000-0000-0000-0000000000ca', '00000000-0000-0000-0000-00000000000a', 'user'),
-  ('00000000-0000-0000-0000-0000000000cd', '00000000-0000-0000-0000-00000000000d', 'user');
-insert into public.device_tokens (user_id, token_hash) values
-  ('00000000-0000-0000-0000-00000000000a', 'owner-device'), ('00000000-0000-0000-0000-00000000000d', 'demo-device');
+-- What each account has: a phone, a followed session and a session of its own.
 insert into public.push_devices (token, user_id, key) values
   ('owner-phone', '00000000-0000-0000-0000-00000000000a', 'k'), ('demo-phone', '00000000-0000-0000-0000-00000000000d', 'k');
 insert into public.activity_tokens (token, user_id, session) values
@@ -45,11 +34,7 @@ insert into public.pairing_codes (id, code_hash, user_id, created_by, reusable, 
   ('00000000-0000-0000-0000-0000000000a3', 'demo-phone', '00000000-0000-0000-0000-00000000000d', '00000000-0000-0000-0000-00000000000d', false, '', now() + interval '10 minutes');
 
 create function pg_temp.rows_of(owner uuid) returns bigint language sql as $$
-  select (select count(*) from public.ideas where user_id = owner)
-       + (select count(*) from public.chats where user_id = owner)
-       + (select count(*) from public.chat_messages where user_id = owner)
-       + (select count(*) from public.device_tokens where user_id = owner)
-       + (select count(*) from public.push_devices where user_id = owner)
+  select (select count(*) from public.push_devices where user_id = owner)
        + (select count(*) from public.activity_tokens where user_id = owner)
 $$;
 
@@ -67,7 +52,7 @@ select is(pg_temp.rows_of('00000000-0000-0000-0000-00000000000d'), 0::bigint, 'i
 select ok(exists (select 1 from auth.users where id = '00000000-0000-0000-0000-00000000000d'), 'the demo account stays');
 select is((select count(*) from public.pairing_codes where reusable), 2::bigint, 'the reviewer codes survive');
 select ok(not exists (select 1 from public.pairing_codes where code_hash = 'demo-phone'), 'its own phone code is gone');
-select is(pg_temp.rows_of('00000000-0000-0000-0000-00000000000a'), 6::bigint, 'the owner''s rows are untouched');
+select is(pg_temp.rows_of('00000000-0000-0000-0000-00000000000a'), 2::bigint, 'the owner''s rows are untouched');
 select is(public.redeem_pairing_code('app-store', null), '{"user_id": "00000000-0000-0000-0000-00000000000d"}'::jsonb,
   'the next reviewer still signs in with the same code');
 

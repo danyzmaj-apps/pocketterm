@@ -38,7 +38,7 @@ function server() {
 const toRelay = () => sent.filter((r) => r.url.href === relayUrl).map((r) => JSON.parse(r.body));
 
 Deno.test("a sealed message opens only with the phone's key, with a fresh nonce each time", async () => {
-  const message = { kind: "reminder" as const, title: "Reminder", body: "Call the bank", id: "todo-1" };
+  const message = { kind: "terminal" as const, title: "Claude finished · api", body: "Done.", session: "s1" };
   const a = await seal(encodeBase64(phoneKey), message);
   const b = await seal(encodeBase64(phoneKey), message);
   assertEquals(await open(phoneKey, a), message);
@@ -95,15 +95,15 @@ Deno.test("registration takes only a real push token and a 32-byte key", async (
   }
 });
 
-Deno.test("nothing without a sign-in or the scheduler's secret", async () => {
+Deno.test("nothing without a sign-in", async () => {
   network((req) => {
     const { pathname } = new URL(req.url);
     if (pathname === "/auth/v1/user") return json({ msg: "bad jwt" }, 401);
-    if (pathname === "/rest/v1/push_config") return json({ secret: "cron-secret" });
     throw new Error(`unexpected request: ${req.method} ${req.url}`);
   });
   assertEquals((await push(post({ action: "notify", title: "hi" }, { authorization: "Bearer forged" }))).status, 401);
-  assertEquals((await push(post({ action: "tick" }, { "x-pocketterm-cron": "guess" }))).status, 401);
+  const register = { action: "register", token: iphone, key: encodeBase64(phoneKey) };
+  assertEquals((await push(post(register, { authorization: "Bearer forged" }))).status, 401);
 });
 
 /** A lone surrogate: half a character, which Postgres and the iPhone's JSONDecoder refuse. */
@@ -116,7 +116,6 @@ Deno.test("a long label or alert is cut between characters, never through one", 
     if (pathname === "/auth/v1/user") return json(user);
     if (pathname === "/rest/v1/push_devices" && req.method === "POST") return new Response(null, { status: 201 });
     if (pathname === "/rest/v1/push_devices") return json([{ token: iphone, key: encodeBase64(phoneKey), platform: "ios" }]);
-    if (pathname === "/rest/v1/push_config") return json({ id: 1 });
     throw new Error(`unexpected request: ${req.method} ${req.url}`);
   });
   const register = { action: "register", token: iphone, key: encodeBase64(phoneKey), label: `a${"😀".repeat(40)}` };

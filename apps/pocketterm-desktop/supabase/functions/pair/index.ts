@@ -1,5 +1,5 @@
-// Signing a phone in with a code from the Mac, the phone's only way in (no
-// GitHub on the phone). The signed-in Mac asks for a code and shows it in a
+// Signing a phone in with a code from the computer, the phone's only way in (no
+// GitHub on the phone). The signed-in computer asks for a code and shows it in a
 // QR inside a setup link (pocketterm://setup?url=…&key=…&code=…); the phone redeems
 // the code here for a fresh magic-link token (never emailed) and turns that
 // into its own session with verifyOtp(type: magiclink, token_hash). Only the
@@ -113,7 +113,7 @@ function caller(req: Request): string | null {
 
 const unusable =
   "That code doesn't work: it may have run out, been used already or been revoked. " +
-  "Make a new one in PocketTerm on your Mac (Settings → Set up phone…).";
+  "Make a new one in PocketTerm on your computer (Settings → Set up phone…).";
 
 const reviewerAccessEnded = "This reviewer access has ended. Ask the server's owner for a new reviewer code.";
 

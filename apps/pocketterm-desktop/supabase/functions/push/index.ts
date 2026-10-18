@@ -12,12 +12,11 @@
 //   POST {"action": "unregister", "token"}                  user token: signed out
 //   POST {"action": "notify", "title", "body"?, "session"?, "state"?}
 //                                                           user token: e.g. a coding session finished on the
-//                                                           Mac; session: the one a tap opens, whose Live
+//                                                           computer; session: the one a tap opens, whose Live
 //                                                           Activities move to state (done | needs)
-//   POST {"action": "tick"}                                 x-pocketterm-cron: the scheduler, reminders now due
 //
 // Sealed messages (AES-256-GCM, base64(nonce ‖ ciphertext ‖ tag)):
-//   {"kind": "reminder"|"terminal", "title", "body", "id"?: todo, "session"?: coding session}
+//   {"kind": "terminal", "title", "body", "session"?: coding session}
 //   {"kind": "activity", "session", "state", "since": unix ms, "akind"?}  Android only, see below
 //
 // Live Activities (a coding session followed on the phone). An iPhone's has
@@ -31,7 +30,7 @@
 //                                                             the phone's FCM token (android)
 //   POST {"action": "activity_end", "token", "session"?}      user token: that activity is over (only that
 //                                                             session's, when given)
-//   POST {"action": "activity", "session", "state", "kind"?}  user token: the Mac, on a session's change;
+//   POST {"action": "activity", "session", "state", "kind"?}  user token: the computer, on a session's change;
 //        state: working | needs | done | ended, kind: question | approval | plan (needs only)
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { decodeBase64, encodeBase64 } from "jsr:@std/encoding@1/base64";
@@ -127,8 +126,8 @@ async function activity(userId: string, session: string, state: ActivityState, k
   return sent;
 }
 
-/** id: the todo (reminders); session: the coding session (terminal). */
-type Notice = { kind: "reminder" | "terminal"; title: string; body: string; id?: string; session?: string };
+/** session: the coding session a tap opens. */
+type Notice = { kind: "terminal"; title: string; body: string; session?: string };
 /** A coding session's state for an Android phone; since: unix ms. */
 type ActivityMessage = { kind: "activity"; session: string; state: ActivityState; since: number; akind?: ActivityKind };
 type Message = Notice | ActivityMessage;
@@ -156,9 +155,8 @@ async function send(userId: string, message: Notice): Promise<number> {
       token: d.token,
       kind: message.kind,
       enc: await seal(d.key, message),
-      // Lets a newer push for the same todo, or the same coding session,
-      // replace an older one.
-      collapse: message.id ?? message.session,
+      // Lets a newer push for the same coding session replace an older one.
+      collapse: message.session,
     });
     if (res?.status === 410) await admin.from("push_devices").delete().eq("token", d.token);
     else if (res?.ok) sent++;
@@ -166,27 +164,9 @@ async function send(userId: string, message: Notice): Promise<number> {
   return sent;
 }
 
-/** The scheduler's address and secret, set the first time a phone registers. */
-async function ensureConfig() {
-  const { data } = await admin.from("push_config").select("id").maybeSingle();
-  if (data) return;
-  const secret = encodeBase64(crypto.getRandomValues(new Uint8Array(32)));
-  await admin.from("push_config").upsert({ id: 1, url, secret }, { ignoreDuplicates: true });
-}
-
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { error: "POST only" });
   const body = (await req.json().catch(() => null)) ?? {};
-
-  if (body.action === "tick") {
-    const { data: config } = await admin.from("push_config").select("secret").maybeSingle();
-    if (!config || req.headers.get("x-pocketterm-cron") !== config.secret) return json(401, { error: "Not the scheduler" });
-    const { data: due, error } = await admin.rpc("claim_due_reminders");
-    if (error) return json(500, { error: error.message });
-    let sent = 0;
-    for (const r of due ?? []) sent += await send(r.user_id, { kind: "reminder", title: "Reminder", body: r.title, id: r.id });
-    return json(200, { due: due?.length ?? 0, sent });
-  }
 
   const jwt = req.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";
   const { data: auth } = await admin.auth.getUser(jwt);
@@ -214,7 +194,6 @@ Deno.serve(async (req) => {
       updated_at: new Date().toISOString(),
     });
     if (error) return json(500, { error: error.message });
-    await ensureConfig();
     return json(200, { ok: true });
   }
 
@@ -231,7 +210,7 @@ Deno.serve(async (req) => {
     const text = typeof body.body === "string" ? clip(body.body.trim(), 400) : "";
     const session = sessionKey(body.session);
     const sent = await send(user, { kind: "terminal", title, body: text, session });
-    // The Mac's session alerts (lib/controller.dart) also move the session's Live Activities.
+    // The computer's session alerts (lib/controller.dart) also move the session's Live Activities.
     if (session && (body.state === "done" || body.state === "needs")) await activity(user, session, body.state);
     return json(200, { sent });
   }
@@ -285,6 +264,6 @@ Deno.serve(async (req) => {
   }
 
   return json(400, {
-    error: "action must be register, unregister, notify, tick, activity_register, activity_end or activity",
+    error: "action must be register, unregister, notify, activity_register, activity_end or activity",
   });
 });

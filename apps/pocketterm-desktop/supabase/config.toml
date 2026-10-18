@@ -278,7 +278,7 @@ max_frequency = "5s"
 # inactivity_timeout = "8h"
 
 # Only the server's owner (the first account), the reviewer demo account functions/pair makes and
-# emails in public.allowed_signups may sign up (supabase/migrations/*_private_server.sql, *_pairing_codes.sql).
+# emails in public.allowed_signups may sign up (supabase/migrations/*_server.sql).
 [auth.hook.before_user_created]
 enabled = true
 uri = "pg-functions://postgres/public/before_user_created"
@@ -423,17 +423,10 @@ enabled = true
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
 
-# The device token is the credential (see the function header).
-[functions.device]
-verify_jwt = false
-
-[functions.ask]
-verify_jwt = false
-
 # The user's token is checked in the function (see its header).
 [functions.pair]
 verify_jwt = false
 
-# Checks the user's token or the scheduler's secret itself (see its header).
+# Checks the user's token itself (see its header).
 [functions.push]
 verify_jwt = false

@@ -7,19 +7,19 @@
 // Deployed --no-verify-jwt.
 //
 // iPhones (APNs; no platform field):
-//   POST {"token": hex, "kind": "reminder"|"terminal", "enc": base64, "collapse"?: string}
+//   POST {"token": hex, "kind": "terminal", "enc": base64, "collapse"?: string}
 //   POST {"token": hex, "kind": "liveactivity", "event": "update"|"end",
 //         "state": {"state": "working"|"needs"|"done"|"ended", "since": unix seconds,
 //                   "kind"?: "question"|"approval"|"plan"}}
 // Android phones (FCM HTTP v1, a data-only message the app decrypts and shows):
 //   POST {"platform": "android", "token": FCM registration token,
-//         "kind": "reminder"|"terminal"|"activity", "enc": base64, "collapse"?: string}
+//         "kind": "terminal"|"activity", "enc": base64, "collapse"?: string}
 //   → 200 sent · 410 the phone is gone (uninstalled, signed out): forget it ·
 //     429 over a rate limit (Retry-After) · 501 FCM not configured here · 4xx/5xx otherwise
 //
 // Trust: any caller may use it (self-hosted servers have no credentials of
 // the publisher's), so whoever knows a device token can make that phone show
-// a generic "PocketTerm / Reminder" alert, or move or end one of its Live
+// a generic "PocketTerm / Terminal" alert, or move or end one of its Live
 // Activities, and nothing more: the real text needs the key only that phone
 // and its server hold. Rate limits (limits.ts) keep floods cheap: per caller
 // address, per device token, and fewer still for a caller whose tokens keep
@@ -153,7 +153,7 @@ async function android(body: Record<string, unknown>): Promise<Response> {
 }
 
 // What shows if the iPhone can't decrypt (shouldn't happen): no content.
-const fallback = { reminder: "Reminder", terminal: "Terminal" } as const;
+const fallback = "Terminal";
 
 const activityStates = ["working", "needs", "done", "ended"];
 const activityKinds = ["question", "approval", "plan"];
@@ -218,15 +218,14 @@ async function push(body: Record<string, unknown>): Promise<Response> {
     headers["apns-push-type"] = "liveactivity";
     headers["apns-priority"] = push.priority;
   } else {
+    if (body.kind !== "terminal") return json(400, { error: "kind must be terminal or liveactivity" });
     if (typeof body.enc !== "string" || body.enc.length > 3000) return json(400, { error: "enc missing or too long" });
-    const kind = body.kind === "terminal" ? "terminal" : "reminder";
     payload = JSON.stringify({
       aps: {
-        alert: { title: "PocketTerm", body: fallback[kind] },
+        alert: { title: "PocketTerm", body: fallback },
         sound: "default",
         // The iPhone's notification extension decrypts enc into the real text.
         "mutable-content": 1,
-        ...(kind === "reminder" ? { category: "todo" } : {}),
       },
       enc: body.enc,
     });

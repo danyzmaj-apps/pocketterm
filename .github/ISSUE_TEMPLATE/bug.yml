@@ -14,14 +14,14 @@ body:
     attributes:
       label: Where
       multiple: true
-      options: [Mac app, iPhone app, Android app, Widget, Notifications / push, Backend setup, Pairing a phone, Quick questions (AI), Terminal from phone, omp / Claude Code integration]
+      options: [Mac app, Windows app, iPhone app, Android app, Notifications / push / Live Activities, Backend setup, Pairing a phone, Several computers, Terminal from phone, omp / Claude Code integration]
     validations:
       required: true
   - type: input
     id: versions
     attributes:
       label: Versions
-      description: PocketTerm version (Mac → PocketTerm → About PocketTerm; phone → its TestFlight or Google Play page), macOS / iOS / Android version, phone model.
+      description: PocketTerm version (Mac → PocketTerm → About PocketTerm; Windows → Settings → Apps → Installed apps; phone → its TestFlight or Google Play page), macOS / Windows / iOS / Android version, phone model, and the terminal (kitty, WezTerm, …).
     validations:
       required: true
   - type: textarea

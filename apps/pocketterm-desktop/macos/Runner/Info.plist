@@ -50,7 +50,7 @@
 	<key>SUFeedURL</key>
 	<string>https://github.com/danyzmaj-apps/pocketterm/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>m+Jxk0qGADjZgRI1joMYj+9tVkuIFe+dzVsYTKNdpZ8=</string>
+	<string>R8DqzdmdZjjITkG3C7ROee3ZqQuPwRPWev3BQdoK7CA=</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 </dict>

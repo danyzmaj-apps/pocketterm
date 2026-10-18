@@ -7,8 +7,10 @@
 #
 # Needs (checked below): Xcode signed in to the team in config/PocketTerm.xcconfig
 # with a "Developer ID Application" certificate, a notarytool keychain profile
-# (`xcrun notarytool store-credentials pocketterm-notary`), the Sparkle signing key
-# in the login keychain (macos/Pods/Sparkle/bin/generate_keys), fvm and gh.
+# for that team (NOTARY_PROFILE, default dzep-notary: the team's existing one;
+# `xcrun notarytool store-credentials <name>` makes one), PocketTerm's Sparkle
+# signing key in the login keychain under the account "pocketterm"
+# (macos/Pods/Sparkle/bin/generate_keys --account pocketterm), fvm and gh.
 # See docs/RELEASING.md.
 set -euo pipefail
 # Runs in the Mac app (apps/pocketterm-desktop); config/ and CHANGELOG.md are the repo's, two levels up.
@@ -17,7 +19,7 @@ ROOT=../..
 
 DRY=false
 [[ "${1:-}" == "--dry-run" ]] && DRY=true
-NOTARY_PROFILE="${NOTARY_PROFILE:-pocketterm-notary}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-dzep-notary}"
 REPO="${REPO:-danyzmaj-apps/pocketterm}"
 
 die() { echo "release: $*" >&2; exit 1; }
@@ -35,6 +37,8 @@ TEAM=""
 [[ -n "$TEAM" ]] || TEAM=$(sed -n 's/^POCKETTERM_TEAM *= *//p' $ROOT/config/PocketTerm.xcconfig | tail -1)
 OUT=build/release
 SPARKLE=macos/Pods/Sparkle/bin
+# The keychain account PocketTerm's Sparkle key is stored under (its public half is SUPublicEDKey in Info.plist).
+SPARKLE_ACCOUNT=pocketterm
 DMG="$OUT/PocketTerm-$VERSION.dmg"
 
 step "Checking prerequisites (v$VERSION, team $TEAM)"
@@ -59,7 +63,8 @@ step "Building"
 rm -rf "$OUT" && mkdir -p "$OUT"
 fvm flutter build macos --release
 [[ -x "$SPARKLE/generate_keys" ]] || die "Sparkle isn't installed (cd macos && pod install)"
-$DRY || "$SPARKLE/generate_keys" -p >/dev/null 2>&1 || die "no Sparkle signing key in the keychain (see docs/RELEASING.md)"
+$DRY || "$SPARKLE/generate_keys" --account "$SPARKLE_ACCOUNT" -p >/dev/null 2>&1 ||
+  die "no Sparkle signing key for account $SPARKLE_ACCOUNT in the keychain (see docs/RELEASING.md)"
 
 step "Archiving"
 xcodebuild -quiet -workspace macos/Runner.xcworkspace -scheme Runner -configuration Release \
@@ -111,7 +116,7 @@ step "Writing the appcast"
 mkdir -p "$OUT/appcast" && cp "$DMG" "$OUT/appcast/"
 # The previous appcast keeps older versions listed (and enables delta updates).
 gh release download --repo "$REPO" --pattern appcast.xml --dir "$OUT/appcast" 2>/dev/null || true
-"$SPARKLE/generate_appcast" \
+"$SPARKLE/generate_appcast" --account "$SPARKLE_ACCOUNT" \
   --download-url-prefix "https://github.com/$REPO/releases/download/v$VERSION/" \
   --full-release-notes-url "https://github.com/$REPO/releases/tag/v$VERSION" \
   "$OUT/appcast"

@@ -1,0 +1,8 @@
+{
+  "name": "pocketterm",
+  "version": "0.5.0",
+  "description": "Capture ideas, todos and notes into PocketTerm, and follow and answer this session from your phone",
+  "author": { "name": "PocketTerm", "url": "https://github.com/danyzmaj-apps/pocketterm" },
+  "homepage": "https://github.com/danyzmaj-apps/pocketterm",
+  "license": "MIT"
+}

@@ -1,0 +1,15 @@
+name: pocketterm_workspace
+description: "PocketTerm: the workspace of the Mac app, the phone app and the code they share."
+publish_to: 'none'
+
+environment:
+  sdk: ^3.13.4
+
+workspace:
+  - packages/pocketterm_core
+  - apps/pocketterm-desktop
+  - apps/pocketterm-mobile
+
+# The shared analysis_options.yaml includes very_good_analysis.
+dev_dependencies:
+  very_good_analysis: ^11.0.0

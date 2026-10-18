@@ -1,0 +1,17 @@
+// Who signs PocketTerm and which ids it uses, for every Xcode target (iOS and macOS
+// apps and their widgets). These are the upstream project's values. To build
+// under your own Apple developer account, copy Local.xcconfig.example to
+// Local.xcconfig (git-ignored) and set your own there; see docs/BUILDING.md.
+
+// Your Apple developer team id (Xcode → Settings → Accounts, or
+// developer.apple.com → Membership).
+POCKETTERM_TEAM = 5SSZ6TYMF5
+
+// The app's bundle id; the widgets are <this>.PocketTermLive.
+POCKETTERM_BUNDLE_ID = com.danyzmaj.pocketterm
+
+// The App Group the app shares with its widget extension. Must start
+// with `group.` and be registered to your team.
+POCKETTERM_APP_GROUP = group.com.danyzmaj.pocketterm
+
+#include? "Local.xcconfig"

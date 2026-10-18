@@ -1,0 +1,12 @@
+{
+  "name": "pocketterm",
+  "description": "PocketTerm's Claude Code plugin: /idea, /do and /note, and your sessions on your phone",
+  "owner": { "name": "PocketTerm", "url": "https://github.com/danyzmaj-apps/pocketterm" },
+  "plugins": [
+    {
+      "name": "pocketterm",
+      "source": "./plugins/pocketterm",
+      "description": "Capture ideas, todos and notes into PocketTerm, and follow and answer this session from your phone"
+    }
+  ]
+}

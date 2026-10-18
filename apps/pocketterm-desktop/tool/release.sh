@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# Builds, signs, notarizes and publishes the Mac app as a DMG on GitHub
+# Releases, with the Sparkle appcast the installed apps update from.
+#
+#   apps/pocketterm-desktop/tool/release.sh            the version in this app's pubspec.yaml → GitHub release v<version>
+#   apps/pocketterm-desktop/tool/release.sh --dry-run  same build, signed for development, nothing notarized or published
+#
+# Needs (checked below): Xcode signed in to the team in config/PocketTerm.xcconfig
+# with a "Developer ID Application" certificate, a notarytool keychain profile
+# (`xcrun notarytool store-credentials pocketterm-notary`), the Sparkle signing key
+# in the login keychain (macos/Pods/Sparkle/bin/generate_keys), fvm and gh.
+# See docs/RELEASING.md.
+set -euo pipefail
+# Runs in the Mac app (apps/pocketterm-desktop); config/ and CHANGELOG.md are the repo's, two levels up.
+cd "$(dirname "$0")/.."
+ROOT=../..
+
+DRY=false
+[[ "${1:-}" == "--dry-run" ]] && DRY=true
+NOTARY_PROFILE="${NOTARY_PROFILE:-pocketterm-notary}"
+REPO="${REPO:-danyzmaj-apps/pocketterm}"
+
+die() { echo "release: $*" >&2; exit 1; }
+step() { echo; echo "==> $*"; }
+
+VERSION=$(sed -n 's/^version: *\([0-9.]*\)+\{0,1\}.*/\1/p' pubspec.yaml)
+[[ -n "$VERSION" ]] || die "no version in pubspec.yaml"
+# `claude plugin update` (Settings → Coding agent) takes a plugin only at a new version: one that kept its
+# version would leave every installed copy on its old hooks while Settings calls it current.
+PLUGIN_VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' integrations/claude/plugins/pocketterm/.claude-plugin/plugin.json)
+[[ "$PLUGIN_VERSION" == "$VERSION" ]] ||
+  die "integrations/claude/plugins/pocketterm/.claude-plugin/plugin.json is at $PLUGIN_VERSION; set its version to $VERSION"
+TEAM=""
+[[ -f $ROOT/config/Local.xcconfig ]] && TEAM=$(sed -n 's/^POCKETTERM_TEAM *= *//p' $ROOT/config/Local.xcconfig | tail -1)
+[[ -n "$TEAM" ]] || TEAM=$(sed -n 's/^POCKETTERM_TEAM *= *//p' $ROOT/config/PocketTerm.xcconfig | tail -1)
+OUT=build/release
+SPARKLE=macos/Pods/Sparkle/bin
+DMG="$OUT/PocketTerm-$VERSION.dmg"
+
+step "Checking prerequisites (v$VERSION, team $TEAM)"
+command -v fvm >/dev/null || die "fvm is not installed (https://fvm.app)"
+if ! $DRY; then
+  command -v gh >/dev/null || die "gh is not installed (brew install gh)"
+  [[ -z "$(git status --porcelain)" ]] || die "the working tree has uncommitted changes"
+  git rev-parse "v$VERSION" >/dev/null 2>&1 && die "tag v$VERSION exists; bump the version in pubspec.yaml"
+  grep -q "^## $VERSION" $ROOT/CHANGELOG.md || die "CHANGELOG.md has no '## $VERSION' section"
+  git fetch --quiet origin main || die "can't fetch origin/main"
+  git merge-base --is-ancestor HEAD origin/main || die "HEAD isn't on origin/main; release from a pushed main commit"
+  # The SHA-1 of this team's identity, so codesign never finds another team's certificate ambiguous.
+  IDENTITY=$(security find-identity -v -p codesigning \
+    | awk -v t="($TEAM)" '/Developer ID Application/ && index($0, t) { print $2; exit }')
+  [[ -n "$IDENTITY" ]] \
+    || die "no 'Developer ID Application' certificate for team $TEAM (Xcode → Settings → Accounts → Manage Certificates → +)"
+  xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1 \
+    || die "no notarytool profile '$NOTARY_PROFILE' (xcrun notarytool store-credentials $NOTARY_PROFILE)"
+fi
+
+step "Building"
+rm -rf "$OUT" && mkdir -p "$OUT"
+fvm flutter build macos --release
+[[ -x "$SPARKLE/generate_keys" ]] || die "Sparkle isn't installed (cd macos && pod install)"
+$DRY || "$SPARKLE/generate_keys" -p >/dev/null 2>&1 || die "no Sparkle signing key in the keychain (see docs/RELEASING.md)"
+
+step "Archiving"
+xcodebuild -quiet -workspace macos/Runner.xcworkspace -scheme Runner -configuration Release \
+  -archivePath "$OUT/PocketTerm.xcarchive" -allowProvisioningUpdates archive
+
+step "Exporting ($($DRY && echo development || echo developer-id))"
+cat >"$OUT/export.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>method</key><string>$($DRY && echo debugging || echo developer-id)</string>
+  <key>teamID</key><string>$TEAM</string>
+  <key>signingStyle</key><string>automatic</string>
+</dict></plist>
+EOF
+xcodebuild -quiet -exportArchive -archivePath "$OUT/PocketTerm.xcarchive" -exportPath "$OUT/export" \
+  -exportOptionsPlist "$OUT/export.plist" -allowProvisioningUpdates
+APP="$OUT/export/PocketTerm.app"
+codesign --verify --deep --strict "$APP"
+
+notarize() {
+  xcrun notarytool submit "$1" --keychain-profile "$NOTARY_PROFILE" --wait | tee "$OUT/notary.log"
+  grep -q "status: Accepted" "$OUT/notary.log" || die "notarization failed for $1 (see $OUT/notary.log)"
+}
+
+if ! $DRY; then
+  step "Notarizing the app"
+  ditto -c -k --keepParent "$APP" "$OUT/PocketTerm.zip"
+  notarize "$OUT/PocketTerm.zip"
+  xcrun stapler staple "$APP"
+fi
+
+step "Making the DMG"
+mkdir -p "$OUT/dmg" && cp -R "$APP" "$OUT/dmg/" && ln -s /Applications "$OUT/dmg/Applications"
+hdiutil create -quiet -volname "PocketTerm $VERSION" -srcfolder "$OUT/dmg" -fs HFS+ -format ULFO "$DMG"
+if ! $DRY; then
+  codesign --sign "$IDENTITY" --timestamp "$DMG"
+  notarize "$DMG"
+  xcrun stapler staple "$DMG"
+  spctl --assess --type open --context context:primary-signature "$DMG"
+fi
+
+if $DRY; then
+  step "Dry run done: $DMG (development-signed, not notarized, not published)"
+  exit 0
+fi
+
+step "Writing the appcast"
+mkdir -p "$OUT/appcast" && cp "$DMG" "$OUT/appcast/"
+# The previous appcast keeps older versions listed (and enables delta updates).
+gh release download --repo "$REPO" --pattern appcast.xml --dir "$OUT/appcast" 2>/dev/null || true
+"$SPARKLE/generate_appcast" \
+  --download-url-prefix "https://github.com/$REPO/releases/download/v$VERSION/" \
+  --full-release-notes-url "https://github.com/$REPO/releases/tag/v$VERSION" \
+  "$OUT/appcast"
+
+step "Publishing v$VERSION"
+awk -v v="$VERSION" '$0 ~ "^## "v {on=1; next} /^## / {on=0} on' $ROOT/CHANGELOG.md >"$OUT/notes.md"
+# gh creates the tag on GitHub together with the release, so a failed upload leaves no tag behind.
+gh release create "v$VERSION" --repo "$REPO" --target "$(git rev-parse HEAD)" --title "PocketTerm $VERSION" \
+  --notes-file "$OUT/notes.md" "$DMG" "$OUT/appcast/appcast.xml"
+git fetch --quiet origin tag "v$VERSION"
+echo "Released: https://github.com/$REPO/releases/tag/v$VERSION"

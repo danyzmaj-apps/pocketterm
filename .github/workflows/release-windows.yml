@@ -1,0 +1,52 @@
+name: Release (Windows)
+
+# Adds the Windows installer to a published GitHub release (the Mac's
+# tool/release.sh creates the release; this attaches PocketTerm-<v>-setup.exe).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and upload to (e.g. v0.1.0)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ env.TAG }}
+      - id: fvm
+        run: echo "flutter=$((Get-Content .fvmrc | ConvertFrom-Json).flutter)" >> $env:GITHUB_OUTPUT
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ steps.fvm.outputs.flutter }}
+          cache: true
+      - run: flutter pub get
+      - working-directory: apps/pocketterm-desktop
+        run: flutter build windows --release
+      - id: version
+        working-directory: apps/pocketterm-desktop
+        run: |
+          $v = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
+          if ("v$v" -ne $env:TAG) { throw "pubspec.yaml is at $v but the release is $env:TAG" }
+          echo "version=$v" >> $env:GITHUB_OUTPUT
+      - working-directory: apps/pocketterm-desktop
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y; if ($LASTEXITCODE) { exit $LASTEXITCODE } }
+          & $iscc /DMyAppVersion=${{ steps.version.outputs.version }} windows\installer.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - working-directory: apps/pocketterm-desktop
+        run: gh release upload $env:TAG "build\windows\installer\PocketTerm-${{ steps.version.outputs.version }}-setup.exe" --clobber

@@ -33,6 +33,34 @@ jobs:
       - working-directory: ${{ matrix.member }}
         run: flutter test
 
+  # The shared code and the desktop app on Windows: analyze, the tests that don't need a POSIX
+  # system (tag posix: /bin/sh, unix sockets, chmod…), and a debug build of the Windows app.
+  dart-windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        member: [packages/pocketterm_core, apps/pocketterm-desktop]
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: fvm
+        run: echo "flutter=$((Get-Content .fvmrc | ConvertFrom-Json).flutter)" >> $env:GITHUB_OUTPUT
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ steps.fvm.outputs.flutter }}
+          cache: true
+      - run: flutter pub get
+      - working-directory: ${{ matrix.member }}
+        run: flutter analyze
+      - working-directory: ${{ matrix.member }}
+        run: flutter test --exclude-tags posix
+      - if: matrix.member == 'apps/pocketterm-desktop'
+        working-directory: ${{ matrix.member }}
+        run: flutter build windows --debug
+
   functions:
     runs-on: ubuntu-latest
     defaults:

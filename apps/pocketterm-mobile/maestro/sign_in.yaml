@@ -6,9 +6,10 @@
 appId: com.danyzmaj.pocketterm
 ---
 - launchApp
-# A signed-in app opens on its Terminal list.
+# A signed-in app opens on its Terminal list, titled with the computer's name
+# and with the Account button beside it.
 - extendedWaitUntil:
-    visible: "Terminal"
+    visible: "Account"
     timeout: 5000
     optional: true
 - runFlow:
@@ -20,5 +21,5 @@ appId: com.danyzmaj.pocketterm
       - inputText: ${SETUP_LINK}
       - tapOn: "Sign in"
 - extendedWaitUntil:
-    visible: "Terminal"
+    visible: "Account"
     timeout: 20000

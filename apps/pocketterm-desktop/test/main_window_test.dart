@@ -3,6 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/account.dart';
+import 'package:pocketterm_core/terminal.dart';
+import 'package:pocketterm_core/terminals.dart';
+import 'package:pocketterm_core/wezterm.dart';
 import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/main_window.dart';
 import 'package:pocketterm_desktop/setup_page.dart';
@@ -15,12 +18,12 @@ void main() {
   setUp(() => home = Directory.systemTemp.createTempSync('pocketterm-window'));
   tearDown(() => home.deleteSync(recursive: true));
 
-  Future<FakeApp> pumpWindow(WidgetTester tester, void Function(FakeApp app) given) async {
+  Future<FakeApp> pumpWindow(WidgetTester tester, void Function(FakeApp app) given, {Terminals? terminals}) async {
     tester.view
       ..physicalSize = const Size(1000, 1400)
       ..devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    final app = await FakeApp.create();
+    final app = await FakeApp.create(terminals: terminals);
     given(app);
     final integrations = Integrations(home: home.path, run: (_, _) async => ProcessResult(0, 1, '', ''));
     await tester.pumpWidget(
@@ -59,6 +62,27 @@ void main() {
     expect(find.text('Done'), findsNothing);
     await tester.tap(find.text('Quit PocketTerm'));
     expect(app.host.calls.last, 'quit');
+  });
+
+  testWidgets('the hidden window looks at the terminals again each time it is shown', (tester) async {
+    var looks = 0;
+    final terminals = Terminals(
+      home: home.path,
+      wezterm: WezTerm(executable: '${home.path}/wezterm', socketDir: home.path),
+      recency: () async => const [],
+      snapshot: () async {
+        looks++;
+        return Procs(const []);
+      },
+    );
+    final app = await pumpWindow(tester, (_) {}, terminals: terminals);
+    final before = looks;
+    expect(before, greaterThan(0));
+
+    await app.openMain();
+    await tester.pumpAndSettle();
+    expect(looks, greaterThan(before));
+    expect(app.host.calls.last, 'showMain');
   });
 
   testWidgets('Launch at login shows how the system has it, and switches it', (tester) async {

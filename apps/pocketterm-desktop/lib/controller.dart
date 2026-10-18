@@ -233,6 +233,7 @@ class AppController extends Session {
   @override
   void dispose() {
     updates?.dispose();
+    mainShown.dispose();
     super.dispose();
   }
 
@@ -299,8 +300,15 @@ class AppController extends Session {
     }
   }
 
+  /// Ticks each time the main window is shown: it stays alive while hidden,
+  /// so Settings checks the terminals and the agent's integration afresh.
+  final mainShown = ValueNotifier<int>(0);
+
   /// Shows the main window.
-  Future<void> openMain() => host.showMain();
+  Future<void> openMain() {
+    mainShown.value++;
+    return host.showMain();
+  }
 
   /// Pushes [title] / [body] to the user's phones (functions/push) when
   /// nobody has touched this computer for a minute: at the desk, its own

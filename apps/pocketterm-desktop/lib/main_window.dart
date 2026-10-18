@@ -105,6 +105,19 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
+    _check();
+    app.mainShown.addListener(_check);
+  }
+
+  @override
+  void dispose() {
+    app.mainShown.removeListener(_check);
+    super.dispose();
+  }
+
+  /// What the system, the terminals and the agent say now: on first build and
+  /// each time the (hidden, never rebuilt) window is shown again.
+  void _check() {
     unawaited(app.refreshLaunchAtLogin());
     unawaited(_checkTerminals());
     unawaited(_checkIntegration());

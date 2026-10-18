@@ -38,7 +38,7 @@ import { decodeBase64, encodeBase64 } from "jsr:@std/encoding@1/base64";
 const url = Deno.env.get("SUPABASE_URL")!;
 const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 // The publisher's relay; a fork with its own APNs key points this elsewhere.
-const relay = Deno.env.get("PUSH_RELAY_URL") ?? "https://tgqmhieundubwtyvsnih.supabase.co/functions/v1/relay";
+const relay = Deno.env.get("PUSH_RELAY_URL") ?? "https://iemvfkcpmgdkupwnnewg.supabase.co/functions/v1/relay";
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });

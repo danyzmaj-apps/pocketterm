@@ -37,6 +37,7 @@ void main() {
     var installed = false;
     final installer = _Installer();
     final opened = <String>[];
+    final open = Completer<void>();
     final setup = WezTermSetup(
       isInstalled: () => installed,
       client: serving(bytes),
@@ -45,13 +46,15 @@ void main() {
       poll: const Duration(milliseconds: 10),
       run: (path) async {
         opened.add(path);
+        open.complete();
         return installer;
       },
     );
     addTearDown(setup.dispose);
 
     final going = setup.install();
-    await pumpEventQueue();
+    // The download and its checksum take real file I/O: wait for the open.
+    await open.future;
     expect(setup.state, WezTermSetupState.installing);
     expect(opened, hasLength(1));
     expect(File(opened.single).readAsBytesSync(), bytes, reason: 'the installer it opens is the download');

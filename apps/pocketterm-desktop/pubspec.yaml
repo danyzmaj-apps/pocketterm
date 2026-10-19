@@ -1,7 +1,7 @@
 name: pocketterm_desktop
 description: "PocketTerm: this computer's coding sessions and terminals on your phone, through Supabase."
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.1.0+2
 resolution: workspace
 
 environment:

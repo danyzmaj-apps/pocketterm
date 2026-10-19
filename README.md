@@ -1,37 +1,52 @@
+<div align="center">
+
+<img src="docs/images/icon.png" width="112" alt="PocketTerm icon">
+
 # PocketTerm
 
-**Your computer's coding sessions on your phone: omp and Claude Code as a conversation you can prompt, steer and answer from anywhere, and your other terminal windows as live screens, through a server you own.**
+**Your computer's coding sessions, in your pocket.**
+
+Prompt, steer and answer [omp](https://github.com/can1357/oh-my-pi) and [Claude Code](https://github.com/anthropics/claude-code) from your phone,<br>
+and watch your other terminal windows live, through a server you own.
 
 [![CI](https://github.com/danyzmaj-apps/pocketterm/actions/workflows/ci.yml/badge.svg)](https://github.com/danyzmaj-apps/pocketterm/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/danyzmaj-apps/pocketterm?label=release)](https://github.com/danyzmaj-apps/pocketterm/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Platforms](https://img.shields.io/badge/platforms-macOS%20%C2%B7%20Windows%20%C2%B7%20iOS%20%C2%B7%20Android-555)
 
-PocketTerm is a desktop app (macOS menu bar, Windows tray) plus an iPhone and Android app. Leave a coding agent working on your computer, walk away, and keep driving it from your phone: a push when it finishes or needs you, its questions and approvals answered with a tap. The phone reaches your computer through a free [Supabase](https://supabase.com) project that **you** own: there is no PocketTerm cloud.
+[Install](#install) · [Get started](#get-started) · [Terminals](#terminals) · [Privacy](#privacy--security) · [Docs](#documentation)
+
+<br>
+
+<img src="docs/images/phone-terminal.png" width="30%" alt="Phone: sessions grouped by project">
+&nbsp;
+<img src="docs/images/phone-session.png" width="30%" alt="Phone: a session as a conversation">
+&nbsp;
+<img src="docs/images/phone-setup.png" width="30%" alt="Phone: sign in with the computer's code">
+
+</div>
+
+---
+
+PocketTerm is a desktop app (macOS menu bar, Windows tray) plus an iPhone and Android app. Leave a coding agent working on your computer, walk away, and keep driving it from your phone: a push when it finishes or needs you, its questions and approvals answered with a tap. The phone reaches your computer through a free [Supabase](https://supabase.com) project that **you** own. There is no PocketTerm cloud.
 
 ## What it does
 
-- **Sessions as conversations:** your computer's [omp](https://github.com/can1357/oh-my-pi) and [Claude Code](https://github.com/anthropics/claude-code) sessions, grouped by project. Answers stream in as Markdown, tool calls show as cards. Prompt a session (with images), steer or queue while omp works, stop a run, answer questions, tool approvals and plan reviews, and type `/` for the agent's slash commands.
-- **Any other window** is a live screen, colors included where the terminal gives them, that you can type into and press keys in.
-- **New sessions:** start your coding agent, or a shell, in any of your projects without taking the computer's focus. **New project…** makes the folder first.
-- **Never miss a finished run:** a push when the agent finishes or needs you, a Live Activity on the iPhone and an ongoing notification on Android for the session you follow.
-- **Several computers:** one account can run PocketTerm on several Macs and Windows PCs. The phone lists them and you pick one; a push opens its session on the computer it came from.
-- **Private by design:** everything goes through your own Supabase project, nothing the terminal carries is stored, and pushes reach your phone encrypted.
+- 💬 **Sessions as conversations.** omp and Claude Code sessions, grouped by project. Answers stream in as Markdown, tool calls show as cards. Prompt (with images), steer or queue, stop a run, answer questions, approvals and plan reviews, and type `/` for slash commands.
+- 🖥️ **Live screens.** Any other terminal window, colors included where the terminal gives them, to type into and press keys in.
+- ➕ **New sessions.** Start your agent, or a shell, in any project without taking the computer's focus. **New project…** makes the folder first.
+- 🔔 **Never miss a finished run.** A push when the agent finishes or needs you; a Live Activity on iPhone and an ongoing notification on Android for the session you follow.
+- 💻 **Several computers.** One account, several Macs and Windows PCs. Pick one on the phone; a push opens its session on the computer it came from.
+- 🔒 **Private by design.** Everything goes through your own Supabase project, nothing the terminal carries is stored, and pushes reach your phone encrypted.
 
-## Screenshots
+## On your computer
 
-**Desktop:** the setup wizard (Supabase token, then the finished server) and Settings.
+The setup wizard creates your server in about five minutes; Settings is where everything else lives.
 
-<p>
-  <img src="docs/images/wizard-token.png" width="32%" alt="Setup wizard: Supabase access token">
-  <img src="docs/images/wizard-ready.png" width="32%" alt="Setup wizard: your server is ready">
-  <img src="docs/images/mac-settings-terminals.png" width="32%" alt="Settings: general and terminals">
-</p>
-
-**Phone:** signing in with the computer's code, and the account sheet.
-
-<p>
-  <img src="docs/images/phone-setup.png" width="32%" alt="Phone: welcome and scan the code">
-  <img src="docs/images/phone-account.png" width="32%" alt="Phone: account sheet">
+<p align="center">
+  <img src="docs/images/wizard-token.png" width="32%" align="top" alt="Setup wizard: Supabase access token">
+  <img src="docs/images/wizard-ready.png" width="32%" align="top" alt="Setup wizard: your server is ready">
+  <img src="docs/images/mac-settings-terminals.png" width="24%" align="top" alt="Settings: general and terminals">
 </p>
 
 ## Install

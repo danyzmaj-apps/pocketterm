@@ -6,6 +6,7 @@ import 'package:pocketterm_core/connect.dart' show ConfirmLink;
 import 'package:pocketterm_core/logo.dart';
 import 'package:pocketterm_core/session.dart';
 import 'package:pocketterm_core/ui.dart';
+import 'package:pocketterm_mobile/links.dart';
 import 'package:pocketterm_mobile/onboarding/scan.dart';
 
 /// What a phone without a session shows: the only way in is a code from the
@@ -149,7 +150,16 @@ class _SetupPageState extends State<SetupPage> {
         style: TextStyle(height: 1.7),
       ),
     ),
-    const SizedBox(height: 20),
+    // Step 1 needs PocketTerm on the computer: where to get it.
+    Align(
+      child: TextButton.icon(
+        key: const ValueKey('get-desktop'),
+        onPressed: () => openExternal(desktopDownloadsUrl),
+        icon: const Icon(Icons.open_in_new, size: 15),
+        label: const Text('Get PocketTerm for Mac or Windows'),
+      ),
+    ),
+    const SizedBox(height: 8),
     FilledButton(
       onPressed: _busy ? null : () => unawaited(_scan()),
       child: Padding(

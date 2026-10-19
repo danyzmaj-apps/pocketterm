@@ -70,6 +70,7 @@ void main() {
   }
 
   Future<void> paste(WidgetTester tester, String text) async {
+    await tester.ensureVisible(find.text('Paste a code instead'));
     await tester.tap(find.text('Paste a code instead'));
     await tester.pump();
     await tester.enterText(find.byType(TextField), text);
@@ -93,6 +94,7 @@ void main() {
       expect(find.byType(GithubButton), findsNothing);
       expect(find.textContaining('GitHub'), findsNothing);
 
+      await tester.ensureVisible(find.text('Paste a code instead'));
       await tester.tap(find.text('Paste a code instead'));
       await tester.pump();
       expect(find.byType(TextField), findsOneWidget);

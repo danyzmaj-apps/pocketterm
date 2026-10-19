@@ -2,6 +2,12 @@
 
 User-visible changes to PocketTerm. Each release says whether servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again (or an update from the setup wizard) and whether the push relay must be redeployed.
 
+## Unreleased
+
+No server update or relay redeploy needed.
+
+- **Phone: links to the rest of PocketTerm.** The welcome screen links to the desktop app's downloads (step 1 needs it), and the account sheet links to the source on GitHub.
+
 ## 0.1.0
 
 The first release. PocketTerm is the "Terminal from the phone" part of [Džep](https://github.com/danyzmaj-apps/dzep) 0.5.0 as a product of its own: Džep's ideas, todos, notes, reminders, Ask and widgets are not part of it.

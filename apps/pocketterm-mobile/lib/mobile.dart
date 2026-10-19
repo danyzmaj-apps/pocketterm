@@ -14,6 +14,7 @@ import 'package:pocketterm_core/session.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
+import 'package:pocketterm_mobile/links.dart';
 import 'package:pocketterm_mobile/setup_page.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -595,6 +596,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               },
               style: TextButton.styleFrom(foregroundColor: C.dim2),
               child: const Text('Delete account…'),
+            ),
+            const Divider(height: 20, color: C.line2),
+            TextButton.icon(
+              key: const ValueKey('source-code'),
+              onPressed: () => openExternal(repoUrl),
+              style: TextButton.styleFrom(foregroundColor: C.dim),
+              icon: const Icon(Icons.open_in_new, size: 15),
+              label: const Text('PocketTerm is open source: GitHub'),
             ),
           ],
         ),

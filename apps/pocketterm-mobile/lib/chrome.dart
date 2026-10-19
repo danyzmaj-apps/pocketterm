@@ -141,24 +141,16 @@ class Panel extends StatelessWidget {
   const Panel({
     required this.children,
     this.title,
-    this.count,
     this.onTitleTap,
+    this.onTitleLongPress,
     this.titleTrailing,
-    this.tallTrailing = false,
     super.key,
   });
   final List<Widget> children;
   final String? title;
-
-  /// How many there are, after the title as " · n": a long title gives way
-  /// before it does.
-  final int? count;
   final VoidCallback? onTitleTap;
+  final VoidCallback? onTitleLongPress;
   final Widget? titleTrailing;
-
-  /// [titleTrailing] is a 44pt tap target: the heading's padding gives it
-  /// the room, so the title sits where every other panel's does.
-  final bool tallTrailing;
 
   @override
   Widget build(BuildContext context) {
@@ -172,29 +164,15 @@ class Panel extends StatelessWidget {
         ? null
         : InkWell(
             onTap: onTitleTap,
+            onLongPress: onTitleLongPress,
             child: Padding(
-              // A 13pt title is about 16pt tall: centred in 44, 4 on top
-              // leaves it 18 down, as without.
-              padding: EdgeInsets.fromLTRB(32, tallTrailing ? 4 : 18, 24, 7),
+              padding: const EdgeInsets.fromLTRB(32, 18, 24, 7),
               child: Row(
                 children: [
                   // A long title (a project folder's name) gives way to what
                   // trails it.
                   Expanded(
-                    // Read out as one line ("DONE · 3"), not title and
-                    // count apart.
-                    child: Semantics(
-                      label: count == null ? title : '$title · $count',
-                      excludeSemantics: true,
-                      child: Row(
-                        children: [
-                          Flexible(
-                            child: Text(title!, maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
-                          ),
-                          if (count != null) Text(' · $count', style: style),
-                        ],
-                      ),
-                    ),
+                    child: Text(title!, maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
                   ),
                   ?titleTrailing,
                 ],

@@ -2,6 +2,12 @@
 
 User-visible changes to PocketTerm. Each release says whether servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again (or an update from the setup wizard) and whether the push relay must be redeployed.
 
+## Unreleased
+
+No server update or relay redeploy needed.
+
+- **Phone: a steadier Terminal list.** Projects stay put: sorted by name, or by recent activity (re-ranked only when you pull to refresh), chosen above the list. Sessions keep their order within a project instead of jumping when one needs you or starts working. A project's heading is just its name: tap it to fold the project to one line that still says what needs you; long-press it for a new session there, fold, fold all others or unfold all.
+
 ## 0.1.0
 
 The first release. PocketTerm is the "Terminal from the phone" part of [Džep](https://github.com/danyzmaj-apps/dzep) 0.5.0 as a product of its own: Džep's ideas, todos, notes, reminders, Ask and widgets are not part of it.

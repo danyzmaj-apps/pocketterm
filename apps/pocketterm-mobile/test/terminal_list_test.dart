@@ -42,8 +42,8 @@ void main() {
 
   /// Project z: one session needing you, listed last, and a newer idle one;
   /// a: one idle; b: one working; c: one in a terminal PocketTerm doesn't drive
-  /// (IntelliJ's: no window). Plus a shell. Neither the list's order nor the
-  /// folders' alphabetical one is the urgent one (z, b, a, c).
+  /// (IntelliJ's: no window). Plus a shell. By name: a, b, c, z; by
+  /// activity: b, z, a, c.
   void macState() {
     final now = DateTime.now().millisecondsSinceEpoch;
     Map<String, dynamic> window(String key, String cwd, String program) => {
@@ -128,6 +128,8 @@ void main() {
             remote: remote,
             folded: _Phone(prefs).collapsedProjects,
             onFolded: _Phone(prefs).setCollapsedProjects,
+            sort: _Phone(prefs).projectSort,
+            onSort: _Phone(prefs).setProjectSort,
           ),
         ),
       ),
@@ -141,34 +143,37 @@ void main() {
 
   Finder session(String key) => find.byKey(ValueKey('session-$key'));
 
-  /// A project heading, as read: its name and count.
-  String heading(WidgetTester tester, String cwd) {
-    final rows = find.descendant(of: find.byKey(ValueKey('project-$cwd')), matching: find.byType(Text));
-    return tester.widgetList<Text>(rows).take(2).map((t) => t.data).join();
+  /// A project heading, as read.
+  String heading(WidgetTester tester, String cwd) => tester
+      .widget<Text>(find.descendant(of: find.byKey(ValueKey('project-$cwd')), matching: find.byType(Text)).first)
+      .data!;
+
+  double top(WidgetTester tester, String cwd) => tester.getTopLeft(find.byKey(ValueKey('project-$cwd'))).dy;
+
+  /// Long-presses project [cwd]'s heading: its menu. Not to settle: a
+  /// spinner (a session starting, the link checking) never does.
+  Future<void> menu(WidgetTester tester, String cwd) async {
+    await tester.longPress(find.text(heading(tester, cwd)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
   }
 
-  Finder plus(String cwd) => find.byKey(ValueKey('new-in-$cwd'));
-
-  testWidgets('sessions are grouped by project, the one needing you first, each heading with its name and count', (
-    tester,
-  ) async {
+  testWidgets('projects go by name, sessions in the order the computer saw them, whatever needs you', (tester) async {
     macState();
     await pumpList(tester);
 
-    double top(String cwd) => tester.getTopLeft(find.byKey(ValueKey('project-$cwd'))).dy;
-    expect(top(_z), lessThan(top(_b)), reason: 'z holds the session needing you');
-    expect(top(_b), lessThan(top(_a)), reason: 'then the working one');
-    expect(top(_a), lessThan(top('/Users/me/c')), reason: 'then the most recent');
-    expect(heading(tester, _z), 'Z · 2');
-    expect(heading(tester, _b), 'B · 1');
+    expect(top(tester, _a), lessThan(top(tester, _b)));
+    expect(top(tester, _b), lessThan(top(tester, '/Users/me/c')));
+    expect(top(tester, '/Users/me/c'), lessThan(top(tester, _z)), reason: 'z needing you does not lift it');
+    expect(top(tester, _z), lessThan(top(tester, '')), reason: 'somewhere unknown comes last');
+    expect(heading(tester, _z), 'Z');
+    expect(heading(tester, ''), 'SOMEWHERE');
     expect(find.textContaining('~/'), findsNothing, reason: 'the heading names the project once, without its path');
-    // A session from somewhere unknown: no + to start one there, and its
-    // agent for a title.
-    expect(heading(tester, ''), 'SOMEWHERE · 1');
-    expect(find.byKey(const ValueKey('project-new-')), findsNothing);
+    expect(find.byIcon(Icons.add), findsNothing, reason: 'no + on the headings');
+    expect(find.byIcon(Icons.expand_more), findsNothing, reason: 'no fold arrows on the headings');
+    // In z's group: the computer's order, the asking one not lifted.
+    expect(tester.getTopLeft(session('kitty-1/5')).dy, lessThan(tester.getTopLeft(session('kitty-1/1')).dy));
     expect(find.descendant(of: session('pid:8'), matching: find.text('omp')), findsOneWidget);
-    // In z's group: the asking one above the newer idle one.
-    expect(tester.getTopLeft(session('kitty-1/1')).dy, lessThan(tester.getTopLeft(session('kitty-1/5')).dy));
     expect(find.text('OTHER WINDOWS'), findsOneWidget);
     expect(find.byKey(const ValueKey('term-kitty-1/4')), findsOneWidget);
     expect(
@@ -176,10 +181,53 @@ void main() {
       findsNothing,
       reason: 'a session without a window has nothing to close',
     );
+
+    // Somewhere unknown has nowhere to start a session.
+    await menu(tester, '');
+    expect(find.byKey(const ValueKey('project-menu-new')), findsNothing);
+    expect(find.byKey(const ValueKey('project-menu-fold')), findsOneWidget);
     remote.flush();
   });
 
-  testWidgets('a long folder name gives way: its + stays on the row and tappable', (tester) async {
+  testWidgets('by recent activity, projects keep their place until the list is refreshed, and the choice is kept', (
+    tester,
+  ) async {
+    macState();
+    await pumpList(tester);
+    await tester.tap(find.byKey(const ValueKey('project-sort')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Recent activity').last);
+    await tester.pumpAndSettle();
+    expect(prefs.getString('pocketterm_terminal_sort'), 'activity');
+
+    expect(top(tester, _b), lessThan(top(tester, _z)));
+    expect(top(tester, _z), lessThan(top(tester, _a)));
+    expect(top(tester, _a), lessThan(top(tester, '/Users/me/c')));
+
+    // a gets busy now: it stays where it is while the list is up.
+    final state = remote.sessions.map((s) => s.toJson()).toList();
+    final a = state.indexWhere((s) => s['cwd'] == _a);
+    state[a] = {...state[a], 'busy': true, 'at': DateTime.now().millisecondsSinceEpoch + 1000};
+    remote.handle('state', {
+      'windows': [for (final w in remote.windows) w.toJson()],
+      'sessions': state,
+      'home': '/Users/me',
+      'agent': 'omp',
+    });
+    await tester.pump();
+    expect(top(tester, _b), lessThan(top(tester, _a)), reason: 'no reshuffle while looking');
+
+    // Pulled to refresh: ranked afresh.
+    await tester.fling(find.byType(ListView), const Offset(0, 400), 1000);
+    await tester.pumpAndSettle();
+    expect(top(tester, _a), lessThan(top(tester, _b)));
+
+    await pumpList(tester, key: const ValueKey('again'));
+    expect(find.text('Recent activity'), findsOneWidget, reason: 'the sort is kept');
+    remote.flush();
+  });
+
+  testWidgets('a long folder name gets the row; its menu starts the agent there', (tester) async {
     const long = '/Users/me/IdeaProjects/customer-integration-service-frontend-and-more';
     remote.handle('state', {
       'windows': [
@@ -194,13 +242,14 @@ void main() {
     await pumpList(tester);
 
     expect(tester.takeException(), isNull, reason: 'no overflow');
-    expect(find.text(' · 1'), findsOneWidget);
     expect(
       tester.getSize(find.text(long.split('/').last.toUpperCase())).width,
-      greaterThan(200),
+      greaterThan(250),
       reason: 'the name gets most of the row',
     );
-    await tester.tap(find.byKey(const ValueKey('new-in-$long')));
+    await menu(tester, long);
+    expect(find.text('~/IdeaProjects/customer-integration-service-frontend-and-more'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('project-menu-new')));
     await tester.pump(Duration.zero);
     final launch = runs('launch').single;
     expect(launch, containsPair('cwd', long));
@@ -209,22 +258,22 @@ void main() {
     remote.flush();
   });
 
-  testWidgets("a project's + starts the agent there and opens its session, without folding the project", (
+  testWidgets("a project's menu starts the agent there and opens its session, the heading spinning meanwhile", (
     tester,
   ) async {
     macState();
     await pumpList(tester);
 
-    await tester.tap(find.byKey(const ValueKey('new-in-$_b')));
-    await tester.pump(Duration.zero);
+    await menu(tester, _b);
+    expect(find.text('New omp session here'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('project-menu-new')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
     final launch = runs('launch').single;
     expect(launch, containsPair('cwd', _b));
     expect(launch, containsPair('agent', true));
-    expect(session('kitty-1/3'), findsOneWidget);
-    // Tapping where the + was, now its spinner, doesn't fold the project.
-    await tester.tap(find.byKey(const ValueKey('project-new-$_b')));
-    await tester.pump();
-    expect(session('kitty-1/3'), findsOneWidget);
+    expect(find.byKey(const ValueKey('project-launching-$_b')), findsOneWidget);
+    expect(session('kitty-1/3'), findsOneWidget, reason: 'starting one does not fold the project');
 
     remote.handle('ran', {'id': launch['id'], 'window': 'kitty-1/9'});
     await tester.pump();
@@ -234,35 +283,56 @@ void main() {
     remote.flush();
   });
 
-  testWidgets('a folded project shows only its heading, and stays folded next time', (tester) async {
+  testWidgets('a folded project shows one summary row that still says what needs you, and stays folded next time', (
+    tester,
+  ) async {
     macState();
     await pumpList(tester);
 
     await tester.tap(find.text('A'));
-    // The card folds shut, then it's gone.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
     expect(session('kitty-1/2'), findsNothing);
+    expect(find.byKey(const ValueKey('project-summary-$_a')), findsOneWidget);
     expect(session('kitty-1/3'), findsOneWidget);
     expect(prefs.getStringList('pocketterm_terminal_folded'), [_a]);
 
     await pumpList(tester, key: const ValueKey('again'));
     expect(session('kitty-1/2'), findsNothing);
-    expect(heading(tester, _a), 'A · 1');
 
-    await tester.tap(find.text('A'));
+    // Tapping the summary opens it again.
+    await tester.tap(find.byKey(const ValueKey('project-summary-$_a')));
     await tester.pump();
     expect(session('kitty-1/2'), findsOneWidget);
     expect(prefs.getStringList('pocketterm_terminal_folded'), isEmpty);
 
-    // Folded, a session needing you still shows on its heading.
-    expect(find.byKey(const ValueKey('project-needs-you-$_z')), findsNothing);
     await tester.tap(find.text('Z'));
     await tester.pump();
-    expect(find.byKey(const ValueKey('project-needs-you-$_z')), findsOneWidget);
+    expect(find.text('2 sessions · 1 needs you'), findsOneWidget);
     await tester.tap(find.text('B'));
     await tester.pump();
-    expect(find.byKey(const ValueKey('project-needs-you-$_b')), findsNothing, reason: "b's is only working");
+    expect(find.text('1 session · 1 working'), findsOneWidget);
+    remote.flush();
+  });
+
+  testWidgets("a project's menu folds all the others, then unfolds them all", (tester) async {
+    macState();
+    await pumpList(tester);
+
+    await menu(tester, _b);
+    await tester.tap(find.byKey(const ValueKey('project-menu-fold-others')));
+    await tester.pumpAndSettle();
+    expect(session('kitty-1/3'), findsOneWidget);
+    expect(session('kitty-1/2'), findsNothing);
+    expect(session('kitty-1/1'), findsNothing);
+    expect(prefs.getStringList('pocketterm_terminal_folded')!.toSet(), {_a, _z, '/Users/me/c', ''});
+
+    await menu(tester, _b);
+    await tester.tap(find.byKey(const ValueKey('project-menu-unfold-all')));
+    await tester.pumpAndSettle();
+    expect(session('kitty-1/2'), findsOneWidget);
+    expect(session('kitty-1/1'), findsOneWidget);
+    expect(prefs.getStringList('pocketterm_terminal_folded'), isEmpty);
     remote.flush();
   });
 
@@ -327,13 +397,12 @@ void main() {
     remote.flush();
   });
 
-  testWidgets("with the computer out of reach, neither a + nor a row's question can be used", (tester) async {
+  testWidgets("with the computer out of reach, neither a new session nor a row's question can be used", (tester) async {
     macState();
     await pumpList(tester);
     await tester.drag(session('kitty-1/3'), const Offset(-600, 0));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('close-confirm')), findsOneWidget);
-    expect(tester.widget<IconButton>(plus(_b)).onPressed, isNotNull);
 
     // Nothing heard from the computer any more, and the list looks again (the
     // app's link check does, every few seconds).
@@ -344,7 +413,8 @@ void main() {
     expect(remote.online, isFalse);
     expect(find.byKey(const ValueKey('close-confirm')), findsNothing);
     expect(session('kitty-1/3'), findsOneWidget);
-    expect(tester.widget<IconButton>(plus(_b)).onPressed, isNull);
+    await menu(tester, _b);
+    expect(tester.widget<ListTile>(find.byKey(const ValueKey('project-menu-new'))).enabled, isFalse);
     remote.flush();
   });
 

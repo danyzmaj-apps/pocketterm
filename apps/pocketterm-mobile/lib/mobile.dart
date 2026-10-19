@@ -39,6 +39,14 @@ class MobileSession extends Session {
 
   Future<void> setCollapsedProjects(Set<String> cwds) => _prefs.setStringList(_foldedKey, [...cwds]);
 
+  static const _sortKey = 'pocketterm_terminal_sort';
+
+  /// How the Terminal list orders its projects; by name until chosen.
+  ProjectSort get projectSort =>
+      ProjectSort.values.where((s) => s.name == _prefs.getString(_sortKey)).firstOrNull ?? ProjectSort.name;
+
+  Future<void> setProjectSort(ProjectSort sort) => _prefs.setString(_sortKey, sort.name);
+
   static const _desktopKey = 'pocketterm_desktop';
   static const _desktopsKey = 'pocketterm_desktops';
 
@@ -465,6 +473,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   remote: t,
                   folded: widget.session.collapsedProjects,
                   onFolded: (f) => unawaited(widget.session.setCollapsedProjects(f)),
+                  sort: widget.session.projectSort,
+                  onSort: (s) => unawaited(widget.session.setProjectSort(s)),
                 ),
                 null => Center(
                   child: Padding(

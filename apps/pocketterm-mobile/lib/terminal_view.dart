@@ -268,28 +268,50 @@ Future<void> openNewSession(BuildContext context, TerminalRemote remote) async {
   }
 }
 
-/// Sessions in the list's order: waiting on the person, then working, then
-/// the most recent.
-List<LiveSummary> sortedSessions(List<LiveSummary> sessions) {
-  int rank(LiveSummary s) => s.ask != null ? 0 : (s.busy ? 1 : 2);
-  final epoch = DateTime.fromMillisecondsSinceEpoch(0);
-  return [...sessions]..sort((a, b) {
-    final r = rank(a).compareTo(rank(b));
-    return r != 0 ? r : (b.at ?? epoch).compareTo(a.at ?? epoch);
-  });
-}
-
 /// The sessions in one project folder.
 typedef SessionGroup = ({String cwd, List<LiveSummary> sessions});
 
-/// Sessions by project folder: each group's in [sortedSessions] order, and a
-/// group ranks where its first (most urgent) session does.
-List<SessionGroup> groupedSessions(List<LiveSummary> sessions) {
-  final groups = <String, List<LiveSummary>>{};
-  for (final s in sortedSessions(sessions)) {
-    (groups[s.cwd] ??= []).add(s);
+/// How the Terminal list orders its projects.
+enum ProjectSort {
+  /// A–Z by folder name; somewhere unknown last.
+  name,
+
+  /// Most recent activity first, as last ranked (see [groupedSessions]).
+  activity,
+}
+
+/// Sessions by project folder, each project's in the computer's order (as it
+/// first saw them), so a session changing state never moves.
+///
+/// [sort] orders the projects. By activity, the projects in [ranked] keep its
+/// order, so the list doesn't reshuffle while it's looked at; projects not
+/// in it yet go first, the most recently active first. An empty [ranked]
+/// ranks them all afresh.
+List<SessionGroup> groupedSessions(List<LiveSummary> sessions, ProjectSort sort, {List<String> ranked = const []}) {
+  final byCwd = <String, List<LiveSummary>>{};
+  for (final s in sessions) {
+    (byCwd[s.cwd] ??= []).add(s);
   }
-  return [for (final MapEntry(:key, :value) in groups.entries) (cwd: key, sessions: value)];
+  final List<String> order;
+  switch (sort) {
+    case ProjectSort.name:
+      String name(String cwd) => baseName(cwd).toLowerCase();
+      order = byCwd.keys.toList()
+        ..sort((a, b) {
+          if (a.isEmpty != b.isEmpty) return a.isEmpty ? 1 : -1;
+          final r = name(a).compareTo(name(b));
+          return r != 0 ? r : a.compareTo(b);
+        });
+    case ProjectSort.activity:
+      final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+      DateTime latest(String cwd) => byCwd[cwd]!.map((s) => s.at ?? epoch).reduce((a, b) => a.isAfter(b) ? a : b);
+      final known = {...ranked};
+      order = [
+        ...byCwd.keys.where((c) => !known.contains(c)).toList()..sort((a, b) => latest(b).compareTo(latest(a))),
+        ...ranked.where(byCwd.containsKey),
+      ];
+  }
+  return [for (final cwd in order) (cwd: cwd, sessions: byCwd[cwd]!)];
 }
 
 /// "Needs you", "Working…" or how long it has been idle.
@@ -301,16 +323,28 @@ String sessionState(LiveSummary s) => s.ask != null
 
 Color sessionColor(LiveSummary s) => s.ask != null ? C.warn : (s.busy ? C.accent : C.dim2);
 
-/// The home page's body: the computer's coding sessions by project, each
-/// with its + for a new one there, and its other terminal windows.
+/// The home page's body: the computer's coding sessions by project, in a
+/// steady order, and its other terminal windows. Tapping a project's heading
+/// folds it; long-pressing it offers a new session there and folding.
 class TerminalList extends StatefulWidget {
-  const TerminalList({required this.remote, required this.folded, required this.onFolded, super.key});
+  const TerminalList({
+    required this.remote,
+    required this.folded,
+    required this.onFolded,
+    required this.sort,
+    required this.onSort,
+    super.key,
+  });
   final TerminalRemote remote;
 
-  /// Projects (folders) showing only their heading, as kept; [onFolded]
-  /// keeps them when they change.
+  /// Projects (folders) showing only their heading and a summary, as kept;
+  /// [onFolded] keeps them when they change.
   final Set<String> folded;
   final ValueChanged<Set<String>> onFolded;
+
+  /// How projects are ordered, as kept; [onSort] keeps a new choice.
+  final ProjectSort sort;
+  final ValueChanged<ProjectSort> onSort;
 
   @override
   State<TerminalList> createState() => _TerminalListState();
@@ -320,6 +354,11 @@ class _TerminalListState extends State<TerminalList> {
   TerminalRemote get remote => widget.remote;
 
   late final Set<String> _folded = {...widget.folded};
+  late ProjectSort _sort = widget.sort;
+
+  /// By activity: the projects' order as last shown, kept until the list
+  /// is pulled to refresh or the sort changes.
+  List<String> _ranked = const [];
 
   /// The project a new session is starting in.
   String? _launching;
@@ -339,11 +378,24 @@ class _TerminalListState extends State<TerminalList> {
     super.dispose();
   }
 
-  void _fold(String cwd) {
-    setState(() {
-      if (!_folded.remove(cwd)) _folded.add(cwd);
-    });
+  void _setFolded(Set<String> folded) {
+    setState(
+      () => _folded
+        ..clear()
+        ..addAll(folded),
+    );
     widget.onFolded({..._folded});
+  }
+
+  void _fold(String cwd) => _setFolded(_folded.contains(cwd) ? (_folded.toSet()..remove(cwd)) : {..._folded, cwd});
+
+  void _setSort(ProjectSort sort) {
+    if (sort == _sort) return;
+    setState(() {
+      _sort = sort;
+      _ranked = const [];
+    });
+    widget.onSort(sort);
   }
 
   /// Starts the agent in a new window in [cwd], and opens its session.
@@ -447,64 +499,165 @@ class _TerminalListState extends State<TerminalList> {
     );
   }
 
-  /// A project's sessions under its heading: folds on tap, and its + starts
-  /// the agent there.
-  Widget _project(SessionGroup g) {
+  /// A project's sessions under its name. Tapping the name folds it to one
+  /// summary row; long-pressing it opens [_projectMenu].
+  Widget _project(SessionGroup g, int projects) {
     final folded = _folded.contains(g.cwd);
     return Panel(
       key: ValueKey('project-${g.cwd}'),
-      title: (g.cwd.isEmpty ? 'Somewhere' : baseName(g.cwd)).toUpperCase(),
-      count: g.sessions.length,
+      title: _projectName(g.cwd).toUpperCase(),
       onTitleTap: () => _fold(g.cwd),
-      titleTrailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Folded, a session needing you would go unseen.
-          if (folded && g.sessions.any((s) => s.ask != null))
-            Padding(
-              key: ValueKey('project-needs-you-${g.cwd}'),
-              padding: const EdgeInsets.only(right: 6),
-              child: const Icon(Icons.circle, size: 8, color: C.warn),
-            ),
-          // Somewhere unknown has nowhere to start one.
-          if (g.cwd.isNotEmpty)
-            // Its own taps, also while it's off or starting: they never fold
-            // the project.
-            GestureDetector(
-              key: ValueKey('project-new-${g.cwd}'),
-              behavior: HitTestBehavior.opaque,
-              onTap: () {},
-              child: SizedBox(
-                width: 44,
-                height: 44,
-                child: _launching == g.cwd
-                    ? const Center(
-                        child: SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                      )
-                    : IconButton(
-                        key: ValueKey('new-in-${g.cwd}'),
-                        padding: EdgeInsets.zero,
-                        iconSize: 22,
-                        tooltip: 'New ${remote.agent.label} session here',
-                        onPressed: remote.online && _launching == null ? () => unawaited(_launchHere(g.cwd)) : null,
-                        icon: Icon(isIos ? Icons.add_rounded : Icons.add),
-                        color: C.accent,
-                      ),
-              ),
-            ),
-          // As Pocket's Done: down while folded, turning up as it opens.
-          AnimatedRotation(
-            turns: folded ? 0 : .5,
-            duration: Motion.fast,
-            curve: Motion.fold,
-            child: const Icon(Icons.expand_more, color: C.dim, size: 20),
-          ),
-        ],
-      ),
-      tallTrailing: g.cwd.isNotEmpty,
-      children: folded ? const [] : [for (final s in g.sessions) _session(s)],
+      onTitleLongPress: () {
+        unawaited(HapticFeedback.selectionClick());
+        unawaited(_projectMenu(g.cwd, projects));
+      },
+      titleTrailing: _launching == g.cwd
+          ? SizedBox.square(
+              key: ValueKey('project-launching-${g.cwd}'),
+              dimension: 14,
+              child: const CircularProgressIndicator(strokeWidth: 2),
+            )
+          : null,
+      children: folded ? [_summary(g)] : [for (final s in g.sessions) _session(s)],
     );
   }
+
+  static String _projectName(String cwd) => cwd.isEmpty ? 'Somewhere' : baseName(cwd);
+
+  /// A folded project's one row: how many sessions, and what needs you or
+  /// is working, so folding never hides a question.
+  Widget _summary(SessionGroup g) {
+    final n = g.sessions.length;
+    final asking = g.sessions.where((s) => s.ask != null).length;
+    final working = g.sessions.where((s) => s.busy && s.ask == null).length;
+    final color = asking > 0 ? C.warn : (working > 0 ? C.accent : C.dim2);
+    return ListTile(
+      key: ValueKey('project-summary-${g.cwd}'),
+      contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      onTap: () => _fold(g.cwd),
+      leading: Icon(Icons.auto_awesome, size: 18, color: color),
+      title: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(text: '$n session${n == 1 ? '' : 's'}'),
+            if (asking > 0)
+              TextSpan(
+                text: ' · ${asking == 1 ? '1 needs' : '$asking need'} you',
+                style: const TextStyle(color: C.warn),
+              ),
+            if (working > 0)
+              TextSpan(
+                text: ' · $working working',
+                style: const TextStyle(color: C.accent),
+              ),
+          ],
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 15, color: C.dim),
+      ),
+    );
+  }
+
+  /// What a long press on a project's name offers: a new session there,
+  /// folding it, and folding the others.
+  Future<void> _projectMenu(String cwd, int projects) => showAppSheet<void>(
+    context,
+    builder: (sheet) {
+      final folded = _folded.contains(cwd);
+      final others = projects > 1;
+      void run(VoidCallback action) {
+        Navigator.of(sheet).pop();
+        action();
+      }
+
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 2),
+              child: Text(_projectName(cwd), style: sheetTitleStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+            if (cwd.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Text(
+                  shortPath(remote, cwd),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, color: C.dim),
+                ),
+              ),
+            // Somewhere unknown has nowhere to start one.
+            if (cwd.isNotEmpty)
+              ListTile(
+                key: const ValueKey('project-menu-new'),
+                leading: Icon(isIos ? Icons.add_rounded : Icons.add, color: C.accent),
+                title: Text('New ${remote.agent.label} session here'),
+                enabled: remote.online && _launching == null,
+                onTap: () => run(() => unawaited(_launchHere(cwd))),
+              ),
+            ListTile(
+              key: const ValueKey('project-menu-fold'),
+              leading: Icon(folded ? Icons.unfold_more : Icons.unfold_less, color: C.dim),
+              title: Text(folded ? 'Unfold' : 'Fold'),
+              onTap: () => run(() => _fold(cwd)),
+            ),
+            if (others)
+              ListTile(
+                key: const ValueKey('project-menu-fold-others'),
+                leading: const Icon(Icons.vertical_align_center, color: C.dim),
+                title: const Text('Fold all others'),
+                onTap: () => run(() {
+                  final all = {for (final s in remote.sessions) s.cwd};
+                  _setFolded(all..remove(cwd));
+                }),
+              ),
+            if (others && _folded.isNotEmpty)
+              ListTile(
+                key: const ValueKey('project-menu-unfold-all'),
+                leading: const Icon(Icons.unfold_more_double, color: C.dim),
+                title: const Text('Unfold all'),
+                onTap: () => run(() => _setFolded({})),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      );
+    },
+  );
+
+  /// Above the projects: how they're ordered, one tap to change it.
+  Widget _sortControl() => Align(
+    alignment: Alignment.centerRight,
+    child: Padding(
+      padding: const EdgeInsets.only(right: 16),
+      child: PopupMenuButton<ProjectSort>(
+        key: const ValueKey('project-sort'),
+        tooltip: 'Sort projects',
+        initialValue: _sort,
+        onSelected: _setSort,
+        itemBuilder: (_) => [for (final s in ProjectSort.values) PopupMenuItem(value: s, child: Text(_sortLabel(s)))],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_sortLabel(_sort), style: const TextStyle(fontSize: 13, color: C.dim)),
+              const Icon(Icons.arrow_drop_down, size: 18, color: C.dim),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
+  static String _sortLabel(ProjectSort s) => switch (s) {
+    ProjectSort.name => 'Name',
+    ProjectSort.activity => 'Recent activity',
+  };
 
   Widget _window(TermWindow w) => _swipe(
     w.key,
@@ -587,7 +740,10 @@ class _TerminalListState extends State<TerminalList> {
     listenable: remote,
     builder: (context, _) {
       final note = linkNote(remote, color: Colors.transparent);
-      final groups = groupedSessions(remote.sessions);
+      final groups = groupedSessions(remote.sessions, _sort, ranked: _ranked);
+      // What's shown is what stays: a project's activity reorders it only
+      // on the next refresh.
+      if (_sort == ProjectSort.activity) _ranked = [for (final g in groups) g.cwd];
       final claimed = {for (final s in remote.sessions) ?s.window};
       final windows = remote.windows.where((w) => !claimed.contains(w.key)).toList();
       // The sessions and windows, in each platform's grouped cards.
@@ -601,6 +757,7 @@ class _TerminalListState extends State<TerminalList> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: () async {
+                setState(() => _ranked = const []);
                 remote.hello();
                 await Future<void>.delayed(const Duration(milliseconds: 600));
               },
@@ -608,7 +765,8 @@ class _TerminalListState extends State<TerminalList> {
                 padding: const EdgeInsets.only(bottom: AddButton.contentInset),
                 children: [
                   if (groups.isEmpty && windows.isEmpty) _empty(),
-                  for (final g in groups) _project(g),
+                  if (groups.length > 1) _sortControl(),
+                  for (final g in groups) _project(g, groups.length),
                   if (windows.isNotEmpty) ...[
                     Panel(
                       key: const ValueKey('windows-heading'),

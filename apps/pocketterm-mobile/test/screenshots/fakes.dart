@@ -2,7 +2,7 @@ import 'package:pocketterm_mobile/mobile.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
-/// A phone signed in as `ana` (or, [signedIn] false, not yet), with nothing
+/// A phone signed in as `ana` (or, with `signedIn: false`, not yet), with nothing
 /// behind it: no disk, no Supabase.
 class FakeSession extends MobileSession {
   FakeSession._(SharedPreferences prefs, this._signedIn) : super(prefs, 'iPhone');

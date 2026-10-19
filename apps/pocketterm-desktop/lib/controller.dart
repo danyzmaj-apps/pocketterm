@@ -181,8 +181,8 @@ class AppController extends Session {
     }
   }
 
-  /// Tells the server this computer [id] is there now; a failure waits for
-  /// the next beat.
+  /// Tells the server this computer [id] is there now (the server stamps
+  /// seen_at by its own clock); a failure waits for the next beat.
   void _seen(String id) {
     _seenOut = _seenOut.then((_) async {
       try {
@@ -190,7 +190,6 @@ class AppController extends Session {
           'id': id,
           'name': desktopName(device),
           'platform': Platform.isWindows ? 'windows' : 'macos',
-          'seen_at': DateTime.now().toUtc().toIso8601String(),
         }, onConflict: 'user_id,id');
       } on Object catch (e) {
         debugPrint('PocketTerm: computer not listed: $e');

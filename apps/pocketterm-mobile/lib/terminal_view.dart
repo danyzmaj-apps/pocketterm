@@ -612,7 +612,7 @@ class _TerminalListState extends State<TerminalList> {
                 title: const Text('Fold all others'),
                 onTap: () => run(() {
                   final all = {for (final s in remote.sessions) s.cwd};
-                  _setFolded(all..remove(cwd));
+                  _setFolded({..._folded, ...all}..remove(cwd));
                 }),
               ),
             if (others && _folded.isNotEmpty)

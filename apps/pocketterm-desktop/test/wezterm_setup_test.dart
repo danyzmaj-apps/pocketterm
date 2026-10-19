@@ -121,4 +121,23 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 50));
     expect(setup.state, WezTermSetupState.installed);
   });
+
+  test('a download that stalls mid-way stops with an error, ready to try again', () async {
+    // The first bytes arrive, then nothing more.
+    final body = StreamController<List<int>>()..add(bytes);
+    addTearDown(body.close);
+    final setup = WezTermSetup(
+      isInstalled: () => false,
+      client: MockClient.streaming((req, _) async => http.StreamedResponse(body.stream, 200)),
+      downloads: dir,
+      checksum: good,
+      stall: const Duration(milliseconds: 50),
+      run: (_) => fail('a stalled download is never opened'),
+    );
+    addTearDown(setup.dispose);
+
+    await setup.install();
+    expect(setup.state, WezTermSetupState.missing);
+    expect(setup.error, contains('stopped answering'));
+  });
 }

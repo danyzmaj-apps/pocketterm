@@ -76,7 +76,8 @@ let planPath: string | undefined;
 
 async function readCli($: EngineInterface): Promise<Cli | undefined> {
 	try {
-		const home = (await $.env.get("HOME")) || (await $.env.get("USERPROFILE"));
+		// PocketTerm's home: USERPROFILE on Windows (where HOME may be MSYS's or another tool's), HOME elsewhere.
+		const home = (await $.env.get("USERPROFILE")) || (await $.env.get("HOME"));
 		const path = (await $.env.get("POCKETTERM_CLI_JSON")) || `${home}/.config/pocketterm/cli.json`;
 		const json = JSON.parse(await $.fs.read(path)) as { port?: unknown; token?: unknown };
 		return typeof json.port === "number" && typeof json.token === "string"

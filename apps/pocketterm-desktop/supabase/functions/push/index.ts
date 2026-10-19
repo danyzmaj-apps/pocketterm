@@ -244,8 +244,10 @@ Deno.serve(async (req) => {
   }
 
   if (body.action === "activity_end") {
+    // No session ends every one this token follows; a bad one ends none.
+    const session = sessionKey(body.session);
+    if (body.session != null && !session) return json(400, { error: "session must be a coding session key" });
     if (typeof body.token === "string") {
-      const session = sessionKey(body.session);
       let ended = admin.from("activity_tokens").delete().eq("token", body.token).eq("user_id", user);
       if (session) ended = ended.eq("session", session);
       await ended;

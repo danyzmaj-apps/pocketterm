@@ -23,7 +23,11 @@ class MacTerminalsCard extends StatefulWidget {
 
 class _MacTerminalsCardState extends State<MacTerminalsCard> {
   List<TermStatus>? _statuses;
-  final _fixed = <String, String>{};
+
+  /// What a fix told the person, by terminal, with the fix it was for: shown
+  /// until a status no longer carries that fix (permission given, kitty.conf
+  /// set), then the live status speaks.
+  final _fixed = <String, (TermFix?, String)>{};
   Timer? _timer;
 
   static const tmuxCommand = 'brew install tmux';
@@ -43,13 +47,19 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
 
   Future<void> _look() async {
     final s = await widget.terminals.statuses();
-    if (mounted) setState(() => _statuses = s);
+    if (!mounted) return;
+    setState(() {
+      _statuses = s;
+      for (final t in s) {
+        if (_fixed[t.id] case (final fix, _) when fix != t.fix) _fixed.remove(t.id);
+      }
+    });
   }
 
   Future<void> _fix(TermStatus s) async {
     final note = await fixTerminal(widget.terminals, s);
     if (!mounted) return;
-    setState(() => _fixed[s.id] = note);
+    setState(() => _fixed[s.id] = (s.fix, note));
     await _look();
   }
 
@@ -103,7 +113,7 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
 
   Widget _row(TermStatus s) {
     final ok = s.state == TermState.ready || s.state == TermState.idle;
-    final note = _fixed[s.id] ?? (s.state == TermState.setup ? s.note : (ok ? 'Ready' : s.note));
+    final note = _fixed[s.id]?.$2 ?? (s.state == TermState.setup ? s.note : (ok ? 'Ready' : s.note));
     return Padding(
       key: ValueKey('wizard-terminal-${s.id}'),
       padding: const EdgeInsets.only(top: 12),

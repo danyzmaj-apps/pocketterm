@@ -35,6 +35,7 @@ class WezTermSetup extends ChangeNotifier {
     Directory? downloads,
     Future<Process> Function(String path)? run,
     Duration poll = const Duration(seconds: 2),
+    this.stall = const Duration(seconds: 30),
     this.checksum = sha256Hex,
   }) : _client = client ?? http.Client(),
        _downloads = downloads ?? Directory(p.join(Directory.systemTemp.path, 'pocketterm')),
@@ -66,6 +67,10 @@ class WezTermSetup extends ChangeNotifier {
   final http.Client _client;
   final Directory _downloads;
   final Future<Process> Function(String path) _run;
+
+  /// How long the download may go without an answer or a byte before it
+  /// stops with an error (a stalled connection, a captive portal).
+  final Duration stall;
 
   /// The installer's SHA-256 a download must have to be opened.
   final String checksum;
@@ -116,7 +121,14 @@ class WezTermSetup extends ChangeNotifier {
       file = await _download();
     } on Object catch (e) {
       if (state == WezTermSetupState.downloading) {
-        _set(WezTermSetupState.missing, error: e is _Mismatch ? e.message : "WezTerm didn't download: $e");
+        _set(
+          WezTermSetupState.missing,
+          error: switch (e) {
+            _Mismatch() => e.message,
+            TimeoutException() => "WezTerm didn't download: the connection stopped answering.",
+            _ => "WezTerm didn't download: $e",
+          },
+        );
       }
       return;
     }
@@ -139,7 +151,7 @@ class WezTermSetup extends ChangeNotifier {
   }
 
   Future<File> _download() async {
-    final response = await _client.send(http.Request('GET', url));
+    final response = await _client.send(http.Request('GET', url)).timeout(stall);
     if (response.statusCode != 200) throw HttpException('GitHub answered ${response.statusCode}');
     await _downloads.create(recursive: true);
     final file = File(p.join(_downloads.path, _file));
@@ -149,7 +161,7 @@ class WezTermSetup extends ChangeNotifier {
     final total = response.contentLength;
     var got = 0;
     try {
-      await for (final chunk in response.stream) {
+      await for (final chunk in response.stream.timeout(stall)) {
         sink.add(chunk);
         hash.add(chunk);
         got += chunk.length;

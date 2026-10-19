@@ -446,10 +446,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final selected = _desktops.selected;
     return Scaffold(
       backgroundColor: screenColor,
-      floatingActionButton: AddButton(
-        tooltip: 'New session',
-        onPressed: terminal == null ? null : () => unawaited(openNewSession(context, terminal)),
-      ),
+      // Nothing to start a session on until a computer answers.
+      floatingActionButton: terminal == null
+          ? null
+          : AddButton(tooltip: 'New session', onPressed: () => unawaited(openNewSession(context, terminal))),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -499,8 +499,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-  static const _noDesktop =
-      'No computer yet. Install PocketTerm on your Mac or Windows PC and sign in; its sessions show up here.';
+  /// Why the account lists no computer: the store reviewers' demo account
+  /// has none by design; anyone else's computer isn't registering.
+  String get _noDesktop => widget.session.user?.appMetadata['pocketterm_demo'] == true
+      ? 'This is a demo account for App Store and Google Play review. It has no computer; '
+            "on a real account your computer's coding sessions show here."
+      : "Your computer isn't reporting to this account. "
+            'Open PocketTerm on it and turn on Terminal from phone in its Settings.';
 
   /// The account's computers, to show another one's sessions.
   Future<void> _pickDesktop() {
@@ -519,9 +524,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 child: Text('Computers', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
               ),
               if (_desktops.all.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 4, 20, 20),
-                  child: Text(_noDesktop, style: TextStyle(color: C.dim, height: 1.5)),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                  child: Text(_noDesktop, style: const TextStyle(color: C.dim, height: 1.5)),
                 ),
               for (final d in _desktops.all)
                 ListTile(

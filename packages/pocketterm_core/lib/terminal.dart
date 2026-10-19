@@ -564,15 +564,17 @@ String homeDir({Map<String, String>? env, bool? windows}) =>
 
 /// An executable named [name] in the usual places (a GUI app's PATH is
 /// short), or in [extra]; null if none. On Windows: PATH (split on `;`),
-/// `<name>.exe` before `<name>` in each folder.
+/// `<name>.exe` in any folder, then [extra], then `<name>.cmd` and
+/// `<name>.bat` (npm's shims; run them with [runsInShell]). Never the bare
+/// `<name>`, which on Windows is a script CreateProcess can't run.
 String? findExecutable(String name, {List<String> extra = const [], Map<String, String>? env, bool? windows}) {
   final path = (env ?? Platform.environment)['PATH'] ?? '';
+  final dirs = path.split(';').where((d) => d.isNotEmpty);
   final candidates = (windows ?? Platform.isWindows)
       ? [
-          for (final dir in path.split(';').where((d) => d.isNotEmpty)) ...[
-            p.join(dir, '$name.exe'),
-            p.join(dir, name),
-          ],
+          for (final dir in dirs) p.join(dir, '$name.exe'),
+          ...extra,
+          for (final dir in dirs) ...[p.join(dir, '$name.cmd'), p.join(dir, '$name.bat')],
         ]
       : [
           for (final dir in [
@@ -583,12 +585,17 @@ String? findExecutable(String name, {List<String> extra = const [], Map<String, 
             '/usr/bin',
           ])
             '$dir/$name',
+          ...extra,
         ];
-  for (final f in [...candidates, ...extra]) {
+  for (final f in candidates) {
     if (File(f).existsSync()) return f;
   }
   return null;
 }
+
+/// Whether [executable] is a Windows batch file (`.cmd`, `.bat`), which only
+/// runs through `cmd.exe` ([Process.run]'s `runInShell`).
+bool runsInShell(String executable) => RegExp(r'\.(cmd|bat)$', caseSensitive: false).hasMatch(executable);
 
 // ------------------------------------------------------------ AppleScript
 

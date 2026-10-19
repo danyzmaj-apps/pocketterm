@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
-import 'package:pocketterm_core/terminal.dart' show findExecutable, homeDir;
+import 'package:pocketterm_core/terminal.dart' show findExecutable, homeDir, runsInShell;
 
 /// Runs [executable] with [arguments], as [Process.run] does.
 typedef Run = Future<ProcessResult> Function(String executable, List<String> arguments);
@@ -33,7 +33,17 @@ class Integrations {
     : _windows = windows ?? Platform.isWindows,
       home = home ?? homeDir(windows: windows),
       _bundle = bundle ?? rootBundle,
-      _run = run ?? Process.run;
+      _run = run ?? _process;
+
+  /// [Process.run], output read as UTF-8 (what claude writes; the default is
+  /// the ANSI code page on Windows), an npm `claude.cmd` through cmd.exe.
+  static Future<ProcessResult> _process(String executable, List<String> arguments) => Process.run(
+    executable,
+    arguments,
+    runInShell: Platform.isWindows && runsInShell(executable),
+    stdoutEncoding: utf8,
+    stderrEncoding: utf8,
+  );
 
   final String home;
   final AssetBundle _bundle;

@@ -124,4 +124,21 @@ void main() {
     expect(find.text('PC work'), findsWidgets);
     flush();
   });
+
+  testWidgets('no computer: why depends on the account, and there is no + to start a session', (tester) async {
+    for (final demo in [false, true]) {
+      await tester.pumpWidget(
+        MobileApp(
+          session: await FakeSession.create(demo: demo),
+          desktops: Desktops(client)..apply(const []),
+          remoteFor: (_) => fail('no computer to reach'),
+        ),
+      );
+      await tester.pump();
+      expect(find.textContaining('demo account'), demo ? findsOneWidget : findsNothing);
+      expect(find.textContaining('turn on Terminal from phone'), demo ? findsNothing : findsOneWidget);
+      expect(find.byType(FloatingActionButton), findsNothing);
+      expect(find.byTooltip('New session'), findsNothing);
+    }
+  });
 }

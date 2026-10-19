@@ -56,4 +56,26 @@ void main() {
     expect(find.text('brew install tmux'), findsNothing);
     expect(find.byKey(const ValueKey('wizard-terminal-tmux')), findsOneWidget);
   });
+
+  testWidgets("a fix's note stays while the terminal still needs that fix, then gives way to its status", (
+    tester,
+  ) async {
+    final mac = _Mac([
+      const TermStatus('kitty', 'kitty', TermState.setup, note: 'not let in', fix: TermFix.kittyConfig),
+    ]);
+    await pump(tester, mac);
+
+    // The fix's note replaces the status's while kitty still needs the fix.
+    await tester.runAsync(() => tester.tap(find.text('Set up')));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump();
+    expect(find.text('not let in'), findsNothing);
+    expect(find.textContaining('kitty.conf'), findsOneWidget);
+
+    mac.now = [const TermStatus('kitty', 'kitty', TermState.setup, note: 'Restart kitty')];
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump();
+    expect(find.textContaining('kitty.conf'), findsNothing);
+    expect(find.text('Restart kitty'), findsOneWidget);
+  });
 }

@@ -315,7 +315,11 @@ void main() {
     remote.flush();
   });
 
-  testWidgets("a project's menu folds all the others, then unfolds them all", (tester) async {
+  testWidgets("a project's menu folds all the others, keeping other computers' folds, then unfolds them all", (
+    tester,
+  ) async {
+    // Folded on another computer of the account.
+    await _Phone(prefs).setCollapsedProjects({'/Users/me/elsewhere'});
     macState();
     await pumpList(tester);
 
@@ -325,7 +329,13 @@ void main() {
     expect(session('kitty-1/3'), findsOneWidget);
     expect(session('kitty-1/2'), findsNothing);
     expect(session('kitty-1/1'), findsNothing);
-    expect(prefs.getStringList('pocketterm_terminal_folded')!.toSet(), {_a, _z, '/Users/me/c', ''});
+    expect(prefs.getStringList('pocketterm_terminal_folded')!.toSet(), {
+      _a,
+      _z,
+      '/Users/me/c',
+      '',
+      '/Users/me/elsewhere',
+    });
 
     await menu(tester, _b);
     await tester.tap(find.byKey(const ValueKey('project-menu-unfold-all')));

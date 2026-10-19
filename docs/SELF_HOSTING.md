@@ -113,7 +113,7 @@ supabase secrets set PUSH_RELAY_URL=https://<relay-project-ref>.supabase.co/func
 | Phone: "That code doesn't work" | It ran out (10 minutes), was used already or was revoked: make a new one (**Settings → Set up phone…**). |
 | Phone: "Too many tries" | Ten wrong codes from one place in ten minutes: wait a few minutes, then use a fresh code. |
 | Phone: "Your server is older than this app" | Run the setup script again: the server needs the new functions and migrations. |
-| Phone: "No computer yet" | Sign in on PocketTerm on your computer, with the same GitHub account, and keep it running. |
+| Phone: "Your computer isn't reporting to this account" | Sign in on PocketTerm on your computer with the same GitHub account, turn on **Settings → Terminal from phone** and keep it running. |
 | Phone: "<computer> isn't answering" | That computer is asleep, off, or PocketTerm isn't running there, or **Settings → Terminal from phone** is off. |
 | "The project refused this key" on the setup screen | Use the **publishable** key (Project Settings → API Keys), never a secret one. |
 | Terminal: "PocketTerm may not control iTerm2" (or Terminal, Ghostty) | Allow it in System Settings → Privacy & Security → Automation → PocketTerm. |

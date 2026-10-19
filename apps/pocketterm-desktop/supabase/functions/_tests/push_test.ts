@@ -95,6 +95,22 @@ Deno.test("registration takes only a real push token and a 32-byte key", async (
   }
 });
 
+Deno.test("ending a Live Activity with a bad session key ends none of the token's others", async () => {
+  const deletes = () => sent.filter((r) => r.method === "DELETE").map((r) => r.url.searchParams);
+  server();
+  const bad = await push(post({ action: "activity_end", token: activity, session: "x".repeat(65) }, signedIn));
+  assertEquals(bad.status, 400);
+  assertEquals(deletes().length, 0);
+
+  server();
+  await push(post({ action: "activity_end", token: activity, session: "s1" }, signedIn));
+  assertEquals(deletes().map((q) => q.get("session")), ["eq.s1"]);
+
+  server();
+  await push(post({ action: "activity_end", token: activity }, signedIn));
+  assertEquals(deletes().map((q) => q.get("session")), [null], "no session: every one this token follows");
+});
+
 Deno.test("nothing without a sign-in", async () => {
   network((req) => {
     const { pathname } = new URL(req.url);

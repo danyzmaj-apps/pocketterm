@@ -10,10 +10,11 @@ import 'package:pocketterm_core/terminal.dart';
 /// (`~/.local/share/wezterm/gui-sock-<pid>`, on Windows too). Window keys:
 /// `wezterm:<gui pid>/<pane id>`.
 class WezTerm extends TerminalHost {
-  WezTerm({String? executable, String? socketDir, String? home, bool? windows})
-    : this._(executable, socketDir, home, windows ?? Platform.isWindows);
+  /// [clock]: the time, for when a socket that stopped answering is asked again.
+  WezTerm({String? executable, String? socketDir, String? home, bool? windows, DateTime Function()? clock})
+    : this._(executable, socketDir, home, windows ?? Platform.isWindows, clock ?? DateTime.now);
 
-  WezTerm._(this._given, String? socketDir, String? home, this._windows)
+  WezTerm._(this._given, String? socketDir, String? home, this._windows, this._now)
     : _dir = socketDir ?? p.join(home ?? homeDir(windows: _windows), '.local', 'share', 'wezterm');
 
   static String? _find({required bool windows}) => findExecutable(
@@ -33,10 +34,22 @@ class WezTerm extends TerminalHost {
 
   final String _dir;
   final bool _windows;
+  final DateTime Function() _now;
 
   /// Sockets that stopped answering (Windows, where a GUI's socket outlives
-  /// it): not asked again.
-  final _dead = <String>{};
+  /// it), by when: not asked again for [_deadFor]. A live GUI that was slow
+  /// once comes back; a stale socket whose GUI's pid a process snapshot
+  /// lacks is skipped by [_sockets] anyway.
+  final _dead = <String, DateTime>{};
+  static const _deadFor = Duration(minutes: 1);
+
+  bool _isDead(String socket) {
+    final at = _dead[socket];
+    if (at == null) return false;
+    if (_now().difference(at) < _deadFor) return true;
+    _dead.remove(socket);
+    return false;
+  }
 
   @override
   String get id => 'wezterm';
@@ -71,7 +84,7 @@ class WezTerm extends TerminalHost {
     final check = procs != null && !(_windows && procs.all.isEmpty);
     for (final e in d.listSync(followLinks: false)) {
       final m = RegExp(r'^gui-sock-(\d+)$').firstMatch(e.uri.pathSegments.last);
-      if (m == null || _dead.contains(e.path)) continue;
+      if (m == null || _isDead(e.path)) continue;
       if (check && procs.byPid(int.parse(m[1]!)) == null) continue;
       out[m[1]!] = e.path;
     }
@@ -87,9 +100,12 @@ class WezTerm extends TerminalHost {
         exe,
         ['cli', '--no-auto-start', ...args],
         environment: {'WEZTERM_UNIX_SOCKET': socket},
+        // wezterm writes UTF-8; the default is the ANSI code page on Windows.
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
       ).timeout(const Duration(seconds: 5));
     } on TimeoutException {
-      if (_windows) _dead.add(socket);
+      if (_windows) _dead[socket] = _now();
       throw const TerminalException('WezTerm did not answer.');
     }
     if (r.exitCode != 0) {
@@ -97,7 +113,7 @@ class WezTerm extends TerminalHost {
       if (err.contains('is not valid') || err.contains('pane') && err.contains('not found')) {
         throw const TerminalException('That window is gone.');
       }
-      if (_windows) _dead.add(socket);
+      if (_windows) _dead[socket] = _now();
       throw TerminalException('WezTerm: ${err.split('\n').last}');
     }
     return r.stdout as String;

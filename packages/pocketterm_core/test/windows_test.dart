@@ -64,15 +64,45 @@ void main() {
     expect((w.key, w.cwd, w.tty, w.program), ('wezterm:4242/3', r'C:\Users\x\src', '', 'pwsh'));
   });
 
-  test('findExecutable on Windows: PATH split on ;, name.exe before name', () {
+  test('findExecutable on Windows: .exe on PATH, then extra, then .cmd; never the bare name', () {
     final dir = Directory.systemTemp.createTempSync('pocketterm-exe');
     addTearDown(() => dir.deleteSync(recursive: true));
-    File(p.join(dir.path, 'wezterm')).createSync();
-    File(p.join(dir.path, 'wezterm.exe')).createSync();
-    final path = [p.join(dir.path, 'missing'), dir.path].join(';');
-    expect(findExecutable('wezterm', env: {'PATH': path}, windows: true), p.join(dir.path, 'wezterm.exe'));
+    final npm = Directory(p.join(dir.path, 'npm'))..createSync();
+    final bin = Directory(p.join(dir.path, 'bin'))..createSync();
+    File(p.join(npm.path, 'claude')).createSync();
+    File(p.join(npm.path, 'claude.cmd')).createSync();
+    final native = File(p.join(dir.path, 'claude.exe'))..createSync();
+    final path = [p.join(dir.path, 'missing'), npm.path, bin.path].join(';');
+    String? find(List<String> extra) => findExecutable('claude', env: {'PATH': path}, windows: true, extra: extra);
+
+    expect(find(const []), p.join(npm.path, 'claude.cmd'));
+    expect(find([native.path]), native.path);
+    File(p.join(bin.path, 'claude.exe')).createSync();
+    expect(find([native.path]), p.join(bin.path, 'claude.exe'));
     expect(findExecutable('kitty', env: {'PATH': path}, windows: true), isNull);
   });
+
+  test('WezTerm on Windows: a socket that failed once is asked again a minute later', () async {
+    final dir = Directory.systemTemp.createTempSync('pocketterm-wez');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    File(p.join(dir.path, 'gui-sock-4242')).createSync();
+    File(p.join(dir.path, 'list.json')).writeAsStringSync(_wezList);
+    final exe = File(p.join(dir.path, 'wezterm'))
+      ..writeAsStringSync(
+        '#!/bin/sh\n'
+        'if [ -f "${dir.path}/ok" ]; then cat "${dir.path}/list.json"; else echo busy >&2; exit 1; fi\n',
+      );
+    Process.runSync('chmod', ['+x', exe.path]);
+    var now = DateTime(2026);
+    final wez = WezTerm(executable: exe.path, socketDir: dir.path, windows: true, clock: () => now);
+    final procs = Procs(const []);
+
+    expect(await wez.windows(procs), isEmpty);
+    File(p.join(dir.path, 'ok')).createSync();
+    expect(await wez.windows(procs), isEmpty, reason: 'skipped right after failing');
+    now = now.add(const Duration(minutes: 1));
+    expect((await wez.windows(procs)).map((w) => w.key), ['wezterm:4242/3']);
+  }, skip: Platform.isWindows ? 'needs a shell script as wezterm' : null);
 
   test('Terminals.standard on Windows: WezTerm only', () {
     final terms = Terminals.standard(home: r'C:\Users\x', windows: true);

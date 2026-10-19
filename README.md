@@ -17,6 +17,23 @@ PocketTerm is a desktop app (macOS menu bar, Windows tray) plus an iPhone and An
 - **Several computers:** one account can run PocketTerm on several Macs and Windows PCs. The phone lists them and you pick one; a push opens its session on the computer it came from.
 - **Private by design:** everything goes through your own Supabase project, nothing the terminal carries is stored, and pushes reach your phone encrypted.
 
+## Screenshots
+
+**Desktop:** the setup wizard (Supabase token, then the finished server) and Settings.
+
+<p>
+  <img src="docs/images/wizard-token.png" width="32%" alt="Setup wizard: Supabase access token">
+  <img src="docs/images/wizard-ready.png" width="32%" alt="Setup wizard: your server is ready">
+  <img src="docs/images/mac-settings-terminals.png" width="32%" alt="Settings: general and terminals">
+</p>
+
+**Phone:** signing in with the computer's code, and the account sheet.
+
+<p>
+  <img src="docs/images/phone-setup.png" width="32%" alt="Phone: welcome and scan the code">
+  <img src="docs/images/phone-account.png" width="32%" alt="Phone: account sheet">
+</p>
+
 ## Install
 
 | Device | Get it |
@@ -96,10 +113,6 @@ Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 | [CHANGELOG.md](CHANGELOG.md) | What changed in each version |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Setting up the repo, and what a pull request needs |
 | [SECURITY.md](SECURITY.md) | Reporting a vulnerability, and the security model |
-
-## Origins
-
-PocketTerm is the "Terminal from the phone" part of [Džep](https://github.com/danyzmaj-apps/dzep) 0.5.0, split out into its own apps and its own, smaller backend, and extended to Windows and to several computers per account.
 
 ## License
 

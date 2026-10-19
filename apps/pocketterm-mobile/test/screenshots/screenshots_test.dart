@@ -213,10 +213,10 @@ void main() {
     debugDisableShadows = true;
   }
 
-  /// The app, signed in, its Terminal list fed by [terminal].
-  Future<void> app(WidgetTester tester, {required TerminalRemote terminal}) async {
+  /// The app, signed in (else on its setup page), its Terminal list fed by [terminal].
+  Future<void> app(WidgetTester tester, {required TerminalRemote terminal, bool signedIn = true}) async {
     phone(tester);
-    final session = await FakeSession.create();
+    final session = await FakeSession.create(signedIn: signedIn);
     await tester.pumpWidget(
       RepaintBoundary(
         key: shot,
@@ -280,6 +280,24 @@ void main() {
     await tester.tap(find.text('npm test -- moisture'));
     await tester.pumpAndSettle();
     await save(tester, 'phone-session.png');
+    r.flush();
+  });
+
+  testWidgets('setup', variant: _ios, (tester) async {
+    if (skipped()) return;
+    final r = remote();
+    await app(tester, terminal: r, signedIn: false);
+    await save(tester, 'phone-setup.png');
+    r.flush();
+  });
+
+  testWidgets('account', variant: _ios, (tester) async {
+    if (skipped()) return;
+    final r = remote();
+    await app(tester, terminal: r);
+    await tester.tap(find.byTooltip('Account'));
+    await tester.pumpAndSettle();
+    await save(tester, 'phone-account.png');
     r.flush();
   });
 }

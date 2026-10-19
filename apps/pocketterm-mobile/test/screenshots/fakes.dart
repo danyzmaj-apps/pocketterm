@@ -2,17 +2,21 @@ import 'package:pocketterm_mobile/mobile.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
-/// A phone signed in as `ana`, with nothing behind it: no disk, no Supabase.
+/// A phone signed in as `ana` (or, [signedIn] false, not yet), with nothing
+/// behind it: no disk, no Supabase.
 class FakeSession extends MobileSession {
-  FakeSession._(SharedPreferences prefs) : super(prefs, 'iPhone');
+  FakeSession._(SharedPreferences prefs, this._signedIn) : super(prefs, 'iPhone');
 
-  static Future<FakeSession> create() async {
+  final bool _signedIn;
+
+  static Future<FakeSession> create({bool signedIn = true}) async {
     SharedPreferences.setMockInitialValues({});
-    return FakeSession._(await SharedPreferences.getInstance());
+    return FakeSession._(await SharedPreferences.getInstance(), signedIn);
   }
 
   @override
-  User? get user => const User(id: 'user', appMetadata: {}, userMetadata: {}, aud: 'authenticated', createdAt: '');
+  User? get user =>
+      _signedIn ? const User(id: 'user', appMetadata: {}, userMetadata: {}, aud: 'authenticated', createdAt: '') : null;
 
   @override
   String get userName => 'ana';

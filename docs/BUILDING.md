@@ -92,7 +92,7 @@ On Windows, Terminal from phone works with WezTerm only (`winget install wez.wez
 
 ## iPhone
 
-Install it on your own phone from source until the TestFlight build is out. It needs a **paid** Apple Developer account: the app shares the server address and its push key with its push extension through an App Group, and push and Live Activities need the Push Notifications capability.
+For your own phone without TestFlight, install it from source. It needs a **paid** Apple Developer account: the app shares the server address and its push key with its push extension through an App Group, and push and Live Activities need the Push Notifications capability.
 
 ```sh
 cd apps/pocketterm-mobile

@@ -1,6 +1,6 @@
 # Releasing
 
-Maintainer notes for shipping the four builds: the Mac app (notarized DMG on GitHub Releases, updated through Sparkle), the Windows app (unsigned installer on the same GitHub release), the iPhone app (TestFlight, then the App Store) and the Android app (Google Play). Plus the push relay the phones depend on.
+PocketTerm is a personal project. Maintainer notes for shipping its four builds: the Mac app (notarized DMG on GitHub Releases, updated through Sparkle), the Windows app (unsigned installer on the same GitHub release), the iPhone app (TestFlight only) and the Android app (Google Play internal testing only). The phone apps are not published on the App Store or Google Play. Plus the push relay the phones depend on.
 
 Every app's version is the `version:` line of its own `pubspec.yaml` (`apps/pocketterm-desktop/pubspec.yaml`, `apps/pocketterm-mobile/pubspec.yaml`), as `<name>+<build>`. The build number must grow with every upload to any store; keep both apps on the same version name. The Mac and Windows apps are one Flutter app, so they always share a version.
 
@@ -66,41 +66,32 @@ Nothing to do by hand: publishing the GitHub release (which `release.sh` does) s
 
 To build the installer locally, see [BUILDING.md](BUILDING.md#windows).
 
-## iPhone
+## Phones: TestFlight and Play internal testing
+
+Both phone builds are built and uploaded by **Baker** (`baker.danyzmaj.com`, or its `baker_…` MCP tools), which runs the build on this Mac with the keys in the maintainer's keys folder. Nothing is submitted for App Store or Play review.
 
 ### One-time setup
 
-1. An **App Store Connect** record for bundle id `com.danyzmaj.pocketterm` (the id in `config/PocketTerm.xcconfig`), with the App Group `group.com.danyzmaj.pocketterm` and the extension ids `com.danyzmaj.pocketterm.PocketTermLive` and `com.danyzmaj.pocketterm.PocketTermPush` registered (automatic signing does this on the first `-allowProvisioningUpdates` build, see [BUILDING.md](BUILDING.md)).
-2. App privacy answers, a privacy policy URL, iPhone screenshots (the app is iPhone only) and a support URL in App Store Connect.
-3. **App Review sign-in.** The phone app signs in only with a code from a computer (no GitHub, so guideline 4.8's Sign in with Apple doesn't apply). For the reviewers, in the desktop app: **Settings → Reviewer access → Codes…**, 90 days, label "App Store review". In App Store Connect → App Review Information, put in the notes: "There is no user name or password. Open PocketTerm, tap **Paste a code instead**, paste this link, tap **Sign in**:" followed by the link (**Copy**), and attach the QR (**Save QR as PNG**). It signs into a demo account on your server that sees none of your computers. Make a new code before it expires, and revoke old ones.
+iPhone:
+
+1. An **App Store Connect** app record for bundle id `com.danyzmaj.pocketterm` (team `5SSZ6TYMF5`). The bundle ids `com.danyzmaj.pocketterm`, `…PocketTermLive`, `…PocketTermPush` and the App Group `group.com.danyzmaj.pocketterm` are already registered (automatic signing did it on the first release build).
+2. TestFlight → **Internal testing**: a group with the testers (members of the team). Internal builds need no Beta App Review.
+
+Android:
+
+1. A **Google Play Console** app with package `com.danyzmaj.pocketterm`, with the **Internal testing** track and its testers' list. Internal testing needs no review. Play only accepts API uploads once one build was uploaded by hand: build `fvm flutter build appbundle --release` once and upload `build/app/outputs/bundle/release/app-release.aab` to Internal testing in the console.
+2. **Play App Signing** (the default): Google holds the app signing key; uploads are signed with the upload key `pocketterm-upload.jks` (alias `upload`) in the maintainer's keys folder, its password in the Keychain item `pocketterm-upload`. `apps/pocketterm-mobile/android/key.properties` (git-ignored, from `key.properties.example`) points at it. If it is lost, request an upload key reset in Play Console.
+3. `apps/pocketterm-mobile/android/app/google-services.json` (git-ignored) from the Firebase project `pocketterm-cf6de8`, whose service account the relay holds. A release build stops without it (it would have no push).
+4. A Play service account with release access to the app, its JSON in the keys folder, set as the project's Play JSON in Baker.
+
+Baker: add `apps/pocketterm-mobile` as a project, set its App Store Connect key preset and Play JSON, and use a workflow with the Play track `internal`.
 
 ### Each release
 
-```sh
-# in apps/pocketterm-mobile
-fvm flutter build ipa --release        # → build/ios/ipa/*.ipa
-```
+Raise `version:` in `apps/pocketterm-mobile/pubspec.yaml` (the build number must grow with every upload), then ship from Baker to TestFlight and Google Play (**Ship both**). For a build by hand: `fvm flutter build ipa --release` (check `codesign -dv build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app` shows `TeamIdentifier=5SSZ6TYMF5`) and `fvm flutter build appbundle --release`.
 
-Check who signed it before uploading: `codesign -dv --verbose=2 build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app` must show `TeamIdentifier=5SSZ6TYMF5`. Upload it with Xcode's Organizer or Transporter (or archive `ios/Runner.xcworkspace` in Xcode: Product → Archive → Distribute App → App Store Connect). Release it to TestFlight testers first; submit the same build for App Store review once it has been tried.
+TestFlight builds use APNs production; the relay handles both production and sandbox tokens.
 
-Pushes from TestFlight and App Store builds use APNs production; the relay handles both production and sandbox tokens.
+### Reviewer codes
 
-## Android
-
-### One-time setup
-
-1. A **Google Play Console** developer account and an app with package `com.danyzmaj.pocketterm`.
-2. **Play App Signing** (the default for new apps): Google holds the app signing key; we sign uploads with an **upload key**, `pocketterm-upload.jks` (alias `upload`) in the maintainer's keys folder, its password in the Keychain item `pocketterm-upload`. It is never committed. If it is lost, request an upload key reset in Play Console.
-3. `apps/pocketterm-mobile/android/key.properties` (git-ignored, from `key.properties.example`) points at that keystore.
-4. `apps/pocketterm-mobile/android/app/google-services.json` (git-ignored) from the Firebase project whose service account the relay holds. A release build stops without it (it would have no push).
-5. Play Console: store listing, privacy policy URL, data safety form, content rating, target audience, and the notification permission declaration.
-6. Play Console → App content → **App access**: "All or some functionality is restricted", with the same instructions and a reviewer code of its own (label "Play review"), as for App Review above.
-
-### Each release
-
-```sh
-# in apps/pocketterm-mobile
-fvm flutter build appbundle --release   # → build/app/outputs/bundle/release/app-release.aab
-```
-
-Upload the `.aab` to the **Internal testing** track, try it, then promote the same release to **Production** (new personal developer accounts must run a closed test first; Play Console says how long).
+Not needed for internal testing. **Settings → Reviewer access** in the desktop app makes codes that sign a phone into a separate demo account on your server; they're only for a build someone outside your account has to try (TestFlight external testing goes through Beta App Review, which needs a way in).

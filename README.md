@@ -23,10 +23,10 @@ PocketTerm is a desktop app (macOS menu bar, Windows tray) plus an iPhone and An
 | --- | --- |
 | **Mac** (macOS 13+) | `PocketTerm-x.y.z.dmg` from [GitHub Releases](https://github.com/danyzmaj-apps/pocketterm/releases/latest). Notarized; updates itself. |
 | **Windows** (10 1809+ / 11, x64) | `PocketTerm-x.y.z-setup.exe` from [GitHub Releases](https://github.com/danyzmaj-apps/pocketterm/releases/latest). Not code-signed yet, so SmartScreen warns: **More info → Run anyway**. Installs for your user only; Settings shows a link when a new version is out. |
-| **iPhone** (iOS 17+) | TestFlight: *coming soon* |
-| **Android** (8.0+) | Google Play: *coming soon* |
+| **iPhone** (iOS 17+) | TestFlight, for invited testers only. |
+| **Android** (8.0+) | Google Play internal testing, for invited testers only. |
 
-Until the phone links are up, you can [build the phone app from source](docs/BUILDING.md).
+PocketTerm is a personal project: the phone apps aren't on the App Store or Google Play. Not on the testers' list? [Build the phone app from source](docs/BUILDING.md).
 
 ## Get started
 

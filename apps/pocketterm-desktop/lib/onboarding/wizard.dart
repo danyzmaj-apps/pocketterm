@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/logo.dart';
+import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_desktop/onboarding/flow.dart';
 import 'package:pocketterm_desktop/onboarding/provision.dart';
+import 'package:pocketterm_desktop/onboarding/terminals_card.dart';
 import 'package:pocketterm_desktop/wezterm_setup.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -19,7 +21,14 @@ void _open(String url) => unawaited(launchUrl(Uri.parse(url), mode: LaunchMode.e
 /// opens the right page, and the field to paste into. On Windows, the
 /// server's minute of setting up also gets WezTerm onto the PC.
 class SetupWizard extends StatefulWidget {
-  const SetupWizard({required this.flow, required this.onConnect, required this.onExisting, this.wezterm, super.key});
+  const SetupWizard({
+    required this.flow,
+    required this.onConnect,
+    required this.onExisting,
+    this.wezterm,
+    this.macTerminals,
+    super.key,
+  });
   final SetupFlow flow;
 
   /// Connects the app to the finished server (the session's connect).
@@ -30,6 +39,9 @@ class SetupWizard extends StatefulWidget {
 
   /// Windows: WezTerm, which PocketTerm needs there; null elsewhere.
   final WezTermSetup? wezterm;
+
+  /// Mac: its terminals, for the last step's card; null elsewhere.
+  final Terminals? macTerminals;
 
   @override
   State<SetupWizard> createState() => _SetupWizardState();
@@ -387,6 +399,7 @@ class _SetupWizardState extends State<SetupWizard> {
           ),
         ),
       if (widget.wezterm case final w?) ...[const SizedBox(height: 18), _weztermCard(w)],
+      if (widget.macTerminals case final t?) ...[const SizedBox(height: 18), MacTerminalsCard(terminals: t)],
       const SizedBox(height: 18),
       // A failed connect shows its error below, and the button tries again.
       if (finished) ...[_primary('Connect and sign in', () => unawaited(flow.connect(widget.onConnect)))],

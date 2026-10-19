@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pocketterm_core/connect.dart';
 import 'package:pocketterm_core/session.dart';
+import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_desktop/onboarding/flow.dart';
 import 'package:pocketterm_desktop/onboarding/wizard.dart';
 import 'package:pocketterm_desktop/wezterm_setup.dart';
@@ -10,11 +11,14 @@ import 'package:pocketterm_desktop/wezterm_setup.dart';
 /// scratch (lib/onboarding/); a server that already exists connects with
 /// its setup link, or URL and key.
 class SetupPage extends StatefulWidget {
-  const SetupPage({required this.session, this.wezterm, super.key});
+  const SetupPage({required this.session, this.wezterm, this.macTerminals, super.key});
   final Session session;
 
   /// Makes the wizard's WezTerm step (Windows); none if null or it returns null.
   final WezTermSetup? Function()? wezterm;
+
+  /// The Mac's terminals, for the wizard's last step; null elsewhere.
+  final Terminals? macTerminals;
 
   @override
   State<SetupPage> createState() => _SetupPageState();
@@ -41,6 +45,7 @@ class _SetupPageState extends State<SetupPage> {
         onConnect: widget.session.connect,
         onExisting: () => setState(() => _existing = true),
         wezterm: _wezterm,
+        macTerminals: widget.macTerminals,
       );
     }
     return ConnectServerForm(

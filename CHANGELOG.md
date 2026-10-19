@@ -8,6 +8,7 @@ No server update or relay redeploy needed.
 
 - **Phone: a steadier Terminal list.** Projects stay put: sorted by name, or by recent activity (re-ranked only when you pull to refresh), chosen above the list. Sessions keep their order within a project instead of jumping when one needs you or starts working. A project's heading is just its name: tap it to fold the project to one line that still says what needs you; long-press it for a new session there, fold, fold all others or unfold all.
 - **Windows: WezTerm without the search.** The setup wizard's last step and **Settings → Terminals** have an **Install** button: PocketTerm downloads WezTerm's own installer from WezTerm's GitHub release, checks it against WezTerm's published checksum, and opens it for you to click through. Prefer a terminal? The wizard shows the `winget` line to copy. PocketTerm notices WezTerm as soon as it's installed, either way.
+- **Mac: your terminals in the setup wizard.** The wizard's last step lists the terminals found on your Mac with their one-click fixes (kitty's **Set up**, **Allow…** for Automation) and recommends tmux with a `brew install tmux` line to copy when it's missing. It catches up on its own once you've given a permission.
 
 ## 0.1.0
 

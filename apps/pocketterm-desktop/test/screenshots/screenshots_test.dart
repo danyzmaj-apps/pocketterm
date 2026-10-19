@@ -115,13 +115,19 @@ Future<void> save(WidgetTester tester, String name, {Rect? crop, double radius =
 
 /// The setup wizard at [flow]'s step, as the main window shows it before
 /// there is a server.
-Future<void> pumpWizard(WidgetTester tester, SetupFlow flow, {WezTermSetup? wezterm}) async {
+Future<void> pumpWizard(WidgetTester tester, SetupFlow flow, {WezTermSetup? wezterm, Terminals? macTerminals}) async {
   addTearDown(flow.dispose);
   await tester.pumpWidget(
     subject(
       ColoredBox(
         color: C.win,
-        child: SetupWizard(flow: flow, onConnect: (_) async {}, onExisting: () {}, wezterm: wezterm),
+        child: SetupWizard(
+          flow: flow,
+          onConnect: (_) async {},
+          onExisting: () {},
+          wezterm: wezterm,
+          macTerminals: macTerminals,
+        ),
       ),
     ),
   );
@@ -135,9 +141,10 @@ Future<void> fillField(WidgetTester tester, int index, String text) async {
   await tester.pumpAndSettle();
 }
 
-/// The terminals a well-equipped Mac has, as Settings finds them.
+/// A Mac's terminals as Settings finds them: by default kitty, macOS's
+/// Terminal and tmux, as a typical Mac might have; [found] for others.
 class DemoTerminals extends Terminals {
-  DemoTerminals()
+  DemoTerminals({this.found})
     : super(
         home: '/nonexistent-pocketterm-demo',
         kitty: Kitty(socketDir: '/nonexistent-pocketterm-demo', home: '/nonexistent-pocketterm-demo'),
@@ -150,21 +157,48 @@ class DemoTerminals extends Terminals {
         snapshot: () async => Procs(const []),
       );
 
+  final List<TermStatus> Function(DemoTerminals t)? found;
+
   @override
-  Future<List<TermStatus>> statuses() async => [
-    TermStatus(kitty!.id, kitty!.label, TermState.ready, note: '3 windows'),
-    TermStatus(tmux!.id, tmux!.label, TermState.ready, note: '2 panes'),
-    TermStatus(wezterm!.id, wezterm!.label, TermState.ready, note: '1 window'),
-    TermStatus(iterm!.id, iterm!.label, TermState.limited, note: '2 windows · ${iterm!.limits}'),
-    TermStatus(terminal!.id, terminal!.label, TermState.limited, note: '1 window · ${terminal!.limits}'),
-    TermStatus(ghostty!.id, ghostty!.label, TermState.limited, note: '1 window · ${ghostty!.limits}'),
-  ];
+  Future<List<TermStatus>> statuses() async =>
+      found?.call(this) ??
+      [
+        TermStatus(kitty!.id, kitty!.label, TermState.ready, note: '3 windows'),
+        TermStatus(tmux!.id, tmux!.label, TermState.ready, note: '2 panes'),
+        TermStatus(wezterm!.id, wezterm!.label, TermState.missing),
+        TermStatus(iterm!.id, iterm!.label, TermState.missing),
+        TermStatus(terminal!.id, terminal!.label, TermState.limited, note: '1 window · ${terminal!.limits}'),
+        TermStatus(ghostty!.id, ghostty!.label, TermState.missing),
+      ];
 
   @override
   Future<List<TermWindow>> windows() async => [
     for (var i = 0; i < 10; i++) TermWindow(key: 'demo:$i', title: '', tab: '', cwd: '', program: ''),
   ];
 }
+
+/// The setup wizard's last step on a Mac with kitty not set up yet, Terminal
+/// waiting for Automation, and no tmux.
+List<TermStatus> _freshMac(DemoTerminals t) => [
+  TermStatus(
+    t.kitty!.id,
+    t.kitty!.label,
+    TermState.setup,
+    note: "kitty doesn't let PocketTerm in yet",
+    fix: TermFix.kittyConfig,
+  ),
+  TermStatus(t.tmux!.id, t.tmux!.label, TermState.missing),
+  TermStatus(t.wezterm!.id, t.wezterm!.label, TermState.missing),
+  TermStatus(t.iterm!.id, t.iterm!.label, TermState.missing),
+  TermStatus(
+    t.terminal!.id,
+    t.terminal!.label,
+    TermState.setup,
+    note: 'Allow PocketTerm to control Terminal',
+    fix: TermFix.automation,
+  ),
+  TermStatus(t.ghostty!.id, t.ghostty!.label, TermState.missing),
+];
 
 /// A coding agent's extension connection that goes nowhere.
 class _Link implements LiveLink {
@@ -265,5 +299,14 @@ void main() {
     await save(tester, 'wizard-wezterm.png', radius: wizardCard.radius, border: wizardCard.border);
     // Its watch for WezTerm would outlive the test.
     wezterm.dispose();
+  });
+
+  shot('wizard: terminals on a Mac', const Size(540, 1000), (tester) async {
+    final flow = SetupFlow()
+      ..step = WizardStep.setup
+      ..ready = true;
+    flow.done.addAll(ProvisionStep.values);
+    await pumpWizard(tester, flow, macTerminals: DemoTerminals(found: _freshMac));
+    await save(tester, 'wizard-terminals.png', radius: wizardCard.radius, border: wizardCard.border);
   });
 }

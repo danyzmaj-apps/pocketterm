@@ -13,6 +13,7 @@ import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/onboarding/pair.dart';
 import 'package:pocketterm_desktop/onboarding/reviewer.dart';
 import 'package:pocketterm_desktop/setup_page.dart';
+import 'package:pocketterm_desktop/terminal_fixes.dart';
 import 'package:pocketterm_desktop/wezterm_setup.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -33,7 +34,11 @@ class MainWindow extends StatelessWidget {
       child: Stack(
         children: [
           if (app.backend == null)
-            SetupPage(session: app, wezterm: () => WezTermSetup.forHost(app.terminals.wezterm))
+            SetupPage(
+              session: app,
+              wezterm: () => WezTermSetup.forHost(app.terminals.wezterm),
+              macTerminals: Platform.isMacOS ? app.terminals : null,
+            )
           else if (!signedIn)
             SignInPage(session: app)
           else
@@ -150,29 +155,14 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
-  /// Settings' one click for [s]: kitty's lines appended to kitty.conf,
-  /// System Settings opened where Automation is allowed, or WezTerm's
+  /// Settings' one click for [s]: [fixTerminal] on the Mac, or WezTerm's
   /// installer fetched and opened (Windows, [WezTermSetup]).
   Future<void> _fix(TermStatus s) async {
-    switch (s.fix) {
-      case TermFix.kittyConfig:
-        try {
-          await app.terminals.kitty?.configure();
-          _fixed[s.id] = 'Added to kitty.conf (the old one is kitty.conf.pocketterm-backup). Quit and reopen kitty to let PocketTerm in.';
-        } on Object catch (e) {
-          _fixed[s.id] = "Couldn't change kitty.conf: $e";
-        }
-      case TermFix.automation:
-        await Process.run('/usr/bin/open', [
-          'x-apple.systempreferences:com.apple.preference.security?Privacy_Automation',
-        ]);
-        _fixed[s.id] = 'Turn on ${s.label} under PocketTerm, then come back here.';
-      case TermFix.install:
-        unawaited(_wezterm?.install());
-        return;
-      case null:
-        return;
+    if (s.fix == TermFix.install) {
+      unawaited(_wezterm?.install());
+      return;
     }
+    _fixed[s.id] = await fixTerminal(app.terminals, s);
     if (mounted) setState(() {});
     await _checkTerminals();
   }

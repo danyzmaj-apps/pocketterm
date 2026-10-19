@@ -63,7 +63,7 @@ POCKETTERM_CLI_JSON=/tmp/pocketterm-e2e/cli.json POCKETTERM_KITTY_DIR=/tmp/pocke
 - `POCKETTERM_KITTY_DIR`: the directory whose `kitty*` sockets it uses for Terminal from phone. Give it a kitty of its own: `kitty -o allow_remote_control=socket-only -o listen_on=unix:/tmp/pocketterm-e2e/kitty`.
 - Preferences: the simple way is to quit the installed PocketTerm while the test build runs. To run both at once, set another `POCKETTERM_BUNDLE_ID` and `POCKETTERM_APP_GROUP` in `config/Local.xcconfig` ([above](#your-signing-identity)) and build once with the `xcodebuild … -allowProvisioningUpdates` line above, so Xcode registers them. Until then `flutter run` and `flutter build macos` fail with "No profiles for '<id>'".
 
-PocketTerm installs its own omp extension (`~/.omp/agent/extensions/pocketterm-live.ts`) and Claude Code plugin (`pocketterm@pocketterm`), so it runs next to Džep without either overwriting the other.
+PocketTerm installs its own omp extension (`~/.omp/agent/extensions/pocketterm-live.ts`) and Claude Code plugin (`pocketterm@pocketterm`).
 
 ## Windows
 

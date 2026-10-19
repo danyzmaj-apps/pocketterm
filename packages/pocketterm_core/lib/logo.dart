@@ -2,8 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
-/// The PocketTerm mark: a pocket with a note tucked in, as on the app icon
-/// (tool/make_icon.swift draws the same shapes).
+/// The PocketTerm mark: a terminal window leaning out of a pocket, as on the
+/// app icon (tool/make_icon.swift draws the same shapes).
 class PocketTermLogo extends StatelessWidget {
   const PocketTermLogo({this.size = 48, super.key});
   final double size;
@@ -15,8 +15,10 @@ class PocketTermLogo extends StatelessWidget {
 class _LogoPainter extends CustomPainter {
   const _LogoPainter();
 
-  static const _note = Color(0xFFFFD15C);
-  static const _noteLines = Color(0xFFCC9933);
+  static const _yellow = Color(0xFFFFD15C);
+  static const _window = Color(0xFF0E1018);
+  static const _titleBar = Color(0xFFE8E9EE);
+  static const List<Color> _dots = [Color(0xFFFF6B6B), _yellow, Color(0xFF5EE6A8)];
   static const _pocketTop = Color(0xFF8C9EFF);
   static const _pocketBottom = Color(0xFF5C6BDB);
 
@@ -24,28 +26,46 @@ class _LogoPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     // The icon's unit geometry (y up) spans about 0.15–0.89 in both axes once
-    // the note is tilted; map that square onto the canvas, y down.
+    // the window is tilted; map that square onto the canvas, y down.
     Offset p(double x, double y) => Offset((x - 0.13) / 0.75 * w, (0.895 - y) / 0.75 * w);
     final u = w / 0.75;
+    // Window coordinates: centred, y down here (the icon's are y up).
     canvas
       ..save()
-      ..translate(p(0.53, 0.66).dx, p(0.53, 0.66).dy)
-      ..rotate(9 * math.pi / 180)
-      ..drawRRect(
-        RRect.fromRectAndRadius(Rect.fromLTWH(-0.19 * u, -0.20 * u, 0.38 * u, 0.36 * u), Radius.circular(0.03 * u)),
-        Paint()..color = _note,
-      );
-    final lines = Paint()..color = _noteLines;
-    for (var i = 0; i < 2; i++) {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(-0.12 * u, (-0.115 + i * 0.07) * u, (i == 0 ? 0.24 : 0.17) * u, 0.026 * u),
-          Radius.circular(0.013 * u),
-        ),
-        lines,
-      );
+      ..translate(p(0.53, 0.665).dx, p(0.53, 0.665).dy)
+      ..rotate(-9 * math.pi / 180);
+    final window = RRect.fromRectAndRadius(
+      Rect.fromLTWH(-0.22 * u, -0.20 * u, 0.44 * u, 0.40 * u),
+      Radius.circular(0.035 * u),
+    );
+    canvas
+      ..drawRRect(window, Paint()..color = _window)
+      ..save()
+      ..clipRRect(window)
+      ..drawRect(Rect.fromLTWH(-0.22 * u, -0.20 * u, 0.44 * u, 0.075 * u), Paint()..color = _titleBar)
+      ..restore();
+    for (var i = 0; i < 3; i++) {
+      canvas.drawCircle(Offset((-0.17 + i * 0.045) * u, -0.1625 * u), 0.014 * u, Paint()..color = _dots[i]);
     }
-    canvas.restore();
+    final prompt = Paint()
+      ..color = _yellow
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.024 * u
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas
+      ..drawPath(
+        Path()
+          ..moveTo(-0.165 * u, -0.085 * u)
+          ..lineTo(-0.115 * u, -0.05 * u)
+          ..lineTo(-0.165 * u, -0.015 * u),
+        prompt,
+      )
+      ..drawRRect(
+        RRect.fromRectAndRadius(Rect.fromLTWH(-0.095 * u, -0.03 * u, 0.07 * u, 0.024 * u), Radius.circular(0.012 * u)),
+        Paint()..color = _yellow,
+      )
+      ..restore();
 
     final pocket = Path()
       ..moveTo(p(0.22, 0.60).dx, p(0.22, 0.60).dy)
@@ -66,7 +86,7 @@ class _LogoPainter extends CustomPainter {
 
     // Dashed stitching just inside the edge, and the hem.
     final stitch = Paint()
-      ..color = _note.withValues(alpha: 0.9)
+      ..color = _yellow.withValues(alpha: 0.9)
       ..style = PaintingStyle.stroke
       ..strokeWidth = math.max(1, 0.011 * u)
       ..strokeCap = StrokeCap.round;

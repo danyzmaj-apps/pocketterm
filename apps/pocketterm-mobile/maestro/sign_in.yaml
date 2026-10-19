@@ -7,9 +7,10 @@ appId: com.danyzmaj.pocketterm
 ---
 - launchApp
 # A signed-in app opens on its Terminal list, titled with the computer's name
-# and with the Account button beside it.
+# and with the Account button beside it. The button's label starts with the
+# avatar's initial when there is no avatar image (a reviewer's demo account).
 - extendedWaitUntil:
-    visible: "Account"
+    visible: ".*Account"
     timeout: 5000
     optional: true
 - runFlow:
@@ -21,5 +22,5 @@ appId: com.danyzmaj.pocketterm
       - inputText: ${SETUP_LINK}
       - tapOn: "Sign in"
 - extendedWaitUntil:
-    visible: "Account"
+    visible: ".*Account"
     timeout: 20000

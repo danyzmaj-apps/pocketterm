@@ -1,4 +1,4 @@
-// Draws the app icon: a pocket ("pocketterm") with a note tucked in, on the app's dark gradient.
+// Draws the app icon: a terminal window leaning out of a jeans pocket, on the app's dark gradient.
 //   swift tool/make_icon.swift   (in apps/pocketterm-desktop)
 //     → ../pocketterm-mobile/assets/icon/ios.png (square, opaque)
 //       ../pocketterm-mobile/assets/icon/android-background.png, android-foreground.png
@@ -36,30 +36,55 @@ func render(
   try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: path))
 }
 
-/// The note and the pocket, in [rect].
+/// The terminal window and the pocket, in [rect].
 func drawArt(in rect: NSRect) {
   // Unit coordinates inside the body, y up.
   func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: rect.minX + x * rect.width, y: rect.minY + y * rect.height) }
   let w = rect.width
 
-  // The note peeking out of the pocket, tilted; the pocket covers its lower half.
+  // A terminal window leaning out of the pocket; the pocket covers its lower half.
+  // Window coordinates: centred, y up, in units of [w] (logo.dart draws the same shapes).
   NSGraphicsContext.saveGraphicsState()
   let tilt = NSAffineTransform()
-  tilt.translateX(by: p(0.53, 0.66).x, yBy: p(0.53, 0.66).y)
-  tilt.rotate(byDegrees: -9)
+  tilt.translateX(by: p(0.53, 0.665).x, yBy: p(0.53, 0.665).y)
+  tilt.rotate(byDegrees: 9)
   tilt.concat()
-  let note = NSBezierPath(
-    roundedRect: NSRect(x: -0.19 * w, y: -0.16 * w, width: 0.38 * w, height: 0.36 * w), xRadius: 0.03 * w,
-    yRadius: 0.03 * w)
-  NSColor(red: 1, green: 0.82, blue: 0.36, alpha: 1).setFill()
-  note.fill()
-  NSColor(red: 0.80, green: 0.60, blue: 0.20, alpha: 1).setFill()
-  for i in 0..<2 {
-    NSBezierPath(
-      roundedRect: NSRect(x: -0.12 * w, y: (0.09 - CGFloat(i) * 0.07) * w, width: (i == 0 ? 0.24 : 0.17) * w, height: 0.026 * w),
-      xRadius: 0.013 * w, yRadius: 0.013 * w
-    ).fill()
+  let window = NSBezierPath(
+    roundedRect: NSRect(x: -0.22 * w, y: -0.20 * w, width: 0.44 * w, height: 0.40 * w), xRadius: 0.035 * w,
+    yRadius: 0.035 * w)
+  NSColor(red: 0.055, green: 0.063, blue: 0.094, alpha: 1).setFill()
+  window.fill()
+  // The light title bar, clipped to the window's rounded top.
+  NSGraphicsContext.saveGraphicsState()
+  window.addClip()
+  NSColor(red: 0.91, green: 0.914, blue: 0.933, alpha: 1).setFill()
+  NSRect(x: -0.22 * w, y: 0.125 * w, width: 0.44 * w, height: 0.075 * w).fill()
+  NSGraphicsContext.restoreGraphicsState()
+  let dots = [
+    NSColor(red: 1, green: 0.42, blue: 0.42, alpha: 1), NSColor(red: 1, green: 0.82, blue: 0.36, alpha: 1),
+    NSColor(red: 0.37, green: 0.90, blue: 0.66, alpha: 1),
+  ]
+  for (i, color) in dots.enumerated() {
+    color.setFill()
+    let x = (-0.17 + CGFloat(i) * 0.045) * w
+    NSBezierPath(ovalIn: NSRect(x: x - 0.014 * w, y: 0.1625 * w - 0.014 * w, width: 0.028 * w, height: 0.028 * w)).fill()
   }
+  // The prompt: ">_" in the stitching's yellow.
+  let yellow = NSColor(red: 1, green: 0.82, blue: 0.36, alpha: 1)
+  let chevron = NSBezierPath()
+  chevron.move(to: NSPoint(x: -0.165 * w, y: 0.085 * w))
+  chevron.line(to: NSPoint(x: -0.115 * w, y: 0.05 * w))
+  chevron.line(to: NSPoint(x: -0.165 * w, y: 0.015 * w))
+  chevron.lineWidth = 0.024 * w
+  chevron.lineCapStyle = .round
+  chevron.lineJoinStyle = .round
+  yellow.setStroke()
+  chevron.stroke()
+  yellow.setFill()
+  NSBezierPath(
+    roundedRect: NSRect(x: -0.095 * w, y: 0.006 * w, width: 0.07 * w, height: 0.024 * w), xRadius: 0.012 * w,
+    yRadius: 0.012 * w
+  ).fill()
   NSGraphicsContext.restoreGraphicsState()
 
   // The pocket: a jeans back pocket, square top, pointed bottom.

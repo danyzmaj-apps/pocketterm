@@ -15,7 +15,7 @@ flowchart LR
     app <-->|"read screen, type, keys"| term
   end
   rt[("Your Supabase<br/>terminal:&lt;user&gt;:&lt;desktop&gt;")]
-  phone["Phone<br/>Terminal tab"]
+  phone["Phone<br/>Terminal list"]
   app <-->|"state, items, screens<br/>hello, sync, run"| rt
   rt <--> phone
   app -.->|"push: finished, needs you"| phone
@@ -40,7 +40,8 @@ flowchart LR
 | `desktop/lib/main.dart`, `controller.dart`, `main_window.dart` | The desktop app: one window that is the wizard, sign-in or Settings; `AppController` (account, this computer's id and its `desktops` row, the bridge, pushes) |
 | `desktop/lib/desktop_host.dart`, `windows_host.dart` | What differs per platform: window, menu-bar or tray item, launch at login, folder picker, idle time, keeping awake (`MacHost` over the native channel, `WindowsHost` in Dart) |
 | `desktop/lib/update_check.dart` | Windows: the GitHub release check (the Mac uses Sparkle) |
-| `desktop/lib/setup_page.dart`, `desktop/lib/onboarding/` | First-run setup: the wizard (`flow.dart`, `wizard.dart`), provisioning through the Supabase Management API (`supabase_admin.dart`, `provision.dart`), the pairing QR (`pair.dart`), reviewer codes (`reviewer.dart`) |
+| `desktop/lib/setup_page.dart`, `desktop/lib/onboarding/` | First-run setup: the wizard (`flow.dart`, `wizard.dart`), provisioning through the Supabase Management API (`supabase_admin.dart`, `provision.dart`), the terminals on its last step (`terminals_card.dart` on a Mac, WezTerm's install on Windows), the pairing QR (`pair.dart`), reviewer codes (`reviewer.dart`) |
+| `desktop/lib/terminal_fixes.dart`, `wezterm_setup.dart` | A Mac terminal's one-click fix for Settings and the wizard (kitty's lines in kitty.conf, System Settings' Automation page); on Windows, WezTerm's own installer, downloaded from its GitHub release, checked against its published SHA-256 and opened |
 | `desktop/lib/local_api.dart`, `live_hub.dart` | The 127.0.0.1 API the agents report to, and their live sessions |
 | `desktop/lib/terminal_bridge.dart` | The phone's way in: sessions and screens out on this computer's topic, its requests in |
 | `desktop/lib/integrations.dart` | **Settings → Coding agent**: installing and updating the bundled omp extension and Claude Code plugin |
@@ -49,8 +50,8 @@ flowchart LR
 | `desktop/integrations/omp/pocketterm-live.ts` | omp extension: the session, live, for the phone |
 | `desktop/integrations/claude/` | Claude Code marketplace with the `pocketterm` plugin: `hooks/pocketterm.ts` (the session, live), `hooks/items.ts` (Claude's transcript as items, its dialogs as questions), `tests/` |
 | `desktop/supabase/` | Migrations, pgTAP tests, and the `pair` and `push` functions (bundled as app assets for the wizard); `relay` is the publisher's push relay |
-| `mobile/lib/main.dart`, `mobile.dart` | Phone app: sign-in by code, the Terminal list, the computer picker, the account sheet, push and link routing |
-| `mobile/lib/terminal_view.dart`, `session_view.dart` | The Terminal tab, screens, new sessions; a coding session's transcript and composer |
+| `mobile/lib/main.dart`, `mobile.dart`, `links.dart` | Phone app: sign-in by code, the home page with the Terminal list (its sort and folded projects kept), the computer picker, the account sheet, push and link routing; links to the desktop downloads and GitHub |
+| `mobile/lib/terminal_view.dart`, `session_view.dart` | The Terminal list (sessions by project, sorted by name or recent activity; a project's heading folds on tap and offers a new session and folding on long press), screens, new sessions; a coding session's transcript and composer |
 | `mobile/lib/setup_page.dart`, `onboarding/scan.dart`, `chrome.dart` | Scanning or pasting a computer's code; the per-platform chrome (Cupertino on iPhone, Material 3 on Android) |
 | `mobile/ios/Runner/AppDelegate.swift`, `mobile/ios/Shared/` | The iPhone half of `native.dart`: App Group, push registration, notification taps, Live Activities |
 | `mobile/ios/PocketTermLive/`, `PocketTermPush/` | The Live Activity (WidgetKit); the notification service extension that decrypts pushes |
@@ -76,7 +77,7 @@ Every user runs their own Supabase project, built from `desktop/supabase/migrati
 
 ## Terminals
 
-Each terminal is a `TerminalHost` (`core/lib/terminal.dart`): list its windows (`TermWindow`: key, title, cwd, foreground program, `app`, `caps`, `via`), read a screen, type, press keys, open a window, close one, and a `TermStatus` (`ready`, `limited`, `setup`, `idle`, `missing`, with a note and a fix) for **Settings → Terminals**. Capabilities (`TermCap`): `read`, `ansi`, `type`, `line`, `keys`, `close`; the phone shows only what a window can do, and answers questions with keys only where the window can be read and take keys.
+Each terminal is a `TerminalHost` (`core/lib/terminal.dart`): list its windows (`TermWindow`: key, title, cwd, foreground program, `app`, `caps`, `via`), read a screen, type, press keys, open a window, close one, and a `TermStatus` (`ready`, `limited`, `setup`, `idle`, `missing`, with a note and a fix) for **Settings → Terminals** and, on a Mac, the setup wizard's last step. Capabilities (`TermCap`): `read`, `ansi`, `type`, `line`, `keys`, `close`; the phone shows only what a window can do, and answers questions with keys only where the window can be read and take keys.
 
 | Terminal | How | Window key |
 | --- | --- | --- |
@@ -87,7 +88,7 @@ Each terminal is a `TerminalHost` (`core/lib/terminal.dart`): list its windows (
 | Terminal | AppleScript | `terminal:ttysNNN` |
 | Ghostty | AppleScript | `ghostty:<UUID>` |
 
-`Terminals` (`core/lib/terminals.dart`) puts the installed ones together: all six on macOS, WezTerm only on Windows. A tmux pane shown in a GUI window is listed once, as the pane. An app that can't both read and press keys (Terminal, Ghostty) launches a phone-started session inside tmux when tmux is installed. An agent's `hello` carries its terminal environment (`TERM_PROGRAM`, `KITTY_*`, `TMUX`, `WEZTERM_PANE`, …), which `windowOfTerm` turns into its window's key.
+`Terminals` (`core/lib/terminals.dart`) puts the installed ones together: all six on macOS, WezTerm only on Windows (Settings and the setup wizard install it there: `desktop/lib/wezterm_setup.dart`). A tmux pane shown in a GUI window is listed once, as the pane. An app that can't both read and press keys (Terminal, Ghostty) launches a phone-started session inside tmux when tmux is installed. An agent's `hello` carries its terminal environment (`TERM_PROGRAM`, `KITTY_*`, `TMUX`, `WEZTERM_PANE`, …), which `windowOfTerm` turns into its window's key.
 
 ## Local API
 
@@ -95,6 +96,7 @@ On launch the desktop app listens on a random 127.0.0.1 port and writes `{port, 
 
 ```
 GET   /v1/ping?nonce=N   → {"app": "pocketterm", "proof"}   no token
+GET   /v1/ping           → {"app": "pocketterm", "pid"}   with the token: this PocketTerm is up
 GET   /v1/live           WebSocket: a coding session reporting itself (omp)
 POST  /v1/live/http      {conn?, frames, wait?, close?} → {conn, frames}   the same over HTTP long polls (Claude Code)
 Authorization: Bearer <token>   (everything but /v1/ping?nonce=)

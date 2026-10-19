@@ -2,7 +2,7 @@
 
 PocketTerm has no central server. Your computers and phones meet in a Supabase project that you own: it signs you in, pairs your phones, carries the terminal channel and sends pushes. Setting it up takes a few minutes, once. The free Supabase plan is more than enough for one person.
 
-A PocketTerm server is its own thing: a Džep server doesn't work with PocketTerm, and the other way round. Give PocketTerm a project of its own.
+A PocketTerm server is its own thing: give PocketTerm a Supabase project of its own, not one another app uses.
 
 ## The easy way: the desktop app
 
@@ -12,6 +12,8 @@ Install PocketTerm on your Mac or Windows PC and open it. With no server yet, it
 2. **Project.** **Create a new project** (region guessed from your time zone), or **Use an existing project**. A project of its own is best: PocketTerm makes sign-in private to your account, so it won't go on a project that already has accounts or tables of the same names, and it says which of the project's settings it would replace. The free plan allows two active projects; pause one you don't use if it's full.
 3. **GitHub sign-in.** **Open GitHub: new OAuth app** opens GitHub's form; copy in the application name and callback URL the wizard shows, then paste back the client ID and secret.
 4. **Setup.** PocketTerm creates the tables and security rules (**Database**), turns on GitHub sign-in, turns email sign-up off (GitHub is the only way in), makes sign-up private and allows the `pocketterm://` redirect (**GitHub sign-in**), deploys the `pair` and `push` functions (**Server functions**) and fetches the publishable key (**Connection key**). If a step fails, **Retry** resumes from it, and redoes any step whose values you changed after going back.
+
+The last step also shows your terminals. On Windows, PocketTerm works through WezTerm: **Install WezTerm** downloads WezTerm's own installer from its GitHub release, checks it against WezTerm's published checksum and opens it for you to click through, or you type the `winget` line it shows into PowerShell. On a Mac, it lists the terminals it found, with **Set up** for kitty and **Allow…** for those that need Automation permission, and a `brew install tmux` line when tmux is missing. Both catch up on their own once WezTerm is installed or a permission is given.
 
 Then **Connect and sign in** with GitHub. Push notifications need nothing more: each phone registers itself, and your server sends through the publisher's relay, encrypted so only that phone can read them ([Push](#push)). For your phones, see [Connect the apps](#connect-the-apps).
 
@@ -50,7 +52,7 @@ At the end it checks that GitHub sign-in is on and prints a **setup link**: `poc
 
 ## Connect the apps
 
-- **Mac or Windows PC**: install PocketTerm from [Releases](https://github.com/danyzmaj-apps/pocketterm/releases/latest), then open the setup link (on a Mac the script offers to) or paste it into the wizard's **I already have one: connect it**. Sign in with GitHub. Every computer you sign in on shows up in the phone's list of computers.
+- **Mac or Windows PC**: install PocketTerm from [Releases](https://github.com/danyzmaj-apps/pocketterm/releases/latest) (the phone app's first screen links there too: **Get PocketTerm for Mac or Windows**), then open the setup link (on a Mac the script offers to) or paste it into the wizard's **I already have one: connect it**. Sign in with GitHub. Every computer you sign in on shows up in the phone's list of computers.
 - **iPhone and Android**: phones sign in only with a code from a computer, never with GitHub. On the computer, **Settings → Set up phone…** shows a QR code. In the phone app, tap **Scan the code from your computer**. The code carries the server address, its publishable key and a one-time sign-in code, so the phone signs in as you. It works once and expires after 10 minutes; anyone who scans it gets into your account, so only show it to your own phone. No camera? **Paste a code instead** takes the same code as text (the whole `pocketterm://setup?…&code=…` link). A phone that signs out, or whose sign-in ends, is back on that screen and needs a new code.
 
 The first account that signs in **owns the server**. One phone pairing is enough for all your computers: they share the account.

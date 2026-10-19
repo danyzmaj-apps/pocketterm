@@ -28,6 +28,7 @@ import 'package:pocketterm_desktop/main_window.dart';
 import 'package:pocketterm_desktop/onboarding/flow.dart';
 import 'package:pocketterm_desktop/onboarding/provision.dart';
 import 'package:pocketterm_desktop/onboarding/wizard.dart';
+import 'package:pocketterm_desktop/wezterm_setup.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_fakes.dart';
@@ -114,13 +115,13 @@ Future<void> save(WidgetTester tester, String name, {Rect? crop, double radius =
 
 /// The setup wizard at [flow]'s step, as the main window shows it before
 /// there is a server.
-Future<void> pumpWizard(WidgetTester tester, SetupFlow flow) async {
+Future<void> pumpWizard(WidgetTester tester, SetupFlow flow, {WezTermSetup? wezterm}) async {
   addTearDown(flow.dispose);
   await tester.pumpWidget(
     subject(
       ColoredBox(
         color: C.win,
-        child: SetupWizard(flow: flow, onConnect: (_) async {}, onExisting: () {}),
+        child: SetupWizard(flow: flow, onConnect: (_) async {}, onExisting: () {}, wezterm: wezterm),
       ),
     ),
   );
@@ -252,5 +253,17 @@ void main() {
     flow.done.addAll(ProvisionStep.values);
     await pumpWizard(tester, flow);
     await save(tester, 'wizard-ready.png', radius: wizardCard.radius, border: wizardCard.border);
+  });
+
+  shot('wizard: WezTerm on Windows', const Size(540, 900), (tester) async {
+    final flow = SetupFlow()
+      ..step = WizardStep.setup
+      ..ready = true;
+    flow.done.addAll(ProvisionStep.values);
+    final wezterm = WezTermSetup(isInstalled: () => false);
+    await pumpWizard(tester, flow, wezterm: wezterm);
+    await save(tester, 'wizard-wezterm.png', radius: wizardCard.radius, border: wizardCard.border);
+    // Its watch for WezTerm would outlive the test.
+    wezterm.dispose();
   });
 }

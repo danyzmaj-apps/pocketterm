@@ -119,7 +119,7 @@ supabase secrets set PUSH_RELAY_URL=https://<relay-project-ref>.supabase.co/func
 | Terminal: Ghostty windows show no screen | Expected: Ghostty's screen can't be read. Install tmux (`brew install tmux`) and start sessions from the phone: they run inside tmux with full control. |
 | Terminal: can't answer or press keys in a Terminal (macOS) window | Expected: Terminal takes only whole lines. Same fix: install tmux and start sessions from the phone. |
 | Terminal: a Ghostty session isn't matched to its window | Ghostty tells no tty, so PocketTerm matches the session by its folder: keep one Ghostty window per folder. |
-| Windows: no windows show up | Only WezTerm windows are listed. Install it (`winget install wez.wezterm`, or **Install…** in **Settings → Terminals**) and run your agent in WezTerm. |
+| Windows: no windows show up | Only WezTerm windows are listed. Install it with **Install** in **Settings → Terminals** (or `winget install --id wez.wezterm --exact`) and run your agent in WezTerm. |
 | Windows: "This computer reads PNG and JPEG images only." | Send PNG or JPEG images; the phone apps send JPEG. |
 | Claude Code sessions don't show up | Claude Code needs 2.1.287 or later with mods on. If Settings says mods are off, run `claude /login`, start `claude` once, then restart your sessions. |
 

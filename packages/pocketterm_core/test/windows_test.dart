@@ -81,13 +81,13 @@ void main() {
     expect(terms.home, r'C:\Users\x');
   });
 
-  test('WezTerm missing on Windows: the winget line and an install fix', () async {
+  test('WezTerm missing on Windows: an install fix', () async {
     final s = await WezTerm(
       executable: '/nonexistent-pocketterm/wezterm.exe',
       socketDir: '/nonexistent-pocketterm',
       windows: true,
     ).status(Procs(const []));
-    expect((s.state, s.note, s.fix), (TermState.missing, 'winget install wez.wezterm', TermFix.install));
+    expect((s.state, s.fix), (TermState.missing, TermFix.install));
   });
 
   test("an agent in WezTerm on Windows: its pane from the socket's pid", () {

@@ -13,9 +13,8 @@ class WezTerm extends TerminalHost {
   WezTerm({String? executable, String? socketDir, String? home, bool? windows})
     : this._(executable, socketDir, home, windows ?? Platform.isWindows);
 
-  WezTerm._(String? executable, String? socketDir, String? home, this._windows)
-    : _exe = executable ?? _find(windows: _windows),
-      _dir = socketDir ?? p.join(home ?? homeDir(windows: _windows), '.local', 'share', 'wezterm');
+  WezTerm._(this._given, String? socketDir, String? home, this._windows)
+    : _dir = socketDir ?? p.join(home ?? homeDir(windows: _windows), '.local', 'share', 'wezterm');
 
   static String? _find({required bool windows}) => findExecutable(
     'wezterm',
@@ -25,7 +24,13 @@ class WezTerm extends TerminalHost {
         : const ['/Applications/WezTerm.app/Contents/MacOS/wezterm'],
   );
 
-  final String? _exe;
+  final String? _given;
+  String? _found;
+
+  /// Looked for again while it isn't found: WezTerm installed while
+  /// PocketTerm runs (Settings or the setup wizard installs it) counts.
+  String? get _exe => _given ?? (_found ??= _find(windows: _windows));
+
   final String _dir;
   final bool _windows;
 
@@ -51,7 +56,10 @@ class WezTerm extends TerminalHost {
   @override
   bool owns(String key) => key.startsWith('wezterm:');
 
-  bool get installed => _exe != null && File(_exe).existsSync();
+  bool get installed {
+    final exe = _exe;
+    return exe != null && File(exe).existsSync();
+  }
 
   /// GUI pid → its socket, for each socket whose GUI still runs (when
   /// [procs] tell: on Windows, an empty process list tells nothing) and
@@ -106,7 +114,13 @@ class WezTerm extends TerminalHost {
   Future<TermStatus> status(Procs procs) async {
     if (!installed) {
       return _windows
-          ? TermStatus(id, label, TermState.missing, note: 'winget install wez.wezterm', fix: TermFix.install)
+          ? TermStatus(
+              id,
+              label,
+              TermState.missing,
+              note: "Needed for your phone to reach this PC's terminals",
+              fix: TermFix.install,
+            )
           : TermStatus(id, label, TermState.missing);
     }
     if (_sockets(procs).isEmpty) return TermStatus(id, label, TermState.idle, note: 'Not running');

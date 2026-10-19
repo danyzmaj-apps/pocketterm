@@ -13,6 +13,7 @@ import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/onboarding/pair.dart';
 import 'package:pocketterm_desktop/onboarding/reviewer.dart';
 import 'package:pocketterm_desktop/setup_page.dart';
+import 'package:pocketterm_desktop/wezterm_setup.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// The window: the setup wizard, then sign-in, then Settings. Closing it
@@ -32,7 +33,7 @@ class MainWindow extends StatelessWidget {
       child: Stack(
         children: [
           if (app.backend == null)
-            SetupPage(session: app)
+            SetupPage(session: app, wezterm: () => WezTermSetup.forHost(app.terminals.wezterm))
           else if (!signedIn)
             SignInPage(session: app)
           else
@@ -100,6 +101,9 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _installing = false;
   late final Integrations _integrations = widget.integrations ?? Integrations();
 
+  /// Windows: installing WezTerm from its row; null elsewhere.
+  late final WezTermSetup? _wezterm = WezTermSetup.forHost(app.terminals.wezterm)?..addListener(_weztermChanged);
+
   AppController get app => widget.app;
 
   @override
@@ -112,7 +116,15 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void dispose() {
     app.mainShown.removeListener(_check);
+    _wezterm?.dispose();
     super.dispose();
+  }
+
+  /// Its progress shows on its row; once it's in, the row says so.
+  void _weztermChanged() {
+    if (!mounted) return;
+    setState(() {});
+    if (_wezterm!.installed) unawaited(_checkTerminals());
   }
 
   /// What the system, the terminals and the agent say now: on first build and
@@ -139,8 +151,8 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   /// Settings' one click for [s]: kitty's lines appended to kitty.conf,
-  /// System Settings opened where Automation is allowed, or the terminal's
-  /// install page opened (WezTerm on Windows).
+  /// System Settings opened where Automation is allowed, or WezTerm's
+  /// installer fetched and opened (Windows, [WezTermSetup]).
   Future<void> _fix(TermStatus s) async {
     switch (s.fix) {
       case TermFix.kittyConfig:
@@ -156,8 +168,8 @@ class _SettingsPageState extends State<SettingsPage> {
         ]);
         _fixed[s.id] = 'Turn on ${s.label} under PocketTerm, then come back here.';
       case TermFix.install:
-        await launchUrl(Uri.parse('https://wezterm.org/install/windows.html'), mode: LaunchMode.externalApplication);
-        _fixed[s.id] = 'Install ${s.label}, then come back here.';
+        unawaited(_wezterm?.install());
+        return;
       case null:
         return;
     }
@@ -175,7 +187,9 @@ class _SettingsPageState extends State<SettingsPage> {
       TermState.missing => 'Not installed',
     };
     // Only tmux, and a terminal with an install fix, show while missing, with how to get it.
+    final installing = s.fix == TermFix.install ? _wezterm?.note : null;
     final note =
+        installing ??
         _fixed[s.id] ??
         (s.state == TermState.missing || s.note.isEmpty || s.note == state
             ? (s.note.isEmpty ? state : s.note)
@@ -183,11 +197,16 @@ class _SettingsPageState extends State<SettingsPage> {
     return _row(
       label: s.label,
       sub: note,
-      subError: s.state == TermState.setup && _fixed[s.id] == null,
+      subError: (s.state == TermState.setup && _fixed[s.id] == null) || (installing != null && _wezterm!.error != null),
       trailing: switch (s.fix) {
         TermFix.kittyConfig when _fixed[s.id] == null => _button('Set up', () => unawaited(_fix(s))),
         TermFix.automation => _button('Allow…', () => unawaited(_fix(s))),
-        TermFix.install => _button('Install…', () => unawaited(_fix(s))),
+        TermFix.install when _wezterm == null => const SizedBox.shrink(),
+        TermFix.install when _wezterm!.state == WezTermSetupState.missing => _button(
+          'Install',
+          () => unawaited(_fix(s)),
+        ),
+        TermFix.install => const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
         _ => const SizedBox.shrink(),
       },
     );

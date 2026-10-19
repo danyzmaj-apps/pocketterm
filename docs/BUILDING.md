@@ -88,7 +88,7 @@ Only one PocketTerm runs per Windows user: starting it again brings the running 
 
 [windows/installer.iss](../apps/pocketterm-desktop/windows/installer.iss) installs per user (no admin prompt) into `%LOCALAPPDATA%\Programs\PocketTerm`, registers the `pocketterm://` link under `HKCU\Software\Classes\pocketterm`, and removes both those keys and the Launch at login entry (`HKCU\…\CurrentVersion\Run\PocketTerm`) when uninstalled. The installer is unsigned. CI builds the same one for every release ([RELEASING.md](RELEASING.md#windows)).
 
-On Windows, Terminal from phone works with WezTerm only (`winget install wez.wezterm`).
+On Windows, Terminal from phone works with WezTerm only; the setup wizard and **Settings → Terminals** install it (`WezTermSetup` in `lib/wezterm_setup.dart` pins the release and its checksum).
 
 ## iPhone
 

@@ -83,7 +83,7 @@ What works depends on the terminal:
 | Terminal (macOS's) | macOS | ✓, whole lines only | – | – (answer on the computer) | ✓ |
 
 - **macOS:** with tmux installed (`brew install tmux`), sessions the phone starts in Terminal or Ghostty run inside tmux and get full control. kitty needs one click in **Settings → Terminals → Set up** (then restart kitty); iTerm2, Terminal and Ghostty need macOS's Automation permission (**Allow…**).
-- **Windows:** only [WezTerm](https://wezterm.org) windows are listed (`winget install wez.wezterm`), because it is the only Windows terminal another program can read and type into; Windows Terminal has no API for either. Windows Terminal, conhost and WSL windows don't show up. Images sent from the phone must be PNG or JPEG (the iPhone and Android apps send JPEG).
+- **Windows:** only [WezTerm](https://wezterm.org) windows are listed, because it is the only Windows terminal another program can read and type into; Windows Terminal has no API for either. You don't have to find it yourself: the setup wizard and **Settings → Terminals** have an **Install** button that opens WezTerm's own installer (or type `winget install --id wez.wezterm --exact`). Windows Terminal, conhost and WSL windows don't show up. Images sent from the phone must be PNG or JPEG (the iPhone and Android apps send JPEG).
 
 Claude Code needs version 2.1.287 or later. Problems? See the [troubleshooting table](docs/SELF_HOSTING.md#troubleshooting).
 

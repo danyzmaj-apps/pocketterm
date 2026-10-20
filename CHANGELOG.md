@@ -2,6 +2,12 @@
 
 User-visible changes to PocketTerm. Each release says whether servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again (or an update from the setup wizard) and whether the push relay must be redeployed.
 
+## Unreleased
+
+No server update or relay redeploy needed.
+
+- **Setup wizard: clearer about the keys it asks for.** Step 1 explains why Supabase's token has to cover the whole organization (creating a project needs it), what PocketTerm does with it, that it's never saved, and how to wall it off in an organization of its own; the last step reminds you to delete it. Step 3 warns, in amber, to untick GitHub's "Allow wildcard matching", and **Set up my server** stays off until you confirm you did.
+
 ## 0.1.1
 
 Servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again (or an update from the setup wizard): a new migration stamps each computer's last-seen time with the server's clock, and `push` changed. The relay doesn't need redeploying.

@@ -54,6 +54,9 @@ class _SetupWizardState extends State<SetupWizard> {
   final _githubId = TextEditingController();
   final _githubSecret = TextEditingController();
 
+  /// The person confirmed they unticked GitHub's wildcard matching.
+  bool _strictCallback = false;
+
   @override
   void dispose() {
     for (final c in [_token, _name, _githubId, _githubSecret]) {
@@ -148,26 +151,42 @@ class _SetupWizardState extends State<SetupWizard> {
     ),
   );
 
-  /// A quiet box explaining something before the person acts on it.
-  Widget _note(String title, String body) => Container(
+  /// A box explaining something before the person acts on it; [warn] for a step they must not skip.
+  Widget _note(String title, String body, {bool warn = false}) => Container(
     padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(
-      color: C.field,
+      color: warn ? C.warn.withValues(alpha: 0.10) : C.field,
       borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: C.line2),
+      border: Border.all(color: warn ? C.warn : C.line2, width: warn ? 1.5 : 1),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            const Icon(Icons.shield_outlined, size: 15, color: C.dim),
+            Icon(
+              warn ? Icons.warning_amber_rounded : Icons.shield_outlined,
+              size: warn ? 18 : 15,
+              color: warn ? C.warn : C.dim,
+            ),
             const SizedBox(width: 6),
-            Text(title, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: warn ? 13.5 : 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: warn ? C.warn : null,
+                ),
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 6),
-        Text(body, style: const TextStyle(fontSize: 12, color: C.dim, height: 1.5)),
+        Text(
+          body,
+          style: TextStyle(fontSize: warn ? 12.5 : 12, color: warn ? C.text : C.dim, height: 1.5),
+        ),
       ],
     ),
   );
@@ -372,9 +391,11 @@ class _SetupWizardState extends State<SetupWizard> {
     _copyRow('Homepage URL', _homepage),
     _copyRow('Authorization callback URL', flow.githubCallback),
     _note(
-      'Below the callback URL in GitHub\u2019s form',
-      'Untick \u201cAllow wildcard matching\u201d: sign-in should go back to this one address only. Leave '
-          '\u201cEnable Device Flow\u201d off and \u201cExpire user access tokens\u201d on.',
+      'Important: untick \u201cAllow wildcard matching\u201d',
+      'GitHub\u2019s form ticks it for you, under the callback URL. Left on, GitHub would also send sign-in '
+          'codes to other addresses under your server\u2019s domain. Untick it so sign-in only ever goes back to '
+          'this exact address.\nLeave \u201cEnable Device Flow\u201d off and \u201cExpire user access tokens\u201d on.',
+      warn: true,
     ),
     const SizedBox(height: 8),
     _link('Open GitHub: new OAuth app', _githubFormUrl()),
@@ -394,10 +415,31 @@ class _SetupWizardState extends State<SetupWizard> {
       enabled: !flow.busy,
       decoration: setupField('Client secret ("Generate a new client secret")'),
       onChanged: (v) => flow.githubSecret = v,
-      onSubmitted: (_) => unawaited(flow.submitGithub()),
+      onSubmitted: (_) {
+        if (_strictCallback) unawaited(flow.submitGithub());
+      },
     ),
-    const SizedBox(height: 16),
-    _primary('Set up my server', () => unawaited(flow.submitGithub())),
+    const SizedBox(height: 12),
+    // A plain row, not a ListTile: the window's background would hide a tile's ink.
+    GestureDetector(
+      key: const ValueKey('github-strict-callback'),
+      behavior: HitTestBehavior.opaque,
+      onTap: flow.busy ? null : () => setState(() => _strictCallback = !_strictCallback),
+      child: Row(
+        children: [
+          Checkbox(
+            value: _strictCallback,
+            onChanged: flow.busy ? null : (v) => setState(() => _strictCallback = v ?? false),
+            activeColor: C.accent,
+          ),
+          const Expanded(
+            child: Text('I unticked \u201cAllow wildcard matching\u201d on GitHub', style: TextStyle(fontSize: 13)),
+          ),
+        ],
+      ),
+    ),
+    const SizedBox(height: 8),
+    _primary('Set up my server', _strictCallback ? () => unawaited(flow.submitGithub()) : null),
     _back(WizardStep.project),
   ];
 

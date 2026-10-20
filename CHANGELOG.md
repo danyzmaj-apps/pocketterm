@@ -2,7 +2,7 @@
 
 User-visible changes to PocketTerm. Each release says whether servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again (or an update from the setup wizard) and whether the push relay must be redeployed.
 
-## Unreleased
+## 0.1.1
 
 Servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again (or an update from the setup wizard): a new migration stamps each computer's last-seen time with the server's clock, and `push` changed. The relay doesn't need redeploying.
 

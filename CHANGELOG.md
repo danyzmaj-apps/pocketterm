@@ -6,7 +6,7 @@ User-visible changes to PocketTerm. Each release says whether servers need `apps
 
 Servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again (or an update from the setup wizard): a new migration stamps each computer's last-seen time with the server's clock, and `push` changed. The relay doesn't need redeploying.
 
-- **New icon.** A terminal window leaning out of the pocket, instead of the note.
+- **New icon.** A phone showing a terminal prompt, leaning out of the pocket, instead of the note.
 - **Phone: links to the rest of PocketTerm.** The welcome screen links to the desktop app's downloads (step 1 needs it), and the account sheet links to the source on GitHub.
 - **Phone: with no computer on the account,** the screen explains why (a review demo account, or a computer with Terminal from phone off) and hides the + button.
 - **Phone:** "Fold all others" keeps projects you folded on your other computers folded.

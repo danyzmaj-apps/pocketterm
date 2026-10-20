@@ -2,8 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
-/// The PocketTerm mark: a terminal window leaning out of a pocket, as on the
-/// app icon (tool/make_icon.swift draws the same shapes).
+/// The PocketTerm mark: a phone showing a terminal prompt, leaning
+/// out of a pocket, as on the app icon (tool/make_icon.swift draws the same shapes).
 class PocketTermLogo extends StatelessWidget {
   const PocketTermLogo({this.size = 48, super.key});
   final double size;
@@ -16,53 +16,52 @@ class _LogoPainter extends CustomPainter {
   const _LogoPainter();
 
   static const _yellow = Color(0xFFFFD15C);
-  static const _window = Color(0xFF0E1018);
-  static const _titleBar = Color(0xFFE8E9EE);
-  static const List<Color> _dots = [Color(0xFFFF6B6B), _yellow, Color(0xFF5EE6A8)];
+  static const _screen = Color(0xFF0E1018);
+  static const _frame = Color(0xFFE8E9EE);
   static const _pocketTop = Color(0xFF8C9EFF);
   static const _pocketBottom = Color(0xFF5C6BDB);
 
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
-    // The icon's unit geometry (y up) spans about 0.15–0.89 in both axes once
-    // the window is tilted; map that square onto the canvas, y down.
-    Offset p(double x, double y) => Offset((x - 0.13) / 0.75 * w, (0.895 - y) / 0.75 * w);
-    final u = w / 0.75;
-    // Window coordinates: centred, y down here (the icon's are y up).
+    // The icon's unit geometry (y up) spans about 0.13–0.87 across and
+    // 0.17–0.91 up once the phone is tilted; map that square onto the canvas, y down.
+    Offset p(double x, double y) => Offset((x - 0.12) / 0.76 * w, (0.92 - y) / 0.76 * w);
+    final u = w / 0.76;
+    // Phone coordinates: centred on its pivot, y down here (the icon's are y up).
     canvas
       ..save()
-      ..translate(p(0.53, 0.665).dx, p(0.53, 0.665).dy)
-      ..rotate(-9 * math.pi / 180);
-    final window = RRect.fromRectAndRadius(
-      Rect.fromLTWH(-0.22 * u, -0.20 * u, 0.44 * u, 0.40 * u),
-      Radius.circular(0.035 * u),
+      ..translate(p(0.5, 0.64).dx, p(0.5, 0.64).dy)
+      ..rotate(10 * math.pi / 180);
+    final phone = RRect.fromRectAndRadius(
+      Rect.fromLTWH(-0.15 * u, -0.24 * u, 0.30 * u, 0.50 * u),
+      Radius.circular(0.056 * u),
     );
     canvas
-      ..drawRRect(window, Paint()..color = _window)
-      ..save()
-      ..clipRRect(window)
-      ..drawRect(Rect.fromLTWH(-0.22 * u, -0.20 * u, 0.44 * u, 0.075 * u), Paint()..color = _titleBar)
-      ..restore();
-    for (var i = 0; i < 3; i++) {
-      canvas.drawCircle(Offset((-0.17 + i * 0.045) * u, -0.1625 * u), 0.014 * u, Paint()..color = _dots[i]);
-    }
+      ..drawRRect(phone, Paint()..color = _screen)
+      ..drawRRect(
+        phone,
+        Paint()
+          ..color = _frame
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.018 * u,
+      );
     final prompt = Paint()
       ..color = _yellow
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.024 * u
+      ..strokeWidth = 0.034 * u
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
     canvas
       ..drawPath(
         Path()
-          ..moveTo(-0.165 * u, -0.085 * u)
-          ..lineTo(-0.115 * u, -0.05 * u)
-          ..lineTo(-0.165 * u, -0.015 * u),
+          ..moveTo(-0.085 * u, -0.14 * u)
+          ..lineTo(-0.019 * u, -0.0896 * u)
+          ..lineTo(-0.085 * u, -0.0392 * u),
         prompt,
       )
       ..drawRRect(
-        RRect.fromRectAndRadius(Rect.fromLTWH(-0.095 * u, -0.03 * u, 0.07 * u, 0.024 * u), Radius.circular(0.012 * u)),
+        RRect.fromRectAndRadius(Rect.fromLTWH(0.01 * u, -0.06 * u, 0.08 * u, 0.032 * u), Radius.circular(0.016 * u)),
         Paint()..color = _yellow,
       )
       ..restore();

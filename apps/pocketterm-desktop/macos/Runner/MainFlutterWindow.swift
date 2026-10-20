@@ -188,31 +188,26 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     statusItem = item
   }
 
-  /// The menu bar mark: the app icon's pocket with a terminal window tucked
-  /// in, drawn as a template so macOS tints it for light and dark menu bars.
+  /// The menu bar mark: the app icon's pocket with a phone showing a ">_"
+  /// prompt tucked in, drawn as a template so macOS tints it for light and dark menu bars.
   private static func pocketIcon() -> NSImage {
     let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
-      // The terminal window, tilted, behind the pocket: an outline with a solid
-      // title bar and a ">_" prompt.
+      // The phone, tilted right, behind the pocket: an outline with a ">_" prompt.
       NSGraphicsContext.saveGraphicsState()
       let tilt = NSAffineTransform()
-      tilt.translateX(by: 9.4, yBy: 12.3)
-      tilt.rotate(byDegrees: 9)
+      tilt.translateX(by: 9, yBy: 11.8)
+      tilt.rotate(byDegrees: -10)
       tilt.concat()
       NSColor.black.set()
-      let window = NSBezierPath(roundedRect: NSRect(x: -4.5, y: -3.8, width: 9, height: 7.6), xRadius: 1.2, yRadius: 1.2)
-      window.lineWidth = 1.3
-      window.stroke()
-      NSGraphicsContext.saveGraphicsState()
-      window.addClip()
-      NSRect(x: -4.5, y: 2.4, width: 9, height: 1.4).fill()
-      NSGraphicsContext.restoreGraphicsState()
+      let phone = NSBezierPath(roundedRect: NSRect(x: -3, y: -5, width: 6, height: 9), xRadius: 1.5, yRadius: 1.5)
+      phone.lineWidth = 1.3
+      phone.stroke()
       let prompt = NSBezierPath()
-      prompt.move(to: NSPoint(x: -2.9, y: 0.6))
-      prompt.line(to: NSPoint(x: -1.6, y: -0.3))
-      prompt.line(to: NSPoint(x: -2.9, y: -1.2))
-      prompt.move(to: NSPoint(x: -0.5, y: -1.2))
-      prompt.line(to: NSPoint(x: 1.1, y: -1.2))
+      prompt.move(to: NSPoint(x: -1.6, y: 2.2))
+      prompt.line(to: NSPoint(x: -0.4, y: 1.4))
+      prompt.line(to: NSPoint(x: -1.6, y: 0.6))
+      prompt.move(to: NSPoint(x: 0.4, y: 0.6))
+      prompt.line(to: NSPoint(x: 1.6, y: 0.6))
       prompt.lineWidth = 1
       prompt.lineCapStyle = .round
       prompt.lineJoinStyle = .round
@@ -220,22 +215,22 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       NSGraphicsContext.restoreGraphicsState()
 
       let pocket = NSBezierPath()
-      pocket.move(to: NSPoint(x: 3, y: 9.6))
-      pocket.line(to: NSPoint(x: 15, y: 9.6))
-      pocket.line(to: NSPoint(x: 15, y: 4.8))
-      pocket.line(to: NSPoint(x: 9, y: 1.4))
-      pocket.line(to: NSPoint(x: 3, y: 4.8))
+      pocket.move(to: NSPoint(x: 3, y: 8.6))
+      pocket.line(to: NSPoint(x: 15, y: 8.6))
+      pocket.line(to: NSPoint(x: 15, y: 4.2))
+      pocket.line(to: NSPoint(x: 9, y: 0.9))
+      pocket.line(to: NSPoint(x: 3, y: 4.2))
       pocket.close()
       pocket.lineJoinStyle = .round
-      // Hollow pocket: clears the window where the pocket covers it.
+      // Hollow pocket: clears the phone where the pocket covers it.
       NSGraphicsContext.current?.compositingOperation = .clear
       pocket.fill()
       NSGraphicsContext.current?.compositingOperation = .sourceOver
       pocket.lineWidth = 1.5
       pocket.stroke()
       let hem = NSBezierPath()
-      hem.move(to: NSPoint(x: 4.5, y: 7.6))
-      hem.line(to: NSPoint(x: 13.5, y: 7.6))
+      hem.move(to: NSPoint(x: 4.5, y: 6.7))
+      hem.line(to: NSPoint(x: 13.5, y: 6.7))
       hem.lineWidth = 1
       hem.setLineDash([1.4, 1.2], count: 2, phase: 0)
       hem.stroke()

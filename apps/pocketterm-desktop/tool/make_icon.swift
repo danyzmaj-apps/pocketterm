@@ -1,4 +1,4 @@
-// Draws the app icon: a terminal window leaning out of a jeans pocket, on the app's dark gradient.
+// Draws the app icon: a phone showing a terminal prompt, leaning out of a jeans pocket, on the app's dark gradient.
 //   swift tool/make_icon.swift   (in apps/pocketterm-desktop)
 //     → ../pocketterm-mobile/assets/icon/ios.png (square, opaque)
 //       ../pocketterm-mobile/assets/icon/android-background.png, android-foreground.png
@@ -26,7 +26,7 @@ func render(
     )!.draw(in: shape, angle: -60)
   }
   if art {
-    // Small: the art fills more of the body, nudged down so the window clears the top edge.
+    // Small: the art fills more of the body, nudged down so the phone clears the top edge.
     let s = small ? 1.3 : scale
     let area = body.insetBy(dx: body.width * (1 - s) / 2, dy: body.height * (1 - s) / 2)
     drawArt(in: small ? area.offsetBy(dx: 0, dy: -0.04 * body.height) : area, small: small)
@@ -43,55 +43,43 @@ func render(
   try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: path))
 }
 
-/// The terminal window and the pocket, in [rect]. [small] (24 px and under) drops the
-/// title-bar dots and the stitching, which turn to mush that small, and bolds the prompt.
+/// The phone and the pocket, in [rect]. [small] (24 px and under) drops the stitching,
+/// which turns to mush that small, and bolds the phone's outline and the prompt.
 func drawArt(in rect: NSRect, small: Bool = false) {
   // Unit coordinates inside the body, y up.
   func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: rect.minX + x * rect.width, y: rect.minY + y * rect.height) }
   let w = rect.width
 
-  // A terminal window leaning out of the pocket; the pocket covers its lower half.
-  // Window coordinates: centred, y up, in units of [w] (logo.dart draws the same shapes).
+  // A phone showing a terminal prompt, leaning right out of the pocket; the pocket covers its lower half.
+  // Phone coordinates: centred on its pivot, y up, in units of [w] (logo.dart draws the same shapes).
   NSGraphicsContext.saveGraphicsState()
   let tilt = NSAffineTransform()
-  tilt.translateX(by: p(0.53, 0.665).x, yBy: p(0.53, 0.665).y)
-  tilt.rotate(byDegrees: 9)
+  tilt.translateX(by: p(0.5, 0.64).x, yBy: p(0.5, 0.64).y)
+  tilt.rotate(byDegrees: -10)
   tilt.concat()
-  let window = NSBezierPath(
-    roundedRect: NSRect(x: -0.22 * w, y: -0.20 * w, width: 0.44 * w, height: 0.40 * w), xRadius: 0.035 * w,
-    yRadius: 0.035 * w)
+  let phone = NSBezierPath(
+    roundedRect: NSRect(x: -0.15 * w, y: -0.26 * w, width: 0.30 * w, height: 0.50 * w), xRadius: 0.056 * w,
+    yRadius: 0.056 * w)
   NSColor(red: 0.055, green: 0.063, blue: 0.094, alpha: 1).setFill()
-  window.fill()
-  // The light title bar, clipped to the window's rounded top.
-  NSGraphicsContext.saveGraphicsState()
-  window.addClip()
-  NSColor(red: 0.91, green: 0.914, blue: 0.933, alpha: 1).setFill()
-  NSRect(x: -0.22 * w, y: 0.125 * w, width: 0.44 * w, height: 0.075 * w).fill()
-  NSGraphicsContext.restoreGraphicsState()
-  let dots = [
-    NSColor(red: 1, green: 0.42, blue: 0.42, alpha: 1), NSColor(red: 1, green: 0.82, blue: 0.36, alpha: 1),
-    NSColor(red: 0.37, green: 0.90, blue: 0.66, alpha: 1),
-  ]
-  for (i, color) in dots.enumerated() where !small {
-    color.setFill()
-    let x = (-0.17 + CGFloat(i) * 0.045) * w
-    NSBezierPath(ovalIn: NSRect(x: x - 0.014 * w, y: 0.1625 * w - 0.014 * w, width: 0.028 * w, height: 0.028 * w)).fill()
-  }
+  phone.fill()
+  phone.lineWidth = (small ? 0.03 : 0.018) * w
+  NSColor(red: 0.91, green: 0.914, blue: 0.933, alpha: 1).setStroke()
+  phone.stroke()
   // The prompt: ">_" in the stitching's yellow.
   let yellow = NSColor(red: 1, green: 0.82, blue: 0.36, alpha: 1)
   let chevron = NSBezierPath()
-  chevron.move(to: NSPoint(x: -0.165 * w, y: 0.085 * w))
-  chevron.line(to: NSPoint(x: -0.115 * w, y: 0.05 * w))
-  chevron.line(to: NSPoint(x: -0.165 * w, y: 0.015 * w))
-  chevron.lineWidth = (small ? 0.04 : 0.024) * w
+  chevron.move(to: NSPoint(x: -0.085 * w, y: 0.14 * w))
+  chevron.line(to: NSPoint(x: -0.019 * w, y: 0.0896 * w))
+  chevron.line(to: NSPoint(x: -0.085 * w, y: 0.0392 * w))
+  chevron.lineWidth = (small ? 0.05 : 0.034) * w
   chevron.lineCapStyle = .round
   chevron.lineJoinStyle = .round
   yellow.setStroke()
   chevron.stroke()
   yellow.setFill()
   NSBezierPath(
-    roundedRect: NSRect(x: -0.095 * w, y: 0.006 * w, width: 0.07 * w, height: 0.024 * w), xRadius: 0.012 * w,
-    yRadius: 0.012 * w
+    roundedRect: NSRect(x: 0.01 * w, y: 0.028 * w, width: 0.08 * w, height: 0.032 * w), xRadius: 0.016 * w,
+    yRadius: 0.016 * w
   ).fill()
   NSGraphicsContext.restoreGraphicsState()
 

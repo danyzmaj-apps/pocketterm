@@ -2,7 +2,7 @@
 
 User-visible changes to PocketTerm. Each release says whether servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again (or an update from the setup wizard) and whether the push relay must be redeployed.
 
-## Unreleased
+## 0.1.2
 
 No server update or relay redeploy needed.
 

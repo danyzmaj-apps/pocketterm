@@ -148,6 +148,30 @@ class _SetupWizardState extends State<SetupWizard> {
     ),
   );
 
+  /// A quiet box explaining something before the person acts on it.
+  Widget _note(String title, String body) => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: C.field,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: C.line2),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.shield_outlined, size: 15, color: C.dim),
+            const SizedBox(width: 6),
+            Text(title, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(body, style: const TextStyle(fontSize: 12, color: C.dim, height: 1.5)),
+      ],
+    ),
+  );
+
   /// Works while a new project starts too: the wizard stops waiting, and the
   /// project stays picked for next time.
   Widget _back(WizardStep to) => Align(
@@ -223,9 +247,19 @@ class _SetupWizardState extends State<SetupWizard> {
   List<Widget> _tokenStep() => [
     ..._header(
       '1. Your Supabase account',
-      'Supabase hosts your server (free). Sign up or log in, then create an access token so the '
-          'app can set the server up for you. Name it "PocketTerm setup"; you can delete it once you are done.',
+      'Supabase hosts your server (free). Sign up or log in, then create an access token named '
+          '"PocketTerm setup" so the app can set the server up for you through Supabase\u2019s API.',
     ),
+    _note(
+      'Why the whole organization',
+      'Creating a project needs access to the organization it goes in: Supabase has no token for '
+          '\u201ccreate one project\u201d. After that, PocketTerm only uses the token on the project it sets up: the '
+          'database, GitHub sign-in, two functions and their secrets.\n'
+          'In the form: Resource access \u2192 Organization, your organization, full access (or Create legacy '
+          'token). Expires in: 7 days.\n'
+          'Want it walled off? Create a separate Supabase organization just for PocketTerm (free) and choose that one.',
+    ),
+    const SizedBox(height: 10),
     _link('Open Supabase access tokens', _tokensUrl),
     const SizedBox(height: 8),
     TextField(
@@ -238,7 +272,8 @@ class _SetupWizardState extends State<SetupWizard> {
     ),
     const SizedBox(height: 6),
     const Text(
-      'The token stays in this window only; the app never saves it.',
+      'The token stays in this window and only goes to Supabase; the app never saves it. Delete it once your '
+      'server is ready.',
       style: TextStyle(fontSize: 11.5, color: C.dim2),
     ),
     const SizedBox(height: 16),
@@ -336,6 +371,12 @@ class _SetupWizardState extends State<SetupWizard> {
     _copyRow('Application name', 'PocketTerm'),
     _copyRow('Homepage URL', _homepage),
     _copyRow('Authorization callback URL', flow.githubCallback),
+    _note(
+      'Below the callback URL in GitHub\u2019s form',
+      'Untick \u201cAllow wildcard matching\u201d: sign-in should go back to this one address only. Leave '
+          '\u201cEnable Device Flow\u201d off and \u201cExpire user access tokens\u201d on.',
+    ),
+    const SizedBox(height: 8),
     _link('Open GitHub: new OAuth app', _githubFormUrl()),
     const SizedBox(height: 8),
     TextField(
@@ -360,6 +401,9 @@ class _SetupWizardState extends State<SetupWizard> {
     _back(WizardStep.project),
   ];
 
+  /// GitHub's new-OAuth-app form, filled in from the link. GitHub reads only these three from a link
+  /// (tried 2026-10-20): its checkboxes keep their defaults, which is why the step's note asks the
+  /// person to untick wildcard matching.
   String _githubFormUrl() => Uri.https('github.com', '/settings/applications/new', {
     'oauth_application[name]': 'PocketTerm',
     'oauth_application[url]': _homepage,
@@ -374,7 +418,8 @@ class _SetupWizardState extends State<SetupWizard> {
         finished ? 'Your server is ready' : '4. Setting up your server',
         finished
             ? 'Connect, then sign in with GitHub. The first account to sign in owns this server. '
-                  'To add your phone afterwards: Settings → Set up phone, and scan the code.'
+                  'To add your phone afterwards: Settings → Set up phone, and scan the code.\n'
+                  'You can now delete the "PocketTerm setup" token in Supabase (Account → Access Tokens).'
             : 'This takes about a minute.',
       ),
       for (final s in ProvisionStep.values)

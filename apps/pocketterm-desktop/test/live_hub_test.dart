@@ -7,7 +7,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/ghostty.dart';
 import 'package:pocketterm_core/live.dart';
+import 'package:pocketterm_core/terminal.dart';
+import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 
 /// An omp extension's side of the socket.
@@ -124,6 +127,63 @@ void main() {
     await until(() => hub['pid:42'] != null);
     expect(hub['kitty-23224/116'], isNull);
   });
+
+  test(
+    "Ghostty windows sharing a folder: a session's title arriving later claims its window, the other the one left",
+    () async {
+      TermWindow g(String id, String title) =>
+          TermWindow(key: 'ghostty:$id', title: title, tab: '', cwd: '/tmp/work', program: '', app: 'ghostty');
+      final listed = [g('A', 'π > work'), g('B', 'π > work')];
+      final terms = Terminals(
+        home: '/nonexistent-pocketterm',
+        ghostty: _ListedGhostty(listed),
+        snapshot: () async => Procs(parsePs('')),
+      );
+      hub = LiveHub(locate: terms.locate);
+      Future<_Ext> omp(int pid, {String id = 's1'}) async {
+        final ext = await connect();
+        ext.send({
+          't': 'hello',
+          'v': 1,
+          'agent': 'omp',
+          'session': {'id': id, 'title': '', 'cwd': '/tmp/work'},
+          'term': {'TERM_PROGRAM': 'ghostty', 'tty': '/dev/ttys0$pid'},
+          'pid': pid,
+          'items': const <Object>[],
+        });
+        return ext;
+      }
+
+      final first = await omp(41);
+      await omp(42);
+      await until(() => hub['pid:41'] != null && hub['pid:42'] != null);
+      // Two untitled omps, two windows titled alike: neither is guessed.
+      expect(hub.sessions.map((s) => s.window), [null, null]);
+
+      // The first prompt names the session, and omp the window after it.
+      listed[0] = g('A', 'π > Fix missing playable sources');
+      first.send({'t': 'meta', 'title': 'Fix missing playable sources'});
+      await until(() => hub['pid:41']?.window == 'ghostty:A' && hub['pid:42']?.window == 'ghostty:B');
+      // Under the keys the phone knows, each naming its window, which the phone then shows as the session only.
+      expect([
+        for (final s in hub.sessions) (s.summary.toJson()['key'], s.summary.toJson()['window']),
+      ], unorderedEquals([('pid:41', 'ghostty:A'), ('pid:42', 'ghostty:B')]));
+
+      // /new in the first: the same window, under the same key.
+      first.send({
+        't': 'hello',
+        'v': 1,
+        'agent': 'omp',
+        'session': {'id': 's9', 'title': '', 'cwd': '/tmp/work'},
+        'term': {'TERM_PROGRAM': 'ghostty', 'tty': '/dev/ttys041'},
+        'pid': 41,
+        'items': const <Object>[],
+      });
+      await until(() => hub['pid:41']?.id == 's9');
+      expect(hub['pid:41']!.window, 'ghostty:A');
+      expect(hub['ghostty:A'], isNull);
+    },
+  );
 
   test('slash commands come with the hello and change with a meta that has them', () async {
     final ext = await connect();
@@ -338,4 +398,13 @@ void main() {
     await until(() => hub['kitty-1/7'] == null);
     expect(hub.sessions, isEmpty);
   });
+}
+
+/// Ghostty listing these windows (as they are when asked).
+class _ListedGhostty extends Ghostty {
+  _ListedGhostty(this.listed) : super(appPath: '/nonexistent-pocketterm/Ghostty.app');
+  final List<TermWindow> listed;
+
+  @override
+  Future<List<TermWindow>> windows(Procs procs) async => [...listed];
 }

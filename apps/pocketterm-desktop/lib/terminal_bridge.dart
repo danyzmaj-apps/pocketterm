@@ -396,6 +396,7 @@ class TerminalBridge {
       }
       if (windows || _ticks++ % 3 == 0) {
         _windows = await _terms.windows();
+        _relink();
         if (windows || _statusesAt == null || now.difference(_statusesAt!) > _statusEvery) {
           _statusesAt = now;
           _statuses = await _terms.statuses();
@@ -434,6 +435,22 @@ class TerminalBridge {
     } finally {
       _polling = false;
     }
+  }
+
+  /// What the windows (and the sessions' windows) were at the last relink.
+  String? _relinkedFor;
+
+  /// Sessions without a window look for one again once the windows change
+  /// (a Ghostty window's title follows its session's).
+  void _relink() {
+    if (_hub.sessions.every((s) => s.window != null)) return;
+    final now = [
+      for (final w in _windows) '${w.key}\t${w.title}\t${w.cwd}',
+      for (final s in _hub.sessions) ?s.window,
+    ].join('\n');
+    if (now == _relinkedFor) return;
+    _relinkedFor = now;
+    unawaited(_hub.relink());
   }
 
   Future<void> _sendScreen(String window) async {

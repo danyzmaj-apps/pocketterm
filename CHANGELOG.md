@@ -40,6 +40,7 @@ The first release: your computer's omp and Claude Code sessions on your phone, t
 
 - **Coding agents:** omp and Claude Code (2.1.287 or later).
 - **Terminals:** kitty, tmux, WezTerm, iTerm2, Terminal and Ghostty on the Mac; WezTerm on Windows.
+- **Ghostty windows that share a folder** now show once, as their sessions. With two coding agents open in Ghostty in the same folder, each session showed twice on the phone: as a conversation and again as a window under Other windows. PocketTerm now tells the windows apart by the title omp gives each one (the session's title, or the folder's name until it has one) and by which windows other sessions already run in, and finds a session's window again once its title arrives. When it still can't tell, it leaves the session unmatched instead of guessing.
 
 ### Backend
 

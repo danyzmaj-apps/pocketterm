@@ -33,6 +33,16 @@ enum Agent {
 
   /// The agent a terminal window's foreground [program] is, if it is one.
   static Agent? ofProgram(String program) => values.asNameMap()[program];
+
+  /// The session a terminal [title] this agent set names: omp sets
+  /// `π > <session name>` (`>` idle; `:` or a spinner frame working, `!`
+  /// asking; `π: ` with its title spinner off), the name being its folder's
+  /// until the session has one. Null for a title it didn't set, and for
+  /// Claude Code, whose title names nothing its sessions report.
+  String? sessionOfTitle(String title) => switch (this) {
+    omp => RegExp(r'^π(?:: | \S )(.+)$').firstMatch(title)?[1]?.trim(),
+    claude => null,
+  };
 }
 
 /// Where PocketTerm stands in a coding agent found on a computer, as the

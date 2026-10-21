@@ -158,9 +158,17 @@ class Terminals {
 
   /// Where an agent runs, from the `term` its extension reports
   /// ([windowOfTerm]); for Ghostty, which tells nothing to match, the window
-  /// PocketTerm opened on the agent's tty, else the one Ghostty window in the
-  /// agent's folder [cwd] (then its tty is remembered).
-  Future<String?> locate(Map<String, dynamic>? term, {String cwd = ''}) async {
+  /// PocketTerm opened on the agent's tty, else the Ghostty window in the
+  /// agent's folder [cwd] its session ([title], [agent]) is in, of those not
+  /// [claimed] by other sessions ([Ghostty.byFolder]; then its tty is
+  /// remembered).
+  Future<String?> locate(
+    Map<String, dynamic>? term, {
+    String cwd = '',
+    String title = '',
+    Agent agent = Agent.omp,
+    Set<String> claimed = const {},
+  }) async {
     if (term == null) return null;
     final socket = term['TMUX'];
     if (socket is String && socket.isNotEmpty) tmux?.learn(socket.split(',').first);
@@ -171,7 +179,7 @@ class Terminals {
     final tty = term['tty'] is String ? term['tty'] as String : '';
     final known = tty.isEmpty ? null : ghostty.byTty(tty);
     if (known != null) return known;
-    final found = await ghostty.byFolder(cwd, await snapshot());
+    final found = await ghostty.byFolder(cwd, await snapshot(), tty: tty, title: title, agent: agent, claimed: claimed);
     if (found != null && tty.isNotEmpty) ghostty.learn(found, tty);
     return found;
   }

@@ -257,8 +257,7 @@ class AppController extends Session {
   }
 
   /// The coding sessions reporting to the local API (integrations/).
-  late final live = LiveHub(locate: (term, cwd) => terminals.locate(term, cwd: cwd))
-    ..events.listen((e) => unawaited(_onLive(e)));
+  late final live = LiveHub(locate: terminals.locate)..events.listen((e) => unawaited(_onLive(e)));
 
   Future<void> setTerminal({required bool on}) async {
     await _prefs.setBool(_terminalKey, on);

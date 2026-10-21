@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/terminal.dart';
 
 /// Ghostty (1.3 and later), through its AppleScript dictionary (macOS asks
@@ -250,9 +252,19 @@ end run''',
     return key;
   }
 
-  /// The terminal whose folder is [cwd], if exactly one is: where an agent
-  /// reporting that folder runs, when its tty isn't one known.
-  Future<String?> byFolder(String cwd, Procs procs) async {
+  /// The terminal in folder [cwd] an [agent] on [tty] runs in, when its tty
+  /// isn't one known: the one terminal there; else, of those not [claimed]
+  /// by other sessions and not known to be on another tty, the one left, or
+  /// the one whose title is the session's (what [agent] sets: its [title],
+  /// or the folder's name while it has none). More than one: null.
+  Future<String?> byFolder(
+    String cwd,
+    Procs procs, {
+    String tty = '',
+    String title = '',
+    Agent agent = Agent.omp,
+    Set<String> claimed = const {},
+  }) async {
     if (cwd.isEmpty) return null;
     final List<TermWindow> all;
     try {
@@ -260,8 +272,17 @@ end run''',
     } on TerminalException {
       return null;
     }
-    final here = all.where((w) => w.cwd == cwd || w.cwd == '/private$cwd').toList();
-    return here.length == 1 ? here.single.key : null;
+    final t = tty.replaceFirst('/dev/', '');
+    final here = [
+      for (final w in all)
+        if ((w.cwd == cwd || w.cwd == '/private$cwd') && (w.tty.isEmpty || t.isEmpty || w.tty == t)) w,
+    ];
+    if (here.length == 1) return here.single.key;
+    final open = here.where((w) => !claimed.contains(w.key)).toList();
+    if (open.length == 1) return open.single.key;
+    final name = title.trim().isNotEmpty ? title.trim() : p.basename(cwd);
+    final named = open.where((w) => agent.sessionOfTitle(w.title) == name).toList();
+    return named.length == 1 ? named.single.key : null;
   }
 }
 

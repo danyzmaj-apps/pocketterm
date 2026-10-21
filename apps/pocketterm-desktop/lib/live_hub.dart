@@ -30,6 +30,17 @@ class SocketLink implements LiveLink {
   Future<void> close() => _ws.close();
 }
 
+/// Where a session runs (Terminals.locate): from the `term` its extension
+/// reports, else (Ghostty) by its folder, its title as its [agent] shows it
+/// in the window's, and the windows [claimed] by other sessions.
+typedef Locate = Future<String?> Function(
+  Map<String, dynamic>? term, {
+  String cwd,
+  String title,
+  Agent agent,
+  Set<String> claimed,
+});
+
 /// One coding session, as its agent's extension reports it (integrations/:
 /// omp's pocketterm-live.ts, the Claude Code plugin).
 class LiveSession {
@@ -38,11 +49,15 @@ class LiveSession {
   final LiveLink _link;
 
   /// The terminal window it runs in (lib/terminal.dart's keys:
-  /// `kitty-<pid>/<id>`, `tmux:default/3` …), or `pid:<pid>`.
+  /// `kitty-<pid>/<id>`, `tmux:default/3` …), or `pid:<pid>`; a window
+  /// found after it said hello ([LiveHub.relink]) is [window] only.
   final String key;
   LiveLog log;
   Agent agent = Agent.omp;
   String? window;
+
+  /// What its extension said of its terminal, to find [window] again.
+  Map<String, dynamic>? _term;
   String id = '';
   String title = '';
   String cwd = '';
@@ -133,12 +148,19 @@ class LiveAsked extends LiveEvent {
 /// API (lib/local_api.dart) and keep it up to date; the terminal bridge
 /// passes them on to the phone.
 class LiveHub {
-  /// [locate]: where a session runs, from the `term` its extension reports
-  /// and its folder (Terminals.locate); [windowOfTerm] by default.
-  LiveHub({Future<String?> Function(Map<String, dynamic>? term, String cwd)? locate})
-    : _locate = locate ?? ((term, _) async => windowOfTerm(term));
+  /// [locate]: where a session runs (Terminals.locate); [windowOfTerm] by
+  /// default.
+  LiveHub({Locate? locate}) : _locate = locate ?? _byTerm;
 
-  final Future<String?> Function(Map<String, dynamic>? term, String cwd) _locate;
+  static Future<String?> _byTerm(
+    Map<String, dynamic>? term, {
+    String cwd = '',
+    String title = '',
+    Agent agent = Agent.omp,
+    Set<String> claimed = const {},
+  }) async => windowOfTerm(term);
+
+  final Locate _locate;
   final _byKey = <String, LiveSession>{};
 
   /// Transcript changes, per session.
@@ -190,18 +212,24 @@ class LiveHub {
   /// (an older extension reports only kitty's, as `window`), else its pid.
   /// A `term` that names no window is trusted over `window`, which an
   /// extension also reads from KITTY_* variables leaked from a kitty that
-  /// started the terminal (they'd name a window of that kitty).
+  /// started the terminal (they'd name a window of that kitty). The same
+  /// agent saying hello again stays where it is, under the same key.
   Future<LiveSession> _hello(LiveLink link, LiveSession? current, Map<String, dynamic> m) async {
     final s = (m['session'] as Map?)?.cast<String, dynamic>() ?? const {};
     final term = (m['term'] as Map?)?.cast<String, dynamic>();
+    final agent = Agent.parse(m['agent']);
+    final cwd = s['cwd'] as String? ?? '';
+    final title = s['title'] as String? ?? '';
     String? window;
     try {
-      window = await _locate(term, s['cwd'] as String? ?? '');
+      window = await _locate(term, cwd: cwd, title: title, agent: agent, claimed: _claimed(current));
     } on Object catch (e) {
       debugPrint('PocketTerm: where a live session runs: $e');
     }
     if (term == null) window ??= m['window'] as String?;
-    final key = window ?? 'pid:${m['pid']}';
+    final same = current != null && identical(_byKey[current.key], current) ? current : null;
+    window ??= same?.window;
+    final key = same != null && same.window == window ? same.key : window ?? 'pid:${m['pid']}';
     final log = LiveLog([
       for (final i in m['items'] as List? ?? const []) LiveItem.fromJson((i as Map).cast()),
     ], older: m['older'] == true);
@@ -218,11 +246,12 @@ class LiveHub {
       _byKey[key] = session;
     }
     session
-      ..agent = Agent.parse(m['agent'])
+      ..agent = agent
       ..window = window
+      .._term = term
       ..id = s['id'] as String? ?? ''
-      ..title = s['title'] as String? ?? ''
-      ..cwd = s['cwd'] as String? ?? ''
+      ..title = title
+      ..cwd = cwd
       ..model = s['model'] as String? ?? ''
       ..busy = m['busy'] == true
       ..ctx = (m['ctx'] as num?)?.round()
@@ -231,7 +260,61 @@ class LiveHub {
       ..preview = _preview(log.items.lastWhere((i) => i.kind == ItemKind.assistant, orElse: () => _none).text)
       ..at = DateTime.now();
     _changes.add(null);
+    // A window claimed can leave another session the one window left.
+    if (window != null) _relinkSoon();
     return session;
+  }
+
+  /// The windows the sessions other than [except] run in.
+  Set<String> _claimed(LiveSession? except) => {
+    for (final s in _byKey.values)
+      if (!identical(s, except)) ?s.window,
+  };
+
+  bool _relinking = false;
+  bool _relinkAgain = false;
+
+  /// Looks again for the window of each session that has none, by what
+  /// changed since its hello: a Ghostty window is told apart by its title
+  /// (a session gets one after its first prompt) and by the windows other
+  /// sessions run in. A window found becomes the session's
+  /// [LiveSession.window]; its key stays the one the phone knows.
+  Future<void> relink() async {
+    if (_relinking) {
+      _relinkAgain = true;
+      return;
+    }
+    _relinking = true;
+    try {
+      var found = false;
+      do {
+        _relinkAgain = false;
+        found = false;
+        for (final s in [..._byKey.values]) {
+          if (s.window != null || s._term == null) continue;
+          String? window;
+          try {
+            window = await _locate(s._term, cwd: s.cwd, title: s.title, agent: s.agent, claimed: _claimed(s));
+          } on Object catch (e) {
+            debugPrint('PocketTerm: where a live session runs: $e');
+          }
+          // Gone, placed or beaten to it meanwhile.
+          if (window == null || s.window != null || !identical(_byKey[s.key], s) || _claimed(s).contains(window)) {
+            continue;
+          }
+          s.window = window;
+          found = true;
+          _changes.add(null);
+        }
+        // A window claimed can leave another session the one window left.
+      } while (found || _relinkAgain);
+    } finally {
+      _relinking = false;
+    }
+  }
+
+  void _relinkSoon() {
+    if (_byKey.values.any((s) => s.window == null && s._term != null)) unawaited(relink());
   }
 
   static final _none = LiveItem(id: '', kind: ItemKind.notice);
@@ -274,7 +357,10 @@ class LiveHub {
         _changes.add(null);
         if (ask != null) _events.add(LiveAsked(s, ask));
       case 'meta':
-        if (m['title'] is String) s.title = m['title'] as String;
+        if (m['title'] is String && m['title'] != s.title) {
+          s.title = m['title'] as String;
+          if (s.window == null) _relinkSoon();
+        }
         if (m['model'] is String) s.model = m['model'] as String;
         if (m.containsKey('ctx')) s.ctx = (m['ctx'] as num?)?.round();
         if (m['commands'] is List) s.commands = liveCommands(m['commands']);

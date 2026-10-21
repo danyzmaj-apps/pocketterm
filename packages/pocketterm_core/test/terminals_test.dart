@@ -4,6 +4,7 @@ library;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/apple_terminal.dart';
 import 'package:pocketterm_core/ghostty.dart';
 import 'package:pocketterm_core/iterm.dart';
@@ -274,6 +275,61 @@ void main() {
     expect(withTmux.note, contains(_RunningGhostty().limits));
   });
 
+  group('locate: Ghostty windows sharing a folder', () {
+    TermWindow g(String id, String title, {String cwd = '/tmp/work'}) =>
+        TermWindow(key: 'ghostty:$id', title: title, tab: '', cwd: cwd, program: '', app: 'ghostty');
+    Terminals with_(List<TermWindow> listed) => Terminals(
+      home: '/nonexistent-pocketterm',
+      ghostty: _ListedGhostty(listed),
+      snapshot: () async => Procs(parsePs('')),
+    );
+    Map<String, dynamic> term(String tty) => {'TERM_PROGRAM': 'ghostty', 'tty': '/dev/$tty'};
+
+    test("each omp session gets the window whose title is its own, or its folder's while untitled", () async {
+      final terms = with_([
+        g('A', 'π > Fix missing playable sources for the player'),
+        g('B', 'π > work'),
+        g('C', 'zsh', cwd: '/tmp/other'),
+      ]);
+      expect(
+        await terms.locate(term('ttys001'), cwd: '/tmp/work', title: 'Fix missing playable sources for the player'),
+        'ghostty:A',
+      );
+      expect(await terms.locate(term('ttys002'), cwd: '/tmp/work'), 'ghostty:B');
+      // Matched once, found by its tty from then on, whatever the title says.
+      expect(await terms.locate(term('ttys001'), cwd: '/tmp/work', title: 'Renamed'), 'ghostty:A');
+    });
+
+    test("omp's title while it works or asks still names the session", () async {
+      final terms = with_([g('A', 'π ⠋ Paint the button'), g('B', 'π ! Fix the build'), g('C', 'π: work')]);
+      expect(await terms.locate(term('ttys001'), cwd: '/tmp/work', title: 'Fix the build'), 'ghostty:B');
+      expect(await terms.locate(term('ttys002'), cwd: '/tmp/work', title: 'Paint the button'), 'ghostty:A');
+      expect(await terms.locate(term('ttys003'), cwd: '/tmp/work'), 'ghostty:C');
+    });
+
+    test('the one window there no other session runs in is the one', () async {
+      final terms = with_([g('A', 'π > work'), g('B', 'π > work')]);
+      expect(await terms.locate(term('ttys002'), cwd: '/tmp/work', claimed: {'ghostty:A'}), 'ghostty:B');
+      // Claude Code's title names no session: only what's left tells.
+      final claude = with_([g('A', '✳ Claude Code'), g('B', '✳ Claude Code')]);
+      expect(
+        await claude.locate(term('ttys002'), cwd: '/tmp/work', agent: Agent.claude, claimed: {'ghostty:B'}),
+        'ghostty:A',
+      );
+    });
+
+    test('still more than one: none, rather than a guess', () async {
+      final untitled = with_([g('A', 'π > work'), g('B', 'π > work')]);
+      expect(await untitled.locate(term('ttys001'), cwd: '/tmp/work'), isNull);
+      final titled = with_([g('A', 'π > Fix the build'), g('B', 'π > work'), g('C', 'π > Paint the button')]);
+      expect(await titled.locate(term('ttys001'), cwd: '/tmp/work', title: 'Write docs'), isNull);
+      final claude = with_([g('A', '✳ Claude Code'), g('B', '✳ Claude Code')]);
+      expect(await claude.locate(term('ttys001'), cwd: '/tmp/work', agent: Agent.claude), isNull);
+      // Nothing learned from a miss.
+      expect(untitled.ghostty!.byTty('ttys001'), isNull);
+    });
+  });
+
   group('projects', () {
     final terms = _terms();
     late Directory dir;
@@ -338,4 +394,13 @@ class _RunningGhostty extends Ghostty {
 
   @override
   Future<TermStatus> status(Procs procs) async => TermStatus(id, label, TermState.limited, note: '2 windows · $limits');
+}
+
+/// Ghostty listing these windows.
+class _ListedGhostty extends Ghostty {
+  _ListedGhostty(this.listed) : super(appPath: '/nonexistent-pocketterm/Ghostty.app');
+  final List<TermWindow> listed;
+
+  @override
+  Future<List<TermWindow>> windows(Procs procs) async => listed;
 }

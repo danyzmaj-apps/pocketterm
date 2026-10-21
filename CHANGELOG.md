@@ -4,6 +4,12 @@ User-visible changes to PocketTerm. Each release says whether servers need `apps
 
 ## Unreleased
 
+**Your own PocketTerm server instead of Supabase.** The apps now connect only to a PocketTerm server (packages/pocketterm_server): no Supabase project, no GitHub sign-in. A computer signs in by opening the server's setup link (`pocketterm-server setup-link` prints it); a phone by scanning a computer's code, as before. Plain `http://` works on this machine, the local network and Tailscale (100.64.0.0/10, `*.ts.net`).
+
+- **Signing out leaves the server:** the device's token stops working there. On the phone, **Leave this server** replaces **Delete account**.
+- **Reviewer codes are gone** (Settings → Reviewer access on the computer); a demo mode on the phone replaces them.
+- A computer or phone set up with a Supabase project shows the setup screen again.
+
 **End-to-end encryption.** Your server (Supabase) now relays only ciphertext between a computer and its phones: sessions, screens, prompts, images and notification text.
 
 **Servers:** run `apps/pocketterm-desktop/tool/setup-backend.sh` again ([Updating](docs/SELF_HOSTING.md#updating)): `push` forwards notifications the computer sealed, and a migration drops the per-phone push keys. **Phones pair again once:** scan each computer's code (Settings → Add a phone…) on each phone.

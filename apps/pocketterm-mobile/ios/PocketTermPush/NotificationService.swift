@@ -1,6 +1,6 @@
 import UserNotifications
 
-/// Turns a push into its real text. The relay (supabase/functions/relay) only
+/// Turns a push into its real text. The relay (apps/pocketterm-relay) only
 /// forwards ciphertext: the computer `d` sealed {title, body, session?, state?}
 /// with its channel key (`PocketTermShared.channelKey`), AES-256-GCM in
 /// CryptoKit's combined form, AAD "pocketterm/v1|push|<d>". A computer whose

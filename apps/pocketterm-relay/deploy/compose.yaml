@@ -1,0 +1,46 @@
+# Production compose file for PocketTerm's push relay on danyzmaj-server
+# (contract: danyzmaj-server/docs/connect-an-app.md). Deployed by
+# .github/workflows/relay-deploy.yml as compose project `pocketterm-relay`.
+# Public at https://push.danyzmaj.com: the tunnel passes /v1/ and /health only.
+#
+# Stores nothing: no volumes, no database.
+
+services:
+  app:
+    build: .. # apps/pocketterm-relay
+    restart: unless-stopped
+    env_file: # APNS_KEY_ID, APNS_TEAM_ID, APNS_TOPIC
+      - path: /etc/danyzmaj/pocketterm-relay/app.env
+        required: true
+    environment:
+      PORT: "8080"
+    secrets: [relay_key, apns_key, fcm_service_account]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    labels:
+      app: pocketterm-relay
+      metrics.scrape: "true"
+      metrics.port: "8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    networks:
+      default: {}
+      observability:
+        aliases: [pocketterm-relay]
+
+secrets:
+  relay_key: # the relay's X25519 private key (PEM)
+    file: /etc/danyzmaj/pocketterm-relay/relay-x25519.key
+  apns_key: # AuthKey_<id>.p8
+    file: /etc/danyzmaj/pocketterm-relay/apns.p8
+  fcm_service_account: # Firebase service account JSON
+    file: /etc/danyzmaj/pocketterm-relay/fcm-service-account.json
+
+networks:
+  observability:
+    external: true

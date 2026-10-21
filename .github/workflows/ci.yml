@@ -103,10 +103,32 @@ jobs:
         with:
           deno-version: v2.x
       - run: deno check supabase/functions/*/index.ts
-      # pair, push and relay in-process against a fake network (supabase/functions/_tests/harness.ts).
+      # pair and push in-process against a fake network (supabase/functions/_tests/harness.ts).
       - run: deno test --allow-env supabase/functions/_tests/
       # The omp extension the desktop app installs, against omp's and Bun's types.
       - run: deno check --config integrations/omp-check.json integrations/omp/*.ts
+
+  # The push relay (apps/pocketterm-relay): requests the Dart server seals must open in the relay, so the
+  # vectors are made fresh by the server package first, then the relay's tests run against them.
+  relay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: fvm
+        run: echo "flutter=$(jq -r .flutter .fvmrc)" >> "$GITHUB_OUTPUT"
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ steps.fvm.outputs.flutter }}
+          cache: true
+      - run: flutter pub get
+      - working-directory: packages/pocketterm_server
+        run: dart run tool/relay_vectors.dart ../../apps/pocketterm-relay/tests/vectors.json
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+      - working-directory: apps/pocketterm-relay
+        run: deno fmt --check && deno check main.ts tests/*.ts && deno task test
+      - run: docker build -t pocketterm-relay apps/pocketterm-relay
 
   migrations:
     runs-on: ubuntu-latest

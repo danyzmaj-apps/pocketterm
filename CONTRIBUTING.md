@@ -22,7 +22,7 @@ The repo is a pub workspace: `apps/pocketterm-desktop` (the desktop app for macO
   fvm flutter build windows --debug
   # in apps/pocketterm-desktop
   deno check supabase/functions/*/index.ts
-  deno test --allow-env supabase/functions/_tests/       # pair, push and relay in-process, fake network
+  deno test --allow-env supabase/functions/_tests/       # pair and push in-process, fake network
   deno check --config integrations/omp-check.json integrations/omp/*.ts
   # in apps/pocketterm-desktop (Docker; CI pins Supabase CLI 2.116.0)
   supabase db start && supabase db lint --level error

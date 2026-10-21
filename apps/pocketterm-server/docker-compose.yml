@@ -16,6 +16,7 @@ services:
       # Caddy is the only way in, so its X-Forwarded-For names the caller for rate limits.
       POCKETTERM_TRUST_PROXY: "1"
       PUSH_RELAY_URL: ${PUSH_RELAY_URL:-}
+      PUSH_RELAY_KEY: ${PUSH_RELAY_KEY:-}
     volumes:
       - pocketterm-data:/data
 

@@ -21,16 +21,16 @@ export const fcmToken = (v: unknown): v is string => typeof v === "string" && /^
 /** What an Android push carries: kind terminal {enc, d?} or kind activity {session, state, since, akind?} (or a server's from before end-to-end encryption: {enc}). */
 export type FcmData = { kind: "terminal" | "activity" } & Record<string, string>;
 
-/** The service account from FCM_SERVICE_ACCOUNT's JSON; a string says what's wrong. */
+/** The service account from its JSON key file; a string says what's wrong. */
 export function parseServiceAccount(raw: string): ServiceAccount | string {
   let sa: Record<string, unknown>;
   try {
     sa = JSON.parse(raw);
   } catch {
-    return "FCM_SERVICE_ACCOUNT is not JSON";
+    return "the FCM service account is not JSON";
   }
   for (const f of ["project_id", "client_email", "private_key"]) {
-    if (typeof sa?.[f] !== "string" || !sa[f]) return `FCM_SERVICE_ACCOUNT has no ${f}`;
+    if (typeof sa?.[f] !== "string" || !sa[f]) return `the FCM service account has no ${f}`;
   }
   return sa as ServiceAccount;
 }

@@ -1,0 +1,7 @@
+{
+  "tasks": {
+    "start": "deno run --allow-net --allow-env --allow-read main.ts",
+    "test": "deno test --allow-env --allow-read=tests tests/"
+  },
+  "fmt": { "lineWidth": 120 }
+}

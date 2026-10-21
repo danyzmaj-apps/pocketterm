@@ -1,21 +1,19 @@
-// functions/relay: what reaches APNs and FCM, what never does, and its rate limits.
+// The relay: what reaches APNs and FCM, what never does, and its rate limits.
 import { assert, assertEquals, assertMatch } from "jsr:@std/assert@1";
-import { encodeBase64 } from "jsr:@std/encoding@1/base64";
-import { handlerOf, json, network, post, sent } from "./harness.ts";
+import { type Config, relay as makeRelay } from "../src/relay.ts";
+import { json, network, pem, post as sealedPost, sent, testKey } from "./harness.ts";
 
-/** A throwaway signing key made for this run only, in the PEM form an .p8 has. */
-async function pem(algorithm: EcKeyGenParams | RsaHashedKeyGenParams): Promise<string> {
-  const pair = await crypto.subtle.generateKey(algorithm, true, ["sign", "verify"]);
-  const der = await crypto.subtle.exportKey("pkcs8", pair.privateKey);
-  return `-----BEGIN PRIVATE KEY-----\n${encodeBase64(new Uint8Array(der))}\n-----END PRIVATE KEY-----\n`;
-}
-
-const relay = await handlerOf(() => import("../relay/index.ts"), {
-  APNS_KEY: await pem({ name: "ECDSA", namedCurve: "P-256" }),
-  APNS_KEY_ID: "KEYID12345",
-  APNS_TEAM_ID: "TEAM123456",
-  APNS_TOPIC: "com.example.pocketterm",
-});
+const config: Config = {
+  apnsKey: await pem({ name: "ECDSA", namedCurve: "P-256" }),
+  apnsKeyId: "KEYID12345",
+  apnsTeamId: "TEAM123456",
+  apnsTopic: "com.example.pocketterm",
+  key: await testKey(),
+};
+// let: a test swaps in a relay with an FCM service account.
+let push = makeRelay(config);
+const relay = async (req: Promise<Request>) => (await push(await req)).res;
+const post = (body: unknown, headers: Record<string, string> = {}) => sealedPost(config.key, body, headers);
 
 /** A device token of [n] hex digits, distinct per [seed]. */
 const hex = (seed: number, n = 64) => seed.toString(16).padStart(n, "0");
@@ -26,7 +24,9 @@ const apns = (status = 200, reason?: string) => () =>
 
 Deno.test("an iPhone alert goes to APNs with generic text, the ciphertext and its computer", async () => {
   network(apns());
-  const res = await relay(post({ token: hex(1), kind: "terminal", enc: "c2VhbGVk", desktop: "k3x9m2qa", collapse: "s1" }));
+  const res = await relay(
+    post({ token: hex(1), kind: "terminal", enc: "c2VhbGVk", desktop: "k3x9m2qa", collapse: "s1" }),
+  );
   assertEquals(res.status, 200);
   assertEquals(sent.length, 1);
   const [push] = sent;
@@ -119,7 +119,13 @@ Deno.test("malformed pushes are refused before anything reaches Apple or Google"
     { platform: "android", token: "f".repeat(160), kind: "liveactivity", enc: "x" },
     { platform: "android", token: "f".repeat(160), kind: "terminal", enc: "x", desktop: 12345678 },
     { platform: "android", token: "f".repeat(160), kind: "activity", session: "s1", state: { state: "exploded" } },
-    { platform: "android", token: "f".repeat(160), kind: "activity", session: "not a key", state: { state: "done", since: now() } },
+    {
+      platform: "android",
+      token: "f".repeat(160),
+      kind: "activity",
+      session: "not a key",
+      state: { state: "done", since: now() },
+    },
     "a string",
     [1, 2],
   ];
@@ -128,7 +134,15 @@ Deno.test("malformed pushes are refused before anything reaches Apple or Google"
     const res = await relay(post(body));
     assertEquals(res.status, 400, JSON.stringify(body));
   }
-  assertEquals(await relay(new Request("http://function.test/", { method: "GET" })).then((r) => r.status), 405);
+  const unsealed = [
+    new Request("http://relay.test/v1/push", {
+      method: "POST",
+      body: JSON.stringify({ token: hex(7), kind: "terminal", enc: "x" }),
+    }),
+    await sealedPost(await testKey(), { token: hex(7), kind: "terminal", enc: "x" }), // sealed to another relay
+    new Request("http://relay.test/v1/push", { method: "POST", body: "x".repeat(20_000) }),
+  ];
+  for (const req of unsealed) assertEquals((await push(req)).res.status, 400);
   assertEquals(sent.length, 0);
 });
 
@@ -144,9 +158,9 @@ Deno.test("an Android push goes to FCM as a data-only message", async () => {
   };
   assertEquals((await relay(post(android))).status, 501, "without a service account");
 
-  Deno.env.set(
-    "FCM_SERVICE_ACCOUNT",
-    JSON.stringify({
+  push = makeRelay({
+    ...config,
+    fcmServiceAccount: JSON.stringify({
       project_id: "pocketterm-test",
       client_email: "relay@pocketterm-test.iam.gserviceaccount.com",
       private_key: await pem({
@@ -156,7 +170,7 @@ Deno.test("an Android push goes to FCM as a data-only message", async () => {
         hash: "SHA-256",
       }),
     }),
-  );
+  });
   network((req) =>
     req.url === "https://oauth2.googleapis.com/token"
       ? json({ access_token: "google-token", expires_in: 3600 })

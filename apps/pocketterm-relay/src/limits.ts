@@ -1,9 +1,8 @@
 // The relay's rate limits. It takes calls from every PocketTerm server without
 // credentials (a server has nothing the publisher gave it), so it limits what
-// one caller, or one device, can make it do. Counts live in this instance's
-// memory: Supabase runs a few instances and recycles them every few minutes,
-// so a limit is per instance and best effort, enough to make a flood from one
-// address cheap without a table on the relay's project.
+// one caller, or one device, can make it do. Counts live in memory only and go
+// with a restart: best effort, enough to make a flood from one address cheap
+// without storing anything. Keys are HMACs (Keyer), never an address or a token.
 
 /** At most [max] hits per key in each window of [windowMs]. */
 export class Limiter {
@@ -52,8 +51,8 @@ export class Limiter {
 const minute = 60_000;
 
 /**
- * The relay's limits. Real servers share Supabase's few egress addresses, so
- * the per-caller one is generous; a device rarely gets more than a few pushes
+ * The relay's limits. Servers behind one NAT or cloud egress share an address,
+ * so the per-caller one is generous; a device rarely gets more than a few pushes
  * a minute; and a caller whose tokens keep coming back unknown or malformed
  * (guessing tokens) is turned away for a while.
  */
@@ -65,5 +64,27 @@ export function relayLimits() {
   };
 }
 
-/** The caller's address as Cloudflare (in front of Supabase's edge) gives it; null when nothing trustworthy does. */
+/** The caller's address as Cloudflare (the tunnel in front of the relay) gives it; null when nothing trustworthy does. */
 export const callerOf = (req: Request): string | null => req.headers.get("cf-connecting-ip")?.trim() || null;
+
+const day = 24 * 60 * 60_000;
+
+/**
+ * Rate-limit keys: HMAC-SHA256 of an address or a token under a random salt
+ * made in memory and replaced every day. The counters never hold the value
+ * itself, and nothing links one day's keys to the next.
+ */
+export class Keyer {
+  #salt: Promise<CryptoKey> | null = null;
+  #since = 0;
+
+  /** The counter key for [value] (its HMAC, as a binary string) at [now]. */
+  async key(value: string, now = Date.now()): Promise<string> {
+    if (!this.#salt || now - this.#since >= day) {
+      this.#since = now;
+      this.#salt = crypto.subtle.generateKey({ name: "HMAC", hash: "SHA-256" }, false, ["sign"]) as Promise<CryptoKey>;
+    }
+    const mac = await crypto.subtle.sign("HMAC", await this.#salt, new TextEncoder().encode(value));
+    return String.fromCharCode(...new Uint8Array(mac));
+  }
+}

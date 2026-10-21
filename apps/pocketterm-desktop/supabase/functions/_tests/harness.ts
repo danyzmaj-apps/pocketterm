@@ -31,7 +31,7 @@ export function network(r: Route = unexpected) {
 
 /**
  * The handler of the function [load] imports, loaded with [env]:
- * `handlerOf(() => import("../relay/index.ts"), {...})`. The import is
+ * `handlerOf(() => import("../push/index.ts"), {...})`. The import is
  * dynamic on purpose: the function reads its env and calls Deno.serve as it
  * loads, so both must be in place first.
  */

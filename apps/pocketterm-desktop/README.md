@@ -14,7 +14,6 @@ It also carries the backend, because the wizard bundles it as app assets and dep
 | `supabase/functions/` | Edge functions: `pair`, `push` (every user's server) and `relay` (the publisher's push relay only) |
 | `supabase/tests/` | pgTAP tests (`supabase test db`) |
 | `tool/setup-backend.sh` | Set up or update a server from a terminal |
-| `tool/deploy-relay.sh` | Deploy the publisher's push relay (APNs and FCM) |
 | `tool/release.sh` | Build, notarize and publish a Mac release |
 | `tool/make_icon.swift` | Draw the app icons |
 | `integrations/omp/` | omp extension `pocketterm-live.ts`: sessions for the phone |

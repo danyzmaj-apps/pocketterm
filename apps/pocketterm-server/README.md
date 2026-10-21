@@ -84,6 +84,7 @@ It speaks plain HTTP: put it behind something that adds HTTPS, or reach it over 
 | `--port`         | `POCKETTERM_PORT`        | `47900`                  | the port to listen on                        |
 | `--address`      | `POCKETTERM_ADDRESS`     | `0.0.0.0`                | the address to listen on                     |
 | `--relay`        | `PUSH_RELAY_URL`         | the publisher's relay    | where push notifications are sent            |
+| `--relay-key`    | `PUSH_RELAY_KEY`         | the publisher's relay's  | the relay's X25519 public key (base64); every push is sealed to it |
 | `--trust-proxy`  | `POCKETTERM_TRUST_PROXY` | off                      | rate limit by `X-Forwarded-For` (set to `1`) |
 
 ## What it keeps

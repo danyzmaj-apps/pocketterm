@@ -114,15 +114,15 @@ Your server pushes coding-session notifications (a run ended, the agent needs yo
 - Each computer encrypts its notifications itself (AES-256-GCM) with its channel key, which only the phones that scanned that computer's code hold. Your server registers each phone's push token (`push_devices`, with its `platform`, `ios` or `android`) and passes the ciphertext on unread; the relay sees the push token, the kind of notification (terminal, a session's state), the computer's id, a collapse id and ciphertext, and stores nothing on disk. A phone without that computer's key shows a plain "PocketTerm" alert. Live Activity updates (and Android's ongoing notification for a followed session) are the exception: iOS can't decrypt them, so they carry the session's state (working, needs you, finished, ended), since when and, when it needs you, for what (a question, an approval or a plan) in the clear, and no text.
 - Android messages are FCM data messages the app opens itself; iPhone messages are opened by its notification service extension.
 - A computer pushes only when nobody has touched it for 60 seconds.
-- No setup on your side: the default `PUSH_RELAY_URL` is the publisher's relay.
+- No setup on your side: your server sends to the publisher's relay at `https://push.danyzmaj.com`, on the publisher's own server, sealing each request to the relay's key so nothing in between can read it. What the relay, Cloudflare, Apple and Google can each see: [apps/pocketterm-relay/SECURITY.md](../apps/pocketterm-relay/SECURITY.md).
 
 ### Your own app id and relay
 
-A relay only reaches apps signed with the publisher's ids. A fork that ships its own phone app (its own bundle id or Android package) runs its own relay on a Supabase project of its own: an APNs key from its Apple team, a Firebase project with its Android app (its `google-services.json` goes into its Android build) and that project's service account as the relay's `FCM_SERVICE_ACCOUNT` secret. `apps/pocketterm-desktop/tool/deploy-relay.sh` deploys it ([RELEASING.md](RELEASING.md#push-relay-once-and-after-relay-changes)). Then set the relay on each server that serves those apps:
+A relay only reaches apps signed with the publisher's ids. A fork that ships its own phone app (its own bundle id or Android package) runs its own relay ([apps/pocketterm-relay](../apps/pocketterm-relay/README.md), a container): an APNs key from its Apple team, a Firebase project with its Android app (its `google-services.json` goes into its Android build), that project's service account, and an X25519 key pair of its own. Then point each server that serves those apps at it:
 
 ```sh
-# in apps/pocketterm-desktop, linked to that server
-supabase secrets set PUSH_RELAY_URL=https://<relay-project-ref>.supabase.co/functions/v1/relay
+PUSH_RELAY_URL=https://<relay host>/v1/push
+PUSH_RELAY_KEY=<the relay's public key, base64; the relay logs it at start>
 ```
 
 ## Troubleshooting

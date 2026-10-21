@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:pocketterm_server/src/relay.dart';
 import 'package:pocketterm_server/src/server.dart';
 import 'package:pocketterm_server/src/store.dart';
 
@@ -19,6 +20,8 @@ Options (each also read from the environment variable in brackets):
   --port <n>             serve: the port to listen on [POCKETTERM_PORT] (default: 47900)
   --address <ip>         serve: the address to listen on [POCKETTERM_ADDRESS] (default: 0.0.0.0)
   --relay <url>          serve: the push relay [PUSH_RELAY_URL] (default: the publisher's)
+  --relay-key <base64>   serve: the relay's X25519 public key, every push is sealed to it [PUSH_RELAY_KEY]
+                         (default: the publisher's relay's)
   --trust-proxy          serve: rate limit by the last X-Forwarded-For address; only behind a reverse proxy
                          [POCKETTERM_TRUST_PROXY=1]
   --new                  setup-link: replace the setup token first (the old link stops working; computers
@@ -59,12 +62,15 @@ Future<int> runCli(List<String> args, {Map<String, String>? environment}) async 
       final address = InternetAddress.tryParse(option('address', 'POCKETTERM_ADDRESS') ?? '0.0.0.0');
       final relayText = option('relay', 'PUSH_RELAY_URL');
       final relay = relayText == null || relayText.isEmpty ? null : Uri.tryParse(relayText);
+      final relayKeyText = option('relay-key', 'PUSH_RELAY_KEY');
+      final relayKey = relayKeyText == null || relayKeyText.isEmpty ? null : parseRelayKey(relayKeyText);
       if (port == null ||
           port < 0 ||
           port > 65535 ||
           address == null ||
-          (relayText ?? '').isNotEmpty && relay == null) {
-        stderr.writeln('--port, --address or --relay is not valid.\n\n$_usage');
+          (relayText ?? '').isNotEmpty && relay == null ||
+          (relayKeyText ?? '').isNotEmpty && relayKey == null) {
+        stderr.writeln('--port, --address, --relay or --relay-key is not valid.\n\n$_usage');
         return 64;
       }
       final firstStart = !Store.hasSetupToken(data);
@@ -76,6 +82,7 @@ Future<int> runCli(List<String> args, {Map<String, String>? environment}) async 
           port: port,
           publicUrl: publicUrl,
           relay: relay,
+          relayKey: relayKey,
           trustProxy: flags.containsKey('trust-proxy') || env['POCKETTERM_TRUST_PROXY'] == '1',
           log: stderr.writeln,
         );
@@ -122,7 +129,7 @@ Future<int> runCli(List<String> args, {Map<String, String>? environment}) async 
 }
 
 const _switches = {'trust-proxy', 'new'};
-const _valued = {'data', 'public-url', 'port', 'address', 'relay'};
+const _valued = {'data', 'public-url', 'port', 'address', 'relay', 'relay-key'};
 
 /// `--name value`, `--name=value` and bare switches.
 Map<String, String> _flags(List<String> args) {

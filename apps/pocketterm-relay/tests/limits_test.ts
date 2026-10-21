@@ -1,6 +1,6 @@
-// functions/relay/limits.ts: the relay's per-key windows.
-import { assert, assertEquals } from "jsr:@std/assert@1";
-import { callerOf, Limiter } from "../relay/limits.ts";
+// src/limits.ts: the relay's per-key windows and their keys.
+import { assert, assertEquals, assertNotEquals } from "jsr:@std/assert@1";
+import { callerOf, Keyer, Limiter } from "../src/limits.ts";
 
 Deno.test("a key gets max hits per window, then waits for the next window", () => {
   const limit = new Limiter(3, 1000);
@@ -27,4 +27,13 @@ Deno.test("the caller is who Cloudflare says, never what the client says", () =>
   assertEquals(callerOf(req({ "cf-connecting-ip": " 192.0.2.1 " })), "192.0.2.1");
   assertEquals(callerOf(req({ "x-forwarded-for": "192.0.2.1", "x-real-ip": "192.0.2.2" })), null);
   assertEquals(callerOf(req({})), null);
+});
+
+Deno.test("counter keys are HMACs that change with the day's salt, never the value itself", async () => {
+  const keyer = new Keyer();
+  const today = await keyer.key("192.0.2.1", 0);
+  assertEquals(await keyer.key("192.0.2.1", 1000), today, "stable within a day");
+  assertNotEquals(await keyer.key("192.0.2.2", 1000), today);
+  assert(!today.includes("192.0.2.1"));
+  assertNotEquals(await keyer.key("192.0.2.1", 24 * 3600_000), today, "a new salt the next day");
 });

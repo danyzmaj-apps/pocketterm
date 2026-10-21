@@ -259,7 +259,7 @@ create table if not exists supabase_migrations.schema_migrations (version text p
   }
 
   Future<void> deployFunctions() async {
-    // relay is the publisher's alone (tool/deploy-relay.sh): never on a user's server.
+    // The push relay is the publisher's alone (apps/pocketterm-relay): never on a user's server.
     for (final slug in ['pair', 'push']) {
       // Both check the caller themselves (a user token).
       await admin.deployFunction(ref, slug, await source.function(slug), verifyJwt: false);

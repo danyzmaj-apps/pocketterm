@@ -1,5 +1,5 @@
 // Push notifications to the user's phones, through the publisher's relay
-// (functions/relay holds the APNs key and the Firebase service account).
+// (apps/pocketterm-relay holds the APNs key and the Firebase service account).
 // A notification's text is sealed on the computer with its channel key
 // (the one only that computer and the phones that scanned its code hold), so
 // this function and the relay only ever see ciphertext. iPhones go through

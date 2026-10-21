@@ -61,7 +61,8 @@ class PocketTermServer {
   PocketTermServer._(this._dir, this._http, this._store, this._relay, this.publicUrl, this._now, this._trustProxy);
 
   /// Starts serving on [address]:[port] (0 picks a free port; see [port]). [publicUrl] is the address phones
-  /// and computers reach it at, put in setup links. [relay] is the push relay (default: the publisher's).
+  /// and computers reach it at, put in setup links. [relay] is the push relay and [relayKey] its X25519 public
+  /// key, which every push is sealed to (default: the publisher's relay and key).
   /// With [trustProxy], the caller's address for rate limits is the last one in X-Forwarded-For (set it only
   /// behind a reverse proxy). [clock] stands in for the time in tests.
   static Future<PocketTermServer> start({
@@ -70,6 +71,7 @@ class PocketTermServer {
     required int port,
     required Uri publicUrl,
     Uri? relay,
+    List<int>? relayKey,
     bool trustProxy = false,
     void Function(String message)? log,
     DateTime Function()? clock,
@@ -82,7 +84,7 @@ class PocketTermServer {
       dataDir,
       http,
       store,
-      Relay(relay ?? defaultRelay, log: log),
+      Relay(relay ?? defaultRelay, relayKey ?? parseRelayKey(defaultRelayKey)!, log: log),
       publicUrl,
       clock ?? DateTime.now,
       trustProxy,

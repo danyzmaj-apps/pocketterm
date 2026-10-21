@@ -1,0 +1,26 @@
+name: relay-deploy
+
+# PocketTerm's push relay (apps/pocketterm-relay) on danyzmaj-server, at https://push.danyzmaj.com.
+on:
+  push:
+    branches: [main]
+    paths: [apps/pocketterm-relay/**, .github/workflows/relay-deploy.yml]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+      - working-directory: apps/pocketterm-relay
+        run: deno check main.ts && deno task test
+
+  deploy:
+    needs: test
+    uses: danyzmaj-apps/danyzmaj-server/.github/workflows/deploy-app.yml@master
+    with:
+      app: pocketterm-relay
+      compose-file: apps/pocketterm-relay/deploy/compose.yaml

@@ -8,7 +8,7 @@ Please report vulnerabilities privately through GitHub's private vulnerability r
 
 - The apps: the desktop app for macOS and Windows (`apps/pocketterm-desktop`), iPhone and Android (`apps/pocketterm-mobile`), and the shared code (`packages/pocketterm_core`).
 - The backend every user deploys: migrations and row-level security, and the `pair` and `push` edge functions (`apps/pocketterm-desktop/supabase`).
-- The publisher's push relay (`apps/pocketterm-desktop/supabase/functions/relay`).
+- The publisher's push relay (`apps/pocketterm-relay`; who can see what: [its SECURITY.md](apps/pocketterm-relay/SECURITY.md)).
 - The desktop app's local API, the omp extension (`apps/pocketterm-desktop/integrations/omp`) and the Claude Code plugin (`apps/pocketterm-desktop/integrations/claude`).
 
 Out of scope: Supabase, GitHub, Apple, Google and Microsoft themselves, and the terminals and coding agents PocketTerm drives; a server whose owner shared their account or allowed someone's sign-up; attacks that need an unlocked device you already control.

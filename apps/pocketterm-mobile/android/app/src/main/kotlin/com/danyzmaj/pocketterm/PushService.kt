@@ -7,7 +7,7 @@ import org.json.JSONObject
 
 /**
  * Pushes from the user's own server, through the relay
- * (supabase/functions/relay) and FCM. They are data-only:
+ * (apps/pocketterm-relay) and FCM. They are data-only:
  * - kind terminal {enc, d}: the computer d sealed {title, body, session?, state?}
  *   with its channel key, AAD "pocketterm/v1|push|<d>" (PocketTermShared.open).
  *   The server, the relay and Google only ever see ciphertext. Without that

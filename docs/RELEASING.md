@@ -8,17 +8,14 @@ Keys and certificates never go in the repo: keep them in the maintainer's keys f
 
 ## Push relay (once, and after relay changes)
 
-Every user's server sends phone notifications through one relay the publisher runs, `functions/relay` on the publisher's own Supabase project. It holds the only credentials that can reach PocketTerm's installs: the APNs key for iPhones and the Firebase service account for Android.
+Every user's server sends phone notifications through one relay the publisher runs, `apps/pocketterm-relay` on the publisher's own server at `https://push.danyzmaj.com`. It holds the only credentials that can reach PocketTerm's installs: the APNs key for iPhones and the Firebase service account for Android.
 
 1. **APNs key.** At [developer.apple.com → Keys](https://developer.apple.com/account/resources/authkeys/add), create a key with Apple Push Notifications service (Sandbox & Production, team scoped), or reuse an existing key of the team: APNs keys work for every app of the team. The `.p8` downloads once; keep its `AuthKey_<KEYID>.p8` name.
 2. **Firebase service account.** In the Firebase project that holds the Android app (package `com.danyzmaj.pocketterm`), Project settings → Service accounts → **Generate new private key**. The same project's `google-services.json` goes into Android release builds (below).
-3. **Deploy** (in `apps/pocketterm-desktop`; needs the Supabase CLI, logged in, and `jq`):
-   ```sh
-   tool/deploy-relay.sh <relay-project-ref> <keys>/AuthKey_<KEYID>.p8 <TEAM> [bundle-id] [--fcm <keys>/pocketterm-fcm-service-account.json]
-   ```
-   The bundle id (the APNs topic) defaults to `com.danyzmaj.pocketterm`. It stores the APNs key as relay secrets (`APNS_KEY`, `APNS_KEY_ID` from the file name, `APNS_TEAM_ID`, `APNS_TOPIC`), with `--fcm` the service account as `FCM_SERVICE_ACCOUNT`, and deploys `relay` with `--no-verify-jwt`. The secrets reach the CLI through a mode-600 env file, never the command line. Without `--fcm` the FCM secret stays as it is; unset, the relay answers Android pushes with 501.
+3. **Secrets on the server**, in `/etc/danyzmaj/pocketterm-relay/`: the relay's X25519 private key (`openssl genpkey -algorithm X25519`, kept as `<keys>/pocketterm-relay-x25519.key`), the `.p8`, the service account and `app.env` with `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_TOPIC`. File names and the copy command: [apps/pocketterm-relay/README.md](../apps/pocketterm-relay/README.md#deploy).
+4. **Deploy:** a push to `main` that touches `apps/pocketterm-relay` runs `.github/workflows/relay-deploy.yml` (tests, then danyzmaj-server's shared deploy on the server itself); Actions → relay-deploy → *Run workflow* redeploys.
 
-`functions/push` on every server sends to `PUSH_RELAY_URL`, by default `https://iemvfkcpmgdkupwnnewg.supabase.co/functions/v1/relay`; change that default in `supabase/functions/push/index.ts` if the relay moves. Servers pick up a new default only when their `push` function is redeployed (`tool/setup-backend.sh`), so say so in the changelog.
+Every PocketTerm server sends to `PUSH_RELAY_URL` (default `https://push.danyzmaj.com/v1/push`), sealed to `PUSH_RELAY_KEY` (default the relay's public key); both defaults are in `packages/pocketterm_server/lib/src/relay.dart`. Servers pick up a new default only when they update, so a new relay key or URL goes in the changelog, and the old one keeps working until they have.
 
 ## Mac
 

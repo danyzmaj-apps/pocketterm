@@ -180,8 +180,8 @@ has been sent in full: a second download is 404. A blob nobody downloads is dele
 
 ### Push
 
-The server forwards to the push relay (`PUSH_RELAY_URL`, by default the publisher's, which holds the APNs key and
-the Firebase service account) and forgets a token when the relay answers 410. Every push body may carry
+The server forwards to the push relay (`PUSH_RELAY_URL`, by default the publisher's at `https://push.danyzmaj.com/v1/push`,
+which holds the APNs key and the Firebase service account) and forgets a token when the relay answers 410. Every push body may carry
 `"platform": "ios" | "android"` (default `ios`); any other value is 400.
 
 | Endpoint                             | Request                                                       | 200                 |
@@ -206,7 +206,10 @@ the Firebase service account) and forgets a token when the relay answers 410. Ev
 - `activity_end` without `session` ends every session the token follows.
 - `activity` with `ended` forgets every token of that session after sending.
 
-What reaches the relay (one POST per phone, `content-type: application/json`):
+What reaches the relay: one POST per phone, its JSON body sealed to the relay's X25519 public key (`PUSH_RELAY_KEY`, by
+default the publisher's relay's): `{"v": 1, "epk", "n", "c"}`, a fresh ephemeral X25519 key, HKDF-SHA256 (salt `epk ‖
+relay public key`, info `pocketterm-relay/v1`) and AES-256-GCM (`c` is the ciphertext then the tag); see
+`apps/pocketterm-relay/README.md`. Sealed inside:
 
 - notify, iOS: `{"token", "kind": "terminal", "enc", "desktop", "collapse"?}`
 - notify, Android: `{"platform": "android", "token", "kind": "terminal", "enc", "desktop", "collapse"?}`

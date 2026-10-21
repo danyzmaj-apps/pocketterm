@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cryptography/cryptography.dart';
 import 'package:pocketterm_server/pocketterm_server.dart';
 
 /// An answer from the server: status, headers and the body as JSON (null when it isn't) and bytes.
@@ -25,24 +26,64 @@ class Res {
   String? get error => (json as Map<String, dynamic>?)?['error'] as String?;
 }
 
-/// A push relay that records what it's sent and answers each token with [statusFor] (default 200).
+/// Opens a request sealed to the relay key pair [relay] (v1, as apps/pocketterm-relay/src/seal.ts does).
+/// Throws when it isn't one, or was changed.
+Future<List<int>> openSealed(SimpleKeyPair relay, Map<String, dynamic> sealed) async {
+  if (sealed['v'] != 1) throw const FormatException('not a v1 sealed request');
+  final epk = base64.decode(sealed['epk'] as String);
+  final c = base64.decode(sealed['c'] as String);
+  final publicKey = (await relay.extractPublicKey()).bytes;
+  final shared = await X25519().sharedSecretKey(
+    keyPair: relay,
+    remotePublicKey: SimplePublicKey(epk, type: KeyPairType.x25519),
+  );
+  final key = await Hkdf(
+    hmac: Hmac.sha256(),
+    outputLength: 32,
+  ).deriveKey(secretKey: shared, nonce: [...epk, ...publicKey], info: utf8.encode('pocketterm-relay/v1'));
+  return await AesGcm.with256bits().decrypt(
+    SecretBox(
+      c.sublist(0, c.length - 16),
+      nonce: base64.decode(sealed['n'] as String),
+      mac: Mac(c.sublist(c.length - 16)),
+    ),
+    secretKey: key,
+  );
+}
+
+/// A push relay with its own key pair that opens what it's sent, records it, and answers each token with
+/// [statusFor] (default 200). A body it can't open answers 400 and is recorded as `{'unopened': true}`.
 class FakeRelay {
-  FakeRelay._(this._http) {
+  FakeRelay._(this._http, this.keyPair) {
     _http.listen((req) async {
-      final body = jsonDecode(await utf8.decodeStream(req)) as Map<String, dynamic>;
+      final sealed = jsonDecode(await utf8.decodeStream(req)) as Map<String, dynamic>;
+      Map<String, dynamic> body;
+      try {
+        body = jsonDecode(utf8.decode(await openSealed(keyPair, sealed))) as Map<String, dynamic>;
+      } on Object {
+        received.add({'unopened': true});
+        req.response.statusCode = 400;
+        await req.response.close();
+        return;
+      }
       received.add(body);
       req.response.statusCode = statusFor[body['token']] ?? 200;
       await req.response.close();
     });
   }
 
-  static Future<FakeRelay> start() async => FakeRelay._(await HttpServer.bind(InternetAddress.loopbackIPv4, 0));
+  static Future<FakeRelay> start() async =>
+      FakeRelay._(await HttpServer.bind(InternetAddress.loopbackIPv4, 0), await X25519().newKeyPair());
 
   final HttpServer _http;
+  final SimpleKeyPair keyPair;
   final List<Map<String, dynamic>> received = [];
   final Map<String, int> statusFor = {};
 
   Uri get url => Uri.parse('http://127.0.0.1:${_http.port}/relay');
+
+  /// The public key servers seal to.
+  Future<List<int>> get publicKey async => (await keyPair.extractPublicKey()).bytes;
 
   Future<void> stop() => _http.close(force: true);
 }
@@ -73,6 +114,7 @@ class Harness {
       port: 0,
       publicUrl: Uri.parse('https://pt.example.com/'),
       relay: relay.url,
+      relayKey: await relay.publicKey,
       clock: () => now,
     );
     _running = true;

@@ -1,6 +1,6 @@
 # PocketTerm for iPhone and Android
 
-The phone app: your computers' coding sessions and terminal windows, pairing with a server by scanning the code PocketTerm shows on your computer. Phones don't set up servers. With several computers on one account, the Terminal tab's title picks which one to show.
+The phone app: your computers' coding sessions and terminal windows, pairing with a server by scanning the code PocketTerm shows on your computer. Phones don't set up servers. With several computers on one account, the home screen's title picks which one to show.
 
 | Path | What |
 | --- | --- |

@@ -1,6 +1,6 @@
 # PocketTerm for macOS and Windows
 
-The desktop app: one window holding the setup wizard that creates a user's server, sign-in and Settings; otherwise it runs in the background (menu bar on the Mac, tray on Windows) with the local terminal API and the bridge that lets a phone reach omp, Claude Code and this computer's terminals (macOS: kitty, tmux, WezTerm, iTerm2, Terminal, Ghostty; Windows: WezTerm).
+The desktop app: one window holding the setup wizard that creates a user's server, sign-in, the setup checklist (**Get this computer ready**) and Settings (a status bar over the Phone, Coding agents, Terminals and Account tabs); otherwise it runs in the background (menu bar on the Mac, tray on Windows) with the local terminal API and the bridge that lets a phone reach omp, Claude Code and this computer's terminals (macOS: kitty, tmux, WezTerm, iTerm2, Terminal, Ghostty; Windows: WezTerm).
 
 It also carries the backend, because the wizard bundles it as app assets and deploys it:
 

@@ -27,13 +27,14 @@ PocketTerm is a desktop app (macOS menu bar, Windows tray) and a phone app (iPho
 
 ## What it does
 
-- **Conversations.** omp and Claude Code sessions show as conversations, grouped by project: streamed Markdown answers, tool calls as cards. Prompt (with images), steer or queue, stop a run, and type `/` for slash commands.
+- **Your sessions, by project.** omp and Claude Code sessions grouped by project, then every other terminal window. Sort projects by name or recent activity, tap a project's heading to fold it, long-press it for a new session there or to fold the others.
+- **Conversations.** Each session reads as a conversation: streamed Markdown answers, tool calls as cards. Prompt (with images), steer or queue, stop a run, and type `/` for slash commands.
 - **Screens.** Every other terminal window is a live screen you can type and press keys in.
 - **Approvals and questions.** Answer the agent's questions, approve tool calls and review plans with a tap.
 - **Pushes.** A notification when a run finishes or the agent needs you. A Live Activity on iPhone and an ongoing notification on Android for the sessions you follow.
-- **Switch to conversation.** A session opened before PocketTerm was installed shows only its screen; **Switch to conversation** restarts omp on the same conversation (`omp -c`), and picks up what it was doing if you ask, or reloads Claude Code's plugins (nothing restarts).
-- **New sessions.** Start your agent or a shell in any project without taking the computer's focus.
-- **Tips on first use.** Each control gets a one-time spotlight and a line on what it does.
+- **Switch to conversation.** A session opened before PocketTerm was installed shows only its screen. **Switch to conversation** restarts omp on the same conversation (`omp -c`); if it was working, **Restart and continue** has it carry on and **Just restart** leaves it stopped. In Claude Code it reloads the plugins and nothing restarts.
+- **New and ended sessions.** Start your agent or a shell in any project without taking the computer's focus. Swipe a row left to **End session** (or **Close window**).
+- **Tips on first use.** The first time a control shows up, a spotlight says what it does, once per phone; **Show tips again** in the account sheet brings them back.
 - **Several computers.** One account, several Macs and Windows PCs; pick one on the phone.
 
 ## How it works
@@ -110,11 +111,11 @@ Open PocketTerm on your computer and click **Set up my server**. The wizard take
 
 ### 3. Get the computer ready
 
-After you sign in with GitHub, a checklist installs PocketTerm into omp and Claude Code, sets up your terminals and adds your project folders. Sessions that were already open show only their screen until they pick PocketTerm up: tap **Switch to conversation** on the phone, or do it on the computer (`/reload-plugins` in Claude Code; quit omp and run `omp -c`).
+After you sign in with GitHub, **Get this computer ready** installs PocketTerm into omp and Claude Code, then lists your terminals with their one-click fixes, offers your usual project folders and shows the code for your phone. Each step checks itself off; **Done** opens Settings. Sessions that were already open show only their screen until they pick PocketTerm up: tap **Switch to conversation** on the phone, or do it on the computer (`/reload-plugins` in Claude Code; quit omp and run `omp -c`).
 
 ### 4. Pair your phone
 
-In the phone app, tap **Scan the code from your computer** and scan the QR code the checklist shows (later: **Settings → Add a phone…**). The code works once, for 10 minutes. One phone pairing covers every computer on your account.
+In the phone app, tap **Scan the code from your computer** and scan the QR code the checklist shows (later: **Add a phone…** in Settings). The code works once, for 10 minutes. One phone pairing covers every computer on your account.
 
 <p align="center">
   <img src="docs/images/wizard-token.png" width="32%" align="top" alt="Setup wizard: Supabase access token">
@@ -122,7 +123,21 @@ In the phone app, tap **Scan the code from your computer** and scan the QR code 
   <img src="docs/images/phone-setup.png" width="24%" align="top" alt="Phone: sign in with the computer's code">
 </p>
 
-Settings then shows a status bar (**All set**, or what needs attention and the button that fixes it) over four tabs: **Phone**, **Coding agents**, **Terminals** and **Account**. Problems? See [Troubleshooting](docs/SELF_HOSTING.md#troubleshooting).
+### 5. Settings
+
+After the checklist, the window is Settings. At the top, a status bar says **All set**, or how many things need attention: **Show** lists each with the button that fixes it, a dot marks the tab it's on, and **Open setup checklist** brings the checklist back. On Windows, a bar below it links to a new version when one is out. Four tabs:
+
+- **Phone:** the **Terminal from phone** switch, your phones with **Add a phone…**, and your project folders.
+- **Coding agents:** a card per agent with **Install** or **Update**, sessions opened before PocketTerm with the command that picks it up, and **Make default** (what a new session from the phone starts).
+- **Terminals:** where new sessions open (**Auto** picks the terminal app you used last), and a card per terminal with how it stands and its one-click fix.
+- **Account:** who you're signed in as, your server, **Launch at login**, **Delete account**, the version and **Quit PocketTerm**.
+
+<p align="center">
+  <img src="docs/images/mac-settings-phone.png" width="49%" align="top" alt="Settings, Phone: Terminal from phone, your phones, project folders">
+  <img src="docs/images/mac-settings-agents.png" width="49%" align="top" alt="Settings, Coding agents: omp with two sessions to reopen, Claude Code out of date">
+</p>
+
+Closing the window keeps PocketTerm running in the menu bar (Mac) or tray (Windows). Problems? See [Troubleshooting](docs/SELF_HOSTING.md#troubleshooting).
 
 ## Self-hosting
 
@@ -134,7 +149,7 @@ Every user runs their own server; nothing is shared between users. [docs/SELF_HO
 - **Nothing stored.** Sessions and screens travel over a Realtime channel per computer that only your account can join; nothing on it is stored. Images you send pass through a private storage bucket in your project.
 - **Encrypted push.** The relay sees only ciphertext and stores nothing. iPhone Live Activity updates can't be encrypted, so they carry only a session's state, never text.
 - **Local only.** The desktop app's API listens on `127.0.0.1` behind a random token.
-- **Delete account** in Settings (computer or phone) removes everything.
+- **Delete account** (Settings → Account on the computer, or the account sheet on the phone) removes everything.
 
 Details are in [SECURITY.md](SECURITY.md) and the [privacy policy](https://www.danyzmaj.com/pocketterm/privacy/). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md#reporting).
 

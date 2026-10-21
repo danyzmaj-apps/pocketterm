@@ -162,12 +162,14 @@ Deno.serve(async (req) => {
         if (error) return json(500, { error: error.message });
         if (active !== true) return json(403, { error: reviewerAccessEnded });
       }
-      // Spent and run-out phone codes of this user have no further use.
+      // Run-out phone codes nobody used have no further use. Used ones stay: they tell the
+      // computer a phone signed in.
       await admin
         .from("pairing_codes")
         .delete()
         .eq("created_by", user.id)
         .eq("reusable", false)
+        .is("last_used_at", null)
         .lt("expires_at", new Date().toISOString());
       const expires_at = new Date(Date.now() + phoneLifetimeMs).toISOString();
       const { code } = await insertCode({ user_id: user.id, created_by: user.id, reusable: false, label: "", expires_at });

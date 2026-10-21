@@ -214,15 +214,20 @@ class AppController extends Session {
   // ---------------------------------------------------------------- phone
 
   /// A phone has signed in to this account: it used a code from here
-  /// ([phoneCodeUsed]) or said hello to this computer. Null until known.
-  bool? get phoneSignedIn => _phoneSignedIn;
+  /// ([phoneCodeUsed]) or said hello to this computer. Kept per account on this
+  /// computer once seen, since older servers delete used codes. Null until known.
+  bool? get phoneSignedIn => _phoneSignedIn ?? (_phoneKept ? true : null);
   bool? _phoneSignedIn;
+
+  String get _phoneKey => 'phone_signed_in_${user?.id ?? ''}';
+  bool get _phoneKept => user != null && (_prefs.getBool(_phoneKey) ?? false);
 
   /// Asks the server, until the answer is yes.
   Future<void> checkPhone() async {
-    if (_phoneSignedIn ?? false) return;
+    if (phoneSignedIn ?? false) return;
     try {
       final used = await phoneCodeUsed();
+      if (used) return _phoneHeard();
       if (used == _phoneSignedIn) return;
       _phoneSignedIn = used;
       notifyListeners();
@@ -245,6 +250,7 @@ class AppController extends Session {
   }
 
   void _phoneHeard() {
+    if (user != null) unawaited(_prefs.setBool(_phoneKey, true));
     if (_phoneSignedIn ?? false) return;
     _phoneSignedIn = true;
     notifyListeners();

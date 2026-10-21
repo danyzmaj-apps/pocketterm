@@ -33,6 +33,7 @@ PocketTerm is a desktop app (macOS menu bar, Windows tray) and a phone app (iPho
 - **Pushes.** A notification when a run finishes or the agent needs you. A Live Activity on iPhone and an ongoing notification on Android for the sessions you follow.
 - **Switch to conversation.** A session opened before PocketTerm was installed shows only its screen; **Switch to conversation** restarts omp on the same conversation (`omp -c`) or reloads Claude Code's plugins (nothing restarts).
 - **New sessions.** Start your agent or a shell in any project without taking the computer's focus.
+- **Tips on first use.** Each control gets a one-time spotlight and a line on what it does.
 - **Several computers.** One account, several Macs and Windows PCs; pick one on the phone.
 
 ## How it works

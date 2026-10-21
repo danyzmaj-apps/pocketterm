@@ -11,6 +11,7 @@ import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
+import 'package:pocketterm_mobile/coach.dart';
 import 'package:pocketterm_mobile/session_view.dart';
 import 'package:pocketterm_mobile/swipe_action.dart';
 import 'package:pocketterm_mobile/switch_view.dart';
@@ -402,6 +403,10 @@ class _TerminalListState extends State<TerminalList> {
   /// closed again meanwhile.
   final _closing = <String>{};
 
+  /// The rows showing [Tip.switchOpen] and [Tip.swipeRow], as last built.
+  String? _switchTipRow;
+  String? _swipeTipRow;
+
   @override
   void dispose() {
     _openTimer?.cancel();
@@ -478,7 +483,7 @@ class _TerminalListState extends State<TerminalList> {
     if (w == null || !w.can(TermCap.close)) return child;
     final online = remote.online;
     final busy = _closing.contains(w.key);
-    return SwipeAction(
+    final row = SwipeAction(
       key: ValueKey('swipe-$key'),
       actionKey: ValueKey('swipe-action-$key'),
       open: busy || (online && _open == w.key),
@@ -490,6 +495,7 @@ class _TerminalListState extends State<TerminalList> {
       onAction: () => unawaited(_close(w)),
       child: child,
     );
+    return key == _swipeTipRow ? CoachTarget(tip: Tip.swipeRow, radius: 12, padding: 0, child: row) : row;
   }
 
   /// A session's row; its project is the heading above it.
@@ -499,44 +505,52 @@ class _TerminalListState extends State<TerminalList> {
     return _swipe(
       s.key,
       w,
-      ListTile(
-        key: ValueKey('session-${s.key}'),
-        contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-        onTap: () => openSession(context, remote, s.key),
-        leading: Icon(Icons.auto_awesome, size: 18, color: sessionColor(s)),
-        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15)),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _badged(
-              w,
-              Text(
-                sessionState(s),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 13, color: s.ask != null || s.busy ? sessionColor(s) : C.dim),
+      _tipped(
+        s.window != null && s.window == Coach.maybeOf(context)?.switchedWindow ? Tip.switchDone : null,
+        ListTile(
+          key: ValueKey('session-${s.key}'),
+          contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          onTap: () => openSession(context, remote, s.key),
+          leading: Icon(Icons.auto_awesome, size: 18, color: sessionColor(s)),
+          title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15)),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _badged(
+                w,
+                Text(
+                  sessionState(s),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13, color: s.ask != null || s.busy ? sessionColor(s) : C.dim),
+                ),
               ),
-            ),
-            if (s.preview.isNotEmpty)
-              Text(
-                s.preview,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13, color: C.dim2),
-              ),
-          ],
+              if (s.preview.isNotEmpty)
+                Text(
+                  s.preview,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, color: C.dim2),
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 
+  /// [row] with [tip], if it has one.
+  static Widget _tipped(Tip? tip, Widget row) =>
+      tip == null ? row : CoachTarget(tip: tip, radius: 12, padding: 0, child: row);
+
   /// A project's sessions under its name. Tapping the name folds it to one
   /// summary row; long-pressing it opens [_projectMenu].
-  Widget _project(SessionGroup g, int projects) {
+  Widget _project(SessionGroup g, int projects, {required bool first}) {
     final folded = _folded.contains(g.cwd);
     return Panel(
       key: ValueKey('project-${g.cwd}'),
       title: _projectName(g.cwd).toUpperCase(),
+      titleTip: first ? Tip.projectHeading : null,
       onTitleTap: () => _fold(g.cwd),
       onTitleLongPress: () {
         unawaited(HapticFeedback.selectionClick());
@@ -665,20 +679,25 @@ class _TerminalListState extends State<TerminalList> {
     alignment: Alignment.centerRight,
     child: Padding(
       padding: const EdgeInsets.only(right: 16),
-      child: PopupMenuButton<ProjectSort>(
-        key: const ValueKey('project-sort'),
-        tooltip: 'Sort projects',
-        initialValue: _sort,
-        onSelected: _setSort,
-        itemBuilder: (_) => [for (final s in ProjectSort.values) PopupMenuItem(value: s, child: Text(_sortLabel(s)))],
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_sortLabel(_sort), style: const TextStyle(fontSize: 13, color: C.dim)),
-              const Icon(Icons.arrow_drop_down, size: 18, color: C.dim),
-            ],
+      child: CoachTarget(
+        tip: Tip.sort,
+        radius: 10,
+        padding: 0,
+        child: PopupMenuButton<ProjectSort>(
+          key: const ValueKey('project-sort'),
+          tooltip: 'Sort projects',
+          initialValue: _sort,
+          onSelected: _setSort,
+          itemBuilder: (_) => [for (final s in ProjectSort.values) PopupMenuItem(value: s, child: Text(_sortLabel(s)))],
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_sortLabel(_sort), style: const TextStyle(fontSize: 13, color: C.dim)),
+                const Icon(Icons.arrow_drop_down, size: 18, color: C.dim),
+              ],
+            ),
           ),
         ),
       ),
@@ -693,31 +712,34 @@ class _TerminalListState extends State<TerminalList> {
   Widget _window(TermWindow w) => _swipe(
     w.key,
     w,
-    ListTile(
-      key: ValueKey('term-${w.key}'),
-      contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-      onTap: () => openWindow(context, remote, w.key),
-      leading: Icon(
-        w.agent != null ? Icons.auto_awesome : Icons.terminal,
-        size: 18,
-        color: w.focused ? C.accent : C.dim2,
-      ),
-      title: Text(
-        w.title.isEmpty ? w.program : w.title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 15),
-      ),
-      subtitle: _badged(
-        w,
-        Text(
-          '${w.program} · ${shortPath(remote, w.cwd)}',
+    _tipped(
+      w.key == _switchTipRow ? Tip.switchOpen : null,
+      ListTile(
+        key: ValueKey('term-${w.key}'),
+        contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+        onTap: () => openWindow(context, remote, w.key),
+        leading: Icon(
+          w.agent != null ? Icons.auto_awesome : Icons.terminal,
+          size: 18,
+          color: w.focused ? C.accent : C.dim2,
+        ),
+        title: Text(
+          w.title.isEmpty ? w.program : w.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 13, color: C.dim),
+          style: const TextStyle(fontSize: 15),
         ),
-        // The rows here are the windows no live session claims.
-        screenOnly: w.agent != null,
+        subtitle: _badged(
+          w,
+          Text(
+            '${w.program} · ${shortPath(remote, w.cwd)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 13, color: C.dim),
+          ),
+          // The rows here are the windows no live session claims.
+          screenOnly: w.agent != null,
+        ),
       ),
     ),
   );
@@ -781,6 +803,17 @@ class _TerminalListState extends State<TerminalList> {
       final windows = remote.windows.where((w) => !claimed.contains(w.key)).toList();
       // Agent windows the phone can switch to the conversation view; the others say why they show as screens.
       final switchable = windows.where((w) => canSwitch(remote, w)).length;
+      // The rows that carry the switch tour's first tip and the swipe tip: the first that can.
+      _switchTipRow = windows.where((w) => canSwitch(remote, w)).firstOrNull?.key;
+      bool closes(String? window) => window != null && (remote.window(window)?.can(TermCap.close) ?? false);
+      _swipeTipRow = [
+        for (final g in groups)
+          if (!_folded.contains(g.cwd))
+            for (final s in g.sessions)
+              if (closes(s.window)) s.key,
+        for (final w in windows)
+          if (closes(w.key)) w.key,
+      ].firstOrNull;
       // The sessions and windows, in each platform's grouped cards.
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -797,11 +830,12 @@ class _TerminalListState extends State<TerminalList> {
                 await Future<void>.delayed(const Duration(milliseconds: 600));
               },
               child: ListView(
-                padding: const EdgeInsets.only(bottom: AddButton.contentInset),
+                // Rows scroll on under the home indicator; the last one still comes up clear of the +.
+                padding: EdgeInsets.only(bottom: AddButton.contentInset + MediaQuery.paddingOf(context).bottom),
                 children: [
                   if (groups.isEmpty && windows.isEmpty) _empty(),
                   if (groups.length > 1) _sortControl(),
-                  for (final g in groups) _project(g, groups.length),
+                  for (final (i, g) in groups.indexed) _project(g, groups.length, first: i == 0),
                   if (windows.isNotEmpty) ...[
                     Panel(
                       key: const ValueKey('windows-heading'),

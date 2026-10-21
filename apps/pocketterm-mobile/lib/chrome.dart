@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:pocketterm_core/ui.dart';
+import 'package:pocketterm_mobile/coach.dart';
 
 /// The phone app's chrome in each platform's own idiom, all drawn by
 /// Flutter: on an iPhone iOS's look (inset grouped lists, a round +), on
@@ -132,6 +133,7 @@ class Panel extends StatelessWidget {
     this.onTitleTap,
     this.onTitleLongPress,
     this.titleTrailing,
+    this.titleTip,
     super.key,
   });
   final List<Widget> children;
@@ -139,6 +141,9 @@ class Panel extends StatelessWidget {
   final VoidCallback? onTitleTap;
   final VoidCallback? onTitleLongPress;
   final Widget? titleTrailing;
+
+  /// The first-use tip the heading carries, if any.
+  final Tip? titleTip;
 
   @override
   Widget build(BuildContext context) {
@@ -170,7 +175,10 @@ class Panel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ?heading,
+        if (heading != null && titleTip != null)
+          CoachTarget(tip: titleTip!, radius: 12, padding: 0, child: heading)
+        else
+          ?heading,
         // Folding opens and shuts the card instead of popping it.
         Reveal(
           visible: children.isNotEmpty,

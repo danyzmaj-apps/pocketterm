@@ -6,6 +6,7 @@ import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
+import 'package:pocketterm_mobile/coach.dart';
 import 'package:pocketterm_mobile/session_view.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
 
@@ -93,6 +94,7 @@ class _SwitchBannerState extends State<SwitchBanner> {
     final s = remote.sessions.where((s) => s.window == widget.window).firstOrNull;
     if (s == null || !mounted || _phase != _Phase.switching) return;
     _stop();
+    Coach.maybeOf(context)?.switched(widget.window);
     final route = ModalRoute.of(context);
     final page = MaterialPageRoute<void>(
       builder: (_) => SessionPage(remote: remote, sessionKey: s.key, offerContinue: _wasBusy),
@@ -113,10 +115,15 @@ class _SwitchBannerState extends State<SwitchBanner> {
       _Phase.idle when w != null && canSwitch(remote, w) => _bar(
         const ValueKey('switch-offer'),
         'This ${w.agent!.label} session shows only its screen',
-        TextButton(
-          key: const ValueKey('switch-open'),
-          onPressed: online ? () => unawaited(_offer(w.agent!)) : null,
-          child: const Text('Switch to conversation'),
+        CoachTarget(
+          tip: Tip.switchButton,
+          radius: 20,
+          padding: 0,
+          child: TextButton(
+            key: const ValueKey('switch-open'),
+            onPressed: online ? () => unawaited(_offer(w.agent!)) : null,
+            child: const Text('Switch to conversation'),
+          ),
         ),
       ),
       _Phase.idle => null,

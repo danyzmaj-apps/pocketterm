@@ -14,6 +14,7 @@ import 'package:pocketterm_core/session.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
+import 'package:pocketterm_mobile/coach.dart';
 import 'package:pocketterm_mobile/links.dart';
 import 'package:pocketterm_mobile/setup_page.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
@@ -47,6 +48,9 @@ class MobileSession extends Session {
       ProjectSort.values.where((s) => s.name == _prefs.getString(_sortKey)).firstOrNull ?? ProjectSort.name;
 
   Future<void> setProjectSort(ProjectSort sort) => _prefs.setString(_sortKey, sort.name);
+
+  /// The first-use tips this phone has shown; kept across sign-outs, they're the phone's.
+  late final CoachController tips = CoachController(_prefs);
 
   static const _desktopKey = 'pocketterm_desktop';
   static const _desktopsKey = 'pocketterm_desktops';
@@ -180,6 +184,7 @@ class MobileApp extends StatelessWidget {
     title: 'PocketTerm',
     debugShowCheckedModeBanner: false,
     theme: _theme(appTheme()),
+    builder: (context, child) => Coach(controller: session.tips, child: child!),
     // No session, no app: only the computer's code gets a phone in.
     home: ListenableBuilder(
       listenable: session,
@@ -449,8 +454,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       // Nothing to start a session on until a computer answers.
       floatingActionButton: terminal == null
           ? null
-          : AddButton(tooltip: 'New session', onPressed: () => unawaited(openNewSession(context, terminal))),
+          : CoachTarget(
+              tip: Tip.newSession,
+              radius: isIos ? 32 : 20,
+              child: AddButton(tooltip: 'New session', onPressed: () => unawaited(openNewSession(context, terminal))),
+            ),
+      // The list runs on under the home indicator.
       body: SafeArea(
+        bottom: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -604,6 +615,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               child: const Text('Delete account…'),
             ),
             const Divider(height: 20, color: C.line2),
+            TextButton.icon(
+              key: const ValueKey('show-tips'),
+              onPressed: () {
+                Navigator.of(sheet).pop();
+                unawaited(widget.session.tips.reset());
+              },
+              style: TextButton.styleFrom(foregroundColor: C.dim),
+              icon: const Icon(Icons.lightbulb_outline, size: 15),
+              label: const Text('Show tips again'),
+            ),
             TextButton.icon(
               key: const ValueKey('source-code'),
               onPressed: () => openExternal(repoUrl),

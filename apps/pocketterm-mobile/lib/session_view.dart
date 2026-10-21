@@ -11,6 +11,7 @@ import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
+import 'package:pocketterm_mobile/coach.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -559,14 +560,19 @@ class _SessionPageState extends State<SessionPage> {
                     children: [
                       // An agent that can't steer queues every prompt while busy.
                       if (agent.steers)
-                        FilterChip(
-                          key: const ValueKey('follow-up'),
-                          label: const Text('Queue', style: TextStyle(fontSize: 12)),
-                          tooltip: 'Off: the prompt steers ${agent.label} now',
-                          selected: _followUp,
-                          showCheckmark: true,
-                          visualDensity: VisualDensity.compact,
-                          onSelected: (v) => setState(() => _followUp = v),
+                        CoachTarget(
+                          tip: Tip.queue,
+                          radius: 10,
+                          padding: 2,
+                          child: FilterChip(
+                            key: const ValueKey('follow-up'),
+                            label: const Text('Queue', style: TextStyle(fontSize: 12)),
+                            tooltip: 'Off: the prompt steers ${agent.label} now',
+                            selected: _followUp,
+                            showCheckmark: true,
+                            visualDensity: VisualDensity.compact,
+                            onSelected: (v) => setState(() => _followUp = v),
+                          ),
                         ),
                       const Spacer(),
                       TextButton.icon(
@@ -610,24 +616,28 @@ class _SessionPageState extends State<SessionPage> {
                       if (matches.isNotEmpty)
                         const SingleActivator(LogicalKeyboardKey.tab): () => _complete(matches.first),
                     },
-                    child: TextField(
-                      key: const ValueKey('session-input'),
-                      onTapOutside: dismissKeyboard,
-                      controller: _field,
-                      minLines: 1,
-                      maxLines: 6,
-                      enabled: online,
-                      // A command's name isn't a word to correct or capitalize.
-                      autocorrect: !slash,
-                      enableSuggestions: !slash,
-                      textCapitalization: slash ? TextCapitalization.none : TextCapitalization.sentences,
-                      style: const TextStyle(fontSize: 16, height: 1.4),
-                      decoration: plainInput.copyWith(
-                        hintText: busy
-                            ? (_followUp || !agent.steers ? 'Queue a prompt…' : 'Steer ${agent.label}…')
-                            : 'Prompt ${agent.label}…',
-                        hintStyle: const TextStyle(color: C.dim2),
-                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                    child: CoachTarget(
+                      tip: Tip.slash,
+                      radius: 12,
+                      child: TextField(
+                        key: const ValueKey('session-input'),
+                        onTapOutside: dismissKeyboard,
+                        controller: _field,
+                        minLines: 1,
+                        maxLines: 6,
+                        enabled: online,
+                        // A command's name isn't a word to correct or capitalize.
+                        autocorrect: !slash,
+                        enableSuggestions: !slash,
+                        textCapitalization: slash ? TextCapitalization.none : TextCapitalization.sentences,
+                        style: const TextStyle(fontSize: 16, height: 1.4),
+                        decoration: plainInput.copyWith(
+                          hintText: busy
+                              ? (_followUp || !agent.steers ? 'Queue a prompt…' : 'Steer ${agent.label}…')
+                              : 'Prompt ${agent.label}…',
+                          hintStyle: const TextStyle(color: C.dim2),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        ),
                       ),
                     ),
                   ),
@@ -681,25 +691,35 @@ class _SessionPageState extends State<SessionPage> {
           ),
           actions: [
             if (remote.activities case final activities? when s != null)
-              IconButton(
-                key: const ValueKey('follow-lock-screen'),
-                tooltip: switch ((isIos, activities.following(key))) {
-                  (true, true) => 'Stop following on Lock Screen',
-                  (true, false) => 'Follow on Lock Screen',
-                  (false, true) => 'Stop following in notifications',
-                  (false, false) => 'Follow in notifications',
-                },
-                onPressed: () => unawaited(_toggleFollow(activities, s)),
-                icon: activities.following(key)
-                    ? const Icon(Icons.lock_clock, color: C.accent)
-                    : const Icon(Icons.lock_clock_outlined, color: C.dim),
+              CoachTarget(
+                tip: Tip.follow,
+                radius: 24,
+                padding: 0,
+                child: IconButton(
+                  key: const ValueKey('follow-lock-screen'),
+                  tooltip: switch ((isIos, activities.following(key))) {
+                    (true, true) => 'Stop following on Lock Screen',
+                    (true, false) => 'Follow on Lock Screen',
+                    (false, true) => 'Stop following in notifications',
+                    (false, false) => 'Follow in notifications',
+                  },
+                  onPressed: () => unawaited(_toggleFollow(activities, s)),
+                  icon: activities.following(key)
+                      ? const Icon(Icons.lock_clock, color: C.accent)
+                      : const Icon(Icons.lock_clock_outlined, color: C.dim),
+                ),
               ),
             if (readable)
-              IconButton(
-                key: const ValueKey('open-screen'),
-                tooltip: 'Screen',
-                onPressed: screen,
-                icon: const Icon(Icons.terminal, color: C.dim),
+              CoachTarget(
+                tip: Tip.openScreen,
+                radius: 24,
+                padding: 0,
+                child: IconButton(
+                  key: const ValueKey('open-screen'),
+                  tooltip: 'Screen',
+                  onPressed: screen,
+                  icon: const Icon(Icons.terminal, color: C.dim),
+                ),
               ),
             if (window != null && online && window.can(TermCap.close))
               IconButton(

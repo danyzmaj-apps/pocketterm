@@ -215,9 +215,15 @@ void main() {
   }
 
   /// The app, signed in (else on its setup page), its Terminal list fed by [terminal].
-  Future<void> app(WidgetTester tester, {required TerminalRemote terminal, bool signedIn = true}) async {
+  /// [tips]: its first-use tips not seen yet.
+  Future<void> app(
+    WidgetTester tester, {
+    required TerminalRemote terminal,
+    bool signedIn = true,
+    bool tips = false,
+  }) async {
     phone(tester);
-    final session = await FakeSession.create(signedIn: signedIn);
+    final session = await FakeSession.create(signedIn: signedIn, tips: tips);
     await tester.pumpWidget(
       RepaintBoundary(
         key: shot,
@@ -283,12 +289,11 @@ void main() {
     r.flush();
   });
 
-  testWidgets('switch a screen-only session', variant: _ios, (tester) async {
-    if (skipped()) return;
-    const window = 'kitty-1/7';
+  /// The computer with one more omp window, which shows only its screen and can switch; omp is at work in it.
+  TerminalRemote screenOnly(String window) {
     final state = _state();
     late final TerminalRemote r;
-    r =
+    return r =
         TerminalRemote(
             SupabaseClient('http://localhost:1', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false)),
             'user',
@@ -330,6 +335,12 @@ void main() {
               '╰─',
             ],
           });
+  }
+
+  testWidgets('switch a screen-only session', variant: _ios, (tester) async {
+    if (skipped()) return;
+    const window = 'kitty-1/7';
+    final r = screenOnly(window);
     await app(tester, terminal: r);
     final row = find.byKey(const ValueKey('term-$window'));
     await tester.ensureVisible(row);
@@ -342,6 +353,37 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     await save(tester, 'phone-switch.png');
+    r.flush();
+  });
+
+  /// Long enough for a page to settle and its first tip to show.
+  Future<void> tipShows(WidgetTester tester) async {
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+  }
+
+  testWidgets('tip: a screen-only session', variant: _ios, (tester) async {
+    if (skipped()) return;
+    const window = 'kitty-1/7';
+    final r = screenOnly(window);
+    await app(tester, terminal: r, tips: true);
+    await tester.ensureVisible(find.byKey(const ValueKey('term-$window')));
+    await tipShows(tester);
+    await save(tester, 'phone-tip-switch-open.png');
+    r.flush();
+  });
+
+  testWidgets('tip: switch to conversation', variant: _ios, (tester) async {
+    if (skipped()) return;
+    const window = 'kitty-1/7';
+    final r = screenOnly(window);
+    await app(tester, terminal: r, tips: true);
+    await tester.ensureVisible(find.byKey(const ValueKey('term-$window')));
+    await tipShows(tester);
+    await tester.tap(find.byKey(const ValueKey('term-$window')));
+    await tipShows(tester);
+    await save(tester, 'phone-tip-switch-button.png');
     r.flush();
   });
 

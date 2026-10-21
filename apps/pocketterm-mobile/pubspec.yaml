@@ -1,7 +1,7 @@
 name: pocketterm_mobile
 description: "PocketTerm for iPhone and Android: your computer's coding sessions on your phone, through your own Supabase."
 publish_to: 'none'
-version: 0.1.0+10
+version: 0.1.0+11
 resolution: workspace
 
 environment:

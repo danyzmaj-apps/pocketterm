@@ -8,12 +8,26 @@ import 'package:pocketterm_core/terminal.dart';
 /// `/private/tmp/tmux-<uid>`), through its command line. Window keys:
 /// `tmux:<socket name>/<pane number>` (the pane `%n`).
 class Tmux extends TerminalHost {
-  Tmux({String? executable, List<String>? socketDirs, Map<String, String>? env})
-    : _exe = executable ?? findExecutable('tmux', env: env),
-      _dirs = socketDirs ?? _defaultDirs(env ?? Platform.environment);
+  Tmux({String? executable, List<String>? socketDirs, this.env}) : _fixedExe = executable, _fixedDirs = socketDirs;
 
-  final String? _exe;
-  final List<String> _dirs;
+  final String? _fixedExe;
+  final List<String>? _fixedDirs;
+
+  /// The environment to look tmux up in; this process's when null.
+  final Map<String, String>? env;
+
+  /// Looked up until found, not once at start: tmux installed while the app
+  /// runs shows up without a restart.
+  String? _found;
+  String? get _exe {
+    if (_fixedExe != null) return _fixedExe;
+    final found = _found;
+    if (found != null && File(found).existsSync()) return found;
+    return _found = findExecutable('tmux', env: env);
+  }
+
+  /// Listed on each look: a server's directory appears when it first starts.
+  List<String> get _dirs => _fixedDirs ?? _defaultDirs(env ?? Platform.environment);
 
   /// Sockets learnt from agents (their `TMUX`), by name, for servers in a
   /// directory not scanned.
@@ -43,7 +57,10 @@ class Tmux extends TerminalHost {
     return dirs;
   }
 
-  bool get installed => _exe != null && File(_exe).existsSync();
+  bool get installed {
+    final exe = _exe;
+    return exe != null && File(exe).existsSync();
+  }
 
   @override
   String get id => 'tmux';

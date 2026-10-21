@@ -238,6 +238,23 @@ void main() {
     expect(withTmux.describe(withTmux.kitty!), 'kitty');
   });
 
+  test('tmux installed while the app runs is found without a restart', () {
+    final bin = Directory.systemTemp.createTempSync('pocketterm-tmux');
+    addTearDown(() => bin.deleteSync(recursive: true));
+    final tmux = Tmux(env: {'PATH': bin.path}, socketDirs: const []);
+    final installedBefore = File('/opt/homebrew/bin/tmux').existsSync() || File('/usr/local/bin/tmux').existsSync();
+    if (installedBefore) markTestSkipped('tmux is installed on this machine');
+    if (installedBefore) return;
+    expect(tmux.installed, isFalse);
+
+    File('${bin.path}/tmux')
+      ..writeAsStringSync('#!/bin/sh\n')
+      ..createSync();
+    Process.runSync('chmod', ['+x', '${bin.path}/tmux']);
+
+    expect(tmux.installed, isTrue);
+  });
+
   group('projects', () {
     final terms = _terms();
     late Directory dir;

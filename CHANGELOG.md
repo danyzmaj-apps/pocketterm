@@ -2,26 +2,16 @@
 
 User-visible changes to PocketTerm. Each release says whether servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again (or an update from the setup wizard) and whether the push relay must be redeployed.
 
-## Unreleased
+## 0.1.0
 
-No server update or relay redeploy needed.
+The first release: your computer's omp and Claude Code sessions on your phone, through a Supabase server you own.
 
 - **Settings: Reviewer access is hidden.** It's only for publishing the phone apps (App Store / Play review codes), so it appears once you press ⌥ Option (Alt on Windows) in Settings, until the window is shown again.
 - **Get this computer ready.** After the first sign-in on a computer (through the wizard or by connecting an existing server), the window is a checklist instead of Settings: PocketTerm installs itself into every coding agent it finds (omp, Claude Code) and explains sessions that were already open, listing each with the command that picks PocketTerm up there and a copy button (`/reload-plugins` in Claude Code, nothing restarts; `omp -c` in omp); then the terminals with their one-click fixes, project folders found in your home folder (one click each), and the QR code for your phone. Each step checks itself off; **Done** is the way out. Computers already set up with an earlier version see it once too, the next time the window opens: most of them never had the agent integration installed.
 - **Setup wizard: server only.** Its last step no longer shows the terminals or WezTerm's install; the checklist after sign-in does, and the last step says so.
 - **Settings: a status card at the top.** **All set**, or each thing that needs attention with the button that fixes it: PocketTerm missing or out of date in a coding agent (also one installed after setup), sessions opened before PocketTerm (type `/reload-plugins` in Claude Code, run `omp -c` in omp), a terminal to set up or allow, no phone signed in yet, no project folders. **Open setup checklist** brings the checklist back. Rows that need you are marked in amber.
 - **Phone: windows that show only as screens say why.** For an omp or Claude Code window that doesn't report as a conversation, the phone now says what the computer found: PocketTerm isn't installed in that agent there, it's out of date, Claude Code has mods turned off, or the session was opened before PocketTerm was installed (type `/reload-plugins` in Claude Code, or quit omp and run `omp -c`). With a computer on an earlier version, the old general note stays.
-
-## 0.1.2
-
-No server update or relay redeploy needed.
-
 - **Setup wizard: clearer about the keys it asks for.** Step 1 explains why Supabase's token has to cover the whole organization (creating a project needs it), what PocketTerm does with it, that it's never saved, and how to wall it off in an organization of its own; the last step reminds you to delete it. Step 3 warns, in amber, to untick GitHub's "Allow wildcard matching", and **Set up my server** stays off until you confirm you did.
-
-## 0.1.1
-
-Servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again (or an update from the setup wizard): a new migration stamps each computer's last-seen time with the server's clock, and `push` changed. The relay doesn't need redeploying.
-
 - **New icon.** A phone showing a terminal prompt, leaning out of the pocket, instead of the note.
 - **Phone: links to the rest of PocketTerm.** The welcome screen links to the desktop app's downloads (step 1 needs it), and the account sheet links to the source on GitHub.
 - **Phone: with no computer on the account,** the screen explains why (a review demo account, or a computer with Terminal from phone off) and hides the + button.
@@ -34,11 +24,6 @@ Servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again (or an update
 - **Windows:** a WezTerm window that answered slowly once comes back within a minute, instead of disappearing from the phone until PocketTerm restarts.
 - **Windows:** a stalled WezTerm download stops with an error after 30 seconds so you can try again.
 - **Windows:** Claude sessions reach the phone when `HOME` points somewhere other than your user folder.
-
-## 0.1.0
-
-The first release: your computer's omp and Claude Code sessions on your phone, through a Supabase server you own.
-
 - **Desktop app for macOS and Windows.** A setup wizard that creates your own Supabase server (or connects one you have), sign-in with GitHub, and Settings. Otherwise it runs in the background: in the menu bar on the Mac, in the tray on Windows. Closing the window keeps it running.
 - **Phone app for iPhone and Android.** Pair it by scanning a code from the desktop app. The Terminal tab lists your computer's omp and Claude Code sessions by project and its other terminal windows. A session opens as a conversation: streamed Markdown answers, tool-call cards, prompts with images, steer, queue and stop, questions, approvals, plan reviews and slash commands. Other windows are live screens you can type into. **New session** starts your agent or a shell in one of your projects.
 - **Phone: a steadier Terminal list.** Projects stay put: sorted by name, or by recent activity (re-ranked only when you pull to refresh), chosen above the list. Sessions keep their order within a project instead of jumping when one needs you or starts working. A project's heading is just its name: tap it to fold the project to one line that still says what needs you; long-press it for a new session there, fold, fold all others or unfold all.

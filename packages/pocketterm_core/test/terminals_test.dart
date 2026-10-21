@@ -255,6 +255,25 @@ void main() {
     expect(tmux.installed, isTrue);
   });
 
+  test('with tmux, Ghostty is ready for phone sessions and still names its own limit', () async {
+    Terminals with_(Tmux tmux) => Terminals(
+      home: '/nonexistent-pocketterm',
+      tmux: tmux,
+      ghostty: _RunningGhostty(),
+      snapshot: () async => Procs(parsePs('')),
+    );
+    final without = (await with_(
+      Tmux(executable: '/nonexistent-pocketterm/tmux', socketDirs: const []),
+    ).statuses()).firstWhere((s) => s.id == 'ghostty');
+    expect(without.state, TermState.limited);
+
+    final withTmux = (await with_(
+      Tmux(executable: '/bin/sh', socketDirs: const []),
+    ).statuses()).firstWhere((s) => s.id == 'ghostty');
+    expect(withTmux.state, TermState.ready);
+    expect(withTmux.note, contains(_RunningGhostty().limits));
+  });
+
   group('projects', () {
     final terms = _terms();
     late Directory dir;
@@ -312,4 +331,11 @@ void main() {
       );
     });
   });
+}
+
+class _RunningGhostty extends Ghostty {
+  _RunningGhostty() : super(appPath: '/nonexistent-pocketterm/Ghostty.app');
+
+  @override
+  Future<TermStatus> status(Procs procs) async => TermStatus(id, label, TermState.limited, note: '2 windows · $limits');
 }

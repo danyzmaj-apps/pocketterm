@@ -129,12 +129,30 @@ class Terminals {
     return [for (final w in kept) w.copyWith(via: via[w.key])];
   }
 
-  /// How each installed terminal stands, for Settings and the phone.
+  /// How each installed terminal stands, for Settings and the phone. A
+  /// limited terminal whose phone sessions run in tmux ([viaTmux]) is ready
+  /// for those; its limit stays, for the windows opened in it directly.
   Future<List<TermStatus>> statuses() async {
     final procs = await snapshot();
     return await Future.wait([
       for (final h in hosts)
-        h.status(procs).catchError((Object e) => TermStatus(h.id, h.label, TermState.limited, note: '$e')),
+        h
+            .status(procs)
+            .then(
+              (s) => s.state == TermState.limited && viaTmux(h)
+                  ? TermStatus(
+                      s.id,
+                      s.label,
+                      TermState.ready,
+                      note:
+                          '${s.note.replaceFirst(h.limits, '').trim()} Sessions from your phone run in tmux, '
+                                  'with full control. In windows you open yourself: ${h.limits}'
+                              .trim(),
+                      fix: s.fix,
+                    )
+                  : s,
+            )
+            .catchError((Object e) => TermStatus(h.id, h.label, TermState.limited, note: '$e')),
     ]);
   }
 

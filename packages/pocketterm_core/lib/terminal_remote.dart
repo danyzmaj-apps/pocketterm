@@ -498,6 +498,15 @@ class TerminalRemote extends ChangeNotifier {
   /// Closes [window] on the Mac, with what runs in it.
   Future<void> close(String window) => _run({'op': 'close', 'window': window});
 
+  /// Whether the agent in [window] looks at work: its screen changed over two seconds on the computer.
+  Future<bool> probe(String window) async => (await _run({'op': 'probe', 'window': window}))['busy'] == true;
+
+  /// Switches [agent] in [window], which shows only as a screen, to reporting its session: omp quits and
+  /// starts again on the same conversation, Claude Code reloads its plugins. The session shows up in
+  /// [sessions] once the agent reports.
+  Future<void> switchToConversation(String window, Agent agent) =>
+      _run({'op': 'switch', 'window': window, 'agent': agent.name}, wait: const Duration(seconds: 20));
+
   /// A new terminal window in [cwd] (where [opensIn] says), running the Mac's coding [agent] if
   /// [startAgent]; its window key.
   Future<String> launch(String cwd, {required bool startAgent}) =>

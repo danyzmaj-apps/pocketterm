@@ -51,7 +51,7 @@ flowchart LR
 | `desktop/integrations/claude/` | Claude Code marketplace with the `pocketterm` plugin: `hooks/pocketterm.ts` (the session, live), `hooks/items.ts` (Claude's transcript as items, its dialogs as questions), `tests/` |
 | `desktop/supabase/` | Migrations, pgTAP tests, and the `pair` and `push` functions (bundled as app assets for the wizard); `relay` is the publisher's push relay |
 | `mobile/lib/main.dart`, `mobile.dart`, `links.dart` | Phone app: sign-in by code, the home page with the Terminal list (its sort and folded projects kept), the computer picker, the account sheet, push and link routing; links to the desktop downloads and GitHub |
-| `mobile/lib/terminal_view.dart`, `session_view.dart` | The Terminal list (sessions by project, sorted by name or recent activity; a project's heading folds on tap and offers a new session and folding on long press), screens, new sessions; a coding session's transcript and composer |
+| `mobile/lib/terminal_view.dart`, `session_view.dart`, `switch_view.dart` | The Terminal list (sessions by project, sorted by name or recent activity; a project's heading folds on tap and offers a new session and folding on long press), screens, new sessions; a coding session's transcript and composer; switching an agent window that shows only as a screen to the conversation view |
 | `mobile/lib/setup_page.dart`, `onboarding/scan.dart`, `chrome.dart` | Scanning or pasting a computer's code; the per-platform chrome (Cupertino on iPhone, Material 3 on Android) |
 | `mobile/ios/Runner/AppDelegate.swift`, `mobile/ios/Shared/` | The iPhone half of `native.dart`: App Group, push registration, notification taps, Live Activities |
 | `mobile/ios/PocketTermLive/`, `PocketTermPush/` | The Live Activity (WidgetKit); the notification service extension that decrypts pushes |
@@ -90,6 +90,15 @@ Each terminal is a `TerminalHost` (`core/lib/terminal.dart`): list its windows (
 | Ghostty | AppleScript | `ghostty:<UUID>` |
 
 `Terminals` (`core/lib/terminals.dart`) puts the installed ones together: all six on macOS, WezTerm only on Windows (Settings and the setup checklist install it there: `desktop/lib/wezterm_setup.dart`). A tmux pane shown in a GUI window is listed once, as the pane. An app that can't both read and press keys (Terminal, Ghostty) launches a phone-started session inside tmux when tmux is installed. An agent's `hello` carries its terminal environment (`TERM_PROGRAM`, `KITTY_*`, `TMUX`, `WEZTERM_PANE`, …), which `windowOfTerm` turns into its window's key.
+
+**Screen only to conversation.** An agent window no live session claims (opened before PocketTerm was installed in its agent) shows on the phone as a screen, badged **Screen only**. Where the computer says PocketTerm is installed in that agent and the window's terminal can press keys and type, the phone offers to switch it, with two `run` ops (`core/lib/live.dart`) the bridge does with the window's terminal (`desktop/lib/terminal_bridge.dart`):
+
+| Op | The computer | Answer |
+| --- | --- | --- |
+| `probe {window}` | Reads the screen, waits 2 s, reads it again | `ran {busy}`: the text changed (the agent is at work) |
+| `switch {window, agent}` | omp: Esc (stops a run), Ctrl+C (empties its editor; Ctrl+U clears one line only), Ctrl+D (quits on an empty editor), waits until the tty's foreground program isn't omp (up to 8 s; 2 s where the terminal tells no tty), then types `omp -c` and Enter. Claude Code: types `/reload-plugins` and Enter | `ran {}`, or `ran {error}` |
+
+The phone shows "Switching…" until a session reports from that window, then its session page replaces the screen (with **Continue**, which prompts `continue`, when the probe said busy); after 25 s it says the window didn't come back as a conversation.
 
 ## Local API
 

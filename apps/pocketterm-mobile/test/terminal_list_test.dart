@@ -7,6 +7,7 @@ import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_mobile/mobile.dart';
 import 'package:pocketterm_mobile/session_view.dart';
+import 'package:pocketterm_mobile/switch_view.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -574,17 +575,19 @@ void main() {
   testWidgets('why an agent window shows only as a screen follows where PocketTerm stands in that agent', (
     tester,
   ) async {
-    Future<String> advice(String? integration, {String? computer, String agent = 'omp'}) async {
+    // [caps]: the window's terminal's; one that can't press keys and type isn't switched from the phone, so it
+    // says why even where PocketTerm is installed.
+    Future<String> advice(String? integration, {String? computer, String agent = 'omp', List<String>? caps}) async {
       remote.handle('state', {
         'windows': [
-          {'key': 'kitty-1/8', 'title': agent, 'cwd': _a, 'program': agent, 'app': 'kitty'},
+          {'key': 'kitty-1/8', 'title': agent, 'cwd': _a, 'program': agent, 'app': 'kitty', 'caps': ?caps},
         ],
         'sessions': <Object>[],
         'home': '/Users/me',
         'agent': 'omp',
         'agents': ?(integration == null ? null : {agent: integration}),
       });
-      await pumpList(tester, key: ValueKey('$agent$integration$computer'), computer: computer);
+      await pumpList(tester, key: ValueKey('$agent$integration$computer$caps'), computer: computer);
       return tester
           .widget<Text>(find.descendant(of: find.byKey(ValueKey('$agent-screens-only')), matching: find.byType(Text)))
           .data!;
@@ -592,18 +595,215 @@ void main() {
 
     expect(await advice('missing', computer: 'Studio'), contains('isn’t installed in omp on Studio'));
     expect(await advice('missing'), contains('on the computer.'));
-    expect(await advice('installed'), contains('started before PocketTerm was installed in omp'));
-    expect(await advice('installed'), contains(Agent.omp.resume));
+    const lineOnly = ['read', 'line'];
+    expect(await advice('installed', caps: lineOnly), contains('started before PocketTerm was installed in omp'));
+    expect(await advice('installed', caps: lineOnly), contains(Agent.omp.resume));
     expect(await advice('outdated', computer: 'Studio'), contains('out of date on Studio'));
     expect(await advice(null), contains('It may be out of date'), reason: 'an older computer: the old advice');
     expect(await advice('bogus'), contains('It may be out of date'));
 
     // Claude Code reloads its plugins in place: nothing to restart.
     for (final integration in ['installed', 'outdated', 'missing', null]) {
-      final text = await advice(integration, agent: 'claude');
+      final text = await advice(integration, agent: 'claude', caps: lineOnly);
       expect(text, contains('/reload-plugins'), reason: '$integration');
       expect(text, isNot(contains(Agent.claude.resume)), reason: '$integration');
     }
     remote.flush();
+  });
+
+  group('switching a screen-only session to the conversation view', () {
+    /// Two omp windows and a Claude one no session claims, a shell, and where PocketTerm stands in each agent.
+    void screensOnly({String omp = 'installed', String claude = 'installed', List<Object> sessions = const []}) {
+      Map<String, dynamic> window(String key, String program) => {
+        'key': key,
+        'title': program,
+        'cwd': _a,
+        'program': program,
+        'app': 'kitty',
+      };
+      remote.handle('state', {
+        'windows': [
+          window('kitty-1/7', 'omp'),
+          window('kitty-1/8', 'omp'),
+          window('kitty-1/9', 'claude'),
+          window('kitty-1/4', 'zsh'),
+        ],
+        'sessions': sessions,
+        'home': '/Users/me',
+        'agent': 'omp',
+        'agents': {'omp': omp, 'claude': claude},
+      });
+    }
+
+    String tip(WidgetTester tester) => tester
+        .widget<Text>(find.descendant(of: find.byKey(const ValueKey('switch-tip')), matching: find.byType(Text)))
+        .data!;
+
+    Future<void> openScreen(WidgetTester tester, String window) async {
+      await pumpList(tester);
+      await tester.tap(find.byKey(ValueKey('term-$window')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(TerminalPage), findsOneWidget);
+    }
+
+    /// Opens the switch sheet from the screen page's banner.
+    Future<void> openSheet(WidgetTester tester) async {
+      await tester.tap(find.byKey(const ValueKey('switch-open')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    testWidgets('agent rows are badged Screen only, under a tip to tap one where PocketTerm is installed', (
+      tester,
+    ) async {
+      screensOnly();
+      await pumpList(tester);
+      for (final w in ['kitty-1/7', 'kitty-1/8', 'kitty-1/9']) {
+        expect(find.byKey(ValueKey('screen-only-$w')), findsOneWidget, reason: w);
+      }
+      expect(find.byKey(const ValueKey('screen-only-kitty-1/4')), findsNothing, reason: 'a shell is no session');
+      expect(tip(tester), '3 sessions show only their screen. Tap one to switch it to the conversation view.');
+      expect(find.byKey(const ValueKey('omp-screens-only')), findsNothing);
+
+      // Out of date in omp: switching wouldn't help there, so it says what would.
+      screensOnly(omp: 'outdated');
+      await tester.pump();
+      expect(tip(tester), '1 session shows only its screen. Tap it to switch it to the conversation view.');
+      expect(find.byKey(const ValueKey('omp-screens-only')), findsOneWidget);
+      expect(find.byKey(const ValueKey('screen-only-kitty-1/7')), findsOneWidget);
+
+      screensOnly(omp: 'missing', claude: 'off');
+      await tester.pump();
+      expect(find.byKey(const ValueKey('switch-tip')), findsNothing);
+      expect(find.byKey(const ValueKey('claude-screens-only')), findsOneWidget);
+      remote.flush();
+    });
+
+    testWidgets('the screen page offers the switch only where PocketTerm is installed in its agent', (tester) async {
+      screensOnly(omp: 'outdated');
+      await openScreen(tester, 'kitty-1/7');
+      expect(find.byKey(const ValueKey('switch-open')), findsNothing);
+
+      screensOnly();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('This omp session shows only its screen'), findsOneWidget);
+      expect(find.text('Switch to conversation'), findsOneWidget);
+      remote.flush();
+    });
+
+    testWidgets('omp: the sheet asks whether it works, warns that it does, then it switches and its session opens', (
+      tester,
+    ) async {
+      screensOnly();
+      await openScreen(tester, 'kitty-1/7');
+      await openSheet(tester);
+      expect(find.textContaining('picks the same conversation back up'), findsOneWidget);
+      // Asking the computer first: no buttons yet.
+      expect(find.byKey(const ValueKey('switch-probing')), findsOneWidget);
+      expect(find.text('Restart now'), findsNothing);
+      final probe = runs('probe').single;
+      expect(probe, containsPair('window', 'kitty-1/7'));
+      remote.handle('ran', {'id': probe['id'], 'busy': true});
+      await tester.pump();
+      expect(find.byKey(const ValueKey('switch-busy')), findsOneWidget);
+      expect(find.textContaining('afterwards tap Continue'), findsOneWidget);
+
+      await tester.tap(find.text('Restart now'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      final switched = runs('switch').single;
+      expect(switched, allOf(containsPair('window', 'kitty-1/7'), containsPair('agent', 'omp')));
+      expect(find.text('Switching…'), findsOneWidget);
+      remote.handle('ran', {'id': switched['id']});
+      await tester.pump();
+      expect(find.text('Switching…'), findsOneWidget, reason: 'until omp reports');
+
+      // omp reports from the window: its session's page takes the screen's place.
+      screensOnly(
+        sessions: [
+          {'key': 'kitty-1/7', 'id': 's7', 'agent': 'omp', 'window': 'kitty-1/7', 'title': 'Back', 'cwd': _a},
+        ],
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(TerminalPage), findsNothing);
+      expect(find.byType(SessionPage), findsOneWidget);
+
+      // It was at work: Continue carries on, once.
+      await tester.tap(find.byKey(const ValueKey('continue')));
+      await tester.pump();
+      await tester.pump(Duration.zero);
+      final prompt = runs('prompt').single;
+      expect(prompt, allOf(containsPair('session', 'kitty-1/7'), containsPair('text', 'continue')));
+      remote.handle('ran', {'id': prompt['id']});
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('continue')), findsNothing);
+
+      // Back: the list, not the screen.
+      await tester.pageBack();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(TerminalList), findsOneWidget);
+      expect(find.byType(TerminalPage), findsNothing);
+      remote.flush();
+    });
+
+    testWidgets('omp at rest: no warning, and its session opens without Continue', (tester) async {
+      screensOnly();
+      await openScreen(tester, 'kitty-1/8');
+      await openSheet(tester);
+      remote.handle('ran', {'id': runs('probe').single['id'], 'busy': false});
+      await tester.pump();
+      expect(find.byKey(const ValueKey('switch-busy')), findsNothing);
+      await tester.tap(find.text('Restart now'));
+      await tester.pump();
+      await tester.pump(Duration.zero);
+      remote.handle('ran', {'id': runs('switch').single['id']});
+      screensOnly(
+        sessions: [
+          {'key': 'kitty-1/8', 'id': 's8', 'agent': 'omp', 'window': 'kitty-1/8', 'title': 'Back', 'cwd': _a},
+        ],
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(SessionPage), findsOneWidget);
+      expect(find.byKey(const ValueKey('continue')), findsNothing);
+      remote.flush();
+    });
+
+    testWidgets('Claude Code: no asking, /reload-plugins; when it never reports, the screen says so and stays', (
+      tester,
+    ) async {
+      screensOnly();
+      await openScreen(tester, 'kitty-1/9');
+      await openSheet(tester);
+      expect(find.text('PocketTerm types /reload-plugins in it. Nothing restarts.'), findsOneWidget);
+      expect(runs('probe'), isEmpty);
+      await tester.tap(find.text('Switch'));
+      await tester.pump();
+      await tester.pump(Duration.zero);
+      final switched = runs('switch').single;
+      expect(switched, containsPair('agent', 'claude'));
+      remote.handle('ran', {'id': switched['id']});
+      await tester.pump();
+
+      await tester.pump(switchWait);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('It didn’t come back as a conversation.'), findsOneWidget);
+      expect(find.byType(TerminalPage), findsOneWidget);
+      expect(find.byType(SessionPage), findsNothing);
+
+      // Try again asks again.
+      await tester.tap(find.text('Try again'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Switch'), findsOneWidget);
+      remote.flush();
+    });
   });
 }

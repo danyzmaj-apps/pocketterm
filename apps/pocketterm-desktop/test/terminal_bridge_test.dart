@@ -4,6 +4,7 @@ library;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/apple_terminal.dart';
 import 'package:pocketterm_core/ghostty.dart';
 import 'package:pocketterm_core/iterm.dart';
@@ -90,4 +91,109 @@ void main() {
       ),
     );
   });
+
+  group('switching a screen-only agent window to its conversation', () {
+    const window = 'kitty-1/7';
+    const tty = 'ttys004';
+    late List<String> log;
+    late _FakeKitty kitty;
+    late List<String> foreground;
+
+    /// A kitty that records what it's told, and `ps` showing [foreground]'s programs on [tty] in turn (the last
+    /// one from then on).
+    Terminals terms() => Terminals(
+      home: '/nonexistent-pocketterm',
+      kitty: kitty,
+      terminal: AppleTerminal(appPath: '/nonexistent-pocketterm/Terminal.app'),
+      snapshot: () async {
+        final program = foreground.length > 1 ? foreground.removeAt(0) : foreground.single;
+        log.add('ps $program');
+        return Procs([
+          Proc(pid: 40, ppid: 1, pgid: 40, tpgid: program == 'zsh' ? 40 : 50, tty: tty, stat: 'Ss', args: '-zsh'),
+          if (program != 'zsh') Proc(pid: 50, ppid: 40, pgid: 50, tpgid: 50, tty: tty, stat: 'S+', args: program),
+        ]);
+      },
+    );
+
+    Future<void> run(Terminals t, Agent agent, {String tty = tty}) => switchToConversation(
+      t,
+      window,
+      agent,
+      tty: tty,
+      settle: Duration.zero,
+      noTty: Duration.zero,
+      pollEvery: Duration.zero,
+      quitFor: const Duration(milliseconds: 200),
+    );
+
+    setUp(() {
+      log = [];
+      kitty = _FakeKitty(log);
+      foreground = ['omp'];
+    });
+
+    test('omp: Esc, Ctrl+C, Ctrl+D, then omp -c once omp has quit', () async {
+      foreground = ['omp', 'omp', 'zsh'];
+      await run(terms(), Agent.omp);
+      expect(log, [
+        'keys esc',
+        'keys ctrl+c',
+        'keys ctrl+d',
+        'ps omp',
+        'ps omp',
+        'ps zsh',
+        'type omp -c',
+        'keys enter',
+      ]);
+    });
+
+    test('omp in a terminal that tells no tty: omp -c after a wait', () async {
+      await run(terms(), Agent.omp, tty: '');
+      expect(log, ['keys esc', 'keys ctrl+c', 'keys ctrl+d', 'type omp -c', 'keys enter']);
+    });
+
+    test("omp that doesn't quit gets nothing typed into it", () async {
+      await expectLater(
+        run(terms(), Agent.omp),
+        throwsA(isA<TerminalException>().having((e) => e.message, 'message', startsWith("omp didn't quit."))),
+      );
+      expect(log.where((l) => l.startsWith('type')), isEmpty);
+    });
+
+    test('Claude Code: /reload-plugins and Enter, nothing restarts', () async {
+      await run(terms(), Agent.claude);
+      expect(log, ['type /reload-plugins', 'keys enter']);
+    });
+
+    test("a terminal that can't press keys is refused", () async {
+      await expectLater(
+        switchToConversation(terms(), 'terminal:ttys009', Agent.omp),
+        throwsA(isA<TerminalException>().having((e) => e.message, 'message', startsWith("Terminal can't press keys"))),
+      );
+    });
+
+    test("probe: busy when the screen changes between two reads, not when it doesn't", () async {
+      kitty.screens = ['π ⠋ Working', 'π ⠙ Working'];
+      expect(await screenChanges(terms(), window, gap: Duration.zero), isTrue);
+      kitty.screens = ['π > idle', 'π > idle'];
+      expect(await screenChanges(terms(), window, gap: Duration.zero), isFalse);
+    });
+  });
+}
+
+/// kitty as the bridge drives it: what it's told goes to [log]; its screen is [screens] in turn.
+class _FakeKitty extends Kitty {
+  _FakeKitty(this.log)
+    : super(socketDir: '/nonexistent-pocketterm', home: '/nonexistent-pocketterm', restoreFront: false);
+  final List<String> log;
+  List<String> screens = const [''];
+
+  @override
+  Future<void> pressKeys(String key, List<String> names) async => log.add('keys ${names.join(' ')}');
+
+  @override
+  Future<void> type(String key, String text) async => log.add('type $text');
+
+  @override
+  Future<String> plainScreen(String key) async => screens.length > 1 ? screens.removeAt(0) : screens.single;
 }

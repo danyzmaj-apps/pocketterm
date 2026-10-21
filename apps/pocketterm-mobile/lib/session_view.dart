@@ -24,12 +24,22 @@ const _startWait = Duration(seconds: 20);
 /// One coding session, live: its transcript laid out for the phone, what its
 /// agent asks, and a composer that prompts it.
 class SessionPage extends StatefulWidget {
-  const SessionPage({required this.remote, required this.sessionKey, this.starting = false, super.key});
+  const SessionPage({
+    required this.remote,
+    required this.sessionKey,
+    this.starting = false,
+    this.offerContinue = false,
+    super.key,
+  });
   final TerminalRemote remote;
   final String sessionKey;
 
   /// Just launched: its agent may not have reported yet.
   final bool starting;
+
+  /// It was just restarted from the phone in the middle of a run: a Continue chip above the composer prompts it
+  /// to carry on, once.
+  final bool offerContinue;
 
   @override
   State<SessionPage> createState() => _SessionPageState();
@@ -54,6 +64,9 @@ class _SessionPageState extends State<SessionPage> {
   bool _sending = false;
   bool _stopping = false;
   bool _followUp = false;
+
+  /// [SessionPage.offerContinue] until Continue went.
+  late bool _continue = widget.offerContinue;
   bool _loadingOlder = false;
 
   /// The close button was tapped: the page asks above the composer.
@@ -138,6 +151,8 @@ class _SessionPageState extends State<SessionPage> {
       if (command && window != null) unawaited(_menuOrScreen(window));
       // Followed from here on (Lock Screen, Android's notifications), as working.
       if (s != null && !command) unawaited(remote.activities?.prompted(key, title: _title(s)));
+      // A prompt of their own says what comes next instead of Continue.
+      if (!command) _continue = false;
       // Only what went: the field stays editable while it goes, and what was
       // typed or attached meanwhile is the next prompt.
       final now = _field.text;
@@ -151,6 +166,21 @@ class _SessionPageState extends State<SessionPage> {
       if (mounted) termToast(context, e, above: _composerKey);
     }
     if (mounted) setState(() => _sending = false);
+  }
+
+  /// Prompts `continue`: the run a restart from the phone stopped carries on. Once; again only if it didn't go.
+  Future<void> _sendContinue() async {
+    setState(() => _continue = false);
+    try {
+      await remote.prompt(key, 'continue');
+      final s = remote.session(key);
+      if (s != null) unawaited(remote.activities?.prompted(key, title: _title(s)));
+      _atBottom = true;
+    } on Object catch (e) {
+      if (!mounted) return;
+      setState(() => _continue = true);
+      termToast(context, e, above: _composerKey);
+    }
   }
 
   /// Why [agent]'s slash commands can't be sent from here.
@@ -503,6 +533,24 @@ class _SessionPageState extends State<SessionPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ?commands,
+            Reveal(
+              visible: _continue && online && s != null && !busy,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 0, 4),
+                  child: TextFieldTapRegion(
+                    child: ActionChip(
+                      key: const ValueKey('continue'),
+                      avatar: const Icon(Icons.play_arrow_rounded, size: 18, color: C.accent),
+                      label: const Text('Continue'),
+                      tooltip: 'Carry on with what it was doing',
+                      onPressed: () => unawaited(_sendContinue()),
+                    ),
+                  ),
+                ),
+              ),
+            ),
             Reveal(
               visible: busy && online,
               child: TextFieldTapRegion(

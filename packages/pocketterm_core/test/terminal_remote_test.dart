@@ -313,4 +313,38 @@ void main() {
     r.handle('ran', {'id': run['id'], 'window': 'kitty-1/2'});
     expect(await made, 'kitty-1/2');
   });
+
+  test("probe asks whether a window's screen changes and takes the answer; switch names the agent", () async {
+    final r = remote()..handle('state', state());
+    Map<String, dynamic> lastRun() => sent.lastWhere((s) => s.$1 == 'run').$2;
+
+    final busy = r.probe('kitty-1/1');
+    await Future<void>.delayed(Duration.zero);
+    expect(lastRun(), allOf(containsPair('op', 'probe'), containsPair('window', 'kitty-1/1')));
+    r.handle('ran', {'id': lastRun()['id'], 'busy': true});
+    expect(await busy, isTrue);
+
+    final idle = r.probe('kitty-1/1');
+    await Future<void>.delayed(Duration.zero);
+    r.handle('ran', {'id': lastRun()['id'], 'busy': false});
+    expect(await idle, isFalse);
+
+    final switched = r.switchToConversation('kitty-1/1', Agent.claude);
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      lastRun(),
+      allOf(containsPair('op', 'switch'), containsPair('window', 'kitty-1/1'), containsPair('agent', 'claude')),
+    );
+    r.handle('ran', {'id': lastRun()['id']});
+    await switched;
+
+    final failed = r.switchToConversation('kitty-1/1', Agent.omp);
+    await Future<void>.delayed(Duration.zero);
+    expect(lastRun(), containsPair('agent', 'omp'));
+    r.handle('ran', {'id': lastRun()['id'], 'error': "omp didn't quit."});
+    await expectLater(
+      failed,
+      throwsA(isA<TerminalException>().having((e) => e.message, 'message', "omp didn't quit.")),
+    );
+  });
 }

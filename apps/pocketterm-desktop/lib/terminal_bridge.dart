@@ -471,6 +471,7 @@ class TerminalBridge {
     if (id == null) return;
     String? error;
     String? window;
+    bool? busy;
     try {
       switch (p['op']) {
         case 'send':
@@ -484,6 +485,14 @@ class TerminalBridge {
           }
         case 'close':
           await _terms.close(p['window'] as String);
+        case 'probe':
+          busy = await screenChanges(_terms, p['window'] as String);
+        case 'switch':
+          final at = p['window'] as String;
+          final agent = Agent.values.asNameMap()[p['agent']];
+          if (agent == null) throw const TerminalException('Unknown coding agent.');
+          final tty = _windows.where((w) => w.key == at).firstOrNull?.tty ?? '';
+          await switchToConversation(_terms, at, agent, tty: tty);
         case 'launch':
           // An older phone says `omp` for "start the coding agent".
           final start = p['agent'] == true || p['omp'] == true;
@@ -515,8 +524,8 @@ class TerminalBridge {
     } on Object catch (e) {
       error = 'The computer could not do that: $e';
     }
-    _send('ran', {'id': id, 'error': ?error, 'window': ?window});
-    unawaited(_poll(windows: p['op'] == 'launch' || p['op'] == 'create' || p['op'] == 'close'));
+    _send('ran', {'id': id, 'error': ?error, 'window': ?window, 'busy': ?busy});
+    unawaited(_poll(windows: const {'launch', 'create', 'close', 'switch'}.contains(p['op'])));
   }
 
   /// The phone's prompt, with its images fetched from Storage (and deleted).
@@ -887,6 +896,56 @@ String? cantCommand(Terminals terms, String? window) {
   }
   if (terms.can(window, TermCap.line)) return null;
   return "${terms.hostOf(window)?.label ?? 'This terminal'} can't take a typed line, so run the command on the computer.";
+}
+
+/// Whether [window]'s screen changes over [gap]: the agent in it is at work (a spinner, a clock, output).
+Future<bool> screenChanges(Terminals terms, String window, {Duration gap = const Duration(seconds: 2)}) async {
+  final before = await terms.plainScreen(window);
+  await Future<void>.delayed(gap);
+  return await terms.plainScreen(window) != before;
+}
+
+/// Switches [agent] in [window] (an agent window no live session claims) to reporting its session to PocketTerm.
+/// omp quits and starts again on the same conversation: Esc stops a run, Ctrl+C empties its editor (Ctrl+U clears
+/// one line only), Ctrl+D on an empty editor quits; once the foreground program on [tty] isn't omp anymore (or
+/// after [noTty], where the terminal tells no tty) the shell gets `omp -c`. Claude Code reloads its plugins in place.
+Future<void> switchToConversation(
+  Terminals terms,
+  String window,
+  Agent agent, {
+  String tty = '',
+  Duration settle = const Duration(milliseconds: 400),
+  Duration quitFor = const Duration(seconds: 8),
+  Duration noTty = const Duration(seconds: 2),
+  Duration pollEvery = const Duration(milliseconds: 250),
+}) async {
+  if (!terms.can(window, TermCap.keys) || !terms.can(window, TermCap.type)) {
+    throw TerminalException(
+      "${terms.hostOf(window)?.label ?? 'This terminal'} can't press keys and type here, so switch it on the computer.",
+    );
+  }
+  switch (agent) {
+    case Agent.claude:
+      await terms.send(window, '/reload-plugins', enter: true);
+    case Agent.omp:
+      await terms.pressKeys(window, const ['esc']);
+      await Future<void>.delayed(settle);
+      await terms.pressKeys(window, const ['ctrl+c']);
+      await Future<void>.delayed(settle);
+      await terms.pressKeys(window, const ['ctrl+d']);
+      if (tty.isEmpty) {
+        await Future<void>.delayed(noTty);
+      } else {
+        final until = DateTime.now().add(quitFor);
+        while (Agent.ofProgram((await terms.snapshot()).foreground(tty)?.program ?? '') == Agent.omp) {
+          if (DateTime.now().isAfter(until)) {
+            throw TerminalException("omp didn't quit. Quit it on the computer, then run ${agent.command} -c there.");
+          }
+          await Future<void>.delayed(pollEvery);
+        }
+      }
+      await terms.send(window, '${agent.command} -c', enter: true);
+  }
 }
 
 /// One session's screen followed for pickers: when it was last told to look

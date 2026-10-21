@@ -32,8 +32,10 @@ import 'package:pocketterm_core/agent.dart';
 //   Mac → phone   live   {session, epoch, ops}   changes to watched sessions, batched
 //   Mac → phone   screen {window, v, lines? | diff?, colors?}   a watched window's text (ANSI lines),
 //                        whole (lines) or as a ScreenDiff on version v - 1
-//   phone → Mac   run    {id, op, …}   see TerminalBridge._onRun
-//   Mac → phone   ran    {id, error?, window?}
+//   phone → Mac   run    {id, op, …}   see TerminalBridge._onRun; probe {window}: does its screen change over 2 s,
+//                        switch {window, agent}: a screen-only agent window to its conversation (omp quits and
+//                        runs omp -c, Claude Code types /reload-plugins)
+//   Mac → phone   ran    {id, error?, window?, busy?}   busy: probe's answer
 //
 // Extension ↔ Mac, as JSON frames with the local API's bearer token, over
 // either transport (one connection per session, frames in order):

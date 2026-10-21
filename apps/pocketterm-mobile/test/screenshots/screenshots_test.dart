@@ -282,6 +282,66 @@ void main() {
     r.flush();
   });
 
+  testWidgets('switch a screen-only session', variant: _ios, (tester) async {
+    if (skipped()) return;
+    const window = 'kitty-1/7';
+    final state = _state();
+    late final TerminalRemote r;
+    r =
+        TerminalRemote(
+            SupabaseClient('http://localhost:1', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false)),
+            'user',
+            cache,
+            desktopId: 'abcd1234',
+            from: 'phone',
+            // omp is at work in it.
+            send: (event, p) {
+              if (event == 'run' && p['op'] == 'probe') Future(() => r.handle('ran', {'id': p['id'], 'busy': true}));
+            },
+          )
+          ..handle('state', {
+            ...state,
+            'windows': [
+              ...state['windows'] as List,
+              {'key': window, 'title': 'omp', 'cwd': _seeds, 'program': 'omp', 'app': 'kitty'},
+            ],
+            'agents': {'omp': 'installed', 'claude': 'installed'},
+          })
+          ..handle('screen', {
+            'window': window,
+            'v': 1,
+            'lines': [
+              ' Import the 2026 seed list from suppliers.csv',
+              '',
+              ' I will read the CSV, match each row to a catalog entry and',
+              ' add the new varieties with their sowing months.',
+              '',
+              ' ╭──────────────────────────────────────────────╮',
+              ' │ \$ python scripts/import_seeds.py suppliers.csv │',
+              ' ├─── Output ───────────────────────────────────┤',
+              ' │ 412 rows read                                │',
+              ' │ 388 matched, 24 new                          │',
+              ' ╰──────────────────────────────────────────────╯',
+              '',
+              ' ⠼ 41s > Opus > seed-catalog',
+              '╰─',
+            ],
+          });
+    await app(tester, terminal: r);
+    final row = find.byKey(const ValueKey('term-$window'));
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    await tester.tap(row);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.byKey(const ValueKey('switch-open')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    await save(tester, 'phone-switch.png');
+    r.flush();
+  });
+
   testWidgets('session', variant: _ios, (tester) async {
     if (skipped()) return;
     final r = remote();

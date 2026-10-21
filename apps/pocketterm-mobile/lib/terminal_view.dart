@@ -13,6 +13,7 @@ import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/session_view.dart';
 import 'package:pocketterm_mobile/swipe_action.dart';
+import 'package:pocketterm_mobile/switch_view.dart';
 
 // Line height 1.2: box-drawing characters still nearly join up.
 const _mono = TextStyle(fontFamily: 'Menlo', fontFamilyFallback: ['Courier'], fontSize: 11, height: 1.2);
@@ -84,10 +85,10 @@ String termLabel(String app) => switch (app) {
 /// shown in iTerm2.
 String termBadge(TermWindow w) => w.app == 'tmux' && w.via.isNotEmpty ? 'tmux · ${w.via}' : termLabel(w.app);
 
-/// [termBadge] as a small rounded label.
+/// A small rounded label on a list row: a window's terminal ([termBadge]), or that it shows only as a screen.
 class TermBadge extends StatelessWidget {
-  const TermBadge(this.window, {super.key});
-  final TermWindow window;
+  const TermBadge(this.text, {super.key});
+  final String text;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -97,17 +98,22 @@ class TermBadge extends StatelessWidget {
       borderRadius: BorderRadius.circular(5),
       border: Border.all(color: C.line2),
     ),
-    child: Text(termBadge(window), style: const TextStyle(fontSize: 11, color: C.dim, height: 1.3)),
+    child: Text(text, style: const TextStyle(fontSize: 11, color: C.dim, height: 1.3)),
   );
 }
 
-/// A list row's line after [w]'s badge, when the window is known.
-Widget _badged(TermWindow? w, Widget line) => w == null
+/// A list row's line after [w]'s badge, when the window is known; [screenOnly]: a coding agent's window no live
+/// session claims, badged so.
+Widget _badged(TermWindow? w, Widget line, {bool screenOnly = false}) => w == null
     ? line
     : Row(
         children: [
-          TermBadge(w),
+          TermBadge(termBadge(w)),
           const SizedBox(width: 6),
+          if (screenOnly) ...[
+            TermBadge('Screen only', key: ValueKey('screen-only-${w.key}')),
+            const SizedBox(width: 6),
+          ],
           Expanded(child: line),
         ],
       );
@@ -710,6 +716,8 @@ class _TerminalListState extends State<TerminalList> {
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 13, color: C.dim),
         ),
+        // The rows here are the windows no live session claims.
+        screenOnly: w.agent != null,
       ),
     ),
   );
@@ -771,6 +779,8 @@ class _TerminalListState extends State<TerminalList> {
       if (_sort == ProjectSort.activity) _ranked = [for (final g in groups) g.cwd];
       final claimed = {for (final s in remote.sessions) ?s.window};
       final windows = remote.windows.where((w) => !claimed.contains(w.key)).toList();
+      // Agent windows the phone can switch to the conversation view; the others say why they show as screens.
+      final switchable = windows.where((w) => canSwitch(remote, w)).length;
       // The sessions and windows, in each platform's grouped cards.
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -798,9 +808,22 @@ class _TerminalListState extends State<TerminalList> {
                       title: groups.isEmpty ? 'WINDOWS' : 'OTHER WINDOWS',
                       children: const [],
                     ),
-                    // An agent whose PocketTerm integration doesn't report: out of date, or installed after it started.
+                    if (switchable > 0)
+                      Padding(
+                        key: const ValueKey('switch-tip'),
+                        padding: const EdgeInsets.fromLTRB(32, 0, 24, 8),
+                        child: Text(
+                          switchable == 1
+                              ? '1 session shows only its screen. Tap it to switch it to the conversation view.'
+                              : '$switchable sessions show only their screen. Tap one to switch it to the '
+                                    'conversation view.',
+                          style: const TextStyle(fontSize: 12, color: C.dim2, height: 1.4),
+                        ),
+                      ),
+                    // An agent whose PocketTerm integration doesn't report: out of date, or installed after it
+                    // started in a window the phone can't switch.
                     for (final agent in Agent.values)
-                      if (windows.any((w) => w.agent == agent))
+                      if (windows.any((w) => w.agent == agent && !canSwitch(remote, w)))
                         Padding(
                           key: ValueKey('${agent.command}-screens-only'),
                           padding: const EdgeInsets.fromLTRB(32, 0, 24, 8),
@@ -1235,6 +1258,7 @@ class _TerminalPageState extends State<TerminalPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Reveal(visible: note != null, child: note ?? const SizedBox.shrink()),
+            SwitchBanner(remote: remote, window: widget.window),
             Expanded(
               child: gone
                   ? const Center(

@@ -3,121 +3,114 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
-import 'package:pocketterm_core/live.dart';
+import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal_channel.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// A Realtime server on loopback, speaking Phoenix's 2.0.0 text frames
-/// (`[join_ref, ref, topic, event, payload]`), that answers each join of the
-/// terminal topic with the next of [joinReplies] ('ok' once they run out).
-class _FakeRealtime {
-  _FakeRealtime(this.joinReplies);
+const _topic = 'abcd1234';
 
-  final List<String> joinReplies;
-  late final HttpServer _server;
+/// A PocketTerm server on loopback as far as the live channel goes
+/// (packages/pocketterm_server/PROTOCOL.md): `GET /v1/me`, and `GET /v1/ws`
+/// answering joins of [_topic]. It refuses the first [refuse] connections at
+/// the door, and can drop or end the one there is.
+class _FakeServer {
+  _FakeServer({this.refuse = 0});
+
+  int refuse;
+  late final HttpServer _http;
   late WebSocket _ws;
-  String? _joinRef;
 
-  /// Joins of the terminal topic so far, as they arrive.
+  /// Joins so far, as they arrive.
   final joins = StreamController<int>.broadcast();
   int joinCount = 0;
 
-  static const topic = 'realtime:terminal:u1:abcd1234';
+  /// What the client sent on the topic.
+  final sent = <({String event, Map<String, dynamic> payload})>[];
 
-  int get port => _server.port;
+  int get port => _http.port;
 
   Future<void> start() async {
-    _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    _server.listen((req) async {
+    _http = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    _http.listen((req) async {
+      final authorized = req.headers.value('authorization') == 'Bearer token-1';
+      if (req.uri.path == '/v1/me') {
+        req.response.statusCode = authorized ? 200 : 401;
+        req.response.write(
+          jsonEncode({
+            'device': {'id': 'dev0000000000001', 'role': 'phone', 'label': 'iPhone', 'platform': 'ios'},
+            'server': {'id': 'srv0000000000001'},
+          }),
+        );
+        await req.response.close();
+        return;
+      }
+      if (req.uri.path != '/v1/ws' || !authorized || refuse > 0) {
+        refuse--;
+        req.response.statusCode = 401;
+        await req.response.close();
+        return;
+      }
       final ws = _ws = await WebSocketTransformer.upgrade(req);
-      ws.listen((frame) {
-        final m = jsonDecode(frame as String) as List<dynamic>;
-        final (joinRef, ref, topic, event) = (m[0], m[1], m[2] as String, m[3] as String);
-        if (topic == 'phoenix' && event == 'heartbeat') {
-          ws.add(
-            jsonEncode([
-              null,
-              ref,
-              'phoenix',
-              'phx_reply',
-              {'status': 'ok', 'response': <String, Object>{}},
-            ]),
-          );
-        } else if (topic == _FakeRealtime.topic && event == 'phx_join') {
-          final status = joinCount < joinReplies.length ? joinReplies[joinCount] : 'ok';
-          joinCount++;
-          _joinRef = joinRef as String?;
-          ws.add(
-            jsonEncode([
-              joinRef,
-              ref,
-              topic,
-              'phx_reply',
-              {
-                'status': status,
-                'response': status == 'ok' ? <String, Object>{} : {'reason': 'Unauthorized'},
-              },
-            ]),
-          );
-          joins.add(joinCount);
-        } else if (event == 'phx_leave') {
-          ws.add(
-            jsonEncode([
-              joinRef,
-              ref,
-              topic,
-              'phx_reply',
-              {'status': 'ok', 'response': <String, Object>{}},
-            ]),
-          );
+      ws.listen((data) {
+        final frame = jsonDecode(data as String) as Map<String, dynamic>;
+        switch (frame) {
+          case {'t': 'join', 'topic': _topic}:
+            joinCount++;
+            ws.add(jsonEncode({'t': 'joined', 'topic': _topic}));
+            joins.add(joinCount);
+          case {'t': 'send', 'topic': _topic, 'event': final String event, 'payload': final Map<String, dynamic> p}:
+            sent.add((event: event, payload: p));
+          case {'t': 'ping'}:
+            ws.add(jsonEncode({'t': 'pong'}));
         }
       });
     });
   }
 
-  /// The server ends the channel, as Realtime does when the token it joined
-  /// with expires.
-  void closeChannel() => _ws.add(jsonEncode([_joinRef, null, topic, 'phx_close', <String, Object>{}]));
+  /// Relays [payload] of [event] to the client, as from another device.
+  void deliver(String event, Map<String, dynamic> payload) =>
+      _ws.add(jsonEncode({'t': 'msg', 'topic': _topic, 'event': event, 'payload': payload}));
 
-  /// As a Dart client sends one: the payload's fields next to `type` and `event`.
-  void broadcast(String event, Map<String, dynamic> payload) => _ws.add(
-    jsonEncode([
-      null,
-      null,
-      topic,
-      'broadcast',
-      {'type': 'broadcast', 'event': event, ...payload},
-    ]),
-  );
+  /// Closes the connection there is with [code]: 1001 the server stopping,
+  /// 4003 this device revoked.
+  Future<void> drop(int code) => _ws.close(code);
 
   Future<void> stop() async {
     await joins.close();
-    await _server.close(force: true);
+    await _http.close(force: true);
   }
 }
 
 void main() {
-  late _FakeRealtime server;
-  late SupabaseClient client;
+  late _FakeServer server;
+  late PocketTermServerClient client;
   late TerminalChannel channel;
   late List<bool> states;
   late List<Map<String, dynamic>> received;
   final key = ChannelKey(List.filled(32, 3));
-  final topic = terminalTopic('u1', 'abcd1234');
 
-  /// The computer's side of the topic, sealing what [_FakeRealtime.broadcast] relays.
-  final computer = ChannelSeal(key, topic, side: ChannelSide.desktop);
+  /// The computer's side of the topic, sealing what [_FakeServer.deliver] relays.
+  final computer = ChannelSeal(key, _topic, side: ChannelSide.desktop);
 
-  Future<void> setUpServer(List<String> joinReplies) async {
-    server = _FakeRealtime(joinReplies);
+  Future<void> setUpServer({int refuse = 0}) async {
+    server = _FakeServer(refuse: refuse);
     await server.start();
-    client = SupabaseClient('http://127.0.0.1:${server.port}', 'anon');
+    final backend = Backend(url: 'http://127.0.0.1:${server.port}');
+    final tokens = MemoryDeviceTokens()
+      ..value = jsonEncode({
+        'url': backend.url,
+        'token': 'token-1',
+        'server': 'srv0000000000001',
+        'device': {'id': 'dev0000000000001', 'role': 'phone', 'label': 'iPhone', 'platform': 'ios'},
+      });
+    client = PocketTermServerClient(backend, tokens: tokens);
+    expect(await client.restore(), isFalse);
     states = [];
     received = [];
     channel = TerminalChannel(
       client,
-      topic,
+      _topic,
       {'state': received.add},
       key: key,
       side: ChannelSide.phone,
@@ -127,10 +120,10 @@ void main() {
   }
 
   Future<void> joined(int count) =>
-      server.joins.stream.firstWhere((n) => n >= count).timeout(const Duration(seconds: 5));
+      server.joins.stream.firstWhere((n) => n >= count).timeout(const Duration(seconds: 10));
 
   Future<void> until(bool Function() check) async {
-    for (var i = 0; i < 300 && !check(); i++) {
+    for (var i = 0; i < 500 && !check(); i++) {
       await Future<void>.delayed(const Duration(milliseconds: 10));
     }
     expect(check(), isTrue);
@@ -138,53 +131,78 @@ void main() {
 
   tearDown(() async {
     await channel.close();
-    await client.dispose();
+    client.close();
     await server.stop();
   });
 
-  test('a channel the server closes is joined again, and broadcasts reach it after', () async {
-    await setUpServer(const []);
+  test('a connection the server drops is made again, and messages reach it after', () async {
+    await setUpServer();
     channel.open();
     await joined(1);
     await until(() => channel.joined);
 
-    server.closeChannel();
+    await server.drop(1001);
     await until(() => !channel.joined);
     await joined(2);
     await until(() => channel.joined);
     expect(states, [true, false, true]);
 
-    server.broadcast('state', await computer.seal('state', {'windows': 3}));
+    server.deliver('state', await computer.seal('state', {'windows': 3}));
     await until(() => received.isNotEmpty);
     expect(received.single, {'windows': 3});
   });
 
-  test('opened messages reach the handler in the order they came; unsealed ones never do', () async {
-    await setUpServer(const []);
-    channel.open();
-    await until(() => channel.joined);
+  test(
+    'opened messages reach the handler in the order they came; unsealed ones never do; sent ones go sealed',
+    () async {
+      await setUpServer();
+      channel.open();
+      await until(() => channel.joined);
 
-    server.broadcast('state', {'windows': 99});
-    for (var i = 0; i < 20; i++) {
-      server.broadcast('state', await computer.seal('state', {'windows': i}));
-    }
-    await until(() => received.length == 20);
-    expect([for (final m in received) m['windows']], List.generate(20, (i) => i));
-  });
+      server.deliver('state', {'windows': 99});
+      for (var i = 0; i < 20; i++) {
+        server.deliver('state', await computer.seal('state', {'windows': i}));
+      }
+      await until(() => received.length == 20);
+      expect([for (final m in received) m['windows']], List.generate(20, (i) => i));
 
-  test('a refused join (an expired token) is tried again until it is let in', () async {
-    await setUpServer(const ['error', 'error']);
+      await channel.send('hello', {'from': 'phone'});
+      await until(() => server.sent.isNotEmpty);
+      final (:event, :payload) = server.sent.single;
+      expect(payload.keys, unorderedEquals(['v', 'n', 'c']), reason: 'the server sees only the envelope');
+      expect(await computer.open(event, payload), {'from': 'phone'});
+    },
+  );
+
+  test('a connection refused at the door is tried again until it is let in', () async {
+    await setUpServer(refuse: 2);
     channel.open();
-    await joined(3);
+    await joined(1);
     await until(() => channel.joined);
     expect(states, [true]);
+    expect(client.account, isNotNull, reason: 'the token itself still works');
   });
 
   test('after close nothing joins again', () async {
-    await setUpServer(const ['error']);
+    await setUpServer();
     channel.open();
     await joined(1);
     await channel.close();
+    await server.drop(1001);
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
+    expect(server.joinCount, 1);
+    expect(channel.joined, isFalse);
+  });
+
+  test('a close for a revoked device ends the sign-in, and nothing joins again', () async {
+    await setUpServer();
+    var ended = false;
+    client.ended.listen((_) => ended = true);
+    channel.open();
+    await joined(1);
+    await server.drop(4003);
+    await until(() => ended);
+    expect(client.account, isNull);
     await Future<void>.delayed(const Duration(milliseconds: 1500));
     expect(server.joinCount, 1);
     expect(channel.joined, isFalse);

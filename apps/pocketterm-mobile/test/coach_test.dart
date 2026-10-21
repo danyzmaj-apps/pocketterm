@@ -8,7 +8,6 @@ import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_mobile/mobile.dart';
 import 'package:pocketterm_mobile/session_view.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'screenshots/fakes.dart';
 
@@ -19,18 +18,13 @@ void main() {
   late Directory dir;
   late List<(String, Map<String, dynamic>)> sent;
   late TerminalRemote remote;
-  final client = SupabaseClient(
-    'http://localhost:1',
-    'anon',
-    authOptions: const AuthClientOptions(autoRefreshToken: false),
-  );
+  final client = offlineServer();
 
   setUp(() {
     dir = Directory.systemTemp.createTempSync('pocketterm_coach');
     sent = [];
     remote = TerminalRemote(
       client,
-      'u1',
       dir,
       desktopId: 'abcd1234',
       key: testKey,

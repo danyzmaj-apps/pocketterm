@@ -155,7 +155,6 @@ void main() {
 
     expect(seen, ProvisionStep.values);
     expect(backend.url, 'https://abc.supabase.co');
-    expect(backend.key, 'sb_publishable_abc');
     expect(api.auth['external_github_enabled'], isTrue);
     expect(api.auth['external_github_client_id'], 'Iv1.id');
     expect(api.auth['site_url'], 'pocketterm://login-callback');

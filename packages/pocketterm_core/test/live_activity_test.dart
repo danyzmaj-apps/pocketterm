@@ -2,11 +2,12 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/live_activity.dart';
+import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   LiveSummary summary({bool busy = false, LiveAsk? ask}) => LiveSummary(
@@ -66,9 +67,9 @@ void main() {
     );
     final dir = Directory.systemTemp.createTempSync('pocketterm_activity');
     addTearDown(() => dir.deleteSync(recursive: true));
-    final client = SupabaseClient('http://localhost:1', 'anon');
+    final client = PocketTermServerClient(const Backend(url: 'http://localhost:1'), tokens: MemoryDeviceTokens());
     final remote =
-        TerminalRemote(client, 'u1', dir, desktopId: 'abcd1234', key: ChannelKey(List.filled(32, 7)), send: (_, _) {})
+        TerminalRemote(client, dir, desktopId: 'abcd1234', key: ChannelKey(List.filled(32, 7)), send: (_, _) {})
           ..handle('state', {
             'windows': const <Object>[],
             'sessions': [

@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pocketterm_core/server_client.dart';
 
-/// A computer running PocketTerm for this account (table `desktops`): it
+/// A computer running PocketTerm on this server (GET /v1/desktops): it
 /// refreshes [seenAt] every minute while its terminal bridge runs, and the
-/// phone talks to it on its own topic (terminalTopic in lib/live.dart).
+/// phone talks to it on its own topic, its id.
 @immutable
 class Desktop {
   const Desktop({required this.id, required this.name, required this.platform, required this.seenAt});
@@ -43,17 +43,17 @@ class Desktop {
   int get hashCode => Object.hash(id, name, platform, seenAt);
 }
 
-/// Phone: the account's computers, newest seen first, and the one the
+/// Phone: the server's computers, newest seen first, and the one the
 /// Terminal tab shows ([selected]).
 class Desktops extends ChangeNotifier {
   /// [cached]: the list as last seen, [saved]: the computer last shown, both
   /// from before this launch (shown until the server says otherwise);
   /// [onChanged] keeps them for the next one.
-  Desktops(this._client, {List<Desktop> cached = const [], String? saved, this.onChanged})
+  Desktops(this._server, {List<Desktop> cached = const [], String? saved, this.onChanged})
     : all = cached,
       _selectedId = saved;
 
-  final SupabaseClient _client;
+  final PocketTermServerClient _server;
 
   /// The list or the selection changed.
   final void Function(List<Desktop> all, String? selected)? onChanged;
@@ -73,8 +73,7 @@ class Desktops extends ChangeNotifier {
   /// Fetches the list; on failure the last one stays.
   Future<void> refresh() async {
     try {
-      final rows = await _client.from('desktops').select('id,name,platform,seen_at').order('seen_at', ascending: false);
-      apply(rows);
+      apply(await _server.desktops());
     } on Object catch (e) {
       debugPrint('PocketTerm: computers: $e');
     }

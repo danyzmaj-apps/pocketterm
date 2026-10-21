@@ -8,10 +8,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/apple_terminal.dart';
+import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/ghostty.dart';
 import 'package:pocketterm_core/iterm.dart';
 import 'package:pocketterm_core/kitty.dart';
+import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/terminals.dart';
@@ -19,7 +21,6 @@ import 'package:pocketterm_core/tmux.dart';
 import 'package:pocketterm_core/wezterm.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:pocketterm_desktop/terminal_bridge.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show SupabaseClient;
 
 /// Terminals that touch nothing on this Mac; [tmux]: an executable that exists.
 Terminals _terms({bool tmux = false}) => Terminals(
@@ -105,8 +106,7 @@ void main() {
     final runs = <Map<String, dynamic>>[];
     late final TerminalRemote phone;
     phone = TerminalRemote(
-      SupabaseClient('http://localhost:1', 'anon'),
-      'u1',
+      PocketTermServerClient(const Backend(url: 'http://localhost:1'), tokens: MemoryDeviceTokens()),
       dir,
       desktopId: 'abcd1234',
       key: key,
@@ -123,7 +123,7 @@ void main() {
     await phone.prompt('kitty-1/2', 'look', images: [png]);
 
     final path = (runs.single['images'] as List).single as String;
-    expect(path, startsWith('u1/'));
+    expect(PocketTermServerClient.isBlobPath(path), isTrue);
     final sealed = stored[path]!;
     expect(sealed, isNot(containsAllInOrder(png)), reason: 'Storage never holds the image itself');
     expect(await TerminalBridge.openImage(key, path, sealed), png);
@@ -132,7 +132,7 @@ void main() {
       'image/png',
     );
     await expectLater(TerminalBridge.openImage(ChannelKey.generate(), path, sealed), throwsA(isA<LiveException>()));
-    await expectLater(TerminalBridge.openImage(key, 'u1/another', sealed), throwsA(isA<LiveException>()));
+    await expectLater(TerminalBridge.openImage(key, 'another', sealed), throwsA(isA<LiveException>()));
   });
 
   group('switching a screen-only agent window to its conversation', () {

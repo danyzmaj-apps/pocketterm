@@ -7,71 +7,69 @@ import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/native.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// The Supabase project PocketTerm connects through: each user runs their own
-/// (see docs/SELF_HOSTING.md). The computer enters it on its setup screen or
-/// opens a setup link (`pocketterm://setup?url=…&key=…`, printed by
-/// apps/pocketterm-desktop/tool/setup-backend.sh); a phone learns it only from the
-/// computer's code, a setup link with a sign-in code in it (`…&code=…`,
-/// functions/pair). A computer keeps it in its shared preferences; a phone
-/// where its native side reads it too: the App Group on iOS
-/// (apps/pocketterm-mobile/ios/Shared/PocketTermShared.swift, read by the push
-/// extension), shared preferences on Android (PocketTermShared.kt).
+/// The PocketTerm server this device connects through
+/// (packages/pocketterm_server/PROTOCOL.md): one on a VPS, or the one built
+/// into a computer's app, reached on the same network or through Tailscale.
+/// A computer signs in with the server's setup link
+/// (`pocketterm://setup?url=…&setup=…`, printed by the server); a phone
+/// with a computer's code, a setup link with a pairing code and that
+/// computer's key in it (`pocketterm://setup?url=…&code=…&d=…&k=…`). A
+/// computer keeps it in its shared preferences; a phone where its native
+/// side reads it too: the App Group on iOS
+/// (apps/pocketterm-mobile/ios/Shared/PocketTermShared.swift), shared
+/// preferences on Android (PocketTermShared.kt).
 @immutable
 class Backend {
-  const Backend({required this.url, required this.key});
+  const Backend({required this.url});
 
-  /// The project URL, `https://<ref>.supabase.co` or a self-hosted origin,
-  /// without a trailing slash.
+  /// The server's public URL, `https://pocketterm.example.com` or
+  /// `http://100.101.102.103:47900`, without a trailing slash.
   final String url;
 
-  /// The project's publishable (or legacy anon) key: safe in a client; row
-  /// level security guards the data.
-  final String key;
-
-  /// [url] and [key] as typed, or a reason they can't be used.
-  static ({Backend? backend, String? error}) parse(String url, String key) {
-    final k = key.trim();
+  /// [url] as typed, or a reason it can't be used.
+  static ({Backend? backend, String? error}) parse(String url) {
     var u = url.trim();
     while (u.endsWith('/')) {
       u = u.substring(0, u.length - 1);
     }
-    // The Data API URL from the dashboard works too.
-    u = u.replaceFirst(RegExp(r'/(rest|auth|functions)/v1$'), '');
+    // The API's own path works too.
+    u = u.replaceFirst(RegExp(r'/v1$'), '');
     final uri = Uri.tryParse(u);
     if (u.isEmpty || uri == null || !uri.hasScheme || uri.host.isEmpty) {
-      return (backend: null, error: 'Enter your project URL, like https://abcdefgh.supabase.co.');
+      return (backend: null, error: 'Enter your server URL, like https://pocketterm.example.com.');
     }
     if (uri.scheme != 'https' && !(uri.scheme == 'http' && _isLocal(uri.host))) {
-      return (backend: null, error: 'The project URL must start with https:// (http:// only for a local server).');
-    }
-    if (uri.path.isNotEmpty || uri.hasQuery || uri.hasFragment) {
-      return (backend: null, error: 'Use the project URL alone, without a path.');
-    }
-    if (k.isEmpty) return (backend: null, error: 'Enter the publishable key.');
-    if (k.startsWith('sb_secret_') || _jwtRole(k) == 'service_role') {
       return (
         backend: null,
-        error: 'That is a secret key. Use the publishable (or anon) key: never put a secret key in an app.',
+        error: 'The server URL must start with https:// (http:// only on this network or through Tailscale).',
       );
     }
-    return (backend: Backend(url: u, key: k), error: null);
+    if (uri.path.isNotEmpty || uri.hasQuery || uri.hasFragment) {
+      return (backend: null, error: 'Use the server URL alone, without a path.');
+    }
+    return (backend: Backend(url: u), error: null);
   }
 
-  /// A `pocketterm://setup?url=…&key=…` link (its sign-in code, if any, is
-  /// [pairingCode]'s).
+  /// A `pocketterm://setup?url=…` link (its pairing code, if any, is
+  /// [pairingCode]'s; its setup token [setupToken]'s).
   static Backend? fromLink(Uri uri) {
     if (uri.scheme != 'pocketterm' || uri.host != 'setup') return null;
     final url = uri.queryParameters['url'];
-    final key = uri.queryParameters['key'];
-    if (url == null || key == null) return null;
-    return parse(url, key).backend;
+    return url == null ? null : parse(url).backend;
   }
 
-  /// The sign-in code in a setup link (the Mac's QR), if it has one.
-  static String? pairingCode(Uri uri) {
+  /// The pairing code in a setup link (the computer's QR), if it has one:
+  /// it signs a phone in.
+  static String? pairingCode(Uri uri) => _param(uri, 'code');
+
+  /// The setup token in a server's setup link, if it has one: it signs a
+  /// computer in.
+  static String? setupToken(Uri uri) => _param(uri, 'setup');
+
+  static String? _param(Uri uri, String name) {
     if (fromLink(uri) == null) return null;
-    final code = uri.queryParameters['code']?.trim() ?? '';
-    return code.isEmpty ? null : code;
+    final value = uri.queryParameters[name]?.trim() ?? '';
+    return value.isEmpty ? null : value;
   }
 
   /// The computer and its channel key in a setup link (`d`, `k`: the
@@ -85,9 +83,9 @@ class Backend {
     return (desktop: desktop, key: key);
   }
 
-  Uri get link => Uri(scheme: 'pocketterm', host: 'setup', queryParameters: {'url': url, 'key': key});
+  Uri get link => Uri(scheme: 'pocketterm', host: 'setup', queryParameters: {'url': url});
 
-  /// [link] with a sign-in code and, from a computer, its [computer] key:
+  /// [link] with a pairing code and, from a computer, its [computer] key:
   /// what the computer's QR holds. A secret: whoever has it reads that
   /// computer's sessions.
   Uri linkWithCode(String code, {ComputerKey? computer}) => Uri(
@@ -95,7 +93,6 @@ class Backend {
     host: 'setup',
     queryParameters: {
       'url': url,
-      'key': key,
       'code': code,
       if (computer != null) ...{'d': computer.desktop, 'k': computer.key.toBase64Url()},
     },
@@ -104,43 +101,32 @@ class Backend {
   /// The host, for display.
   String get host => Uri.parse(url).host;
 
+  /// Plain http is fine on this machine, the local network and Tailscale
+  /// (100.64.0.0/10, MagicDNS names under ts.net), which encrypts it.
   static bool _isLocal(String host) =>
       host == 'localhost' ||
       host.endsWith('.local') ||
-      RegExp(r'^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)').hasMatch(host);
+      host.endsWith('.ts.net') ||
+      RegExp(r'^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)')
+          .hasMatch(host);
 
-  static String? _jwtRole(String key) {
-    final parts = key.split('.');
-    if (parts.length != 3) return null;
-    try {
-      final payload = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
-      return payload is Map ? payload['role'] as String? : null;
-    } on Object {
-      return null;
-    }
-  }
+  /// The protocol version this app speaks (GET /v1/health).
+  static const protocol = 1;
 
-  /// Asks the project's auth server for its settings: reachable, the key is
-  /// accepted and, for a device that signs in with it ([github], the Mac),
-  /// GitHub sign-in is on. Null when all is well, else what's wrong.
-  Future<String?> check({bool github = true}) async {
+  /// Asks the server for its health: reachable, a PocketTerm server, one
+  /// this app speaks to. Null when all is well, else what's wrong.
+  Future<String?> check() async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      final req = await client.getUrl(Uri.parse('$url/auth/v1/settings'));
-      req.headers.set('apikey', key);
+      final req = await client.getUrl(Uri.parse('$url/v1/health'));
       final res = await req.close().timeout(const Duration(seconds: 10));
       final body = await utf8.decodeStream(res);
-      if (res.statusCode == 401 || res.statusCode == 403) {
-        return 'The project refused this key. Copy the publishable key from Project Settings → API Keys.';
-      }
-      if (res.statusCode == 404) return 'No Supabase project answers at this URL.';
-      if (res.statusCode != 200) return 'The project answered with an error (${res.statusCode}).';
-      final settings = jsonDecode(body);
-      final external = settings is Map ? settings['external'] : null;
-      if (github && !(external is Map && external['github'] == true)) {
-        return 'GitHub sign-in is off on this project. Run apps/pocketterm-desktop/tool/setup-backend.sh again, or turn it '
-            'on under Authentication → Sign In / Providers (docs/SELF_HOSTING.md).';
-      }
+      if (res.statusCode == 404) return 'No PocketTerm server answers at this URL.';
+      if (res.statusCode != 200) return 'The server answered with an error (${res.statusCode}).';
+      final health = jsonDecode(body);
+      final version = health is Map ? health['pocketterm'] : null;
+      if (version is! int) return 'No PocketTerm server answers at this URL.';
+      if (version > protocol) return 'Your server is newer than this app. Update PocketTerm, then retry.';
       return null;
     } on HandshakeException {
       return "Couldn't make a secure connection to $host.";
@@ -150,37 +136,37 @@ class Backend {
     } on TimeoutException {
       return '$host took too long to answer.';
     } on FormatException {
-      return "That URL doesn't look like a Supabase project.";
+      return 'No PocketTerm server answers at this URL.';
     } finally {
       client.close(force: true);
     }
   }
 
-  /// The backend this device was connected to, if any.
+  /// The server this device was connected to, if any. One saved by an app
+  /// from before (a Supabase project, which came with a key) isn't one.
   static Future<Backend?> load({bool? desktop}) async {
     if (_inPrefs(desktop)) {
       final prefs = await SharedPreferences.getInstance();
       final url = prefs.getString(_urlKey);
-      final key = prefs.getString(_keyKey);
-      return url == null || key == null ? null : parse(url, key).backend;
+      return url == null || prefs.containsKey(_oldKeyKey) ? null : parse(url).backend;
     }
     final saved = await Native.getBackend();
-    if (saved == null) return null;
-    return parse(saved.url, saved.key).backend;
+    if (saved == null || saved.legacy) return null;
+    return parse(saved.url).backend;
   }
 
   Future<void> save({bool? desktop}) async {
-    if (!_inPrefs(desktop)) return await Native.setBackend(url: url, key: key);
+    if (!_inPrefs(desktop)) return await Native.setBackend(url: url);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_urlKey, url);
-    await prefs.setString(_keyKey, key);
+    await prefs.remove(_oldKeyKey);
   }
 
   static Future<void> clear({bool? desktop}) async {
     if (!_inPrefs(desktop)) return await Native.setBackend();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_urlKey);
-    await prefs.remove(_keyKey);
+    await prefs.remove(_oldKeyKey);
   }
 
   /// A computer ([desktop], macOS and Windows unless told) keeps it in its
@@ -188,11 +174,13 @@ class Backend {
   /// reads it too.
   static bool _inPrefs(bool? desktop) => desktop ?? (Platform.isMacOS || Platform.isWindows);
   static const _urlKey = 'backend_url';
-  static const _keyKey = 'backend_key';
+
+  /// Where an app from before kept its Supabase project's key.
+  static const _oldKeyKey = 'backend_key';
 
   @override
-  bool operator ==(Object other) => other is Backend && other.url == url && other.key == key;
+  bool operator ==(Object other) => other is Backend && other.url == url;
 
   @override
-  int get hashCode => Object.hash(url, key);
+  int get hashCode => url.hashCode;
 }

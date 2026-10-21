@@ -12,7 +12,8 @@ import 'package:pocketterm_mobile/swipe_action.dart';
 import 'package:pocketterm_mobile/switch_view.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'screenshots/fakes.dart';
 
 class _Phone extends MobileSession {
   _Phone(SharedPreferences prefs) : super(prefs, 'iPhone');
@@ -32,8 +33,7 @@ void main() {
     dir = Directory.systemTemp.createTempSync('pocketterm_terminal_list');
     sent = [];
     remote = TerminalRemote(
-      SupabaseClient('http://localhost:1', 'anon'),
-      'u1',
+      offlineServer(),
       dir,
       desktopId: 'abcd1234',
       key: ChannelKey(List.filled(32, 9)),

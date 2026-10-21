@@ -14,33 +14,26 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * What the app, its notifications and its push service share, in
- * app-private storage: the backend (the Supabase project the user connected,
- * written by packages/pocketterm_core/lib/backend.dart), the FCM token and
- * each computer's channel key. Android's ios/Shared/PocketTermShared.swift.
+ * app-private storage: the server the phone connected (written by
+ * packages/pocketterm_core/lib/backend.dart), the FCM token, each
+ * computer's channel key and the phone's sign-in on its server. Android's
+ * ios/Shared/PocketTermShared.swift.
  */
 object PocketTermShared {
     private const val FILE = "pocketterm_shared"
 
-    data class Backend(val url: String, val key: String)
-
     private fun prefs(c: Context): SharedPreferences = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
-    fun backend(c: Context): Backend? {
-        val p = prefs(c)
-        val url = p.getString("backendUrl", null) ?: return null
-        val key = p.getString("backendKey", null) ?: return null
-        return Backend(url, key)
-    }
+    /** The connected PocketTerm server's URL. */
+    fun backendUrl(c: Context): String? = prefs(c).getString("backendUrl", null)
 
-    fun setBackend(c: Context, backend: Backend?) {
+    /** The key an app from before saved with a Supabase project, if any: its URL is no PocketTerm server. */
+    fun legacyBackendKey(c: Context): String? = prefs(c).getString("backendKey", null)
+
+    fun setBackendUrl(c: Context, url: String?) {
         prefs(c).edit().apply {
-            if (backend == null) {
-                remove("backendUrl")
-                remove("backendKey")
-            } else {
-                putString("backendUrl", backend.url)
-                putString("backendKey", backend.key)
-            }
+            if (url == null) remove("backendUrl") else putString("backendUrl", url)
+            remove("backendKey")
         }.apply()
     }
 
@@ -107,6 +100,36 @@ object PocketTermShared {
     /** Every computer's key that unwraps, by its id. */
     fun channelKeys(c: Context): Map<String, ByteArray> =
         keyPrefs(c).all.keys.mapNotNull { d -> channelKey(c, d)?.let { d to it } }.toMap()
+
+    // The phone's sign-in on its server (the device token and what came with
+    // it, one string the Dart side reads), wrapped like the channel keys.
+
+    private const val TOKEN_FILE = "pocketterm_device_token"
+    private const val TOKEN_AAD = "device-token"
+
+    private fun tokenPrefs(c: Context): SharedPreferences = c.getSharedPreferences(TOKEN_FILE, Context.MODE_PRIVATE)
+
+    /** Replaces it; null removes it. */
+    fun setDeviceToken(c: Context, value: String?) {
+        if (value == null) {
+            tokenPrefs(c).edit().remove("token").commit()
+            return
+        }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, wrapKey())
+        cipher.updateAAD(TOKEN_AAD.toByteArray(Charsets.UTF_8))
+        val wrapped = cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+        tokenPrefs(c).edit().putString("token", Base64.encodeToString(wrapped, Base64.NO_WRAP)).commit()
+    }
+
+    /** Null without one, or when it doesn't unwrap. */
+    fun deviceToken(c: Context): String? = runCatching {
+        val wrapped = Base64.decode(tokenPrefs(c).getString("token", null) ?: return null, Base64.NO_WRAP)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, wrapKey(), GCMParameterSpec(128, wrapped, 0, 12))
+        cipher.updateAAD(TOKEN_AAD.toByteArray(Charsets.UTF_8))
+        String(cipher.doFinal(wrapped, 12, wrapped.size - 12), Charsets.UTF_8)
+    }.getOrNull()
 
     /**
      * Opens [sealed] (nonce 12 ‖ ciphertext ‖ tag 16, AES-256-GCM) with [key]

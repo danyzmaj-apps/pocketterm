@@ -15,11 +15,11 @@ import 'package:pocketterm_core/agent.dart';
 //   iTerm2, Terminal, Ghostty): shells and anything else,
 //   and the agents' own menus when the phone needs them.
 //
-// Computer ↔ phone: the private Realtime broadcast topic
-// `terminal:<user id>:<desktop id>` ([terminalTopic]; RLS: the user's own
-// topics only), one per computer. Nothing is stored on the server. Each
-// payload below goes sealed with the computer's channel key (lib/e2e.dart,
-// lib/terminal_channel.dart): the server sees only `{v, n, c}`.
+// Computer ↔ phone: the computer's topic on the server's WebSocket (its
+// id, lib/desktops.dart; packages/pocketterm_server/PROTOCOL.md), one per
+// computer. Nothing is stored on the server. Each payload below goes sealed
+// with the computer's channel key (lib/e2e.dart, lib/terminal_channel.dart):
+// the server sees only `{v, n, c}`.
 //
 //   phone → Mac   hello  {from, session?, window?}   every 4 s while the app is in front;
 //                        session: the live session it shows, window: the screen it shows
@@ -66,13 +66,6 @@ import 'package:pocketterm_core/agent.dart';
 //                     (Claude Code); an agent that can't steer queues every prompt for the run's end
 //   Mac → ext  abort  {req}
 //   Mac → ext  older  {req, limit}   items before the oldest one sent
-
-/// The private Storage bucket images from the phone pass through.
-const imageBucket = 'terminal';
-
-/// The topic one computer ([desktopId], lib/desktops.dart) and the phones
-/// talk on.
-String terminalTopic(String userId, String desktopId) => 'terminal:$userId:$desktopId';
 
 /// A session [key] as pushes and links carry it: with the computer it's on,
 /// so a tap on the phone opens it there.
@@ -1135,8 +1128,8 @@ class ScreenDiff {
 }
 
 /// [items] split into lists whose JSON stays under [maxBytes] each: sealed
-/// (lib/e2e.dart) and in base64 a message grows by a third, and Realtime
-/// refuses big ones (a self-hosted server's default limit is 100 KB).
+/// (lib/e2e.dart) and in base64 a message grows by a third, and the server
+/// closes a socket on a frame over 256 KB.
 List<List<Map<String, dynamic>>> chunkJson(Iterable<Map<String, dynamic>> items, {int maxBytes = 40000}) {
   final out = <List<Map<String, dynamic>>>[];
   var current = <Map<String, dynamic>>[];

@@ -17,7 +17,6 @@ import 'package:pocketterm_core/desktops.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_mobile/mobile.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'fakes.dart';
 import 'fonts.dart';
@@ -232,7 +231,7 @@ void main() {
         child: MobileApp(
           session: session,
           desktops: Desktops(
-            SupabaseClient('http://localhost:1', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false)),
+            offlineServer(),
             cached: [Desktop(id: 'abcd1234', name: 'MacBook Pro', platform: 'macos', seenAt: DateTime.now())],
             saved: 'abcd1234',
           ),
@@ -248,8 +247,7 @@ void main() {
   TerminalRemote remote() =>
       TerminalRemote(
           // Never used: the remote talks through `send`.
-          SupabaseClient('http://localhost:1', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false)),
-          'user',
+          offlineServer(),
           cache,
           desktopId: 'abcd1234',
           key: testKey,
@@ -306,8 +304,7 @@ void main() {
     late final TerminalRemote r;
     return r =
         TerminalRemote(
-            SupabaseClient('http://localhost:1', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false)),
-            'user',
+            offlineServer(),
             cache,
             desktopId: 'abcd1234',
             key: testKey,

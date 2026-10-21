@@ -3,37 +3,64 @@ import Foundation
 import Security
 
 /// What the app and its push extension share through the App Group: the
-/// backend (the Supabase project the user connected, written by
-/// packages/pocketterm_core/lib/backend.dart) and each computer's channel key.
-/// Compiled into Runner and PocketTermPush.
+/// server the phone connected (written by
+/// packages/pocketterm_core/lib/backend.dart), each computer's channel key
+/// and the phone's sign-in on its server. Compiled into Runner and
+/// PocketTermPush.
 enum PocketTermShared {
   /// The App Group id, from config/PocketTerm.xcconfig through each target's
   /// Info.plist (`PocketTermAppGroup`).
   static let group = Bundle.main.object(forInfoDictionaryKey: "PocketTermAppGroup") as! String
   static let defaults = UserDefaults(suiteName: group)!
 
-  /// The connected Supabase project: its URL and publishable key.
-  struct Backend: Equatable {
-    let url: String
-    let key: String
-  }
-
-  static var backend: Backend? {
-    get {
-      guard let url = defaults.string(forKey: "backendUrl"), let key = defaults.string(forKey: "backendKey") else {
-        return nil
-      }
-      return Backend(url: url, key: key)
-    }
+  /// The connected PocketTerm server's URL.
+  static var backendUrl: String? {
+    get { defaults.string(forKey: "backendUrl") }
     set {
       if let newValue {
-        defaults.set(newValue.url, forKey: "backendUrl")
-        defaults.set(newValue.key, forKey: "backendKey")
+        defaults.set(newValue, forKey: "backendUrl")
       } else {
         defaults.removeObject(forKey: "backendUrl")
-        defaults.removeObject(forKey: "backendKey")
       }
+      // A Supabase project's key, from an app before.
+      defaults.removeObject(forKey: "backendKey")
     }
+  }
+
+  /// The key an app from before saved with a Supabase project, if any: its
+  /// URL is no PocketTerm server.
+  static var legacyBackendKey: String? { defaults.string(forKey: "backendKey") }
+
+  // MARK: Device token
+
+  /// The phone's sign-in on its server (the device token and what came with
+  /// it, one string the Dart side reads): one Keychain item, readable after
+  /// the first unlock and never leaving this device.
+  private static let tokenQuery: [String: Any] = [
+    kSecClass as String: kSecClassGenericPassword,
+    kSecAttrService as String: "com.danyzmaj.pocketterm.device-token",
+    kSecAttrAccessGroup as String: group,
+    kSecAttrAccount as String: "device",
+  ]
+
+  /// Replaces it; nil removes it. False if the Keychain refused.
+  @discardableResult
+  static func setDeviceToken(_ value: String?) -> Bool {
+    SecItemDelete(tokenQuery as CFDictionary)
+    guard let value else { return true }
+    var add = tokenQuery
+    add[kSecValueData as String] = Data(value.utf8)
+    add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
+  }
+
+  static func deviceToken() -> String? {
+    var query = tokenQuery
+    query[kSecReturnData as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitOne
+    var out: CFTypeRef?
+    guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess, let data = out as? Data else { return nil }
+    return String(data: data, encoding: .utf8)
   }
 
   // MARK: Channel keys

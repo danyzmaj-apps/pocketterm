@@ -2,20 +2,20 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/agent.dart';
+import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
+import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   late Directory dir;
   late List<(String, Map<String, dynamic>)> sent;
-  final client = SupabaseClient('http://localhost:1', 'anon');
+  final client = PocketTermServerClient(const Backend(url: 'http://localhost:1'), tokens: MemoryDeviceTokens());
 
   TerminalRemote remote({String desktopId = 'abcd1234'}) => TerminalRemote(
     client,
-    'u1',
     dir,
     desktopId: desktopId,
     key: ChannelKey(List.filled(32, 7)),

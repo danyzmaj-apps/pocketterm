@@ -13,7 +13,6 @@ import 'package:pocketterm_desktop/controller.dart';
 import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/onboarding/get_ready.dart';
 import 'package:pocketterm_desktop/onboarding/pair.dart';
-import 'package:pocketterm_desktop/onboarding/reviewer.dart';
 import 'package:pocketterm_desktop/setup_page.dart';
 import 'package:pocketterm_desktop/terminal_fixes.dart';
 import 'package:pocketterm_desktop/update_check.dart';
@@ -141,23 +140,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   AppController get app => widget.app;
 
-  /// Reviewer access is the publisher's (App Store / Play review), not a user's: it shows only once
-  /// ⌥ Option (Alt) is pressed in Settings, until the window is shown again.
-  bool _publisher = false;
-
-  bool _onKey(KeyEvent e) {
-    final alt = e.logicalKey == LogicalKeyboardKey.altLeft || e.logicalKey == LogicalKeyboardKey.altRight;
-    if (alt && e is KeyDownEvent && !_publisher && mounted) setState(() => _publisher = true);
-    return false;
-  }
-
   void _shown() {
-    if (mounted) {
-      setState(() {
-        _publisher = false;
-        _installNotes.clear();
-      });
-    }
+    if (mounted) setState(_installNotes.clear);
     _check();
   }
 
@@ -167,13 +151,11 @@ class _SettingsPageState extends State<SettingsPage> {
     _check();
     app.mainShown.addListener(_shown);
     _live = app.live.changes.listen((_) => unawaited(_checkUnreported()));
-    HardwareKeyboard.instance.addHandler(_onKey);
     unawaited(_readVersion());
   }
 
   @override
   void dispose() {
-    HardwareKeyboard.instance.removeHandler(_onKey);
     app.mainShown.removeListener(_shown);
     unawaited(_live.cancel());
     _wezterm?.dispose();
@@ -801,9 +783,9 @@ class _SettingsPageState extends State<SettingsPage> {
   List<_Cell> _accountTab() => [
     _half(
       _card(
-        leading: Avatar(url: app.avatarUrl, name: app.userName, size: 32),
+        leading: Avatar(name: app.userName, size: 32),
         title: app.userName,
-        sub: 'Signed in with GitHub',
+        sub: 'Signed in to this server',
         body: [_button('Sign out', () => unawaited(app.signOut()), danger: true)],
       ),
     ),
@@ -830,30 +812,31 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ),
     ),
-    if (_publisher)
+    if (app.hostsServer)
       _half(
         _card(
-          title: 'Reviewer access',
-          sub: 'For App Store / Play review: a code for a separate demo account',
-          body: [_button('Codes…', () => unawaited(showReviewerAccess(context, app)))],
+          title: 'Erase this server\u2019s data',
+          sub: 'Signs out every computer and phone and deletes what the server keeps',
+          body: [
+            _button('Erase…', () async {
+              final go = await confirmDanger(
+                context,
+                title: 'Erase this server\u2019s data?',
+                body:
+                    'Every computer and phone is signed out of this server, and its images and push registrations '
+                    'are deleted. This cannot be undone.',
+                action: 'Erase',
+              );
+              if (!go) return;
+              try {
+                await app.eraseServer();
+              } on Object catch (e) {
+                if (mounted) Toaster.of(context).show('Not erased: $e');
+              }
+            }, danger: true),
+          ],
         ),
       ),
-    _half(
-      _card(
-        title: 'Delete account',
-        sub: 'Removes everything you saved, on every device',
-        body: [
-          _button('Delete…', () async {
-            if (!await confirmDeleteAccount(context)) return;
-            try {
-              await app.deleteAccount();
-            } on Object catch (e) {
-              if (mounted) Toaster.of(context).show('Account not deleted: $e');
-            }
-          }, danger: true),
-        ],
-      ),
-    ),
     _wide(
       _card(
         sub: _version == null ? 'PocketTerm' : 'PocketTerm $_version',

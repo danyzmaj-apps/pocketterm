@@ -57,23 +57,26 @@ InputDecoration setupField(String hint) => InputDecoration(
 /// catcher, which can steal the tap that should focus it.)
 void dismissKeyboard(PointerDownEvent _) => FocusManager.instance.primaryFocus?.unfocus();
 
-/// Asks before deleting the account; true to go ahead.
-Future<bool> confirmDeleteAccount(BuildContext context) async =>
+/// Asks before something that can't be undone ([title], [body]); true when
+/// the person presses [action].
+Future<bool> confirmDanger(
+  BuildContext context, {
+  required String title,
+  required String body,
+  required String action,
+}) async =>
     await showDialog<bool>(
       context: context,
       builder: (dialog) => AlertDialog(
         backgroundColor: C.bar,
-        title: const Text('Delete your account?'),
-        content: const Text(
-          'Your account and everything PocketTerm keeps for it are deleted from your Supabase project. '
-          'This cannot be undone.',
-        ),
+        title: Text(title),
+        content: Text(body),
         actions: [
           TextButton(onPressed: () => Navigator.of(dialog).pop(false), child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.of(dialog).pop(true),
             style: TextButton.styleFrom(foregroundColor: const Color(0xFFFCA5A5)),
-            child: const Text('Delete account'),
+            child: Text(action),
           ),
         ],
       ),

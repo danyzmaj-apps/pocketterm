@@ -266,7 +266,7 @@ create table if not exists supabase_migrations.schema_migrations (version text p
     }
   }
 
-  Future<Backend> backend() async => Backend(url: url, key: await admin.publishableKey(ref));
+  Future<Backend> backend() async => Backend(url: url);
 
   /// Everything, in order; [onStep] hears each step as it starts. Skips the
   /// steps in [done] (a retry after a failure picks up where it stopped).

@@ -323,9 +323,9 @@ const phoneKeys = {'esc', 'tab', 'up', 'down', 'enter', 'ctrl+c'};
 
 // ------------------------------------------------------------ screens
 
-/// Realtime drops or refuses messages past ~100 KB (one of 180 KB closed the
-/// socket), so scrollback keeps only its newest lines up to this many UTF-8
-/// bytes.
+/// A sealed message grows by a third and the server closes a socket on a
+/// frame over 256 KB, so scrollback keeps only its newest lines up to this
+/// many UTF-8 bytes.
 const historyBytes = 60000;
 
 /// A terminal's [text] as the phone's lines: charset choices (ESC ( B,

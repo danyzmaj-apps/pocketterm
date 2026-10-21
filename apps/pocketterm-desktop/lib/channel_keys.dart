@@ -1,10 +1,12 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pocketterm_core/e2e.dart';
+import 'package:pocketterm_core/server_client.dart';
 
 /// Where secrets are kept; tests pass their own.
 abstract interface class SecretStore {
   Future<String?> read(String name);
   Future<void> write(String name, String value);
+  Future<void> delete(String name);
 }
 
 /// The system's: the login Keychain on a Mac (no keychain entitlement
@@ -19,6 +21,24 @@ class SystemSecrets implements SecretStore {
 
   @override
   Future<void> write(String name, String value) => _storage.write(key: name, value: value);
+
+  @override
+  Future<void> delete(String name) => _storage.delete(key: name);
+}
+
+/// This computer's sign-in on its server (the device token and what came
+/// with it), kept in [SecretStore] next to the channel keys.
+class SecretDeviceTokens implements DeviceTokens {
+  SecretDeviceTokens(this._store);
+  final SecretStore _store;
+
+  static const _name = 'device_token';
+
+  @override
+  Future<String?> read() => _store.read(_name);
+
+  @override
+  Future<void> write(String? value) => value == null ? _store.delete(_name) : _store.write(_name, value);
 }
 
 /// This computer's channel keys (packages/pocketterm_core/lib/e2e.dart), one

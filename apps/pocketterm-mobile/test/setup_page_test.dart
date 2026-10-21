@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/account.dart';
 import 'package:pocketterm_core/backend.dart';
+import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/session.dart';
 import 'package:pocketterm_mobile/mobile.dart';
 import 'package:pocketterm_mobile/setup_page.dart';
@@ -26,6 +27,12 @@ class _Phone extends MobileSession {
 class _FakeSession extends Session {
   _FakeSession({this.failure}) : super('iPhone');
   final String? failure;
+
+  @override
+  DeviceRole get role => DeviceRole.phone;
+
+  @override
+  DeviceTokens get deviceTokens => MemoryDeviceTokens();
   final links = <Uri>[];
   bool signedIn = false;
 
@@ -41,10 +48,8 @@ class _FakeSession extends Session {
   }
 }
 
-const _server = 'https://abcdefgh.supabase.co';
-final Uri _link = Uri.parse(
-  'pocketterm://setup?url=$_server&key=sb_publishable_x&code=K7QM-3XRT-AB12-CD34-EF56-GH78-JK90',
-);
+const _server = 'https://pt.example.com';
+final Uri _link = Uri.parse('pocketterm://setup?url=$_server&code=K7QM-3XRT-AB12-CD34-EF56-GH78-JK90');
 
 void main() {
   void phoneSize(WidgetTester tester) {
@@ -78,10 +83,7 @@ void main() {
     await tester.pump();
   }
 
-  for (final (name, known) in [
-    ('a new phone', null),
-    ('a phone that knows its server', const Backend(url: _server, key: 'sb_publishable_x')),
-  ]) {
+  for (final (name, known) in [('a new phone', null), ('a phone that knows its server', const Backend(url: _server))]) {
     testWidgets('$name without a session offers only the computer’s code, scanned or pasted, never GitHub', (
       tester,
     ) async {
@@ -91,16 +93,13 @@ void main() {
       expect(find.text('Scan the code from your computer'), findsOneWidget);
       expect(find.text('Paste a code instead'), findsOneWidget);
       expect(find.byType(SignInPage), findsNothing);
-      expect(find.byType(GithubButton), findsNothing);
       expect(find.textContaining('GitHub'), findsNothing);
 
       await tester.ensureVisible(find.text('Paste a code instead'));
       await tester.tap(find.text('Paste a code instead'));
       await tester.pump();
       expect(find.byType(TextField), findsOneWidget);
-      expect(find.byType(GithubButton), findsNothing);
       expect(find.textContaining('GitHub'), findsNothing);
-      expect(find.textContaining('Publishable key'), findsNothing);
 
       await tester.tap(find.text('← Scan the code instead'));
       await tester.pump();
@@ -127,7 +126,7 @@ void main() {
 
   testWidgets('a pasted link without a code, or anything else, is refused before anything is sent', (tester) async {
     final session = await pumpSetup(tester);
-    await paste(tester, 'pocketterm://setup?url=$_server&key=sb_publishable_x');
+    await paste(tester, 'pocketterm://setup?url=$_server');
     expect(find.textContaining('Paste the whole code from your computer'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), _server);

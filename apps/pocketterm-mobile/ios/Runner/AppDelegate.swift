@@ -58,14 +58,22 @@ import UserNotifications
       case "deviceName":
         result(UIDevice.current.name)
       case "getBackend":
-        result(PocketTermShared.backend.map { ["url": $0.url, "key": $0.key] })
+        result(
+          PocketTermShared.backendUrl.map { url in
+            ["url": url, "key": PocketTermShared.legacyBackendKey].compactMapValues { $0 }
+          }
+        )
       case "setBackend":
-        if let url = args["url"] as? String, let key = args["key"] as? String {
-          PocketTermShared.backend = PocketTermShared.Backend(url: url, key: key)
-        } else {
-          PocketTermShared.backend = nil
-        }
+        PocketTermShared.backendUrl = args["url"] as? String
         result(nil)
+      case "deviceToken":
+        result(PocketTermShared.deviceToken())
+      case "setDeviceToken":
+        if PocketTermShared.setDeviceToken(args["value"] as? String) {
+          result(nil)
+        } else {
+          result(FlutterError(code: "keychain", message: "Couldn't save the sign-in in the Keychain", details: nil))
+        }
       case "takeTappedSession":
         result(notifications.takeTappedSession())
       case "setChannelKey":

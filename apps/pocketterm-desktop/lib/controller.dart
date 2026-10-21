@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
+import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/session.dart';
 import 'package:pocketterm_core/terminal.dart' show TermWindow;
 import 'package:pocketterm_core/terminals.dart';
@@ -18,13 +19,16 @@ import 'package:pocketterm_desktop/terminal_bridge.dart';
 import 'package:pocketterm_desktop/update_check.dart';
 import 'package:pocketterm_desktop/windows_host.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
 /// The desktop app: [Session] plus its main window and the terminal bridge.
 class AppController extends Session {
   AppController(this._prefs, super.device, this.host, {Integrations? integrations, SecretStore? secrets})
     : integrations = integrations ?? Integrations(),
-      _keys = ChannelKeys(secrets ?? SystemSecrets());
+      _keys = ChannelKeys(secrets ?? SystemSecrets()),
+      deviceTokens = SecretDeviceTokens(secrets ?? SystemSecrets());
+
+  @override
+  final DeviceTokens deviceTokens;
 
   final SharedPreferences _prefs;
 
@@ -67,7 +71,7 @@ class AppController extends Session {
   bool get terminalOn => _prefs.getBool(_terminalKey) ?? false;
   TerminalBridge? _bridge;
 
-  /// Whose `terminal:<uid>:<desktop id>` channel [_bridge] is on.
+  /// Whose `<desktop id>` topic [_bridge] is on: the server's id.
   String? _bridgeUser;
 
   /// [_startBridge] calls, one after the other.
@@ -81,8 +85,8 @@ class AppController extends Session {
 
   static const _idChars = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
-  /// This computer among [userId]'s (table `desktops`): made up the first
-  /// time, then kept.
+  /// This computer on server [userId] (its desktops list): made up the
+  /// first time, then kept.
   String desktopId(String userId) {
     final key = 'desktop_id_$userId';
     if (_prefs.getString(key) case final id?) return id;
@@ -233,9 +237,9 @@ class AppController extends Session {
 
   // ---------------------------------------------------------------- phone
 
-  /// A phone has signed in to this account: it used a code from here
-  /// ([phoneCodeUsed]) or said hello to this computer. Kept per account on this
-  /// computer once seen, since older servers delete used codes. Null until known.
+  /// A phone has signed in to this server: it's among the server's devices
+  /// ([phoneCodeUsed]) or said hello to this computer. Kept per server on this
+  /// computer once seen. Null until known.
   bool? get phoneSignedIn => _phoneSignedIn ?? (_phoneKept ? true : null);
   bool? _phoneSignedIn;
 
@@ -256,18 +260,9 @@ class AppController extends Session {
     }
   }
 
-  /// A phone code this user made has been used: a phone signed in with it
-  /// (functions/pair keeps used ones; RLS shows a user their own).
+  /// A phone is signed in to this server (GET /v1/devices).
   @protected
-  Future<bool> phoneCodeUsed() async {
-    final rows = await client
-        .from('pairing_codes')
-        .select('id')
-        .eq('reusable', false)
-        .not('last_used_at', 'is', null)
-        .limit(1);
-    return rows.isNotEmpty;
-  }
+  Future<bool> phoneCodeUsed() async => (await server!.devices()).any((d) => d.role == DeviceRole.phone);
 
   void _phoneHeard() {
     if (user != null) unawaited(_prefs.setBool(_phoneKey, true));
@@ -309,8 +304,7 @@ class AppController extends Session {
       final key = await _keys.of(id);
       _bridgeUser = want;
       await (_bridge = TerminalBridge(
-        client,
-        want,
+        server!,
         id,
         key,
         terminals,
@@ -332,11 +326,7 @@ class AppController extends Session {
   void _seen(String id) {
     _seenOut = _seenOut.then((_) async {
       try {
-        await client.from('desktops').upsert({
-          'id': id,
-          'name': desktopName(device),
-          'platform': Platform.isWindows ? 'windows' : 'macos',
-        }, onConflict: 'user_id,id');
+        await server?.putDesktop(id, name: desktopName(device), platform: Platform.isWindows ? 'windows' : 'macos');
       } on Object catch (e) {
         debugPrint('PocketTerm: computer not listed: $e');
       }
@@ -386,7 +376,7 @@ class AppController extends Session {
   /// Launch at login (what PocketTerm is for); after that they stay as the
   /// user leaves them.
   @override
-  Future<void> onSignedIn(User user) async {
+  Future<void> onSignedIn(Account user) async {
     if (_prefs.getBool(_firstSignInKey) ?? false) return await _startBridge();
     try {
       await setLaunchAtLogin(on: true);
@@ -400,20 +390,19 @@ class AppController extends Session {
     }
   }
 
-  /// The phone stops listing this computer (unless the account went, and
-  /// the row with it).
+  /// The phone stops listing this computer.
   @override
-  Future<void> onSigningOut({required bool accountDeleted}) async {
+  Future<void> onSigningOut() async {
     _seenTimer?.cancel();
     _seenTimer = null;
     await _seenOut;
     final id = _prefs.getString('desktop_id_${user?.id}');
-    if (accountDeleted || id == null) return;
-    await client.from('desktops').delete().eq('id', id);
+    if (id == null) return;
+    await server?.deleteDesktop(id);
   }
 
-  /// However the user went (signed out here, the server refused a refresh,
-  /// the account was deleted on another device): the terminal bridge stops.
+  /// However the sign-in went (signed out here, the server stopped taking
+  /// it): the terminal bridge stops.
   @override
   Future<void> onSignedOut() async {
     // The next account's phones are its own.
@@ -457,7 +446,7 @@ class AppController extends Session {
     return host.showMain();
   }
 
-  /// Pushes [title] / [body] to the user's phones (functions/push) when
+  /// Pushes [title] / [body] to the phones (POST /v1/push/notify) when
   /// nobody has touched this computer for a minute: at the desk, its own
   /// screen says it already. [session]: the coding session a tap opens;
   /// [activity]: where it stands (done, needs). Sealed with this computer's
@@ -471,22 +460,20 @@ class AppController extends Session {
       final routed = session == null ? null : routedKey(id, session);
       final notice = {'title': title, 'body': body, 'session': ?routed, 'state': ?activity};
       final enc = await sealBytes(await channelKey(), utf8.encode(jsonEncode(notice)), pushAad(id));
-      final data = await invokePush({
-        'action': 'notify',
+      final data = await invokePush('notify', {
         'desktop': id,
         'enc': base64Encode(enc),
         // Lets a newer push for the same session replace an older one.
         if (routed != null && RegExp(r'^[\w.:/-]{1,64}$').hasMatch(routed)) 'collapse': routed,
       });
-      return data is Map && (data['sent'] as int? ?? 0) > 0;
+      return (data['sent'] as int? ?? 0) > 0;
     } on Object catch (e) {
       debugPrint('PocketTerm: notify failed: $e');
       return false;
     }
   }
 
-  /// functions/push with [body]; its answer.
+  /// Push [action] with [body] on the server; its answer.
   @protected
-  Future<Object?> invokePush(Map<String, Object> body) async =>
-      (await client.functions.invoke('push', body: body)).data;
+  Future<Map<String, dynamic>> invokePush(String action, Map<String, Object> body) => server!.push(action, body);
 }

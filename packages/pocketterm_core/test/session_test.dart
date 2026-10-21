@@ -1,156 +1,144 @@
-import 'dart:convert';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 import 'package:pocketterm_core/backend.dart';
+import 'package:pocketterm_core/e2e.dart';
+import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/session.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' hide Session;
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// A session whose device cleanup can't reach the server (offline, or an
-/// account deleted a moment ago).
-class _OfflineSession extends Session {
-  _OfflineSession(this._client) : super('iPhone');
-  final SupabaseClient _client;
+import 'own_server.dart';
+
+/// A computer, or with [phone] a phone, keeping its sign-in in [tokens] and
+/// the computer keys from links in [keys].
+class _Device extends Session {
+  _Device(super.device, {this.phone = false, MemoryDeviceTokens? tokens}) : tokens = tokens ?? MemoryDeviceTokens();
+  final bool phone;
+  final MemoryDeviceTokens tokens;
+  final keys = <ComputerKey>[];
+
+  /// What a computer puts in its phone codes.
+  ComputerKey? computer;
 
   @override
-  SupabaseClient get client => _client;
+  DeviceRole get role => phone ? DeviceRole.phone : DeviceRole.desktop;
 
   @override
-  Future<void> onSigningOut({required bool accountDeleted}) async =>
-      throw const FunctionsHttpException(status: 401, details: {'error': 'Sign in first'});
+  String get platform => phone ? 'ios' : 'macos';
+
+  @override
+  DeviceTokens get deviceTokens => tokens;
+
+  @override
+  Future<void> addComputerKey(ComputerKey computer, {required bool replace}) async => keys.add(computer);
+
+  @override
+  Future<ComputerKey?> pairingComputer() async => computer;
 }
 
 /// A signed-out phone that records which setup links it acts on.
-class _LinkSession extends Session {
-  _LinkSession() : super('iPhone');
+class _LinkSession extends _Device {
+  _LinkSession() : super('iPhone', phone: true);
   final connected = <Uri>[];
 
   @override
   Future<void> connectLink(Uri uri, {bool external = false}) async => connected.add(uri);
 }
 
-String _jwt(Map<String, Object> claims) {
-  String part(Object o) => base64Url.encode(utf8.encode(jsonEncode(o))).replaceAll('=', '');
-  return '${part({'alg': 'HS256', 'typ': 'JWT'})}.${part(claims)}.c2ln';
-}
-
-/// The reviewer demo account's phone, on a server whose `/auth/v1/user`
-/// answers with [user].
-class _DemoSession extends Session {
-  _DemoSession(this._client) : super('iPhone');
-  final SupabaseClient _client;
-
-  @override
-  SupabaseClient get client => _client;
-}
-
-Future<SupabaseClient> _signedInDemo(Future<http.Response> Function(http.Request req) user) async {
-  final client = SupabaseClient(
-    'http://localhost:54321',
-    'publishable',
-    httpClient: MockClient((req) async {
-      if (req.url.path == '/auth/v1/user') return await user(req);
-      return http.Response('', 204, request: req);
-    }),
-    authOptions: const AuthClientOptions(autoRefreshToken: false),
-  );
-  final exp = DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch ~/ 1000;
-  await client.auth.recoverSession(
-    jsonEncode({
-      'access_token': _jwt({'sub': 'demo', 'exp': exp}),
-      'refresh_token': 'r',
-      'token_type': 'bearer',
-      'expires_in': 3600,
-      'user': {
-        'id': 'demo',
-        'aud': 'authenticated',
-        'created_at': '2026-01-01T00:00:00Z',
-        'app_metadata': {'pocketterm_demo': true},
-      },
-    }),
-  );
-  return client;
-}
-
 void main() {
-  group("the reviewer demo account's phone", () {
-    test('signs out once the server ended its session (the last reviewer code revoked)', () async {
-      final client = await _signedInDemo(
-        (req) async => http.Response(
-          jsonEncode({'code': 'session_not_found', 'msg': 'Session from session_id claim in JWT does not exist'}),
-          403,
-          request: req,
-          headers: {'content-type': 'application/json'},
-        ),
-      );
-      addTearDown(client.dispose);
+  late OwnServer own;
+  late _Device mac;
 
-      await _DemoSession(client).checkReviewerAccess();
-
-      expect(client.auth.currentSession, isNull);
-    });
-
-    test('stays signed in while the server knows the session, and while offline', () async {
-      final ok = await _signedInDemo(
-        (req) async => http.Response(
-          jsonEncode({'id': 'demo', 'aud': 'authenticated', 'created_at': '2026-01-01T00:00:00Z'}),
-          200,
-          request: req,
-          headers: {'content-type': 'application/json'},
-        ),
-      );
-      addTearDown(ok.dispose);
-      await _DemoSession(ok).checkReviewerAccess();
-      expect(ok.auth.currentSession, isNotNull);
-
-      final offline = await _signedInDemo((req) async => throw http.ClientException('offline', req.url));
-      addTearDown(offline.dispose);
-      await _DemoSession(offline).checkReviewerAccess();
-      expect(offline.auth.currentSession, isNotNull, reason: 'no answer proves nothing');
-    });
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    own = await OwnServer.start();
+    mac = _Device('MacBook Pro')..computer = (desktop: 'abcd1234', key: ChannelKey.generate());
+    await mac.connectLink(own.setupLink);
   });
 
-  test('signing out drops the saved session even when the cleanup before it fails', () async {
-    final requests = <String>[];
-    final client = SupabaseClient(
-      'http://localhost:54321',
-      'publishable',
-      httpClient: MockClient((req) async {
-        requests.add(req.url.path);
-        throw http.ClientException('offline', req.url);
-      }),
-      authOptions: const AuthClientOptions(autoRefreshToken: false),
-    );
-    addTearDown(client.dispose);
-    final exp = DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch ~/ 1000;
-    await client.auth.recoverSession(
-      jsonEncode({
-        'access_token': _jwt({'sub': 'u1', 'exp': exp}),
-        'refresh_token': 'r',
-        'token_type': 'bearer',
-        'expires_in': 3600,
-        'user': {
-          'id': 'u1',
-          'aud': 'authenticated',
-          'created_at': '2026-01-01T00:00:00Z',
-          'app_metadata': <String, Object>{},
-        },
-      }),
-    );
-    expect(client.auth.currentSession, isNotNull);
+  tearDown(() async {
+    await mac.disconnect();
+    await own.stop();
+  });
 
-    final session = _OfflineSession(client);
-    await session.signOut();
+  test("a computer signs in with the server's setup link; a phone with its code, keeping the computer's key", () async {
+    expect(mac.authError, isNull);
+    expect(mac.user?.device.role, DeviceRole.desktop);
+    expect(mac.user?.device.label, 'MacBook Pro');
 
-    expect(client.auth.currentSession, isNull, reason: 'a relaunch would sign straight back in');
-    expect(requests, contains('/auth/v1/logout'));
-    expect(session.signedOutReason, 'You signed out.');
+    final phone = _Device('iPhone', phone: true);
+    addTearDown(phone.disconnect);
+    await phone.connectLink(await mac.pairingLink());
+    expect(phone.authError, isNull);
+    expect(phone.user?.device.role, DeviceRole.phone);
+    expect(phone.user?.id, mac.user?.id, reason: 'the same server');
+    expect(phone.keys, [mac.computer]);
+
+    // A code works once.
+    final link = await mac.pairingLink();
+    final second = _Device('iPad', phone: true);
+    addTearDown(second.disconnect);
+    await second.connectLink(link);
+    expect(second.user, isNotNull);
+    final third = _Device('Pixel', phone: true);
+    addTearDown(third.disconnect);
+    await third.connectLink(link);
+    expect(third.user, isNull);
+    expect(third.authError, contains('used'));
+  });
+
+  test('a link without what this device signs in with says so, and a phone never takes a setup token', () async {
+    final phone = _Device('iPhone', phone: true);
+    addTearDown(phone.disconnect);
+    await phone.connectLink(own.setupLink);
+    expect(phone.user, isNull);
+    expect(phone.authError, contains('no sign-in code'));
+
+    final other = _Device('Mac mini');
+    addTearDown(other.disconnect);
+    await other.connectLink(own.backend.linkWithCode(await mac.server!.createPairingCode()));
+    expect(other.user, isNull);
+    expect(other.authError, contains('no setup token'));
+  });
+
+  test('a relaunch is signed in from what the device kept; signing out leaves the server for good', () async {
+    final tokens = MemoryDeviceTokens();
+    final phone = _Device('iPhone', phone: true, tokens: tokens);
+    addTearDown(phone.disconnect);
+    await phone.connectLink(await mac.pairingLink());
+    final id = phone.user!.device.id;
+
+    final relaunched = _Device('iPhone', phone: true, tokens: tokens);
+    addTearDown(relaunched.disconnect);
+    await relaunched.connect(own.backend);
+    expect(relaunched.user?.device.id, id);
+
+    await relaunched.signOut();
+    expect(relaunched.user, isNull);
+    expect(relaunched.signedOutReason, 'You signed out.');
+    expect(tokens.value, isNull);
+    expect((await mac.server!.devices()).map((d) => d.id), isNot(contains(id)), reason: 'its token works no more');
+  });
+
+  test('a phone the computer signed out hears it the next time it asks, with the reason', () async {
+    final phone = _Device('iPhone', phone: true);
+    addTearDown(phone.disconnect);
+    await phone.connectLink(await mac.pairingLink());
+    await mac.server!.revokeDevice(phone.user!.device.id);
+
+    await expectLater(phone.server!.desktops(), throwsA(isA<ServerException>()));
+    await pumpEventQueue();
+    expect(phone.user, isNull);
+    expect(phone.signedOutReason, contains('Scan a new code'));
+
+    // A relaunch with the token it kept before is signed out too.
+    final kept = _Device('iPhone', phone: true, tokens: MemoryDeviceTokens()..value = phone.tokens.value);
+    addTearDown(kept.disconnect);
+    await kept.connect(own.backend);
+    expect(kept.user, isNull);
   });
 
   group('a setup link opened from outside the app', () {
-    const mine = Backend(url: 'https://mine.supabase.co', key: 'k');
-    const theirs = Backend(url: 'https://theirs.supabase.co', key: 'k');
+    const mine = Backend(url: 'https://mine.example.com');
+    const theirs = Backend(url: 'https://theirs.example.com');
 
     test('connects a signed-out device to another server only once the person says so', () async {
       final session = _LinkSession();
@@ -171,7 +159,7 @@ void main() {
       expect(session.linkToConfirm, isNull);
     });
 
-    test("goes ahead for the device's own server: the Mac's code scanned with the camera", () {
+    test("goes ahead for the device's own server: the computer's code scanned with the camera", () {
       final session = _LinkSession();
       final link = mine.linkWithCode('ABCD-1234');
       session.openedLink(link, mine);

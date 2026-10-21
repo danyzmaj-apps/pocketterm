@@ -10,7 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 const _selfHostingGuide = 'https://github.com/danyzmaj-apps/pocketterm/blob/main/docs/SELF_HOSTING.md';
 
 /// Connects this device to a server that already exists: its setup link
-/// (pairing code and all), or its URL and publishable key.
+/// (setup token or pairing code and all), or its URL.
 class ConnectServerForm extends StatefulWidget {
   const ConnectServerForm({required this.session, this.back, super.key});
   final Session session;
@@ -24,23 +24,20 @@ class ConnectServerForm extends StatefulWidget {
 
 class _ConnectServerFormState extends State<ConnectServerForm> {
   final _url = TextEditingController();
-  final _key = TextEditingController();
   bool _busy = false;
   String? _error;
 
   @override
   void dispose() {
     _url.dispose();
-    _key.dispose();
     super.dispose();
   }
 
   Future<void> _connect() async {
-    // A whole setup link pasted into the URL field works too, pairing code
-    // and all.
+    // A whole setup link pasted into the URL field signs in too.
     final link = Uri.tryParse(_url.text.trim());
     if (link != null && Backend.fromLink(link) != null) return await _connectLink(link);
-    final parsed = Backend.parse(_url.text, _key.text);
+    final parsed = Backend.parse(_url.text);
     final backend = parsed.backend;
     if (backend == null) return setState(() => _error = parsed.error);
     await _use(backend);
@@ -100,8 +97,7 @@ class _ConnectServerFormState extends State<ConnectServerForm> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Paste its setup link (setup-backend.sh prints one), or the project URL and publishable key '
-                '(Supabase dashboard → Project Settings → API).',
+                'Paste its setup link (`pocketterm-server setup-link` prints it), or its URL.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: C.dim, height: 1.4),
               ),
@@ -111,15 +107,7 @@ class _ConnectServerFormState extends State<ConnectServerForm> {
                 enabled: !_busy,
                 autocorrect: false,
                 keyboardType: TextInputType.url,
-                decoration: setupField('https://abcdefgh.supabase.co  or  pocketterm://setup?…'),
-                onSubmitted: (_) => unawaited(_connect()),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _key,
-                enabled: !_busy,
-                autocorrect: false,
-                decoration: setupField('Publishable key (sb_publishable_…)'),
+                decoration: setupField('pocketterm://setup?…  or  https://pocketterm.example.com'),
                 onSubmitted: (_) => unawaited(_connect()),
               ),
               const SizedBox(height: 16),

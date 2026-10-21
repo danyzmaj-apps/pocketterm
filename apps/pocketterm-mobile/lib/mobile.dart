@@ -11,6 +11,7 @@ import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/live_activity.dart';
 import 'package:pocketterm_core/native.dart';
+import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/session.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/ui.dart';
@@ -21,22 +22,24 @@ import 'package:pocketterm_mobile/onboarding/scan.dart';
 import 'package:pocketterm_mobile/setup_page.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
 /// The phone side of [Session]: keeps the computers' channel keys (from
 /// their QR codes; packages/pocketterm_core/lib/e2e.dart) where the native
 /// side reads them too (ios/Shared/PocketTermShared.swift, android/…/
 /// PocketTermShared.kt: the push extension opens a computer's pushes with
 /// its key), registers this phone for the computer's terminal pushes, and
-/// ends the sessions it follows when the account leaves it.
+/// ends the sessions it follows when it leaves the server.
 class MobileSession extends Session {
   MobileSession(this._prefs, super.device);
 
   final SharedPreferences _prefs;
 
-  /// A phone signs in only with a code from the computer (functions/pair).
+  /// A phone signs in only with a code from the computer.
   @override
-  bool get signsInWithGithub => false;
+  DeviceRole get role => DeviceRole.phone;
+
+  @override
+  DeviceTokens get deviceTokens => const NativeDeviceTokens();
 
   final _computerKeys = <String, ChannelKey>{};
 
@@ -109,7 +112,7 @@ class MobileSession extends Session {
       debugPrint('PocketTerm: computers cache: $e');
     }
     return Desktops(
-      client,
+      server!,
       cached: cached,
       saved: _prefs.getString(_desktopKey),
       onChanged: (all, selected) {
@@ -120,21 +123,18 @@ class MobileSession extends Session {
   }
 
   @override
-  Future<void> onSignedIn(User user) => _registerPush(user.id);
+  Future<void> onSignedIn(Account user) => _registerPush(user.device.id);
 
   static const _pushTokenKey = 'pocketterm_push_token';
 
   /// Hands this phone's push token (APNs on iOS, FCM on Android) to the
-  /// user's server, which from then on relays the computer's terminal news
-  /// (functions/push), sealed by each computer with its key.
-  Future<void> _registerPush(String userId) async {
+  /// server, which from then on relays the computer's terminal news
+  /// (POST /v1/push/notify), sealed by each computer with its key.
+  Future<void> _registerPush(String deviceId) async {
     try {
       final token = await Native.registerPush();
-      if (token == null || user?.id != userId) return;
-      await client.functions.invoke(
-        'push',
-        body: {'action': 'register', 'token': token, 'label': device, 'platform': pushPlatform},
-      );
+      if (token == null || user?.device.id != deviceId) return;
+      await server!.push('register', {'token': token, 'label': device, 'platform': pushPlatform});
       await _prefs.setString(_pushTokenKey, token);
     } on Object catch (e) {
       debugPrint('PocketTerm: push registration failed: $e');
@@ -144,44 +144,37 @@ class MobileSession extends Session {
   /// Android: FCM handed over a new token (`pushToken`); the server needs it.
   Future<void> pushTokenChanged() async {
     final user = this.user;
-    if (user != null) await _registerPush(user.id);
+    if (user != null) await _registerPush(user.device.id);
   }
 
   @override
-  Future<void> onSigningOut({required bool accountDeleted}) async {
+  Future<void> onSigningOut() async {
     final pushToken = _prefs.getString(_pushTokenKey);
     final activities = await _forgetHere();
-    // The followed sessions are this account's: the server stops updating
+    // The followed sessions are this phone's: the server stops updating
     // them too (iOS gives each its own token, which 'unregister' below
     // doesn't know).
     for (final a in activities) {
-      if (a.token case final activityToken? when !accountDeleted) {
+      if (a.token case final activityToken?) {
         await _tryServer(
           'activity end',
-          () => client.functions.invoke(
-            'push',
-            body: {'action': 'activity_end', 'token': activityToken, 'session': a.key},
-          ),
+          () => server!.push('activity_end', {'token': activityToken, 'session': a.key}),
         );
       }
     }
-    // A deleted account took its tokens with it.
-    if (accountDeleted || pushToken == null) return;
-    await _tryServer(
-      'push unregister',
-      () => client.functions.invoke('push', body: {'action': 'unregister', 'token': pushToken}),
-    );
+    if (pushToken == null) return;
+    await _tryServer('push unregister', () => server!.push('unregister', {'token': pushToken}));
   }
 
-  /// However the account went, also without [signOut] here (the server
-  /// refused a refresh, the account was deleted on another device, the
-  /// reviewer access ended): its followed sessions leave this phone.
+  /// However the sign-in went, also without [signOut] here (the computer
+  /// signed this phone out, the server was erased): its followed sessions
+  /// leave this phone.
   @override
   Future<void> onSignedOut() async {
     await _forgetHere();
   }
 
-  /// Drops what this phone keeps for the account: the push registration's
+  /// Drops what this phone keeps for the server: the push registration's
   /// record, the computers' keys (the next sign-in scans a code, which
   /// brings its computer's), and the followed sessions, ended at once.
   /// Returns those sessions.
@@ -213,6 +206,18 @@ class MobileSession extends Session {
       debugPrint('PocketTerm: $what at sign-out failed: $e');
     }
   }
+}
+
+/// The phone's sign-in, where its native side keeps it (Native.deviceToken):
+/// the Keychain on iOS, Keystore-wrapped on Android.
+class NativeDeviceTokens implements DeviceTokens {
+  const NativeDeviceTokens();
+
+  @override
+  Future<String?> read() => Native.deviceToken();
+
+  @override
+  Future<void> write(String? value) => Native.setDeviceToken(value);
 }
 
 class MobileApp extends StatelessWidget {
@@ -352,8 +357,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (widget.remoteFor case final make?) {
         next = make(d.id, key);
       } else if (_supportDir case final dir?) {
-        next = TerminalRemote(widget.session.client, widget.userId, dir, desktopId: d.id, key: key);
-        next.activities = LiveActivities(widget.session.client, next);
+        next = TerminalRemote(widget.session.server!, dir, desktopId: d.id, key: key);
+        next.activities = LiveActivities(widget.session.server!, next);
       } else {
         return; // Made once the cache folder is known.
       }
@@ -532,7 +537,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 IconButton(
                   tooltip: 'Account',
                   onPressed: () => unawaited(_openAccount()),
-                  icon: Avatar(url: widget.session.avatarUrl, name: widget.session.userName, size: 30),
+                  icon: Avatar(name: widget.session.userName, size: 30),
                 ),
               ],
             ),
@@ -592,13 +597,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (problem != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(problem)));
   }
 
-  /// Why the account lists no computer: the store reviewers' demo account
-  /// has none by design; anyone else's computer isn't registering.
-  String get _noDesktop => widget.session.user?.appMetadata['pocketterm_demo'] == true
-      ? 'This is a demo account for App Store and Google Play review. It has no computer; '
-            "on a real account your computer's coding sessions show here."
-      : "Your computer isn't reporting to this account. "
-            'Open PocketTerm on it and turn on Terminal from phone in its Settings.';
+  /// Why the server lists no computer.
+  static const _noDesktop =
+      "Your computer isn't reporting to this server. Open PocketTerm on it and turn on Terminal from phone in its "
+      'Settings.';
 
   /// The account's computers, to show another one's sessions.
   Future<void> _pickDesktop() {
@@ -617,9 +619,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 child: Text('Computers', style: sheetTitleStyle),
               ),
               if (_desktops.all.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-                  child: Text(_noDesktop, style: const TextStyle(color: C.dim, height: 1.5)),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 4, 20, 20),
+                  child: Text(_noDesktop, style: TextStyle(color: C.dim, height: 1.5)),
                 ),
               for (final d in _desktops.all)
                 ListTile(
@@ -666,7 +668,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           children: [
             Row(
               children: [
-                Avatar(url: widget.session.avatarUrl, name: widget.session.userName, size: 40),
+                Avatar(name: widget.session.userName, size: 40),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -681,30 +683,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             ),
             const SizedBox(height: 18),
             OutlinedButton(
-              onPressed: () {
-                Navigator.of(sheet).pop();
+              onPressed: () async {
+                final go = await confirmDanger(
+                  sheet,
+                  title: 'Leave this server?',
+                  body:
+                      'This phone signs out of ${widget.session.userName} and forgets its computers\u2019 keys. '
+                      'To come back, scan a computer\u2019s code again.',
+                  action: 'Leave',
+                );
+                if (!go) return;
+                if (sheet.mounted) Navigator.of(sheet).pop();
                 unawaited(widget.session.signOut());
               },
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xFFFCA5A5),
                 side: const BorderSide(color: C.line2),
               ),
-              child: const Text('Sign out'),
-            ),
-            TextButton(
-              onPressed: () async {
-                if (!await confirmDeleteAccount(sheet)) return;
-                if (sheet.mounted) Navigator.of(sheet).pop();
-                try {
-                  await widget.session.deleteAccount();
-                } on Object catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Account not deleted: $e')));
-                  }
-                }
-              },
-              style: TextButton.styleFrom(foregroundColor: C.dim2),
-              child: const Text('Delete account…'),
+              child: const Text('Leave this server'),
             ),
             const Divider(height: 20, color: C.line2),
             TextButton.icon(

@@ -358,7 +358,6 @@ void main() {
       expect(flow.step, WizardStep.setup);
       expect(flow.ready, isTrue);
       expect(api.deploys, ['pair', 'push']);
-      expect(flow.backend?.key, 'sb_publishable_abc');
     });
 
     test('an edit after Back runs that step again, and only that one', () async {

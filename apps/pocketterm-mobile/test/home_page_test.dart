@@ -9,7 +9,6 @@ import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_mobile/mobile.dart';
 import 'package:pocketterm_mobile/session_view.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'screenshots/fakes.dart';
 
@@ -17,11 +16,7 @@ void main() {
   late Directory dir;
   late Map<String, TerminalRemote> made;
   late String? tapped;
-  final client = SupabaseClient(
-    'http://localhost:1',
-    'anon',
-    authOptions: const AuthClientOptions(autoRefreshToken: false),
-  );
+  final client = offlineServer();
 
   setUp(() {
     dir = Directory.systemTemp.createTempSync('pocketterm_home');
@@ -49,13 +44,12 @@ void main() {
 
   /// A computer answering with one session, titled [title].
   TerminalRemote remoteFor(String desktopId, String title, ChannelKey key) =>
-      TerminalRemote(client, 'u1', dir, desktopId: desktopId, key: key, from: 'phone', send: (_, _) {})
-        ..handle('state', {
-          'windows': <Object>[],
-          'sessions': [
-            {'key': 'kitty-1/1', 'id': 's1', 'title': title, 'cwd': '/Users/me/app', 'epoch': 'e', 'seq': 0},
-          ],
-        });
+      TerminalRemote(client, dir, desktopId: desktopId, key: key, from: 'phone', send: (_, _) {})..handle('state', {
+        'windows': <Object>[],
+        'sessions': [
+          {'key': 'kitty-1/1', 'id': 's1', 'title': title, 'cwd': '/Users/me/app', 'epoch': 'e', 'seq': 0},
+        ],
+      });
 
   Future<Desktops> pumpHome(WidgetTester tester, {FakeSession? session}) async {
     tester.view.physicalSize = const Size(1170, 2532);
@@ -113,9 +107,9 @@ void main() {
       if (call.method == 'setChannelKey') setKeys.add(call.arguments);
       return null;
     });
-    const server = Backend(url: 'https://abc.supabase.co', key: 'sb_publishable_x');
+    const server = Backend(url: 'https://pt.example.com');
     final session = await FakeSession.create()
-      ..server = server
+      ..connected = server
       ..locked.add('win00001');
     final desktops = await pumpHome(tester, session: session);
 
@@ -180,20 +174,17 @@ void main() {
     flush();
   });
 
-  testWidgets('no computer: why depends on the account, and there is no + to start a session', (tester) async {
-    for (final demo in [false, true]) {
-      await tester.pumpWidget(
-        MobileApp(
-          session: await FakeSession.create(demo: demo),
-          desktops: Desktops(client)..apply(const []),
-          remoteFor: (_, _) => fail('no computer to reach'),
-        ),
-      );
-      await tester.pump();
-      expect(find.textContaining('demo account'), demo ? findsOneWidget : findsNothing);
-      expect(find.textContaining('turn on Terminal from phone'), demo ? findsNothing : findsOneWidget);
-      expect(find.byType(FloatingActionButton), findsNothing);
-      expect(find.byTooltip('New session'), findsNothing);
-    }
+  testWidgets('no computer: it says how to get one reporting, and there is no + to start a session', (tester) async {
+    await tester.pumpWidget(
+      MobileApp(
+        session: await FakeSession.create(),
+        desktops: Desktops(client)..apply(const []),
+        remoteFor: (_, _) => fail('no computer to reach'),
+      ),
+    );
+    await tester.pump();
+    expect(find.textContaining('turn on Terminal from phone'), findsOneWidget);
+    expect(find.byType(FloatingActionButton), findsNothing);
+    expect(find.byTooltip('New session'), findsNothing);
   });
 }

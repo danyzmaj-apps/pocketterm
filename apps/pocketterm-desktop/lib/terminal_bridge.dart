@@ -7,24 +7,23 @@ import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/live_activity.dart';
+import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_channel.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_desktop/desktop_host.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// The desktop side of Terminal from the phone (protocol: packages/pocketterm_core/lib/live.dart): the
 /// coding sessions [LiveHub] knows and the terminals' windows
 /// (packages/pocketterm_core/lib/terminals.dart) go out on this computer's
-/// private topic (`terminal:<user id>:<desktop id>`), sealed with its channel
+/// topic on the server (its id), sealed with its channel
 /// key (packages/pocketterm_core/lib/e2e.dart); what the phone asks for is
 /// done here, where the window's terminal can do it. The terminals are
 /// polled only while a phone has said hello lately.
 class TerminalBridge {
   TerminalBridge(
-    this._client,
-    this._userId,
+    this._server,
     this._desktopId,
     this._key,
     this._terms,
@@ -37,8 +36,7 @@ class TerminalBridge {
     this._onPhone,
   });
 
-  final SupabaseClient _client;
-  final String _userId;
+  final PocketTermServerClient _server;
 
   /// This computer, among the user's (lib/controller.dart).
   final String _desktopId;
@@ -83,8 +81,8 @@ class TerminalBridge {
   static const _maxScreenJson = 60000;
 
   late final TerminalChannel _ch = TerminalChannel(
-    _client,
-    terminalTopic(_userId, _desktopId),
+    _server,
+    _desktopId,
     {'hello': _onHello, 'sync': _onSync, 'run': (m) => unawaited(_onRun(m))},
     key: _key,
     side: ChannelSide.desktop,
@@ -333,8 +331,8 @@ class TerminalBridge {
       _activitySent.remove(key);
     }
     unawaited(
-      _client.functions
-          .invoke('push', body: {'action': 'activity', 'session': routedKey(_desktopId, key), ...activityJson(status)})
+      _server
+          .push('activity', {'session': routedKey(_desktopId, key), ...activityJson(status)})
           .then((_) {}, onError: (Object e) => debugPrint('PocketTerm: Live Activity push: $e')),
     );
   }
@@ -572,11 +570,10 @@ class TerminalBridge {
     }
     final paths = (p['images'] as List? ?? const []).cast<String>();
     for (final path in paths) {
-      if (!path.startsWith('$_userId/') || path.contains('..')) throw const LiveException('Bad image path.');
+      if (!PocketTermServerClient.isBlobPath(path)) throw const LiveException('Bad image path.');
     }
-    final bucket = _client.storage.from(imageBucket);
     try {
-      final images = [for (final path in paths) await image(await openImage(_key, path, await bucket.download(path)))];
+      final images = [for (final path in paths) await image(await openImage(_key, path, await _server.getBlob(path)))];
       await _hub.prompt(
         p['session'] as String,
         p['text'] as String? ?? '',
@@ -584,9 +581,10 @@ class TerminalBridge {
         followUp: p['deliver'] == 'followUp',
       );
     } finally {
-      if (paths.isNotEmpty) {
+      // The server drops one once it's downloaded; one that didn't come down goes too.
+      for (final path in paths) {
         unawaited(
-          bucket.remove(paths).then((_) {}, onError: (Object e) => debugPrint('PocketTerm: image cleanup: $e')),
+          _server.deleteBlob(path).then((_) {}, onError: (Object e) => debugPrint('PocketTerm: image cleanup: $e')),
         );
       }
     }

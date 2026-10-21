@@ -187,14 +187,16 @@ void main() {
         g.text(),
         g.bytes(),
         'pocketterm://setup?${g.text()}',
-        'pocketterm://setup?url=${g.text()}&key=${g.text()}&code=${g.text()}',
+        'pocketterm://setup?url=${g.text()}&setup=${g.text()}&code=${g.text()}',
       ]) {
         final uri = Uri.tryParse(raw);
         if (uri != null) {
           Backend.fromLink(uri);
           Backend.pairingCode(uri);
+          Backend.setupToken(uri);
+          Backend.computerKey(uri);
         }
-        Backend.parse(raw, g.text());
+        Backend.parse(raw);
       }
     });
   });

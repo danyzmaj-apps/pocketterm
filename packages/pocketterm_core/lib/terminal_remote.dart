@@ -9,9 +9,9 @@ import 'package:pocketterm_core/ansi.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/live_activity.dart';
+import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_channel.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 // The phone side of the terminal protocol (lib/live.dart): the Mac's coding
@@ -45,8 +45,8 @@ class TermScreen {
 /// What goes out on the topic; tests pass their own.
 typedef TerminalSend = void Function(String event, Map<String, dynamic> payload);
 
-/// Where images go on their way to the computer (Storage, sealed); tests
-/// pass their own.
+/// Where images go on their way to the computer (the server's blobs,
+/// sealed); tests pass their own.
 typedef ImageUpload = Future<void> Function(String path, Uint8List sealed);
 
 class _Watch {
@@ -62,8 +62,7 @@ class _Watch {
 /// Its disk cache is `terminal/<desktopId>` in the given support directory.
 class TerminalRemote extends ChangeNotifier {
   TerminalRemote(
-    this._client,
-    this._userId,
+    this._server,
     Directory supportDir, {
     required this.desktopId,
     required this.key,
@@ -77,8 +76,7 @@ class TerminalRemote extends ChangeNotifier {
     _load();
   }
 
-  final SupabaseClient _client;
-  final String _userId;
+  final PocketTermServerClient _server;
   final Directory _cacheDir;
   final TerminalSend? _transmit;
   final ImageUpload? _uploadImage;
@@ -115,8 +113,8 @@ class TerminalRemote extends ChangeNotifier {
   static const _keepFor = Duration(days: 14);
 
   late final TerminalChannel _ch = TerminalChannel(
-    _client,
-    terminalTopic(_userId, desktopId),
+    _server,
+    desktopId,
     {
       for (final event in const ['state', 'items', 'live', 'screen', 'ran']) event: (p) => _receive(event, p),
     },
@@ -562,25 +560,22 @@ class TerminalRemote extends ChangeNotifier {
   }
 
   /// Prompts [session] with [text] and [images] (image files: PNG, JPEG),
-  /// which pass through Storage sealed with [key]. While omp works the
+  /// which pass through the server sealed with [key]. While omp works the
   /// prompt steers it, or waits for the turn to end if [followUp]; Claude
   /// Code always waits.
   Future<void> prompt(String session, String text, {List<Uint8List> images = const [], bool followUp = false}) async {
     if (!online) throw const TerminalException('The computer is not answering.');
-    final bucket = _client.storage.from(imageBucket);
-    final upload =
-        _uploadImage ??
-        (path, sealed) =>
-            bucket.uploadBinary(path, sealed, fileOptions: const FileOptions(contentType: 'application/octet-stream'));
+    final upload = _uploadImage ?? _server.putBlob;
     final paths = <String>[];
     void forget() {
-      if (paths.isEmpty) return;
-      unawaited(bucket.remove(paths).then((_) {}, onError: (Object e) => debugPrint('$e')));
+      for (final path in paths) {
+        unawaited(_server.deleteBlob(path).then((_) {}, onError: (Object e) => debugPrint('$e')));
+      }
     }
 
     try {
       for (final bytes in images) {
-        final path = '$_userId/${const Uuid().v4()}';
+        final path = _server.newBlobPath();
         await upload(path, await sealBytes(key, bytes, imageAad(path)));
         paths.add(path);
       }

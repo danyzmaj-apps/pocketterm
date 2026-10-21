@@ -100,11 +100,18 @@ class MainActivity : FlutterActivity() {
                 Settings.Global.getString(contentResolver, Settings.Global.DEVICE_NAME)?.ifBlank { null }
                     ?: Build.MODEL,
             )
-            "getBackend" -> result.success(PocketTermShared.backend(this)?.let { mapOf("url" to it.url, "key" to it.key) })
+            "getBackend" -> result.success(
+                PocketTermShared.backendUrl(this)?.let { url ->
+                    listOfNotNull("url" to url, PocketTermShared.legacyBackendKey(this)?.let { "key" to it }).toMap()
+                },
+            )
             "setBackend" -> {
-                val url = args["url"] as? String
-                val key = args["key"] as? String
-                PocketTermShared.setBackend(this, if (url != null && key != null) PocketTermShared.Backend(url, key) else null)
+                PocketTermShared.setBackendUrl(this, args["url"] as? String)
+                result.success(null)
+            }
+            "deviceToken" -> result.success(PocketTermShared.deviceToken(this))
+            "setDeviceToken" -> {
+                PocketTermShared.setDeviceToken(this, args["value"] as? String)
                 result.success(null)
             }
             "takeTappedSession" -> {

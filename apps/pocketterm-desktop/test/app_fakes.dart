@@ -10,7 +10,7 @@ import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/ghostty.dart';
 import 'package:pocketterm_core/iterm.dart';
 import 'package:pocketterm_core/kitty.dart';
-import 'package:pocketterm_core/session.dart';
+import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/tmux.dart';
@@ -21,7 +21,6 @@ import 'package:pocketterm_desktop/controller.dart';
 import 'package:pocketterm_desktop/desktop_host.dart';
 import 'package:pocketterm_desktop/integrations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
 /// An [AppController] signed in as [fakeUser], its computer's side [host].
 class FakeApp extends AppController {
@@ -52,8 +51,8 @@ class FakeApp extends AppController {
     ompPaths: const [],
   );
 
-  /// Whether a phone has signed in with a code from here (the server's
-  /// answer to [phoneCodeUsed]).
+  /// Whether a phone has signed in to the server (the server's answer to
+  /// [phoneCodeUsed]).
   bool phoneUsedCode = false;
 
   @override
@@ -66,12 +65,12 @@ class FakeApp extends AppController {
   Future<Uri> pairingLink() async =>
       backend!.linkWithCode('PAIR-${++pairingLinks}AAA-BBBB-CCCC-DDDD-EEEE-FFFF', computer: await pairingComputer());
 
-  /// What went to functions/push, in order.
+  /// What went to the server's push, in order: the action and its body.
   final pushes = <Map<String, Object>>[];
 
   @override
-  Future<Object?> invokePush(Map<String, Object> body) async {
-    pushes.add(body);
+  Future<Map<String, dynamic>> invokePush(String action, Map<String, Object> body) async {
+    pushes.add({'action': action, ...body});
     return {'sent': 1};
   }
 
@@ -85,12 +84,9 @@ class FakeApp extends AppController {
   String get userName => name ?? super.userName;
 
   /// Who is signed in; null signs out.
-  User? fakeUser = const User(
-    id: 'user-1',
-    appMetadata: {},
-    userMetadata: {},
-    aud: 'authenticated',
-    createdAt: '2026-10-01T10:00:00Z',
+  Account? fakeUser = const Account(
+    id: 'server-1',
+    device: Device(id: 'device-1', role: DeviceRole.desktop, label: 'Mac', platform: 'macos'),
   );
 
   /// What runs when [fakeUser] signs in (or is restored at launch).
@@ -105,13 +101,13 @@ class FakeApp extends AppController {
   }
 
   /// The server this computer is set up with; null: none yet.
-  Backend? fakeBackend = const Backend(url: 'https://example.supabase.co', key: 'test');
+  Backend? fakeBackend = const Backend(url: 'https://pt.example.com');
 
   @override
   Backend? get backend => fakeBackend;
 
   @override
-  User? get user => fakeUser;
+  Account? get user => fakeUser;
 
   /// Unless given: no terminal here, no kitty sockets, no tmux, no apps to script.
   @override
@@ -129,40 +125,6 @@ class FakeApp extends AppController {
     recency: () async => const [],
     snapshot: () async => Procs(const []),
   );
-
-  /// The server's active reviewer codes, newest first, without links (the
-  /// server keeps hashes); what was asked of it in [madeCodes] and [revoked].
-  final reviewer = <ReviewerCode>[];
-  final madeCodes = <({int days, String label})>[];
-  final revoked = <String>[];
-
-  /// Makes [createReviewerCode] and [revokeReviewerCode] fail with this.
-  String? reviewerFailure;
-
-  @override
-  Future<ReviewerCode> createReviewerCode({required int days, String label = ''}) async {
-    if (reviewerFailure case final f?) throw PairingException(f);
-    madeCodes.add((days: days, label: label));
-    final id = 'code-${madeCodes.length}';
-    final expiresAt = DateTime.now().add(Duration(days: days));
-    reviewer.insert(0, ReviewerCode(id: id, label: label, expiresAt: expiresAt));
-    return ReviewerCode(
-      id: id,
-      label: label,
-      expiresAt: expiresAt,
-      link: backend!.linkWithCode('REVW-${madeCodes.length}AAA-BBBB-CCCC-DDDD-EEEE-FFFF'),
-    );
-  }
-
-  @override
-  Future<List<ReviewerCode>> reviewerCodes() async => [...reviewer];
-
-  @override
-  Future<void> revokeReviewerCode(String id) async {
-    if (reviewerFailure case final f?) throw PairingException(f);
-    revoked.add(id);
-    reviewer.removeWhere((c) => c.id == id);
-  }
 }
 
 /// Secrets kept in memory, as the Keychain would keep them.
@@ -174,6 +136,9 @@ class MemorySecrets implements SecretStore {
 
   @override
   Future<void> write(String name, String value) async => values[name] = value;
+
+  @override
+  Future<void> delete(String name) async => values.remove(name);
 }
 
 /// The computer's side, recording what it was asked in [calls].

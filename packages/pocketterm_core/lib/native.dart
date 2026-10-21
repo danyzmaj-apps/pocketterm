@@ -3,8 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
-/// What functions/push calls this phone's push service: APNs on iOS, FCM on
-/// Android.
+/// What the server (POST /v1/push/register) calls this phone's push
+/// service: APNs on iOS, FCM on Android.
 String get pushPlatform => Platform.isAndroid ? 'android' : 'ios';
 
 /// The phone's native side: the iPhone's (apps/pocketterm-mobile/ios/Runner/AppDelegate.swift) and
@@ -98,18 +98,26 @@ class Native {
       (key: m['key']! as String, token: m['token'] as String?),
   ];
 
-  /// The backend (lib/backend.dart) kept where the native side reads it too
+  /// The server (lib/backend.dart) kept where the native side reads it too
   /// (apps/pocketterm-mobile/ios/Shared/PocketTermShared.swift, android/…/PocketTermShared.kt).
-  static Future<({String url, String key})?> getBackend() async {
+  /// [legacy]: an app from before saved a Supabase project there (it came
+  /// with a key).
+  static Future<({String url, bool legacy})?> getBackend() async {
     final m = await _channel.invokeMapMethod<String, String>('getBackend');
     final url = m?['url'];
-    final key = m?['key'];
-    return url == null || key == null ? null : (url: url, key: key);
+    return url == null ? null : (url: url, legacy: (m?['key'] ?? '').isNotEmpty);
   }
 
-  /// Null for both forgets it.
-  static Future<void> setBackend({String? url, String? key}) =>
-      _channel.invokeMethod('setBackend', {'url': url, 'key': key});
+  /// Null forgets it.
+  static Future<void> setBackend({String? url}) => _channel.invokeMethod('setBackend', {'url': url});
+
+  /// This phone's sign-in on its server (lib/server_client.dart): the device
+  /// token and what came with it, one opaque string kept in the Keychain
+  /// (this device only) on iOS, Keystore-wrapped on Android. Null: none.
+  static Future<String?> deviceToken() => _channel.invokeMethod<String>('deviceToken');
+
+  /// Null forgets it.
+  static Future<void> setDeviceToken(String? value) => _channel.invokeMethod('setDeviceToken', {'value': value});
 
   /// This phone's name: the label of its push registration.
   static Future<String> deviceName() async => await _channel.invokeMethod<String>('deviceName') ?? 'Phone';

@@ -2,13 +2,12 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/e2e.dart';
-import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/terminal_channel.dart';
 
 void main() {
   final key = ChannelKey(List.generate(32, (i) => i));
   final other = ChannelKey(List.generate(32, (i) => 255 - i));
-  final topic = terminalTopic('u1', 'abcd1234');
+  const topic = 'abcd1234';
 
   group('sealed bytes', () {
     test('open with the same key and purpose, and come out as they went in', () async {
@@ -54,7 +53,7 @@ void main() {
     test('moved to another event or computer, changed, or of another version, they are dropped', () async {
       final env = await sealEnvelope(key, {'a': 1}, channelAad(topic, 'state'));
       expect((await openEnvelope(key, env, channelAad(topic, 'run'))).drop, 'sealed');
-      expect((await openEnvelope(key, env, channelAad(terminalTopic('u1', 'zzzz9999'), 'state'))).drop, 'sealed');
+      expect((await openEnvelope(key, env, channelAad('zzzz9999', 'state'))).drop, 'sealed');
       final c = base64Decode(env['c'] as String)..[0] ^= 1;
       expect((await openEnvelope(key, {...env, 'c': base64Encode(c)}, channelAad(topic, 'state'))).drop, 'sealed');
       expect((await openEnvelope(key, {...env, 'v': 2}, channelAad(topic, 'state'))).drop, 'version');

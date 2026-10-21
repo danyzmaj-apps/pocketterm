@@ -1,9 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/desktops.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pocketterm_core/server_client.dart';
 
 void main() {
-  final client = SupabaseClient('http://localhost:1', 'anon');
+  final client = PocketTermServerClient(const Backend(url: 'http://localhost:1'), tokens: MemoryDeviceTokens());
 
   Map<String, dynamic> row(String id, Duration ago, {String platform = 'macos'}) => {
     'id': id,

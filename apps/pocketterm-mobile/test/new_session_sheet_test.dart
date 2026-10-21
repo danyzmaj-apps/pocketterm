@@ -5,7 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'screenshots/fakes.dart';
 
 void main() {
   late Directory dir;
@@ -19,8 +20,7 @@ void main() {
     dir = Directory.systemTemp.createTempSync('pocketterm_new_session');
     sent = [];
     remote = TerminalRemote(
-      SupabaseClient('http://localhost:1', 'anon'),
-      'u1',
+      offlineServer(),
       dir,
       desktopId: 'abcd1234',
       key: ChannelKey(List.filled(32, 9)),

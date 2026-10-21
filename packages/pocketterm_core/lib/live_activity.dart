@@ -4,15 +4,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/native.dart';
+import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Coding sessions followed on the phone: iPhone Live Activities (Lock Screen,
 // Dynamic Island; apps/pocketterm-mobile/ios/Shared/SessionActivity.swift) and Android ongoing
 // notifications (SessionActivities.kt). The app starts one when a prompt goes
 // out from the phone or on "Follow", and updates it itself while it's in
-// front; otherwise the Mac tells the server (functions/push {action:
-// activity}) and the server pushes to the token: the activity's own on iOS,
+// front; otherwise the Mac tells the server (POST /v1/push/activity) and
+// the server pushes to the token: the activity's own on iOS,
 // the phone's FCM token (one per followed session) on Android. A push
 // carries only what's below, never text: a Live Activity push can't be
 // decrypted on the iPhone, so the relay would read it.
@@ -46,12 +46,12 @@ Map<String, dynamic> activityJson(ActivityStatus s) => {'state': s.state.name, '
 /// server. The native side and the server know a session by its routedKey
 /// (lib/live.dart), this by its own key.
 class LiveActivities extends ChangeNotifier {
-  LiveActivities(this._client, this._remote) {
+  LiveActivities(this._server, this._remote) {
     _remote.addListener(_sync);
     unawaited(_load());
   }
 
-  final SupabaseClient _client;
+  final PocketTermServerClient _server;
   final TerminalRemote _remote;
 
   /// Followed sessions: what each activity shows and since when. Null: one
@@ -146,7 +146,7 @@ class LiveActivities extends ChangeNotifier {
       case 'activityEnded':
         if (token != null) {
           _registered.remove('$routed\n$token');
-          unawaited(_push({'action': 'activity_end', 'token': token, 'session': routed}));
+          unawaited(_push('activity_end', {'token': token, 'session': routed}));
         }
         if (_mine(routed) case final key?) {
           _shown.remove(key);
@@ -158,16 +158,16 @@ class LiveActivities extends ChangeNotifier {
 
   Future<void> _register(String routed, String token) async {
     if (!_registered.add('$routed\n$token')) return;
-    final body = {'action': 'activity_register', 'token': token, 'session': routed, 'platform': pushPlatform};
-    if (!await _push(body)) _registered.remove('$routed\n$token');
+    final body = {'token': token, 'session': routed, 'platform': pushPlatform};
+    if (!await _push('activity_register', body)) _registered.remove('$routed\n$token');
   }
 
-  Future<bool> _push(Map<String, dynamic> body) async {
+  Future<bool> _push(String action, Map<String, Object?> body) async {
     try {
-      await _client.functions.invoke('push', body: body);
+      await _server.push(action, body);
       return true;
     } on Object catch (e) {
-      debugPrint('PocketTerm: Live Activity ${body['action']}: $e');
+      debugPrint('PocketTerm: Live Activity $action: $e');
       return false;
     }
   }

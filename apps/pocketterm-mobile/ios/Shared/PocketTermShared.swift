@@ -1,10 +1,11 @@
+import CryptoKit
 import Foundation
 import Security
 
 /// What the app and its push extension share through the App Group: the
 /// backend (the Supabase project the user connected, written by
-/// packages/pocketterm_core/lib/backend.dart) and the push key. Compiled
-/// into Runner and PocketTermPush.
+/// packages/pocketterm_core/lib/backend.dart) and each computer's channel key.
+/// Compiled into Runner and PocketTermPush.
 enum PocketTermShared {
   /// The App Group id, from config/PocketTerm.xcconfig through each target's
   /// Info.plist (`PocketTermAppGroup`).
@@ -35,18 +36,73 @@ enum PocketTermShared {
     }
   }
 
-  /// This iPhone's push key (32 bytes): made here, given only to the user's
-  /// own server (functions/push), which seals each notification with it; the
-  /// PocketTermPush extension opens them. Made on first use, kept across sign-ins.
-  /// Nil when the system had no random bytes to give: no push then.
-  static var pushKey: Data? { defaults.data(forKey: "pushKey") }
+  // MARK: Channel keys
 
-  static func makePushKey() -> Data? {
-    if let key = pushKey { return key }
-    var bytes = [UInt8](repeating: 0, count: 32)
-    guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { return nil }
-    let key = Data(bytes)
-    defaults.set(key, forKey: "pushKey")
-    return key
+  /// Each computer's channel key (32 bytes), which the phone got only by
+  /// scanning that computer's code. One Keychain item per computer, in the App
+  /// Group's access group so the push extension reads it too, readable after
+  /// the first unlock and never leaving this device (no backup, no iCloud).
+  private static let keyService = "com.danyzmaj.pocketterm.channel-key"
+
+  private static func keyQuery(_ desktop: String? = nil) -> [String: Any] {
+    var q: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: keyService,
+      kSecAttrAccessGroup as String: group,
+    ]
+    if let desktop { q[kSecAttrAccount as String] = desktop }
+    return q
+  }
+
+  /// Stores [key] for computer [desktop], replacing the one it had.
+  @discardableResult
+  static func setChannelKey(_ key: Data, for desktop: String) -> Bool {
+    let query = keyQuery(desktop)
+    SecItemDelete(query as CFDictionary)
+    var add = query
+    add[kSecValueData as String] = key
+    add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
+  }
+
+  static func removeChannelKey(for desktop: String) {
+    SecItemDelete(keyQuery(desktop) as CFDictionary)
+  }
+
+  static func channelKey(for desktop: String) -> Data? {
+    var query = keyQuery(desktop)
+    query[kSecReturnData as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitOne
+    var out: CFTypeRef?
+    guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess else { return nil }
+    return out as? Data
+  }
+
+  /// Every computer's key, by its id.
+  static func channelKeys() -> [String: Data] {
+    var query = keyQuery()
+    query[kSecReturnAttributes as String] = true
+    query[kSecReturnData as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitAll
+    var out: CFTypeRef?
+    guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess,
+      let items = out as? [[String: Any]]
+    else { return [:] }
+    var keys: [String: Data] = [:]
+    for item in items {
+      if let desktop = item[kSecAttrAccount as String] as? String, let key = item[kSecValueData as String] as? Data {
+        keys[desktop] = key
+      }
+    }
+    return keys
+  }
+
+  /// Opens [sealed] (nonce 12 ‖ ciphertext ‖ tag 16, AES-256-GCM) with [key]
+  /// and [aad]; nil if it was made with another key or for anything else.
+  static func open(_ sealed: Data, key: Data, aad: String) -> Data? {
+    guard key.count == 32, sealed.count >= 12 + 16, let box = try? AES.GCM.SealedBox(combined: sealed) else {
+      return nil
+    }
+    return try? AES.GCM.open(box, using: SymmetricKey(data: key), authenticating: Data(aad.utf8))
   }
 }

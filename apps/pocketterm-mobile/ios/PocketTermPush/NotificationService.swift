@@ -1,17 +1,16 @@
-import CryptoKit
 import UserNotifications
 
 /// Turns a push into its real text. The relay (supabase/functions/relay) only
-/// forwards ciphertext: the user's own server sealed {kind, title, body,
-/// session?} with the key this iPhone registered (`PocketTermShared.pushKey`),
-/// AES-256-GCM in CryptoKit's combined form. If anything is off, the relay's
-/// generic text shows instead; nothing private ever did.
+/// forwards ciphertext: the computer `d` sealed {title, body, session?, state?}
+/// with its channel key (`PocketTermShared.channelKey`), AES-256-GCM in
+/// CryptoKit's combined form, AAD "pocketterm/v1|push|<d>". A computer whose
+/// code this iPhone never scanned, or anything else off, keeps the relay's
+/// generic "PocketTerm" alert; nothing private ever shows.
 final class NotificationService: UNNotificationServiceExtension {
   private struct Message: Decodable {
-    let kind: String
     let title: String
     let body: String
-    /// kind terminal: the omp session (its key) a tap opens.
+    /// The coding session (its routed key) a tap opens.
     let session: String?
   }
 
@@ -21,17 +20,17 @@ final class NotificationService: UNNotificationServiceExtension {
     let content = (request.content.mutableCopy() as? UNMutableNotificationContent) ?? UNMutableNotificationContent()
     defer { contentHandler(content) }
     guard let enc = request.content.userInfo["enc"] as? String,
+      let desktop = request.content.userInfo["d"] as? String,
       let sealed = Data(base64Encoded: enc),
-      let keyData = PocketTermShared.pushKey,
-      let box = try? AES.GCM.SealedBox(combined: sealed),
-      let plain = try? AES.GCM.open(box, using: SymmetricKey(data: keyData)),
+      let key = PocketTermShared.channelKey(for: desktop),
+      let plain = PocketTermShared.open(sealed, key: key, aad: "pocketterm/v1|push|\(desktop)"),
       let message = try? JSONDecoder().decode(Message.self, from: plain)
     else { return }
     content.title = message.title
     content.body = message.body
     // What a tap opens (AppDelegate's Notifications).
     var info = content.userInfo
-    info["kind"] = message.kind
+    info["kind"] = "terminal"
     if let session = message.session { info["session"] = session }
     content.userInfo = info
   }

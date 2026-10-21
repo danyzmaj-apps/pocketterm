@@ -52,6 +52,7 @@ class MainActivity : FlutterActivity() {
         super.onCreate(savedInstanceState)
         // A recreated activity has already handled its intent.
         if (savedInstanceState == null) tapped(intent)
+        PocketTermShared.forgetPushKey(this)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -111,6 +112,23 @@ class MainActivity : FlutterActivity() {
                 NativeEvents.tappedSession = null
             }
             "registerPush" -> registerPush(result)
+            "setChannelKey" -> {
+                val desktop = args["desktop"] as? String
+                val key = runCatching { Base64.decode(args["key"] as? String, Base64.DEFAULT) }.getOrNull()
+                if (desktop == null || key?.size != 32) {
+                    result.error("bad-args", "desktop and a 32-byte base64 key", null)
+                } else {
+                    PocketTermShared.setChannelKey(this, desktop, key)
+                    result.success(null)
+                }
+            }
+            "removeChannelKey" -> {
+                (args["desktop"] as? String)?.let { PocketTermShared.removeChannelKey(this, it) }
+                result.success(null)
+            }
+            "channelKeys" -> result.success(
+                PocketTermShared.channelKeys(this).mapValues { Base64.encodeToString(it.value, Base64.NO_WRAP) },
+            )
             "startActivity" -> askNotifications { result.success(SessionActivities.start(this, args)) }
             "updateActivity" -> result.success(SessionActivities.update(this, args))
             "endActivity" -> {
@@ -135,8 +153,7 @@ class MainActivity : FlutterActivity() {
                 val token = if (task.isSuccessful) task.result else null
                 if (token == null) return@addOnCompleteListener result.success(null)
                 PocketTermShared.setFcmToken(this, token)
-                val key = Base64.encodeToString(PocketTermShared.makePushKey(this), Base64.NO_WRAP)
-                result.success(mapOf("token" to token, "key" to key))
+                result.success(mapOf("token" to token))
             }
         }
     }

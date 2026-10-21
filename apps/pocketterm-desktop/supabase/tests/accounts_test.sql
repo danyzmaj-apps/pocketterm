@@ -17,8 +17,8 @@ create function pg_temp.sign_out() returns void language sql as $$
 $$;
 
 -- What each account has: a phone, a followed session, a computer and a session of its own.
-insert into public.push_devices (token, user_id, key) values
-  ('owner-phone', '00000000-0000-0000-0000-00000000000a', 'k'), ('demo-phone', '00000000-0000-0000-0000-00000000000d', 'k');
+insert into public.push_devices (token, user_id) values
+  ('owner-phone', '00000000-0000-0000-0000-00000000000a'), ('demo-phone', '00000000-0000-0000-0000-00000000000d');
 insert into public.activity_tokens (token, user_id, session) values
   ('owner-activity', '00000000-0000-0000-0000-00000000000a', 's'), ('demo-activity', '00000000-0000-0000-0000-00000000000d', 's');
 insert into public.desktops (user_id, id, name, platform) values

@@ -18,6 +18,8 @@ import UserNotifications
     let launched = super.application(application, didFinishLaunchingWithOptions: launchOptions)
     // Before launch ends: the tap that launched the app comes next.
     notifications.install()
+    // The per-phone push key from before end-to-end encryption: no server has a use for it now.
+    PocketTermShared.defaults.removeObject(forKey: "pushKey")
     return launched
   }
 
@@ -26,8 +28,7 @@ import UserNotifications
   ) {
     super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
     let token = deviceToken.map { String(format: "%02x", $0) }.joined()
-    // No key, no sealed pushes.
-    pushWaiter?(PocketTermShared.makePushKey().map { ["token": token, "key": $0.base64EncodedString()] })
+    pushWaiter?(["token": token])
     pushWaiter = nil
   }
 
@@ -67,6 +68,22 @@ import UserNotifications
         result(nil)
       case "takeTappedSession":
         result(notifications.takeTappedSession())
+      case "setChannelKey":
+        guard let desktop = args["desktop"] as? String, let b64 = args["key"] as? String,
+          let key = Data(base64Encoded: b64), key.count == 32
+        else {
+          return result(FlutterError(code: "bad-args", message: "desktop and a 32-byte base64 key", details: nil))
+        }
+        if PocketTermShared.setChannelKey(key, for: desktop) {
+          result(nil)
+        } else {
+          result(FlutterError(code: "keychain", message: "Couldn't save the key in the Keychain", details: nil))
+        }
+      case "removeChannelKey":
+        if let desktop = args["desktop"] as? String { PocketTermShared.removeChannelKey(for: desktop) }
+        result(nil)
+      case "channelKeys":
+        result(PocketTermShared.channelKeys().mapValues { $0.base64EncodedString() })
       case "registerPush":
         // Permission first (a no-op after the first answer), then APNs. nil:
         // not allowed or no token (the phone gets no pushes then).

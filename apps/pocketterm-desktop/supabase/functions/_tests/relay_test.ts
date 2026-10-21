@@ -24,9 +24,9 @@ const now = () => Math.floor(Date.now() / 1000);
 const apns = (status = 200, reason?: string) => () =>
   reason ? json({ reason }, status) : new Response(null, { status });
 
-Deno.test("an iPhone alert goes to APNs with generic text and the ciphertext", async () => {
+Deno.test("an iPhone alert goes to APNs with generic text, the ciphertext and its computer", async () => {
   network(apns());
-  const res = await relay(post({ token: hex(1), kind: "terminal", enc: "c2VhbGVk", collapse: "s1" }));
+  const res = await relay(post({ token: hex(1), kind: "terminal", enc: "c2VhbGVk", desktop: "k3x9m2qa", collapse: "s1" }));
   assertEquals(res.status, 200);
   assertEquals(sent.length, 1);
   const [push] = sent;
@@ -38,7 +38,15 @@ Deno.test("an iPhone alert goes to APNs with generic text and the ciphertext", a
   assertEquals(JSON.parse(push.body), {
     aps: { alert: { title: "PocketTerm", body: "Terminal" }, sound: "default", "mutable-content": 1 },
     enc: "c2VhbGVk",
+    d: "k3x9m2qa",
   });
+});
+
+Deno.test("a server from before end-to-end encryption still reaches its phones", async () => {
+  network(apns());
+  assertEquals((await relay(post({ token: hex(10), kind: "terminal", enc: "c2VhbGVk" }))).status, 200);
+  const { d, enc } = JSON.parse(sent[0].body);
+  assertEquals([d, enc], [undefined, "c2VhbGVk"]);
 });
 
 Deno.test("a sandbox token is tried on the sandbox after production calls it bad", async () => {
@@ -104,10 +112,14 @@ Deno.test("malformed pushes are refused before anything reaches Apple or Google"
     { token: hex(7, 160), kind: "liveactivity", event: "update", state: { state: "done", since: now(), kind: "plan" } },
     { token: hex(7, 160), kind: "liveactivity", event: "update", state: { state: "done", since: now() - 30 * 86400 } },
     { token: hex(7, 160), kind: "liveactivity", event: "start", state: { state: "done", since: now() } },
+    { token: hex(7), kind: "terminal", enc: "x", desktop: "../../etc" },
     { platform: "windows", token: hex(7), kind: "terminal", enc: "x" },
     { platform: "android", token: "short", kind: "terminal", enc: "x" },
     { platform: "android", token: "f".repeat(160), kind: "reminder", enc: "x" },
     { platform: "android", token: "f".repeat(160), kind: "liveactivity", enc: "x" },
+    { platform: "android", token: "f".repeat(160), kind: "terminal", enc: "x", desktop: 12345678 },
+    { platform: "android", token: "f".repeat(160), kind: "activity", session: "s1", state: { state: "exploded" } },
+    { platform: "android", token: "f".repeat(160), kind: "activity", session: "not a key", state: { state: "done", since: now() } },
     "a string",
     [1, 2],
   ];
@@ -127,6 +139,7 @@ Deno.test("an Android push goes to FCM as a data-only message", async () => {
     token: "f".repeat(160),
     kind: "terminal",
     enc: "c2VhbGVk",
+    desktop: "k3x9m2qa",
     collapse: "s1",
   };
   assertEquals((await relay(post(android))).status, 501, "without a service account");
@@ -157,9 +170,26 @@ Deno.test("an Android push goes to FCM as a data-only message", async () => {
   assertEquals(JSON.parse(message.body), {
     message: {
       token: "f".repeat(160),
-      data: { kind: "terminal", enc: "c2VhbGVk" },
+      data: { kind: "terminal", enc: "c2VhbGVk", d: "k3x9m2qa" },
       android: { priority: "high", collapse_key: "s1", ttl: "86400s" },
     },
+  });
+
+  network(() => json({ name: "sent" }));
+  const since = now() - 60;
+  const followed = {
+    platform: "android",
+    token: "e".repeat(160),
+    kind: "activity",
+    session: "k3x9m2qa/s1",
+    state: { state: "needs", since, kind: "question", title: "secret project" },
+    collapse: "k3x9m2qa/s1",
+  };
+  assertEquals((await relay(post(followed))).status, 200);
+  assertEquals(JSON.parse(sent[0].body).message, {
+    token: "e".repeat(160),
+    data: { kind: "activity", session: "k3x9m2qa/s1", state: "needs", since: String(since * 1000), akind: "question" },
+    android: { priority: "high", collapse_key: "k3x9m2qa/s1", ttl: "3600s" },
   });
 
   network(() => json({ error: { status: "NOT_FOUND", message: "Requested entity was not found." } }, 404));

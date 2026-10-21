@@ -16,7 +16,7 @@ create function pg_temp.sign_out() returns void language sql as $$
 $$;
 
 -- B's rows, made by the server.
-insert into public.push_devices (token, user_id, key) values ('b-phone', '00000000-0000-0000-0000-00000000000b', 'k');
+insert into public.push_devices (token, user_id) values ('b-phone', '00000000-0000-0000-0000-00000000000b');
 insert into public.activity_tokens (token, user_id, session) values ('b-activity', '00000000-0000-0000-0000-00000000000b', 's');
 insert into public.allowed_signups (email) values ('friend@example.com');
 insert into public.pairing_failures (ip) values ('192.0.2.1');
@@ -28,12 +28,12 @@ insert into public.desktops (user_id, id, name, platform) values ('00000000-0000
 select pg_temp.sign_in('00000000-0000-0000-0000-00000000000a');
 
 -- Server-only tables: nothing to see, nothing to write.
-select is((select count(*) from public.push_devices), 0::bigint, 'phones and their keys are server-only');
+select is((select count(*) from public.push_devices), 0::bigint, 'phones are server-only');
 select is((select count(*) from public.activity_tokens), 0::bigint, 'followed sessions are server-only');
 select is((select count(*) from public.allowed_signups), 0::bigint, 'the sign-up list is server-only');
 select is((select count(*) from public.pairing_failures), 0::bigint, 'the pairing throttle is server-only');
 delete from public.push_devices where token = 'b-phone';
-select throws_ok($$insert into public.push_devices (token, user_id, key) values ('a-phone', '00000000-0000-0000-0000-00000000000a', 'k')$$,
+select throws_ok($$insert into public.push_devices (token, user_id) values ('a-phone', '00000000-0000-0000-0000-00000000000a')$$,
   '42501', null, 'phones register only through functions/push');
 select throws_ok($$insert into public.activity_tokens (token, user_id, session) values ('a-activity', '00000000-0000-0000-0000-00000000000a', 's')$$,
   '42501', null, 'sessions are followed only through functions/push');

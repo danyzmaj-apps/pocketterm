@@ -1,29 +1,30 @@
 // Push notifications to the user's phones, through the publisher's relay
 // (functions/relay holds the APNs key and the Firebase service account).
-// Every notification is encrypted here with the key that phone registered,
-// so the relay only ever sees ciphertext. iPhones go through APNs, Android
-// phones through FCM. Deployed --no-verify-jwt: the user's token is checked here.
+// A notification's text is sealed on the computer with its channel key
+// (the one only that computer and the phones that scanned its code hold), so
+// this function and the relay only ever see ciphertext. iPhones go through
+// APNs, Android phones through FCM. Deployed --no-verify-jwt: the user's
+// token is checked here.
 //
-//   POST {"action": "register", "token", "key", "label"?, "platform"?}
+//   POST {"action": "register", "token", "label"?, "platform"?}
 //                                                           user token: this phone; platform: ios (default,
 //                                                           token: the APNs device token, hex) | android
-//                                                           (token: the FCM registration token); key: its
-//                                                           AES-256 key, base64
+//                                                           (token: the FCM registration token)
 //   POST {"action": "unregister", "token"}                  user token: signed out
-//   POST {"action": "notify", "title", "body"?, "session"?, "state"?}
+//   POST {"action": "notify", "desktop", "enc", "collapse"?}
 //                                                           user token: e.g. a coding session finished on the
-//                                                           computer; session: the one a tap opens, whose Live
-//                                                           Activities move to state (done | needs)
+//                                                           computer [desktop] (its 8-character id); enc:
+//                                                           base64(nonce 12 ‖ ciphertext ‖ tag 16), AES-256-GCM
+//                                                           with the computer's channel key over JSON
+//                                                           {title, body, session?, state?}, AAD
+//                                                           "pocketterm/v1|push|<desktop>"; collapse: the coding
+//                                                           session (its routed key) a newer push replaces
 //
-// Sealed messages (AES-256-GCM, base64(nonce ‖ ciphertext ‖ tag)):
-//   {"kind": "terminal", "title", "body", "session"?: coding session}
-//   {"kind": "activity", "session", "state", "since": unix ms, "akind"?}  Android only, see below
-//
-// Live Activities (a coding session followed on the phone). An iPhone's has
-// its own push token and its pushes can't be encrypted (the notification
-// extension never sees them), so they carry a state and nothing else: no
-// title, no text. An Android phone follows each session with its FCM token
-// (one row per session) and gets the state sealed with its device key.
+// Live Activities (a coding session followed on the phone) carry a state and
+// nothing else: no title, no text, so they aren't encrypted (an iPhone's
+// notification extension never sees them, Apple shows them as sent). An
+// iPhone's activity has its own push token; an Android phone follows each
+// session with its FCM token (one row per session).
 //
 //   POST {"action": "activity_register", "token", "session", "platform"?}
 //                                                             user token: an activity's push token (ios) or
@@ -33,7 +34,7 @@
 //   POST {"action": "activity", "session", "state", "kind"?}  user token: the computer, on a session's change;
 //        state: working | needs | done | ended, kind: question | approval | plan (needs only)
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { decodeBase64, encodeBase64 } from "jsr:@std/encoding@1/base64";
+import { decodeBase64 } from "jsr:@std/encoding@1/base64";
 
 const url = Deno.env.get("SUPABASE_URL")!;
 const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
@@ -85,38 +86,13 @@ async function activity(userId: string, session: string, state: ActivityState, k
     .select("token, platform")
     .eq("user_id", userId)
     .eq("session", session);
-  const androidTokens = (rows ?? []).filter((r) => r.platform === "android").map((r) => r.token);
-  const { data: keys } = androidTokens.length
-    ? await admin.from("push_devices").select("token, key").eq("user_id", userId).in("token", androidTokens)
-    : { data: [] };
-  const keyOf = new Map((keys ?? []).map((d) => [d.token, d.key]));
   const now = Date.now();
+  const live = { state, since: Math.floor(now / 1000), ...(state === "needs" && kind ? { kind } : {}) };
   let sent = 0;
   for (const { token, platform } of rows ?? []) {
-    let res: Response | null;
-    if (platform === "android") {
-      const key = keyOf.get(token);
-      // The phone unregistered: nothing to seal its pushes with.
-      if (!key) {
-        await admin.from("activity_tokens").delete().eq("token", token).eq("user_id", userId);
-        continue;
-      }
-      const message: Message = {
-        kind: "activity",
-        session,
-        state,
-        since: now,
-        ...(state === "needs" && kind ? { akind: kind } : {}),
-      };
-      res = await relayPost({ platform: "android", token, kind: "activity", enc: await seal(key, message), collapse: session });
-    } else {
-      res = await relayPost({
-        token,
-        kind: "liveactivity",
-        event: state === "ended" ? "end" : "update",
-        state: { state, since: Math.floor(now / 1000), ...(state === "needs" && kind ? { kind } : {}) },
-      });
-    }
+    const res = platform === "android"
+      ? await relayPost({ platform: "android", token, kind: "activity", session, state: live, collapse: session })
+      : await relayPost({ token, kind: "liveactivity", event: state === "ended" ? "end" : "update", state: live });
     // An Android token is the phone's: gone, it follows no session any more.
     if (res?.status === 410) await admin.from("activity_tokens").delete().eq("token", token);
     else if (res?.ok) sent++;
@@ -126,37 +102,35 @@ async function activity(userId: string, session: string, state: ActivityState, k
   return sent;
 }
 
-/** session: the coding session a tap opens. */
-type Notice = { kind: "terminal"; title: string; body: string; session?: string };
-/** A coding session's state for an Android phone; since: unix ms. */
-type ActivityMessage = { kind: "activity"; session: string; state: ActivityState; since: number; akind?: ActivityKind };
-type Message = Notice | ActivityMessage;
+/** A computer's 8-character id (desktops.id). */
+const desktopId = (v: unknown): v is string => typeof v === "string" && /^[a-z0-9]{8}$/.test(v);
 
-/** AES-256-GCM: base64(nonce ‖ ciphertext ‖ tag), CryptoKit's combined form. */
-export async function seal(keyB64: string, message: Message): Promise<string> {
-  const key = await crypto.subtle.importKey("raw", decodeBase64(keyB64), "AES-GCM", false, ["encrypt"]);
-  const nonce = crypto.getRandomValues(new Uint8Array(12));
-  const sealed = new Uint8Array(
-    await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, key, new TextEncoder().encode(JSON.stringify(message))),
-  );
-  const out = new Uint8Array(12 + sealed.length);
-  out.set(nonce);
-  out.set(sealed, 12);
-  return encodeBase64(out);
+/** The relay takes at most 3000 base64 characters (FCM's 4 KB of data in all). */
+const maxEnc = 3000;
+
+/** A sealed notification: base64 of nonce 12 ‖ ciphertext ‖ tag 16, at least one byte of text. */
+function sealed(v: unknown): v is string {
+  if (typeof v !== "string" || v.length > maxEnc) return false;
+  try {
+    return decodeBase64(v).length > 12 + 16;
+  } catch {
+    return false;
+  }
 }
 
-/** Sends to every phone of [userId]; forgets the ones Apple or Google say are gone. */
-async function send(userId: string, message: Notice): Promise<number> {
-  const { data: devices } = await admin.from("push_devices").select("token, key, platform").eq("user_id", userId);
+/** Sends [enc], sealed on computer [desktop], to every phone of [userId]; forgets the ones Apple or Google say are gone. */
+async function send(userId: string, desktop: string, enc: string, collapse?: string): Promise<number> {
+  const { data: devices } = await admin.from("push_devices").select("token, platform").eq("user_id", userId);
   let sent = 0;
   for (const d of devices ?? []) {
     const res = await relayPost({
       ...(d.platform === "android" ? { platform: "android" } : {}),
       token: d.token,
-      kind: message.kind,
-      enc: await seal(d.key, message),
+      kind: "terminal",
+      enc,
+      desktop,
       // Lets a newer push for the same coding session replace an older one.
-      collapse: message.session,
+      collapse,
     });
     if (res?.status === 410) await admin.from("push_devices").delete().eq("token", d.token);
     else if (res?.ok) sent++;
@@ -180,15 +154,9 @@ Deno.serve(async (req) => {
     if (platform === "android") {
       if (!fcmToken(body.token)) return json(400, { error: "token must be the FCM registration token" });
     } else if (!apnsToken(body.token)) return json(400, { error: "token must be the APNs device token (hex)" });
-    let key: Uint8Array | null = null;
-    try {
-      if (typeof body.key === "string") key = decodeBase64(body.key);
-    } catch { /* not base64 */ }
-    if (key?.length !== 32) return json(400, { error: "key must be 32 bytes, base64" });
     const { error } = await admin.from("push_devices").upsert({
       token: body.token,
       user_id: user,
-      key: body.key,
       label: typeof body.label === "string" ? clip(body.label, 80) : "",
       platform,
       updated_at: new Date().toISOString(),
@@ -205,14 +173,12 @@ Deno.serve(async (req) => {
   }
 
   if (body.action === "notify") {
-    const title = typeof body.title === "string" ? clip(body.title.trim(), 120) : "";
-    if (!title) return json(400, { error: "title is required" });
-    const text = typeof body.body === "string" ? clip(body.body.trim(), 400) : "";
-    const session = sessionKey(body.session);
-    const sent = await send(user, { kind: "terminal", title, body: text, session });
-    // The computer's session alerts (lib/controller.dart) also move the session's Live Activities.
-    if (session && (body.state === "done" || body.state === "needs")) await activity(user, session, body.state);
-    return json(200, { sent });
+    if (!desktopId(body.desktop)) return json(400, { error: "desktop must be the computer's id" });
+    if (!sealed(body.enc)) return json(400, { error: `enc must be the sealed notification, base64, at most ${maxEnc}` });
+    if (body.collapse != null && !sessionKey(body.collapse)) {
+      return json(400, { error: "collapse must be a coding session key" });
+    }
+    return json(200, { sent: await send(user, body.desktop, body.enc, sessionKey(body.collapse)) });
   }
 
   if (body.action === "activity_register") {

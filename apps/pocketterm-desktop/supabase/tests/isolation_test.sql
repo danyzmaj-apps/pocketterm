@@ -18,7 +18,7 @@ create function pg_temp.sign_out() returns void language sql as $$
 $$;
 
 -- The owner's rows, made by the server; a reviewer code keeps the demo's access open.
-insert into public.push_devices (token, user_id, key) values ('owner-phone', '00000000-0000-0000-0000-00000000000a', 'k');
+insert into public.push_devices (token, user_id) values ('owner-phone', '00000000-0000-0000-0000-00000000000a');
 insert into public.activity_tokens (token, user_id, session) values ('owner-activity', '00000000-0000-0000-0000-00000000000a', 's');
 insert into public.pairing_codes (id, code_hash, user_id, created_by, reusable, expires_at) values
   ('00000000-0000-0000-0000-0000000003a0', 'review', '00000000-0000-0000-0000-00000000000d', '00000000-0000-0000-0000-00000000000a', true, now() + interval '30 days');
@@ -45,7 +45,7 @@ begin
   delete from public.push_devices where token = 'owner-phone';
   delete from public.activity_tokens where token = 'owner-activity';
   update public.desktops set name = 'taken' where id = 'abcdefgh';
-  return next throws_ok($$insert into public.push_devices (token, user_id, key) values ('x', '00000000-0000-0000-0000-00000000000a', 'k')$$,
+  return next throws_ok($$insert into public.push_devices (token, user_id) values ('x', '00000000-0000-0000-0000-00000000000a')$$,
     '42501', null, label || ' can''t register a phone as the owner');
   return next throws_ok($$insert into storage.objects (bucket_id, name) values ('terminal', '00000000-0000-0000-0000-00000000000a/x.png')$$,
     '42501', null, label || ' can''t upload into the owner''s folder');

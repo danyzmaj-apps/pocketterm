@@ -2,34 +2,42 @@
 // Firebase Cloud Messaging for PocketTerm, because it holds the publisher's APNs key
 // and Firebase service account. Deployed ONLY to the publisher's project
 // (tool/deploy-relay.sh), never by the setup wizard or tool/setup-backend.sh.
-// Every PocketTerm server sends its pushes through it (functions/push), already
-// encrypted for the phone, so all this sees is a device token and ciphertext.
+// Every PocketTerm server sends its pushes through it (functions/push). A
+// notification's text was sealed on the user's computer with that computer's
+// channel key, which only the phones that scanned its code hold, so all this
+// sees is a device token, the computer's id and ciphertext.
 // Deployed --no-verify-jwt.
 //
 // iPhones (APNs; no platform field):
-//   POST {"token": hex, "kind": "terminal", "enc": base64, "collapse"?: string}
+//   POST {"token": hex, "kind": "terminal", "enc": base64, "desktop"?: computer id, "collapse"?: string}
 //   POST {"token": hex, "kind": "liveactivity", "event": "update"|"end",
 //         "state": {"state": "working"|"needs"|"done"|"ended", "since": unix seconds,
 //                   "kind"?: "question"|"approval"|"plan"}}
-// Android phones (FCM HTTP v1, a data-only message the app decrypts and shows):
+// Android phones (FCM HTTP v1, a data-only message the app shows itself):
 //   POST {"platform": "android", "token": FCM registration token,
-//         "kind": "terminal"|"activity", "enc": base64, "collapse"?: string}
+//         "kind": "terminal", "enc": base64, "desktop"?: computer id, "collapse"?: string}
+//   POST {"platform": "android", "token": FCM registration token,
+//         "kind": "activity", "session": coding session key, "state": {as above}, "collapse"?: string}
 //   → 200 sent · 410 the phone is gone (uninstalled, signed out): forget it ·
 //     429 over a rate limit (Retry-After) · 501 FCM not configured here · 4xx/5xx otherwise
 //
+// The phone opens enc with the key of the computer named by desktop (d in
+// the push); without one it shows a generic "PocketTerm" alert. desktop is
+// optional so servers from before end-to-end encryption keep working until
+// they update (their phones open enc with their own push key).
+//
 // Trust: any caller may use it (self-hosted servers have no credentials of
 // the publisher's), so whoever knows a device token can make that phone show
-// a generic "PocketTerm / Terminal" alert, or move or end one of its Live
-// Activities, and nothing more: the real text needs the key only that phone
-// and its server hold. Rate limits (limits.ts) keep floods cheap: per caller
-// address, per device token, and fewer still for a caller whose tokens keep
-// turning out unknown or malformed.
+// a generic "PocketTerm" alert, or move or end one of its Live Activities,
+// and nothing more: the real text needs the key only the user's computer and
+// phones hold. Rate limits (limits.ts) keep floods cheap: per caller address,
+// per device token, and fewer still for a caller whose tokens keep turning
+// out unknown or malformed.
 //
-// A Live Activity push (a coding session on the Lock Screen) can't be
-// encrypted: the iPhone's notification extension never sees it. So it carries
-// only a state, rebuilt here from checked fields, never anything passed
-// through. Android's ongoing notification for a session is the app's own, so
-// its state travels sealed like everything else (kind "activity").
+// A Live Activity push (a coding session on the Lock Screen, or Android's
+// ongoing notification for it) can't be encrypted: the iPhone's notification
+// extension never sees it. So it carries only a state, rebuilt here from
+// checked fields, never anything passed through.
 //
 // Secrets: APNS_KEY (the .p8's contents), APNS_KEY_ID, APNS_TEAM_ID, APNS_TOPIC (bundle id),
 // FCM_SERVICE_ACCOUNT (the Firebase service account's JSON key).
@@ -40,7 +48,7 @@ import {
   assertion,
   exchange,
   fcmGone,
-  fcmKinds,
+  type FcmData,
   fcmMessage,
   fcmToken,
   importPrivateKey,
@@ -125,10 +133,32 @@ async function fcmAccess(): Promise<FcmAccess> {
 /** An Android phone's push, through FCM. */
 async function android(body: Record<string, unknown>): Promise<Response> {
   if (!fcmToken(body.token)) return json(400, { error: "token must be an FCM registration token" });
-  const kind = fcmKinds.find((k) => k === body.kind);
-  if (!kind) return json(400, { error: `kind must be ${fcmKinds.join(", ")}` });
-  // FCM takes 4 KB of data in all.
-  if (typeof body.enc !== "string" || body.enc.length > 3000) return json(400, { error: "enc missing or too long" });
+  let data: FcmData;
+  if (body.kind === "terminal") {
+    const alert = sealedAlert(body);
+    if (typeof alert === "string") return json(400, { error: alert });
+    data = { kind: "terminal", ...alert };
+  } else if (body.kind === "activity" && body.state === undefined) {
+    // A server from before end-to-end encryption seals the state with the phone's own key.
+    if (typeof body.enc !== "string" || body.enc.length > maxEnc) return json(400, { error: "enc missing or too long" });
+    data = { kind: "activity", enc: body.enc };
+  } else if (body.kind === "activity") {
+    if (typeof body.session !== "string" || !/^[\w.:/-]{1,64}$/.test(body.session)) {
+      return json(400, { error: "session must be a coding session key" });
+    }
+    const s = activityState(body.state);
+    if (typeof s === "string") return json(400, { error: s });
+    // FCM data is strings only; the app takes since in ms.
+    data = {
+      kind: "activity",
+      session: body.session,
+      state: s.state,
+      since: String(s.since * 1000),
+      ...(s.kind ? { akind: s.kind } : {}),
+    };
+  } else {
+    return json(400, { error: "kind must be terminal or activity" });
+  }
   const collapse = typeof body.collapse === "string" && body.collapse.length <= 64 ? body.collapse : undefined;
   if (!(await tokenAllowed(body.token))) return tooMany();
 
@@ -142,7 +172,7 @@ async function android(body: Record<string, unknown>): Promise<Response> {
   const res = await fetch(`https://fcm.googleapis.com/v1/projects/${access.sa.project_id}/messages:send`, {
     method: "POST",
     headers: { authorization: `Bearer ${access.token}`, "content-type": "application/json" },
-    body: JSON.stringify(fcmMessage(body.token, kind, body.enc, collapse)),
+    body: JSON.stringify(fcmMessage(body.token, data, collapse)),
   });
   if (res.ok) return json(200, { ok: true });
   const answer: unknown = await res.json().catch(() => null);
@@ -152,15 +182,29 @@ async function android(body: Record<string, unknown>): Promise<Response> {
   return json(502, { error: `FCM ${res.status} ${JSON.stringify(answer)}`.slice(0, 500) });
 }
 
-// What shows if the iPhone can't decrypt (shouldn't happen): no content.
+// FCM takes 4 KB of data in all; APNs 4 KB of payload.
+const maxEnc = 3000;
+
+/**
+ * A sealed alert's fields for the phone from a checked body: enc, and d (the
+ * computer whose key opens it) when the server named one. A string says what's wrong.
+ */
+function sealedAlert(body: Record<string, unknown>): { enc: string; d?: string } | string {
+  if (typeof body.enc !== "string" || body.enc.length > maxEnc) return "enc missing or too long";
+  if (body.desktop === undefined) return { enc: body.enc };
+  if (typeof body.desktop !== "string" || !/^[a-z0-9]{8}$/.test(body.desktop)) return "desktop must be a computer id";
+  return { enc: body.enc, d: body.desktop };
+}
+
+// What shows if the phone can't open it (a computer whose code it never
+// scanned, or a key reset since): no content.
 const fallback = "Terminal";
 
 const activityStates = ["working", "needs", "done", "ended"];
 const activityKinds = ["question", "approval", "plan"];
 
-/** A Live Activity's push from a checked body; a string says what's wrong. */
-function liveActivity(body: Record<string, unknown>): { payload: string; priority: string } | string {
-  const s = body.state;
+/** A session's state from a checked {state, since: unix seconds, kind?}; a string says what's wrong. */
+function activityState(s: unknown): { state: string; since: number; kind?: string } | string {
   if (!s || typeof s !== "object") return "state missing";
   const { state, since, kind } = s as Record<string, unknown>;
   if (typeof state !== "string" || !activityStates.includes(state)) return "state.state must be a known state";
@@ -171,19 +215,22 @@ function liveActivity(body: Record<string, unknown>): { payload: string; priorit
   if (kind !== undefined && (typeof kind !== "string" || !activityKinds.includes(kind) || state !== "needs")) {
     return "state.kind must be a known kind, with needs";
   }
+  return { state, since: Math.floor(since), ...(kind ? { kind } : {}) };
+}
+
+/** A Live Activity's push from a checked body; a string says what's wrong. */
+function liveActivity(body: Record<string, unknown>): { payload: string; priority: string } | string {
+  const s = activityState(body.state);
+  if (typeof s === "string") return s;
   if (body.event !== "update" && body.event !== "end") return "event must be update or end";
-  const end = body.event === "end";
-  const aps: Record<string, unknown> = {
-    timestamp: now,
-    event: body.event,
-    "content-state": { state, since: Math.floor(since), ...(kind ? { kind } : {}) },
-  };
+  const now = Math.floor(Date.now() / 1000);
+  const aps: Record<string, unknown> = { timestamp: now, event: body.event, "content-state": s };
   // Gone from the Lock Screen 10 minutes after it ended; otherwise stale (the
   // phone shows it as such) after 8 hours without news.
-  if (end) aps["dismissal-date"] = now + 600;
+  if (body.event === "end") aps["dismissal-date"] = now + 600;
   else aps["stale-date"] = now + 8 * 3600;
   // Apple rations priority 10; working can wait.
-  return { payload: JSON.stringify({ aps }), priority: state === "working" ? "5" : "10" };
+  return { payload: JSON.stringify({ aps }), priority: s.state === "working" ? "5" : "10" };
 }
 
 Deno.serve(async (req) => {
@@ -219,15 +266,16 @@ async function push(body: Record<string, unknown>): Promise<Response> {
     headers["apns-priority"] = push.priority;
   } else {
     if (body.kind !== "terminal") return json(400, { error: "kind must be terminal or liveactivity" });
-    if (typeof body.enc !== "string" || body.enc.length > 3000) return json(400, { error: "enc missing or too long" });
+    const alert = sealedAlert(body);
+    if (typeof alert === "string") return json(400, { error: alert });
     payload = JSON.stringify({
       aps: {
         alert: { title: "PocketTerm", body: fallback },
         sound: "default",
-        // The iPhone's notification extension decrypts enc into the real text.
+        // The iPhone's notification extension opens enc into the real text.
         "mutable-content": 1,
       },
-      enc: body.enc,
+      ...alert,
     });
     headers["apns-topic"] = topic;
     headers["apns-push-type"] = "alert";

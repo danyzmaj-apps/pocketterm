@@ -18,8 +18,8 @@ const tokenAudience = "https://oauth2.googleapis.com/token";
 /** An FCM registration token. */
 export const fcmToken = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_:\-]{100,4096}$/.test(v);
 
-export const fcmKinds = ["terminal", "activity"] as const;
-export type FcmKind = (typeof fcmKinds)[number];
+/** What an Android push carries: kind terminal {enc, d?} or kind activity {session, state, since, akind?} (or a server's from before end-to-end encryption: {enc}). */
+export type FcmData = { kind: "terminal" | "activity" } & Record<string, string>;
 
 /** The service account from FCM_SERVICE_ACCOUNT's JSON; a string says what's wrong. */
 export function parseServiceAccount(raw: string): ServiceAccount | string {
@@ -72,17 +72,17 @@ export async function exchange(
   return { token: answer.access_token, expiresIn: typeof answer.expires_in === "number" ? answer.expires_in : 3600 };
 }
 
-/** FCM v1's request body: data only, the app shows what it decrypts. */
-export function fcmMessage(token: string, kind: FcmKind, enc: string, collapse?: string) {
+/** FCM v1's request body: data only, the app shows what it opens. */
+export function fcmMessage(token: string, data: FcmData, collapse?: string) {
   return {
     message: {
       token,
-      data: { kind, enc },
+      data,
       android: {
         priority: "high",
         ...(collapse ? { collapse_key: collapse } : {}),
         // A session's state is stale within the hour; an alert keeps a day.
-        ttl: kind === "activity" ? "3600s" : "86400s",
+        ttl: data.kind === "activity" ? "3600s" : "86400s",
       },
     },
   };

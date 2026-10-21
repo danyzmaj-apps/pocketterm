@@ -33,7 +33,7 @@ android {
 
     defaultConfig {
         applicationId = "com.danyzmaj.pocketterm"
-        // 26: adaptive icons, notification channels, and the AES-GCM the push key needs.
+        // 26: adaptive icons, notification channels, and the AES-GCM the channel keys need.
         minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

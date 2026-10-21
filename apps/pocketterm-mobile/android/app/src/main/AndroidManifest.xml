@@ -9,8 +9,8 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- No backup and no device-to-device transfer (dataExtractionRules, Android 12+, where
-         allowBackup alone doesn't stop the transfer): the push key and the session stay on
-         this phone. -->
+         allowBackup alone doesn't stop the transfer): the computers' channel keys and the
+         session stay on this phone. -->
     <application
         android:label="PocketTerm"
         android:name="${applicationName}"

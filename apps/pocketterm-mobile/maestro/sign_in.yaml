@@ -1,6 +1,6 @@
 # Signs the app in with a code from the computer, a phone's only way in:
 # pastes SETUP_LINK (a reviewer code's link from Settings → Reviewer access,
-# or a fresh Settings → Set up phone… code) into "Paste a code instead". Does
+# or a fresh Settings → Add a phone… code) into "Paste a code instead". Does
 # nothing when the app is signed in already, so it's safe in a full run.
 #   maestro test -e SETUP_LINK='pocketterm://setup?url=…&key=…&code=…' sign_in.yaml
 appId: com.danyzmaj.pocketterm

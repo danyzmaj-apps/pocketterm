@@ -144,7 +144,7 @@ class _SetupPageState extends State<SetupPage> {
       ),
       child: const Text(
         '1.  Install PocketTerm on your computer and open it. Its setup sets up your server.\n'
-        '2.  Then its setup checklist shows a code under Your phone (later: Settings \u2192 Set up phone\u2026).\n'
+        '2.  Then its setup checklist shows a code under Your phone (later: Settings \u2192 Add\u00A0a\u00A0phone\u2026).\n'
         '3.  Tap the button below and point this phone at it.\n'
         '4.  That\u2019s it: the phone connects and signs in by itself.',
         style: TextStyle(height: 1.7),

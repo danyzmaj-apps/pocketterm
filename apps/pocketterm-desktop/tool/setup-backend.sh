@@ -79,7 +79,7 @@ cat <<EOF
 
 Connect PocketTerm on this computer by opening the setup link (or paste it into PocketTerm's
 setup screen). Phones sign in with a code from the computer: once you're signed in
-there, Settings → Set up phone….
+there, Settings → Add a phone….
 
   $LINK
 

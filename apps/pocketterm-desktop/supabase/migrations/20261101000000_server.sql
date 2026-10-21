@@ -22,7 +22,7 @@ alter table public.allowed_signups enable row level security;
 -- session.
 --
 -- Two kinds:
---   * a phone's code (Settings → Set up phone…): single use, 10 minutes, for
+--   * a phone's code (Settings → Add a phone…): single use, 10 minutes, for
 --     the signed-in user;
 --   * a reviewer code (Settings → Reviewer access): reusable until it expires
 --     or is revoked, for a separate demo account on this server, so App Store

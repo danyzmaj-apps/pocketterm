@@ -1,6 +1,6 @@
 // The Mac screenshots in the docs: the real widgets, made-up data, the Mac's own fonts.
 // Run from apps/pocketterm-desktop: fvm flutter test --tags screenshots --run-skipped
-// They're written to docs/images/mac-*.png, wizard-*.png and get-ready.png; a plain `fvm flutter test` skips
+// They're written to docs/images/mac-settings-*.png, wizard-*.png and get-ready.png; a plain `fvm flutter test` skips
 // them (dart_test.yaml).
 @Tags(['screenshots', 'posix'])
 library;
@@ -12,6 +12,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/apple_terminal.dart';
 import 'package:pocketterm_core/ghostty.dart';
@@ -197,22 +198,57 @@ class _Link implements LiveLink {
 }
 
 void main() {
-  // Tall enough that Settings doesn't scroll.
-  shot('settings: terminals', const Size(560, 2000), (tester) async {
+  // Settings at the window's own width, tall enough that no tab scrolls: one picture per tab.
+  shot('settings: each tab', const Size(760, 1000), (tester) async {
     final home = Directory.systemTemp.createTempSync('pocketterm-shots').path;
     addTearDown(() => Directory(home).deleteSync(recursive: true));
-    final integrations = Integrations(
-      home: home,
-      run: (_, _) async => ProcessResult(0, 1, '', ''),
-      claudePaths: const [],
-      ompPaths: const [],
+    PackageInfo.setMockInitialValues(
+      appName: 'PocketTerm',
+      packageName: 'com.danyzmaj.pocketterm',
+      version: '0.1.0',
+      buildNumber: '6',
+      buildSignature: '',
     );
+    // Claude Code has an older PocketTerm than this app's.
+    final claude = FakeClaude('$home/bin/claude')
+      ..list = [
+        {
+          'id': 'pocketterm@pocketterm',
+          'enabled': true,
+          'readFromFolder': '$home/.config/pocketterm/claude-plugin/plugins/pocketterm',
+        },
+      ];
+    File(claude.path).createSync(recursive: true);
+    final integrations = Integrations(home: home, run: claude.run, claudePaths: [claude.path], ompPaths: const []);
     await tester.runAsync(() => integrations.install(Agent.omp));
-    final app = await FakeApp.create(terminals: DemoTerminals(), integrations: integrations)
-      ..name = 'Ana';
-    await (await SharedPreferences.getInstance()).setBool('terminal_bridge', true);
-    // DemoTerminals' home, so it reads ~/Dev.
-    await app.setProjectRoots(['/nonexistent-pocketterm-demo/Dev']);
+    const demo = '/nonexistent-pocketterm-demo';
+    final app =
+        await FakeApp.create(
+            terminals: DemoTerminals(
+              found: (t) => [
+                TermStatus(t.kitty!.id, t.kitty!.label, TermState.ready, note: '10 windows'),
+                TermStatus(t.tmux!.id, t.tmux!.label, TermState.ready, note: '2 panes'),
+                TermStatus(t.wezterm!.id, t.wezterm!.label, TermState.missing),
+                TermStatus(t.iterm!.id, t.iterm!.label, TermState.idle),
+                TermStatus(t.terminal!.id, t.terminal!.label, TermState.limited, note: t.terminal!.limits),
+                TermStatus(t.ghostty!.id, t.ghostty!.label, TermState.missing),
+              ],
+              // Ten shells, and two omp sessions opened before PocketTerm.
+              shown: [
+                for (var i = 0; i < 8; i++) TermWindow(key: 'kitty-1/$i', title: '', tab: '', cwd: '', program: ''),
+                const TermWindow(key: 'kitty-1/8', title: 'omp', tab: '', cwd: '$demo/Dev/garden-api', program: 'omp'),
+                const TermWindow(key: 'kitty-1/9', title: 'omp', tab: '', cwd: '$demo/Dev/shop-web', program: 'omp'),
+              ],
+            ),
+            integrations: integrations,
+          )
+          ..name = 'Ana'
+          ..phoneUsedCode = true;
+    app.host.loginItem = true;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('terminal_bridge', true);
+    // DemoTerminals' home, so they read ~/Dev and ~/Projects.
+    await app.setProjectRoots(['$demo/Dev', '$demo/Projects']);
     // Two coding agents report to PocketTerm.
     for (final (pid, title) in [(101, 'Retry queue'), (102, 'Dark mode')]) {
       final frames = StreamController<String>();
@@ -220,7 +256,7 @@ void main() {
       unawaited(app.live.accept(frames.stream, _Link()));
       frames.add(
         '{"t":"hello","v":1,"pid":$pid,"agent":"omp","busy":false,"items":[],'
-        '"session":{"id":"s$pid","title":"$title","cwd":"/Users/demo/Dev/garden-api","model":"m"}}',
+        '"session":{"id":"s$pid","title":"$title","cwd":"$demo/Dev/garden-api","model":"m"}}',
       );
     }
     await tester.pumpWidget(
@@ -234,20 +270,34 @@ void main() {
         ),
       ),
     );
-    for (var i = 0; i < 100 && find.text('Installed and up to date').evaluate().isEmpty; i++) {
+    for (var i = 0; i < 100 && find.textContaining('need attention').evaluate().isEmpty; i++) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       await tester.pump();
     }
     await tester.pumpAndSettle();
-    final page = tester.getRect(find.byWidgetPredicate((w) => w is ConstrainedBox && w.constraints.maxWidth == 500));
-    final top = tester.getRect(find.text('GENERAL')).top - 16;
-    await save(
-      tester,
-      'mac-settings-terminals.png',
-      crop: Rect.fromLTRB(page.left - 24, top, page.right + 24, page.bottom + 20),
-      radius: 12,
-      border: C.line2,
-    );
+
+    for (final (tab, name) in [
+      ('phone', 'mac-settings-phone.png'),
+      ('agents', 'mac-settings-agents.png'),
+      ('terminals', 'mac-settings-terminals.png'),
+      ('account', 'mac-settings-account.png'),
+    ]) {
+      await tester.tap(find.byKey(ValueKey('settings-tab-$tab')));
+      await tester.pumpAndSettle();
+      if (tab == 'agents') {
+        await tester.tap(find.text('Show sessions'));
+        await tester.pumpAndSettle();
+      }
+      final view = tester.getRect(find.byKey(_shot));
+      final content = tester.getRect(find.byKey(const ValueKey('settings-content')));
+      await save(
+        tester,
+        name,
+        crop: Rect.fromLTRB(view.left, view.top, view.right, content.bottom + 22),
+        radius: 12,
+        border: C.line2,
+      );
+    }
   });
 
   // The setup wizard, made-up values only: no account, token or project is real.
@@ -328,49 +378,6 @@ void main() {
       crop: Rect.fromLTRB(page.left - 24, page.top - 24, page.right + 24, page.bottom + 24),
       radius: wizardCard.radius,
       border: wizardCard.border,
-    );
-  });
-
-  shot('settings: status card', const Size(560, 2000), (tester) async {
-    final home = Directory.systemTemp.createTempSync('pocketterm-shots').path;
-    addTearDown(() => Directory(home).deleteSync(recursive: true));
-    final integrations = Integrations(
-      home: home,
-      run: (_, _) async => ProcessResult(0, 1, '', ''),
-      claudePaths: const [],
-      ompPaths: const [],
-    );
-    // omp was used here, PocketTerm isn't in it yet.
-    Directory('$home/.omp').createSync();
-    final app =
-        await FakeApp.create(
-            terminals: DemoTerminals(found: _kittyToSetUp),
-            integrations: integrations,
-          )
-          ..name = 'Ana';
-    await tester.pumpWidget(
-      subject(
-        ColoredBox(
-          color: C.win,
-          child: ListenableBuilder(
-            listenable: app,
-            builder: (_, _) => SettingsPage(app: app),
-          ),
-        ),
-      ),
-    );
-    for (var i = 0; i < 100 && find.textContaining('need attention').evaluate().isEmpty; i++) {
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
-      await tester.pump();
-    }
-    await tester.pumpAndSettle();
-    final card = tester.getRect(find.byKey(const ValueKey('settings-status')));
-    await save(
-      tester,
-      'mac-settings-status.png',
-      crop: Rect.fromLTRB(card.left - 24, card.top - 20, card.right + 24, card.bottom + 20),
-      radius: 12,
-      border: C.line2,
     );
   });
 }

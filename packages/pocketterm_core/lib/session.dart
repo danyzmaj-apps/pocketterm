@@ -103,7 +103,7 @@ class Session extends ChangeNotifier {
       return;
     }
     if (code == null && !signsInWithGithub) {
-      authError = 'That link has no sign-in code. On your computer, open PocketTerm: Settings → Set up phone…';
+      authError = 'That link has no sign-in code. On your computer, open PocketTerm: Settings → Add a phone…';
       notifyListeners();
       return;
     }
@@ -134,7 +134,7 @@ class Session extends ChangeNotifier {
         _ => pairingProblem(e),
       };
     } on AuthException {
-      authError = 'That code was used up while signing in. Make a new one on your computer (Settings → Set up phone…).';
+      authError = 'That code was used up while signing in. Make a new one on your computer (Settings → Add a phone…).';
     } on Object catch (e) {
       authError = 'Sign-in failed: $e';
     }

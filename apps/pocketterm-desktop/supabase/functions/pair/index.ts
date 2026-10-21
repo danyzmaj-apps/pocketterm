@@ -7,7 +7,7 @@
 //
 //   POST /functions/v1/pair  Authorization: Bearer <the user's access token>
 //     {"action": "create"}                        → {"code", "expires_at"}
-//         single use, 10 minutes, for the caller (Settings → Set up phone…)
+//         single use, 10 minutes, for the caller (Settings → Add a phone…)
 //     {"action": "reviewer", "days"?, "label"?}   → {"id", "code", "label", "expires_at"}
 //         reusable for `days` (default 30, 1–365), for this server's demo
 //         account (made on first use): App Store / Play review
@@ -113,7 +113,7 @@ function caller(req: Request): string | null {
 
 const unusable =
   "That code doesn't work: it may have run out, been used already or been revoked. " +
-  "Make a new one in PocketTerm on your computer (Settings → Set up phone…).";
+  "Make a new one in PocketTerm on your computer (Settings → Add a phone…).";
 
 const reviewerAccessEnded = "This reviewer access has ended. Ask the server's owner for a new reviewer code.";
 

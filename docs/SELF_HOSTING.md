@@ -26,9 +26,14 @@ The first sign-in on a computer, by the wizard or by **I already have one: conne
 3. **Project folders** (optional). The usual folders found in your home folder (`Dev`, `Developer`, `Projects`, `code`, `src`, `repos`; on Windows also `source\repos` and `Documents\GitHub`), one click each, or **Choose folder…**.
 4. **Your phone.** The QR code from [Connect the apps](#connect-the-apps), checked off once a phone has signed in.
 
-**Done** goes to Settings and says what's still left. Settings starts with a status card: **All set**, or each thing that needs attention with the button that fixes it, including a coding agent installed later. **Open setup checklist** shows the checklist again.
+**Done** goes to Settings and says what's still left. Settings starts with a status bar: **All set**, or how many things need attention; **Show** lists them with the button that fixes each, including a coding agent installed later, and a dot marks the tab they're on. **Open setup checklist** shows the checklist again. Below it are four tabs: **Phone** (Terminal from phone, **Add a phone…**, project folders), **Coding agents** (PocketTerm in each agent, sessions to reopen, which one is the default), **Terminals** (where new sessions open, each terminal with its fix) and **Account**.
 
-<p align="center"><img src="images/mac-settings-status.png" width="60%" alt="Settings: the status card, four things need attention, each with its button"></p>
+<p align="center">
+  <img src="images/mac-settings-phone.png" width="49%" alt="Settings, Phone: Terminal from phone, your phones, project folders">
+  <img src="images/mac-settings-agents.png" width="49%" alt="Settings, Coding agents: omp with two sessions to reopen, Claude Code out of date">
+  <img src="images/mac-settings-terminals.png" width="49%" alt="Settings, Terminals: where new sessions open, each terminal and how it stands">
+  <img src="images/mac-settings-account.png" width="49%" alt="Settings, Account: you, your server, Launch at login, Delete account">
+</p>
 
 Servers are set up from a computer (or the script below), never from a phone: the iPhone and Android apps only pair with a server that exists.
 
@@ -66,7 +71,7 @@ At the end it checks that GitHub sign-in is on and prints a **setup link**: `poc
 ## Connect the apps
 
 - **Mac or Windows PC**: install PocketTerm from [Releases](https://github.com/danyzmaj-apps/pocketterm/releases/latest) (the phone app's first screen links there too: **Get PocketTerm for Mac or Windows**), then open the setup link (on a Mac the script offers to) or paste it into the wizard's **I already have one: connect it**. Sign in with GitHub. Every computer you sign in on shows up in the phone's list of computers.
-- **iPhone and Android**: phones sign in only with a code from a computer, never with GitHub. On the computer, **Settings → Set up phone…** shows a QR code. In the phone app, tap **Scan the code from your computer**. The code carries the server address, its publishable key and a one-time sign-in code, so the phone signs in as you. It works once and expires after 10 minutes; anyone who scans it gets into your account, so only show it to your own phone. No camera? **Paste a code instead** takes the same code as text (the whole `pocketterm://setup?…&code=…` link). A phone that signs out, or whose sign-in ends, is back on that screen and needs a new code.
+- **iPhone and Android**: phones sign in only with a code from a computer, never with GitHub. On the computer, **Settings → Add a phone…** shows a QR code. In the phone app, tap **Scan the code from your computer**. The code carries the server address, its publishable key and a one-time sign-in code, so the phone signs in as you. It works once and expires after 10 minutes; anyone who scans it gets into your account, so only show it to your own phone. No camera? **Paste a code instead** takes the same code as text (the whole `pocketterm://setup?…&code=…` link). A phone that signs out, or whose sign-in ends, is back on that screen and needs a new code.
 
 The first account that signs in **owns the server**. One phone pairing is enough for all your computers: they share the account.
 
@@ -123,7 +128,7 @@ supabase secrets set PUSH_RELAY_URL=https://<relay-project-ref>.supabase.co/func
 | The browser shows `redirect_uri is not associated` | The GitHub OAuth app's callback URL must be exactly `https://<ref>.supabase.co/auth/v1/callback`. |
 | Sign-in finishes in the browser but the app stays signed out | Authentication → URL Configuration must allow `pocketterm://login-callback` (`supabase config push` sets it). On Windows, start PocketTerm once from the Start menu so it registers the `pocketterm://` link again. |
 | "This PocketTerm server is private" | Expected for everyone but the owner; see [Sharing](#sharing). |
-| Phone: "That code doesn't work" | It ran out (10 minutes), was used already or was revoked: make a new one (**Settings → Set up phone…**). |
+| Phone: "That code doesn't work" | It ran out (10 minutes), was used already or was revoked: make a new one (**Settings → Add a phone…**). |
 | Phone: "Too many tries" | Ten wrong codes from one place in ten minutes: wait a few minutes, then use a fresh code. |
 | Phone: "Your server is older than this app" | Run the setup script again: the server needs the new functions and migrations. |
 | Phone: "Your computer isn't reporting to this account" | Sign in on PocketTerm on your computer with the same GitHub account, turn on **Settings → Terminal from phone** and keep it running. |
@@ -137,7 +142,7 @@ supabase secrets set PUSH_RELAY_URL=https://<relay-project-ref>.supabase.co/func
 | Windows: no windows show up | Only WezTerm windows are listed. Install it with **Install** in **Settings → Terminals** (or `winget install --id wez.wezterm --exact`) and run your agent in WezTerm. |
 | Windows: "This computer reads PNG and JPEG images only." | Send PNG or JPEG images; the phone apps send JPEG. |
 | Claude Code sessions don't show up | Claude Code needs 2.1.287 or later with mods on. If Settings says mods are off, run `claude /login`, start `claude` once, then type `/reload-plugins` in your sessions. |
-| Phone: omp or Claude windows show only as screens, not as conversations | The note above them says why, from what the computer reports: PocketTerm isn't installed in that agent (**Install** in Settings' status card or **Settings → Coding agent**), it's out of date (**Update**), or those sessions were opened before it was installed. Then, once per session: in Claude Code type `/reload-plugins` (nothing restarts); in omp quit it and run `omp -c` (same conversation). |
+| Phone: omp or Claude windows show only as screens, not as conversations | The note above them says why, from what the computer reports: PocketTerm isn't installed in that agent (**Install** in Settings' status bar or **Settings → Coding agents**), it's out of date (**Update**), or those sessions were opened before it was installed. Then, once per session: in Claude Code type `/reload-plugins` (nothing restarts); in omp quit it and run `omp -c` (same conversation). |
 
 A local Supabase (`supabase start`) works for development, but it doesn't check API keys, so the setup screen accepts any key there.
 

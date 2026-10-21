@@ -32,6 +32,8 @@ void main() {
     app.reviewer.addAll(existing);
     await tester.pumpWidget(window(Stack(children: [SettingsPage(app: app)])));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('settings-tab-account')));
+    await tester.pumpAndSettle();
     expect(find.text('Reviewer access'), findsNothing, reason: "it's the publisher's, hidden from users");
     await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);

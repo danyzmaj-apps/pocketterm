@@ -54,30 +54,48 @@ void main() {
     }
   }
 
-  testWidgets('omp is the default, and its extensions install from Settings', (tester) async {
-    await pumpSettings(tester);
-    expect(app.codingAgent, Agent.omp);
-    expect(find.text('PocketTerm in omp'), findsOneWidget);
-    expect(find.textContaining('Not installed'), findsOneWidget);
+  Future<void> openTab(WidgetTester tester, String tab) async {
+    await tester.tap(find.byKey(ValueKey('settings-tab-$tab')));
+    await tester.pumpAndSettle();
+  }
 
-    await tester.tap(find.text('Install'));
+  Finder inCard(Agent agent, Finder f) =>
+      find.descendant(of: find.byKey(ValueKey('settings-agent-${agent.name}')), matching: f);
+
+  testWidgets('omp is the default, and its extensions install from its card', (tester) async {
+    Directory('$home/.omp').createSync();
+    await pumpSettings(tester);
+    await openTab(tester, 'agents');
+    expect(app.codingAgent, Agent.omp);
+    expect(inCard(Agent.omp, find.text('Default')), findsOneWidget);
+    expect(inCard(Agent.omp, find.text('PocketTerm isn’t installed here yet')), findsOneWidget);
+    expect(inCard(Agent.claude, find.text('Not found on this computer')), findsOneWidget);
+    expect(inCard(Agent.claude, find.text('Make default')), findsNothing, reason: 'not on this computer');
+
+    await tester.tap(inCard(Agent.omp, find.text('Install')));
     await settle(tester, 'restart');
     expect(find.text('Installed · restart your omp sessions to load it (${Agent.omp.resume})'), findsOneWidget);
     expect(File('$home/.omp/agent/extensions/pocketterm-live.ts').existsSync(), isTrue);
   });
 
-  testWidgets('choosing Claude Code keeps it, and says plainly when it isn’t installed', (tester) async {
-    await pumpSettings(tester);
-    await tester.tap(find.text('Claude Code'));
-    await tester.pumpAndSettle();
+  testWidgets('Make default makes the other agent the one new sessions start', (tester) async {
+    Directory('$home/.omp').createSync();
+    final claude = FakeClaude('$home/bin/claude');
+    File(claude.path).createSync(recursive: true);
+    await pumpSettings(tester, claude: claude);
+    await openTab(tester, 'agents');
+    expect(inCard(Agent.omp, find.text('Make default')), findsNothing);
 
+    await tester.tap(inCard(Agent.claude, find.text('Make default')));
+    await tester.pumpAndSettle();
     expect(app.codingAgent, Agent.claude);
-    expect(find.text('PocketTerm in Claude Code'), findsOneWidget);
-    expect(find.text("Claude Code isn't installed"), findsOneWidget);
-    expect(find.text('Install'), findsNothing);
+    expect(inCard(Agent.claude, find.text('Default')), findsOneWidget);
+    expect(inCard(Agent.claude, find.text('Make default')), findsNothing);
+    expect(inCard(Agent.omp, find.text('Default')), findsNothing);
+    expect(inCard(Agent.omp, find.text('Make default')), findsOneWidget);
   });
 
-  testWidgets('Claude Code with mods off says how to turn them on, also right after installing', (tester) async {
+  testWidgets('Claude Code with mods off says how to turn them on, also right after updating', (tester) async {
     final claude = FakeClaude('$home/bin/claude')
       ..list = [
         {
@@ -89,40 +107,24 @@ void main() {
       ..modsOff = true;
     File(claude.path).createSync(recursive: true);
     await pumpSettings(tester, claude: claude);
-    await tester.tap(find.text('Claude Code'));
-    await settle(tester, 'mods');
-    const hint = 'run claude /login, start claude once, then type /reload-plugins in your Claude Code sessions';
-    expect(find.text('Claude Code has mods turned off for now: $hint'), findsOneWidget);
+    await openTab(tester, 'agents');
+    // Installed, not the bundled copy yet.
+    await settle(tester, 'out of date');
+    expect(inCard(Agent.claude, find.text('PocketTerm here is out of date')), findsOneWidget);
 
-    // Installed, not the bundled copy yet: updating can't turn mods on. (The
-    // last Update is the row's; the status card above offers one too.)
-    await tester.tap(find.text('Update').last);
+    // Updating can't turn mods on.
+    await tester.tap(inCard(Agent.claude, find.text('Update')));
     await settle(tester, 'Installed ·');
+    const hint = 'run claude /login, start claude once, then type /reload-plugins in your Claude Code sessions';
     expect(find.text('Installed · Claude Code has mods turned off for now: $hint'), findsOneWidget);
 
+    // Shown again, the window looks again.
     claude.modsOff = false;
-    await tester.tap(find.text('omp'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Claude Code'));
-    await settle(tester, 'Installed and up to date');
-    expect(find.text('Installed and up to date'), findsOneWidget);
-  });
-
-  testWidgets('project folders: added ones show with ~, Remove drops them', (tester) async {
-    await pumpSettings(tester);
-    expect(find.text('None yet · your phone can still open any path you type'), findsOneWidget);
-    final home = app.terminals.home;
-    await app.setProjectRoots(['$home/Code', '/opt/src', home]);
-    await tester.pumpAndSettle();
-    expect(find.text('~/Code'), findsOneWidget);
-    expect(find.text('/opt/src'), findsOneWidget);
-    expect(find.text('~'), findsOneWidget);
-
-    final remove = find.text('Remove').first;
-    await tester.ensureVisible(remove);
-    await tester.tap(remove);
-    await tester.pumpAndSettle();
-    expect(app.projectRoots, ['/opt/src', home]);
-    expect(find.text('~/Code'), findsNothing);
+    await tester.runAsync(() async {
+      await app.openMain();
+      await app.checkAgents();
+    });
+    await tester.pump();
+    expect(inCard(Agent.claude, find.text('PocketTerm installed, up to date')), findsOneWidget);
   });
 }

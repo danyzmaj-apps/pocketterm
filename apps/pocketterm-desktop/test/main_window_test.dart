@@ -66,6 +66,8 @@ void main() {
     final app = await pumpWindow(tester, (_) {});
     expect(find.byType(SettingsPage), findsOneWidget);
     expect(find.text('Done'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('settings-tab-account')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Quit PocketTerm'));
     expect(app.host.calls.last, 'quit');
   });
@@ -109,10 +111,9 @@ void main() {
 
   testWidgets('Launch at login shows how the system has it, and switches it', (tester) async {
     final app = await pumpWindow(tester, (app) => app.host.loginItem = true);
-    final toggle = find.descendant(
-      of: find.ancestor(of: find.text('Launch at login'), matching: find.byType(Row)).first,
-      matching: find.byType(Switch),
-    );
+    await tester.tap(find.byKey(const ValueKey('settings-tab-account')));
+    await tester.pumpAndSettle();
+    final toggle = find.byKey(const ValueKey('settings-launch-at-login'));
     expect(tester.widget<Switch>(toggle).value, isTrue);
 
     app.host.loginItemRefused = 'Operation not permitted';

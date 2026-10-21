@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/terminal.dart';
+import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_desktop/controller.dart';
 import 'package:pocketterm_desktop/integrations.dart';
@@ -17,7 +18,7 @@ import 'package:pocketterm_desktop/wezterm_setup.dart';
 /// The setup checklist: what this computer and the phone need after the
 /// first sign-in here, each step checking itself off as it gets done. The
 /// signed-in window until it's finished ([AppController.getReadyDone]);
-/// Settings' status card opens it again.
+/// Settings' status bar opens it again.
 ///
 /// 1. Coding agents: PocketTerm goes into every agent found (omp, Claude
 ///    Code) as soon as this shows; agent sessions opened before it are
@@ -355,62 +356,10 @@ class _GetReadyPageState extends State<GetReadyPage> {
 
   static const _note = TextStyle(fontSize: 12.5, color: C.dim, height: 1.4);
 
-  /// The window whose pick-up command was copied last: its button says so (the window has no snackbar).
-  String? _copied;
-
-  Widget _unreportedLine(TermWindow w) {
-    final agent = w.agent!;
-    final where = [
-      if (w.cwd.isNotEmpty) 'in ${_tilde(w.cwd)}',
-      app.terminals.hosts.where((h) => h.id == w.app).firstOrNull?.label ?? w.app,
-    ].join(' · ');
-    // As typed: the no-break characters keep it whole on screen, not in a terminal.
-    final typed = agent.pickUp.replaceAll('\u00A0', ' ').replaceAll('\u2060', '');
-    return Padding(
-      key: ValueKey('get-ready-unreported-${w.key}'),
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        children: [
-          const Icon(Icons.refresh, size: 18, color: C.warn),
-          const SizedBox(width: 10),
-          Expanded(child: Text('${Integrations.name(agent)} $where', style: const TextStyle(fontSize: 13))),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.only(left: 8),
-            decoration: BoxDecoration(
-              color: C.win,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: C.line2),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  agent.pickUp,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontFamily: 'Menlo',
-                    fontFamilyFallback: ['Consolas', 'monospace'],
-                  ),
-                ),
-                IconButton(
-                  tooltip: _copied == w.key ? 'Copied' : 'Copy',
-                  iconSize: 14,
-                  visualDensity: VisualDensity.compact,
-                  color: _copied == w.key ? C.ok : C.dim,
-                  icon: Icon(_copied == w.key ? Icons.check : Icons.copy_outlined),
-                  onPressed: () {
-                    unawaited(Clipboard.setData(ClipboardData(text: typed)));
-                    setState(() => _copied = w.key);
-                  },
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _unreportedLine(TermWindow w) => Padding(
+    padding: const EdgeInsets.only(top: 8),
+    child: SessionToPickUp(window: w, terminals: app.terminals, key: ValueKey('get-ready-unreported-${w.key}')),
+  );
 
   // ---------------------------------------------------------------- terminals
 
@@ -511,7 +460,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
   Widget _phoneBody() {
     if (app.phoneSignedIn ?? false) {
       return const Text(
-        'A phone is signed in. To add another: Settings \u2192 Set up phone\u2026',
+        'A phone is signed in. To add another: Settings \u2192 Add a phone\u2026',
         style: TextStyle(color: C.dim, height: 1.45, fontSize: 13),
       );
     }
@@ -585,3 +534,69 @@ class _GetReadyPageState extends State<GetReadyPage> {
     child: Text(label),
   );
 }
+
+/// An agent session opened before PocketTerm was in its agent: where it runs, and what to type there to pick
+/// PocketTerm up ([Agent.pickUp]) with a button that copies it. The setup checklist and Settings list these.
+class SessionToPickUp extends StatefulWidget {
+  const SessionToPickUp({required this.window, required this.terminals, super.key});
+  final TermWindow window;
+  final Terminals terminals;
+
+  @override
+  State<SessionToPickUp> createState() => _SessionToPickUpState();
+}
+
+class _SessionToPickUpState extends State<SessionToPickUp> {
+  /// The command was copied: the button says so (the window has no snackbar).
+  bool _copied = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget.window;
+    final agent = w.agent!;
+    final home = widget.terminals.home;
+    final cwd = w.cwd == home ? '~' : (p.isWithin(home, w.cwd) ? '~${w.cwd.substring(home.length)}' : w.cwd);
+    final where = [
+      if (w.cwd.isNotEmpty) 'in $cwd',
+      widget.terminals.hosts.where((h) => h.id == w.app).firstOrNull?.label ?? w.app,
+    ].join(' · ');
+    // As typed: the no-break characters keep it whole on screen, not in a terminal.
+    final typed = agent.pickUp.replaceAll('\u00A0', ' ').replaceAll('\u2060', '');
+    return Row(
+      children: [
+        const Icon(Icons.refresh, size: 18, color: C.warn),
+        const SizedBox(width: 10),
+        Expanded(child: Text('${Integrations.name(agent)} $where', style: const TextStyle(fontSize: 13))),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.only(left: 8),
+          decoration: BoxDecoration(
+            color: C.win,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: C.line2),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(agent.pickUp, style: monoStyle),
+              IconButton(
+                tooltip: _copied ? 'Copied' : 'Copy',
+                iconSize: 14,
+                visualDensity: VisualDensity.compact,
+                color: _copied ? C.ok : C.dim,
+                icon: Icon(_copied ? Icons.check : Icons.copy_outlined),
+                onPressed: () {
+                  unawaited(Clipboard.setData(ClipboardData(text: typed)));
+                  setState(() => _copied = true);
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A command as typed in a terminal.
+const monoStyle = TextStyle(fontSize: 12, fontFamily: 'Menlo', fontFamilyFallback: ['Consolas', 'monospace']);

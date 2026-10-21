@@ -46,7 +46,7 @@ The setup wizard creates your server in about five minutes, a checklist gets the
 <p align="center">
   <img src="docs/images/wizard-token.png" width="32%" align="top" alt="Setup wizard: Supabase access token">
   <img src="docs/images/get-ready.png" width="24%" align="top" alt="Get this computer ready: coding agents, terminals, project folders, your phone">
-  <img src="docs/images/mac-settings-terminals.png" width="24%" align="top" alt="Settings: general and terminals">
+  <img src="docs/images/mac-settings-agents.png" width="32%" align="top" alt="Settings, Coding agents: PocketTerm in omp and Claude Code, sessions to reopen">
 </p>
 
 ## Install
@@ -69,9 +69,9 @@ PocketTerm is a personal project: the phone apps aren't on the App Store or Goog
    - **Project folders** (optional). Your `~/Dev`, `~/Projects` and the like, one click each, so the phone lists your projects.
    - **Your phone.** In the phone app, tap **Scan the code from your computer** and scan the code shown. It works once, for 10 minutes.
 
-   Each step checks itself off; **Done** takes you to Settings. Its card at the top says **All set** or what still needs attention, with the button that fixes it, and **Open setup checklist** brings the checklist back.
+   Each step checks itself off; **Done** takes you to Settings. Its status bar at the top says **All set** or what still needs attention (**Show** lists it with the button that fixes each), and **Open setup checklist** brings the checklist back. Settings has four tabs: **Phone**, **Coding agents**, **Terminals** and **Account**.
 
-Closing the window keeps PocketTerm running in the menu bar (Mac) or the tray (Windows); **Quit PocketTerm** at the bottom of Settings stops it.
+Closing the window keeps PocketTerm running in the menu bar (Mac) or the tray (Windows); **Quit PocketTerm** in **Settings → Account** stops it.
 
 ## Terminals
 

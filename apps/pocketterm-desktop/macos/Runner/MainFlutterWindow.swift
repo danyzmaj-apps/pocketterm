@@ -29,7 +29,8 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     titlebarAppearsTransparent = true
     minSize = NSSize(width: 480, height: 360)
     let visible = (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
-    let w = min(720, visible.width - 80), h = min(740, visible.height - 80)
+    // Settings' two columns of cards fit; the checklist and the wizard scroll in it.
+    let w = min(760, visible.width - 80), h = min(600, visible.height - 80)
     setFrame(NSRect(x: visible.midX - w / 2, y: visible.midY - h / 2, width: w, height: h), display: false)
     setFrameAutosaveName("PocketTermMain")  // remembers where you put it
     isReleasedWhenClosed = false

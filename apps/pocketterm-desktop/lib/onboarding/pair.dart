@@ -109,7 +109,7 @@ class _PairingQrState extends State<PairingQr> {
   );
 }
 
-/// Mac Settings → "Set up phone".
+/// Settings → Phone → "Add a phone…".
 Future<void> showPairingQr(BuildContext context, Session session) => showDialog<void>(
   context: context,
   builder: (dialog) => AlertDialog(

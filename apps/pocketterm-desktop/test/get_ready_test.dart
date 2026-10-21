@@ -198,9 +198,13 @@ void main() {
     await pump(tester, (app) => SettingsPage(app: app));
     await settle(tester, () => shows('things need attention'));
     expect(find.text('4 things need attention'), findsOneWidget);
+    await tester.tap(find.text('Show'));
+    await tester.pump();
+    Finder inStatus(String text) =>
+        find.descendant(of: find.byKey(const ValueKey('settings-status')), matching: find.text(text));
 
     app.host.folders = ['$home/Dev'];
-    await tester.tap(find.text('Add folder…').first);
+    await tester.tap(inStatus('Add folder…'));
     await tester.pump();
     expect(find.text('3 things need attention'), findsOneWidget);
 
@@ -209,7 +213,7 @@ void main() {
     await tester.pump();
     expect(find.text('2 things need attention'), findsOneWidget);
 
-    await tester.tap(find.text('Install').first);
+    await tester.tap(inStatus('Install'));
     await settle(tester, () => shows('1 thing needs attention'));
     expect(File('$home/.omp/agent/extensions/pocketterm-live.ts').existsSync(), isTrue);
   });

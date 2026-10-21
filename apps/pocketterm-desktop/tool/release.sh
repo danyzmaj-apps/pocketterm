@@ -27,7 +27,7 @@ step() { echo; echo "==> $*"; }
 
 VERSION=$(sed -n 's/^version: *\([0-9.]*\)+\{0,1\}.*/\1/p' pubspec.yaml)
 [[ -n "$VERSION" ]] || die "no version in pubspec.yaml"
-# `claude plugin update` (Settings → Coding agent) takes a plugin only at a new version: one that kept its
+# `claude plugin update` (Settings → Coding agents) takes a plugin only at a new version: one that kept its
 # version would leave every installed copy on its old hooks while Settings calls it current.
 PLUGIN_VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' integrations/claude/plugins/pocketterm/.claude-plugin/plugin.json)
 [[ "$PLUGIN_VERSION" == "$VERSION" ]] ||

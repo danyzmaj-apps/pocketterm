@@ -45,7 +45,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // started with --hidden at login.
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
-  Win32Window::Size size(720, 740);
+  // About 760 x 600 inside the frame: Settings' two columns of cards fit.
+  Win32Window::Size size(776, 640);
   if (!window.Create(L"PocketTerm", origin, size)) {
     return EXIT_FAILURE;
   }

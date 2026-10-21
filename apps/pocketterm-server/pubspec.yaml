@@ -1,0 +1,15 @@
+name: pocketterm_server_app
+description: "The pocketterm-server command: PocketTerm's own server for a VPS or any always-on machine."
+publish_to: 'none'
+version: 0.1.0
+resolution: workspace
+
+environment:
+  sdk: ^3.13.4
+
+dependencies:
+  pocketterm_server:
+    path: ../../packages/pocketterm_server
+
+dev_dependencies:
+  very_good_analysis: ^11.0.0

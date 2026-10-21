@@ -1,0 +1,15 @@
+name: pocketterm_server
+description: "PocketTerm's server: pairing, the live channel, images and push for one owner."
+publish_to: 'none'
+version: 0.1.0
+resolution: workspace
+
+environment:
+  sdk: ^3.13.4
+
+dependencies:
+  crypto: ^3.0.7
+
+dev_dependencies:
+  test: ^1.31.1
+  very_good_analysis: ^11.0.0

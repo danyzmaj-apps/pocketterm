@@ -1,0 +1,40 @@
+# PocketTerm server behind Caddy, which gets and renews the HTTPS certificate on its own.
+#
+#   DOMAIN=pocketterm.example.com docker compose up -d
+#   DOMAIN=$(curl -s https://ifconfig.me | tr . -).sslip.io docker compose up -d     # no domain of your own
+#
+# Ports 80 and 443 must be open to the internet (Let's Encrypt checks port 80). Then print the setup link:
+#   docker compose exec server pocketterm-server setup-link
+name: pocketterm
+
+services:
+  server:
+    image: ${POCKETTERM_IMAGE:-ghcr.io/danyzmaj-apps/pocketterm-server:latest}
+    restart: unless-stopped
+    environment:
+      POCKETTERM_PUBLIC_URL: https://${DOMAIN:?Set DOMAIN to this server's name, see the top of docker-compose.yml}
+      # Caddy is the only way in, so its X-Forwarded-For names the caller for rate limits.
+      POCKETTERM_TRUST_PROXY: "1"
+      PUSH_RELAY_URL: ${PUSH_RELAY_URL:-}
+    volumes:
+      - pocketterm-data:/data
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    # Automatic HTTPS for DOMAIN; WebSockets are proxied as they are.
+    command: caddy reverse-proxy --from ${DOMAIN} --to server:47900
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - server
+
+volumes:
+  pocketterm-data:
+  caddy-data:
+  caddy-config:

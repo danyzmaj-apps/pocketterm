@@ -1,0 +1,7 @@
+# The build context is the repository root; the image needs only these.
+*
+!pubspec.lock
+!packages/pocketterm_server/
+!apps/pocketterm-server/
+**/.dart_tool/
+**/build/

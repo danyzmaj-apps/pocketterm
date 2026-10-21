@@ -33,6 +33,37 @@ jobs:
       - working-directory: ${{ matrix.member }}
         run: flutter test
 
+  # The server (pure Dart, no Flutter): its package with the HTTP/WebSocket tests, the command, and its image.
+  server:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        member: [packages/pocketterm_server, apps/pocketterm-server]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: fvm
+        run: echo "flutter=$(jq -r .flutter .fvmrc)" >> "$GITHUB_OUTPUT"
+      # The workspace's Dart comes with its Flutter.
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ steps.fvm.outputs.flutter }}
+          cache: true
+      - run: flutter pub get
+      - if: matrix.member == 'packages/pocketterm_server'
+        working-directory: ${{ matrix.member }}
+        run: dart format -l 120 --set-exit-if-changed lib test
+      - if: matrix.member == 'apps/pocketterm-server'
+        working-directory: ${{ matrix.member }}
+        run: dart format -l 120 --set-exit-if-changed bin
+      - working-directory: ${{ matrix.member }}
+        run: dart analyze --fatal-infos
+      - if: matrix.member == 'packages/pocketterm_server'
+        working-directory: ${{ matrix.member }}
+        run: dart test
+      - if: matrix.member == 'apps/pocketterm-server'
+        run: docker build -f apps/pocketterm-server/Dockerfile -t pocketterm-server .
+
   # The shared code and the desktop app on Windows: analyze, the tests that don't need a POSIX
   # system (tag posix: /bin/sh, unix sockets, chmod…), and a debug build of the Windows app.
   dart-windows:

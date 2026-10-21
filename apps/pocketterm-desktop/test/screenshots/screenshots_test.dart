@@ -298,7 +298,10 @@ void main() {
       terminals: DemoTerminals(
         home: home,
         found: _kittyToSetUp,
-        shown: [TermWindow(key: 'kitty-1/4', title: 'omp', tab: '', cwd: '$home/Dev/garden-api', program: 'omp')],
+        shown: [
+          TermWindow(key: 'kitty-1/4', title: 'omp', tab: '', cwd: '$home/Dev/garden-api', program: 'omp'),
+          TermWindow(key: 'kitty-1/7', title: 'claude', tab: '', cwd: '$home/Dev/shop-web', program: 'claude'),
+        ],
       ),
       integrations: integrations,
     );

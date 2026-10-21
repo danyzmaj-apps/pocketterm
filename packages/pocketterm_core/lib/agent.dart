@@ -17,6 +17,13 @@ enum Agent {
   /// breaks across lines (a no-break space, and a word joiner after the hyphen) yet copies as typed.
   String get resume => '$command\u00A0-\u2060c';
 
+  /// What a session opened before PocketTerm was installed needs to load it, for text:
+  /// Claude Code reloads its plugins in place, omp restarts on the same conversation ([resume]).
+  String get pickUp => switch (this) {
+    omp => resume,
+    claude => '/reload-plugins',
+  };
+
   /// A prompt sent while it works steers the run (omp); Claude Code queues it
   /// until the run ends.
   bool get steers => this == omp;

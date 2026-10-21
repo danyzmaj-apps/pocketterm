@@ -62,7 +62,7 @@ void main() {
 
     await tester.tap(find.text('Install'));
     await settle(tester, 'restart');
-    expect(find.text('Installed · restart your omp sessions to load it'), findsOneWidget);
+    expect(find.text('Installed · restart your omp sessions to load it (${Agent.omp.resume})'), findsOneWidget);
     expect(File('$home/.omp/agent/extensions/pocketterm-live.ts').existsSync(), isTrue);
   });
 
@@ -91,7 +91,7 @@ void main() {
     await pumpSettings(tester, claude: claude);
     await tester.tap(find.text('Claude Code'));
     await settle(tester, 'mods');
-    const hint = 'run claude /login, start claude once, then restart your Claude sessions';
+    const hint = 'run claude /login, start claude once, then type /reload-plugins in your Claude Code sessions';
     expect(find.text('Claude Code has mods turned off for now: $hint'), findsOneWidget);
 
     // Installed, not the bundled copy yet: updating can't turn mods on. (The

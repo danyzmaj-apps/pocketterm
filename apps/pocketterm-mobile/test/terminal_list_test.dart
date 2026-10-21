@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_mobile/mobile.dart';
 import 'package:pocketterm_mobile/session_view.dart';
@@ -512,31 +513,39 @@ void main() {
     remote.flush();
   });
 
-  testWidgets('why an omp window shows only as a screen follows where PocketTerm stands in omp', (tester) async {
-    Future<String> advice(String? integration, {String? computer}) async {
+  testWidgets('why an agent window shows only as a screen follows where PocketTerm stands in that agent', (
+    tester,
+  ) async {
+    Future<String> advice(String? integration, {String? computer, String agent = 'omp'}) async {
       remote.handle('state', {
         'windows': [
-          {'key': 'kitty-1/8', 'title': 'omp', 'cwd': _a, 'program': 'omp', 'app': 'kitty'},
+          {'key': 'kitty-1/8', 'title': agent, 'cwd': _a, 'program': agent, 'app': 'kitty'},
         ],
         'sessions': <Object>[],
         'home': '/Users/me',
         'agent': 'omp',
-        'agents': ?(integration == null ? null : {'omp': integration}),
+        'agents': ?(integration == null ? null : {agent: integration}),
       });
-      await pumpList(tester, key: ValueKey('$integration$computer'), computer: computer);
+      await pumpList(tester, key: ValueKey('$agent$integration$computer'), computer: computer);
       return tester
-          .widget<Text>(
-            find.descendant(of: find.byKey(const ValueKey('omp-screens-only')), matching: find.byType(Text)),
-          )
+          .widget<Text>(find.descendant(of: find.byKey(ValueKey('$agent-screens-only')), matching: find.byType(Text)))
           .data!;
     }
 
     expect(await advice('missing', computer: 'Studio'), contains('isn’t installed in omp on Studio'));
     expect(await advice('missing'), contains('on the computer.'));
     expect(await advice('installed'), contains('started before PocketTerm was installed in omp'));
+    expect(await advice('installed'), contains(Agent.omp.resume));
     expect(await advice('outdated', computer: 'Studio'), contains('out of date on Studio'));
     expect(await advice(null), contains('It may be out of date'), reason: 'an older computer: the old advice');
     expect(await advice('bogus'), contains('It may be out of date'));
+
+    // Claude Code reloads its plugins in place: nothing to restart.
+    for (final integration in ['installed', 'outdated', 'missing', null]) {
+      final text = await advice(integration, agent: 'claude');
+      expect(text, contains('/reload-plugins'), reason: '$integration');
+      expect(text, isNot(contains(Agent.claude.resume)), reason: '$integration');
+    }
     remote.flush();
   });
 }

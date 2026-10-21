@@ -64,7 +64,7 @@ PocketTerm is a personal project: the phone apps aren't on the App Store or Goog
 
 1. **Set up your server.** Open PocketTerm on your computer and click **Set up my server**. The wizard takes about five minutes and needs a free [Supabase](https://supabase.com) account (it hosts your server) and a [GitHub](https://github.com) account (you sign in with it). Rather use a script? See [SELF_HOSTING.md](docs/SELF_HOSTING.md). Already have a server? **I already have one: connect it**.
 2. **Sign in with GitHub.** The first time you sign in on a computer, PocketTerm turns on **Terminal from phone** and **Launch at login** for you (both are switches in Settings), and the window becomes a short checklist, **Get this computer ready**:
-   - **Your coding agents.** PocketTerm installs itself into omp and Claude Code, whichever are on the computer. Agent sessions that were already running are listed: quit them and start them again with `omp -c` or `claude -c`, and they show up on the phone.
+   - **Your coding agents.** PocketTerm installs itself into omp and Claude Code, whichever are on the computer. Sessions that were already open are listed, each with what to do once so the phone shows the conversation: `/reload-plugins` in Claude Code (nothing restarts), or quit omp and run `omp -c`.
    - **Your terminals.** One click sets up kitty or opens the macOS permission a terminal needs; on Windows it installs WezTerm.
    - **Project folders** (optional). Your `~/Dev`, `~/Projects` and the like, one click each, so the phone lists your projects.
    - **Your phone.** In the phone app, tap **Scan the code from your computer** and scan the code shown. It works once, for 10 minutes.

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/terminal.dart';
@@ -15,12 +16,12 @@ import 'package:pocketterm_desktop/wezterm_setup.dart';
 
 /// The setup checklist: what this computer and the phone need after the
 /// first sign-in here, each step checking itself off as it gets done. The
-/// signed-in window until it's finished or skipped ([AppController.getReadyDone]);
+/// signed-in window until it's finished ([AppController.getReadyDone]);
 /// Settings' status card opens it again.
 ///
 /// 1. Coding agents: PocketTerm goes into every agent found (omp, Claude
-///    Code) as soon as this shows; agent sessions that started before it
-///    are listed until they're restarted.
+///    Code) as soon as this shows; agent sessions opened before it are
+///    listed with what picks it up there, until they report.
 /// 2. Terminals: the Mac's, each with its fix; WezTerm on Windows.
 /// 3. Project folders (optional): the usual ones found in the home folder.
 /// 4. Your phone: the pairing QR, until a phone has signed in.
@@ -41,8 +42,6 @@ enum _Status { done, action, optional, working }
 
 class _GetReadyPageState extends State<GetReadyPage> {
   AppController get app => widget.app;
-
-  final _skipped = <_Step>{};
 
   /// Agents PocketTerm is going into now, and why it didn't go into others.
   final _installing = <Agent>{};
@@ -218,7 +217,6 @@ class _GetReadyPageState extends State<GetReadyPage> {
   }
 
   Widget _step(_Step step, String title, _Status status, Widget body, {bool optional = false}) {
-    final skipped = _skipped.contains(step) && status != _Status.done;
     return Container(
       key: ValueKey('get-ready-${step.name}'),
       margin: const EdgeInsets.only(bottom: 12),
@@ -235,17 +233,15 @@ class _GetReadyPageState extends State<GetReadyPage> {
             children: [
               SizedBox.square(
                 dimension: 18,
-                child: skipped
-                    ? const Icon(Icons.remove_circle_outline, size: 18, color: C.dim2)
-                    : switch (status) {
-                        _Status.done => const Icon(Icons.check_circle, size: 18, color: C.ok),
-                        _Status.action => const Icon(Icons.error_outline, size: 18, color: C.warn),
-                        _Status.optional => const Icon(Icons.circle_outlined, size: 18, color: C.dim2),
-                        _Status.working => const Padding(
-                          padding: EdgeInsets.all(1),
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      },
+                child: switch (status) {
+                  _Status.done => const Icon(Icons.check_circle, size: 18, color: C.ok),
+                  _Status.action => const Icon(Icons.error_outline, size: 18, color: C.warn),
+                  _Status.optional => const Icon(Icons.circle_outlined, size: 18, color: C.dim2),
+                  _Status.working => const Padding(
+                    padding: EdgeInsets.all(1),
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                },
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -254,12 +250,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
                     text: title,
                     style: const TextStyle(fontWeight: FontWeight.w600),
                     children: [
-                      if (skipped)
-                        const TextSpan(
-                          text: '  Skipped',
-                          style: TextStyle(fontWeight: FontWeight.normal, fontSize: 12, color: C.dim),
-                        )
-                      else if (optional && status != _Status.done)
+                      if (optional && status != _Status.done)
                         const TextSpan(
                           text: '  Optional',
                           style: TextStyle(fontWeight: FontWeight.normal, fontSize: 12, color: C.dim),
@@ -268,15 +259,10 @@ class _GetReadyPageState extends State<GetReadyPage> {
                   ),
                 ),
               ),
-              if (status != _Status.done)
-                _textButton(
-                  skipped ? 'Show' : 'Skip',
-                  () => setState(() => skipped ? _skipped.remove(step) : _skipped.add(step)),
-                  key: ValueKey('get-ready-skip-${step.name}'),
-                ),
             ],
           ),
-          if (!skipped) ...[const SizedBox(height: 10), body],
+          const SizedBox(height: 10),
+          body,
         ],
       ),
     );
@@ -300,10 +286,35 @@ class _GetReadyPageState extends State<GetReadyPage> {
         else
           for (final agent in Agent.values) _agentLine(agent, agents[agent]),
         if (unreported.isNotEmpty) ...[
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           const Text(
-            'Started before PocketTerm was in them, so your phone sees only their screens:',
-            style: TextStyle(fontSize: 12.5, color: C.dim, height: 1.4),
+            'Sessions that were already open',
+            key: ValueKey('get-ready-open-sessions'),
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'PocketTerm talks to your phone through a small add-on inside omp and Claude Code. An agent loads '
+            'add-ons when it starts, so sessions opened before PocketTerm don\u2019t have it yet: your phone sees '
+            'only their screen, not the conversation. Do this once in each; new sessions don\u2019t need it.',
+            style: _note,
+          ),
+          for (final agent in Agent.values)
+            if (unreported.any((w) => w.agent == agent))
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(switch (agent) {
+                  Agent.claude => '${Integrations.name(agent)}: type ${agent.pickUp} in it. Nothing restarts.',
+                  Agent.omp =>
+                    '${Integrations.name(agent)}: quit it and run ${agent.pickUp}. You\u2019re back in the same '
+                        'conversation.',
+                }, style: _note),
+              ),
+          const SizedBox(height: 6),
+          const Text(
+            'Afterwards your phone shows the conversation: answer questions and approvals there and get a '
+            'notification when a run finishes.',
+            style: _note,
           ),
           for (final w in unreported) _unreportedLine(w),
         ],
@@ -342,39 +353,56 @@ class _GetReadyPageState extends State<GetReadyPage> {
     };
   }
 
+  static const _note = TextStyle(fontSize: 12.5, color: C.dim, height: 1.4);
+
+  /// The window whose pick-up command was copied last: its button says so (the window has no snackbar).
+  String? _copied;
+
   Widget _unreportedLine(TermWindow w) {
     final agent = w.agent!;
     final where = [
-      if (w.cwd.isNotEmpty) _tilde(w.cwd),
+      if (w.cwd.isNotEmpty) 'in ${_tilde(w.cwd)}',
       app.terminals.hosts.where((h) => h.id == w.app).firstOrNull?.label ?? w.app,
     ].join(' · ');
+    // As typed: the no-break characters keep it whole on screen, not in a terminal.
+    final typed = agent.pickUp.replaceAll('\u00A0', ' ').replaceAll('\u2060', '');
     return Padding(
       key: ValueKey('get-ready-unreported-${w.key}'),
       padding: const EdgeInsets.only(top: 8),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 1),
-            child: Icon(Icons.restart_alt, size: 18, color: C.warn),
-          ),
+          const Icon(Icons.refresh, size: 18, color: C.warn),
           const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          Expanded(child: Text('${Integrations.name(agent)} $where', style: const TextStyle(fontSize: 13))),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.only(left: 8),
+            decoration: BoxDecoration(
+              color: C.win,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: C.line2),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text('${agent.label} in $where', style: const TextStyle(fontSize: 13)),
-                Text.rich(
-                  TextSpan(
-                    text: 'Restart it: quit ${agent.label} there and run ',
-                    children: [
-                      TextSpan(
-                        text: agent.resume,
-                        style: const TextStyle(fontFamily: 'Menlo', fontFamilyFallback: ['Consolas', 'monospace']),
-                      ),
-                    ],
+                Text(
+                  agent.pickUp,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'Menlo',
+                    fontFamilyFallback: ['Consolas', 'monospace'],
                   ),
-                  style: const TextStyle(fontSize: 11.5, color: C.dim, height: 1.4),
+                ),
+                IconButton(
+                  tooltip: _copied == w.key ? 'Copied' : 'Copy',
+                  iconSize: 14,
+                  visualDensity: VisualDensity.compact,
+                  color: _copied == w.key ? C.ok : C.dim,
+                  icon: Icon(_copied == w.key ? Icons.check : Icons.copy_outlined),
+                  onPressed: () {
+                    unawaited(Clipboard.setData(ClipboardData(text: typed)));
+                    setState(() => _copied = w.key);
+                  },
                 ),
               ],
             ),
@@ -483,7 +511,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
   Widget _phoneBody() {
     if (app.phoneSignedIn ?? false) {
       return const Text(
-        'A phone is signed in. To add another: Settings \u2192 Set up phone.',
+        'A phone is signed in. To add another: Settings \u2192 Set up phone\u2026',
         style: TextStyle(color: C.dim, height: 1.45, fontSize: 13),
       );
     }

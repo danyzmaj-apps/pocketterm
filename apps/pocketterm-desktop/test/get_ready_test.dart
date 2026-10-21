@@ -6,7 +6,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_desktop/integrations.dart';
@@ -113,19 +115,44 @@ void main() {
     expect(find.textContaining('No coding agent found'), findsOneWidget);
   });
 
-  testWidgets('agent sessions that started before PocketTerm are listed until they report', (tester) async {
+  testWidgets('sessions opened before PocketTerm are listed with what picks it up, until they report', (tester) async {
     Directory('$home/.omp').createSync();
     final computer = await pump(tester, (app) => GetReadyPage(app: app, poll: const Duration(milliseconds: 100)));
     computer.shown = [
       TermWindow(key: 'kitty-1/4', title: 'omp', tab: '', cwd: '$home/Dev/garden', program: 'omp'),
       TermWindow(key: 'kitty-1/5', title: 'zsh', tab: '', cwd: home, program: 'zsh'),
+      TermWindow(key: 'kitty-1/6', title: 'claude', tab: '', cwd: '$home/Dev/shop', program: 'claude'),
     ];
     await settle(tester, () => shows('PocketTerm is installed in omp'));
     await tester.pump(const Duration(milliseconds: 150));
     await tester.pump();
+    expect(find.text('Sessions that were already open'), findsOneWidget);
     expect(find.byKey(const ValueKey('get-ready-unreported-kitty-1/4')), findsOneWidget);
     expect(find.byKey(const ValueKey('get-ready-unreported-kitty-1/5')), findsNothing, reason: 'a shell');
+    Finder command(String key, String text) =>
+        find.descendant(of: find.byKey(ValueKey('get-ready-unreported-$key')), matching: find.text(text));
+    expect(command('kitty-1/4', Agent.omp.resume), findsOneWidget);
+    expect(command('kitty-1/6', '/reload-plugins'), findsOneWidget);
     expect(find.textContaining('omp in ~/Dev/garden'), findsOneWidget);
+    expect(find.textContaining('Claude Code in ~/Dev/shop'), findsOneWidget);
+    expect(find.textContaining('Claude Code: type /reload-plugins in it. Nothing restarts.'), findsOneWidget);
+    expect(find.text('Skip'), findsNothing, reason: 'Done is the only way out');
+
+    // The copy button puts what to type on the clipboard: plain spaces, no joiners.
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') copied = (call.arguments as Map)['text'] as String;
+      return null;
+    });
+    final copy = find.descendant(
+      of: find.byKey(const ValueKey('get-ready-unreported-kitty-1/4')),
+      matching: find.byTooltip('Copy'),
+    );
+    await tester.ensureVisible(copy);
+    await tester.tap(copy);
+    await tester.pump();
+    expect(copied, 'omp -c');
+    expect(find.byTooltip('Copied'), findsOneWidget);
 
     // Restarted with omp -c: its session reports from that window.
     final frames = StreamController<String>();

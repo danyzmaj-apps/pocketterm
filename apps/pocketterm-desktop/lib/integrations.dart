@@ -81,7 +81,7 @@ class Integrations {
   /// fetches it again.
   static const modsOffHint =
       'Claude Code has mods turned off for now: run claude /login, start claude once, '
-      'then restart your Claude sessions';
+      'then type /reload-plugins in your Claude Code sessions';
 
   /// The oldest Claude Code whose plugins may have mods (hooks/*.ts).
   static const minClaude = [2, 1, 287];
@@ -125,7 +125,7 @@ class Integrations {
   };
 
   /// Installs [agent]'s integration, or updates it to the bundled copy. Its
-  /// running sessions load it when they restart.
+  /// running sessions load it when they restart (omp) or reload their plugins (Claude Code).
   Future<void> install(Agent agent) async {
     switch (agent) {
       case Agent.omp:

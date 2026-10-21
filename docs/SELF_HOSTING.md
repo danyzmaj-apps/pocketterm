@@ -21,12 +21,12 @@ Then **Connect and sign in** with GitHub. Push notifications need nothing more: 
 
 The first sign-in on a computer, by the wizard or by **I already have one: connect it**, opens **Get this computer ready**, a checklist whose steps check themselves off:
 
-1. **Your coding agents.** PocketTerm installs itself into every coding agent it finds (omp, Claude Code), says how each went, and offers **Retry** if one failed. An agent that isn't installed is left for later: Settings offers it once it shows up. Agent sessions that started before PocketTerm was in them are listed until you quit them and run `omp -c` (or `claude -c`).
+1. **Your coding agents.** PocketTerm installs itself into every coding agent it finds (omp, Claude Code), says how each went, and offers **Retry** if one failed. An agent that isn't installed is left for later: Settings offers it once it shows up. **Sessions that were already open** don't have PocketTerm's add-on yet (an agent loads add-ons when it starts), so the phone sees only their screen. They're listed, each with what to do once, with a copy button: in Claude Code type `/reload-plugins` (nothing restarts); in omp quit it and run `omp -c` (same conversation). New sessions don't need it.
 2. **Your terminals.** On a Mac, the terminals it found, with **Set up** for kitty and **Allow…** for those that need Automation permission, and a `brew install tmux` line when tmux is missing. On Windows, PocketTerm works through WezTerm: **Install WezTerm** downloads WezTerm's own installer from its GitHub release, checks it against WezTerm's published checksum and opens it for you to click through, or you type the `winget` line it shows into PowerShell. Both catch up on their own once WezTerm is installed or a permission is given.
 3. **Project folders** (optional). The usual folders found in your home folder (`Dev`, `Developer`, `Projects`, `code`, `src`, `repos`; on Windows also `source\repos` and `Documents\GitHub`), one click each, or **Choose folder…**.
 4. **Your phone.** The QR code from [Connect the apps](#connect-the-apps), checked off once a phone has signed in.
 
-Every step can be skipped; **Done** goes to Settings and says what's still left. Settings starts with a status card: **All set**, or each thing that needs attention with the button that fixes it, including a coding agent installed later. **Open setup checklist** shows the checklist again.
+**Done** goes to Settings and says what's still left. Settings starts with a status card: **All set**, or each thing that needs attention with the button that fixes it, including a coding agent installed later. **Open setup checklist** shows the checklist again.
 
 <p align="center"><img src="images/mac-settings-status.png" width="60%" alt="Settings: the status card, four things need attention, each with its button"></p>
 
@@ -136,8 +136,8 @@ supabase secrets set PUSH_RELAY_URL=https://<relay-project-ref>.supabase.co/func
 | Terminal: a Ghostty session isn't matched to its window | Ghostty tells no tty, so PocketTerm matches the session by its folder: keep one Ghostty window per folder. |
 | Windows: no windows show up | Only WezTerm windows are listed. Install it with **Install** in **Settings → Terminals** (or `winget install --id wez.wezterm --exact`) and run your agent in WezTerm. |
 | Windows: "This computer reads PNG and JPEG images only." | Send PNG or JPEG images; the phone apps send JPEG. |
-| Claude Code sessions don't show up | Claude Code needs 2.1.287 or later with mods on. If Settings says mods are off, run `claude /login`, start `claude` once, then restart your sessions. |
-| Phone: omp or Claude windows show only as screens, not as conversations | The note above them says why, from what the computer reports: PocketTerm isn't installed in that agent (**Install** in Settings' status card or **Settings → Coding agent**), it's out of date (**Update**), or those sessions started before it was installed: quit the agent there and run `omp -c` (or `claude -c`). |
+| Claude Code sessions don't show up | Claude Code needs 2.1.287 or later with mods on. If Settings says mods are off, run `claude /login`, start `claude` once, then type `/reload-plugins` in your sessions. |
+| Phone: omp or Claude windows show only as screens, not as conversations | The note above them says why, from what the computer reports: PocketTerm isn't installed in that agent (**Install** in Settings' status card or **Settings → Coding agent**), it's out of date (**Update**), or those sessions were opened before it was installed. Then, once per session: in Claude Code type `/reload-plugins` (nothing restarts); in omp quit it and run `omp -c` (same conversation). |
 
 A local Supabase (`supabase start`) works for development, but it doesn't check API keys, so the setup screen accepts any key there.
 

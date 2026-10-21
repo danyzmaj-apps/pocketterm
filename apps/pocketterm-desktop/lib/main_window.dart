@@ -345,7 +345,10 @@ class _SettingsPageState extends State<SettingsPage> {
           error ??
           (_modsOff
               ? 'Installed · ${Integrations.modsOffHint}'
-              : 'Installed · restart your ${agent.label} sessions to load it');
+              : switch (agent) {
+                  Agent.omp => 'Installed · restart your omp sessions to load it (${agent.resume})',
+                  Agent.claude => 'Installed · type ${agent.pickUp} in open Claude Code sessions to load it',
+                });
       _installFailed = error != null || _modsOff;
     });
     if (error != null) await _checkIntegration();
@@ -577,9 +580,14 @@ class _SettingsPageState extends State<SettingsPage> {
       final n = _unreported.where((w) => w.agent == agent).length;
       if (n == 0) continue;
       items.add((
-        text:
-            '${_count(n, '${agent.label} session')} started before PocketTerm: quit ${agent.label} in '
-            '${n == 1 ? 'it' : 'them'} and run ${agent.resume}',
+        text: switch (agent) {
+          Agent.claude =>
+            '${_count(n, 'Claude Code session')} opened before PocketTerm: type ${agent.pickUp} in '
+                '${n == 1 ? 'it' : 'them'}',
+          Agent.omp =>
+            '${_count(n, 'omp session')} opened before PocketTerm: quit omp in '
+                '${n == 1 ? 'it' : 'them'} and run ${agent.resume}',
+        },
         action: null,
       ));
     }

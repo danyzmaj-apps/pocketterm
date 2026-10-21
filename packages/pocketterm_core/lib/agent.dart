@@ -13,6 +13,10 @@ enum Agent {
   /// What a shell starts it with, which is also the program the terminal reports.
   String get command => name;
 
+  /// The command that restarts it on the conversation it had (`omp -c`), for text: it never
+  /// breaks across lines (a no-break space, and a word joiner after the hyphen) yet copies as typed.
+  String get resume => '$command\u00A0-\u2060c';
+
   /// A prompt sent while it works steers the run (omp); Claude Code queues it
   /// until the run ends.
   bool get steers => this == omp;

@@ -369,7 +369,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
                     text: 'Restart it: quit ${agent.label} there and run ',
                     children: [
                       TextSpan(
-                        text: '${agent.command} -c',
+                        text: agent.resume,
                         style: const TextStyle(fontFamily: 'Menlo', fontFamilyFallback: ['Consolas', 'monospace']),
                       ),
                     ],

@@ -579,7 +579,7 @@ class _SettingsPageState extends State<SettingsPage> {
       items.add((
         text:
             '${_count(n, '${agent.label} session')} started before PocketTerm: quit ${agent.label} in '
-            '${n == 1 ? 'it' : 'them'} and run ${agent.command} -c',
+            '${n == 1 ? 'it' : 'them'} and run ${agent.resume}',
         action: null,
       ));
     }

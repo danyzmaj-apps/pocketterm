@@ -810,27 +810,27 @@ String _screensOnly(Agent agent, AgentIntegration? integration, String computer)
   return switch (integration) {
     AgentIntegration.missing =>
       'PocketTerm isn’t installed in $app on $computer. On the computer: PocketTerm Settings → Install, then '
-          'restart $name there ($command -c).',
+          'restart $name there (${agent.resume}).',
     AgentIntegration.installed =>
-      'These $name sessions started before PocketTerm was installed in $app. Quit $name in them and run $command -c '
+      'These $name sessions started before PocketTerm was installed in $app. Quit $name in them and run ${agent.resume} '
           'to see them here as conversations.',
     AgentIntegration.outdated =>
       'PocketTerm in $app is out of date on $computer. On the computer: PocketTerm Settings → Update, then '
-          'restart $name there ($command -c).',
+          'restart $name there (${agent.resume}).',
     AgentIntegration.off =>
       '$app on $computer has mods turned off, so PocketTerm’s ${agent == Agent.omp ? 'extension' : 'plugin'} doesn’t '
-          'run. There: run $command /login, start $command once, then restart these sessions ($command -c).',
+          'run. There: run $command /login, start $command once, then restart these sessions (${agent.resume}).',
     null => switch (agent) {
       Agent.omp =>
         'These omp windows show only as screens: PocketTerm’s omp extension isn’t reporting from '
             'them. It may be out of date (update it in PocketTerm’s Settings on the computer), or omp there '
-            'started before it was installed. Then quit omp there and start it again (omp -c '
+            'started before it was installed. Then quit omp there and start it again (${Agent.omp.resume} '
             'picks the conversation back up) to see it above, as a conversation.',
       Agent.claude =>
         'These Claude windows show only as screens: PocketTerm’s Claude Code plugin isn’t reporting '
             'from them. It may be out of date (update it in PocketTerm’s Settings on the computer), or '
             'Claude there started before it was installed. Then quit Claude there and start it '
-            'again (claude -c picks the conversation back up) to see it above, as a conversation.',
+            'again (${Agent.claude.resume} picks the conversation back up) to see it above, as a conversation.',
     },
   };
 }

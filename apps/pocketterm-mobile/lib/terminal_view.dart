@@ -495,7 +495,7 @@ class _TerminalListState extends State<TerminalList> {
       onAction: () => unawaited(_close(w)),
       child: child,
     );
-    return key == _swipeTipRow ? CoachTarget(tip: Tip.swipeRow, radius: 12, padding: 0, child: row) : row;
+    return key == _swipeTipRow ? _tipped(Tip.swipeRow, row) : row;
   }
 
   /// A session's row; its project is the heading above it.
@@ -539,9 +539,9 @@ class _TerminalListState extends State<TerminalList> {
     );
   }
 
-  /// [row] with [tip], if it has one.
+  /// [row] with [tip], if it has one; the cutout rounds like the card it sits in.
   static Widget _tipped(Tip? tip, Widget row) =>
-      tip == null ? row : CoachTarget(tip: tip, radius: 12, padding: 0, child: row);
+      tip == null ? row : CoachTarget(tip: tip, radius: Panel.radius, padding: 0, child: row);
 
   /// A project's sessions under its name. Tapping the name folds it to one
   /// summary row; long-pressing it opens [_projectMenu].
@@ -622,7 +622,7 @@ class _TerminalListState extends State<TerminalList> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 2),
+              padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 2),
               child: Text(_projectName(cwd), style: sheetTitleStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
             if (cwd.isNotEmpty)
@@ -674,27 +674,29 @@ class _TerminalListState extends State<TerminalList> {
     },
   );
 
-  /// Above the projects: how they're ordered, one tap to change it.
+  /// Above the projects: how they're ordered, one tap to change it. Its
+  /// press shows as a rounded pill around it, ending where the headings'
+  /// trailing edge does.
   Widget _sortControl() => Align(
     alignment: Alignment.centerRight,
     child: Padding(
       padding: const EdgeInsets.only(right: 16),
-      child: CoachTarget(
-        tip: Tip.sort,
-        radius: 10,
-        padding: 0,
-        child: PopupMenuButton<ProjectSort>(
-          key: const ValueKey('project-sort'),
-          tooltip: 'Sort projects',
-          initialValue: _sort,
-          onSelected: _setSort,
-          itemBuilder: (_) => [for (final s in ProjectSort.values) PopupMenuItem(value: s, child: Text(_sortLabel(s)))],
+      child: PopupMenuButton<ProjectSort>(
+        key: const ValueKey('project-sort'),
+        tooltip: 'Sort projects',
+        initialValue: _sort,
+        onSelected: _setSort,
+        borderRadius: BorderRadius.circular(Panel.headingRadius),
+        itemBuilder: (_) => [for (final s in ProjectSort.values) PopupMenuItem(value: s, child: Text(_sortLabel(s)))],
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 36),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(_sortLabel(_sort), style: const TextStyle(fontSize: 13, color: C.dim)),
+                const SizedBox(width: 2),
                 const Icon(Icons.arrow_drop_down, size: 18, color: C.dim),
               ],
             ),
@@ -1045,30 +1047,38 @@ class _TerminalPageState extends State<TerminalPage> {
     }();
   }
 
-  Widget _key(String label, String key) => Expanded(
-    child: TextFieldTapRegion(
-      child: InkWell(
-        key: ValueKey('key-$key'),
-        onTap: () => unawaited(_press(key)),
-        borderRadius: BorderRadius.circular(7),
-        // A 34pt cap in a 44pt tap target.
-        child: Container(
-          height: 44,
-          margin: const EdgeInsets.symmetric(horizontal: 3),
-          padding: const EdgeInsets.symmetric(vertical: 5),
-          child: Container(
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
+  Widget _key(String label, String key) {
+    void press() => unawaited(_press(key));
+    return Expanded(
+      child: TextFieldTapRegion(
+        // A 34pt cap in a 44pt tap target: the gap around it presses it too,
+        // and the press shows on the cap alone.
+        child: GestureDetector(
+          key: ValueKey('key-$key'),
+          behavior: HitTestBehavior.opaque,
+          onTap: press,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 5),
+            child: Material(
               color: const Color(0xFF262833),
-              borderRadius: BorderRadius.circular(7),
-              border: Border.all(color: C.line2),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(7),
+                side: const BorderSide(color: C.line2),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: press,
+                child: SizedBox(
+                  height: 34,
+                  child: Center(child: Text(label, style: const TextStyle(fontSize: 13))),
+                ),
+              ),
             ),
-            child: Text(label, style: const TextStyle(fontSize: 13)),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   void _followBottom() {
     if (!_atBottom) return;
@@ -1226,7 +1236,8 @@ class _TerminalPageState extends State<TerminalPage> {
                     decoration: plainInput.copyWith(
                       hintText: 'Type a line…',
                       hintStyle: const TextStyle(color: C.dim2),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                      // 48 tall, like the send button, so one line sits on its center.
+                      contentPadding: const EdgeInsets.symmetric(vertical: 13),
                     ),
                   ),
                 ),
@@ -1560,7 +1571,7 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Padding(
-                    padding: EdgeInsets.fromLTRB(20, 18, 20, remote.opensIn == null ? 4 : 0),
+                    padding: EdgeInsets.fromLTRB(20, sheetTop, 20, remote.opensIn == null ? 4 : 0),
                     child: Text(_creating ? 'New project' : 'New session', style: sheetTitleStyle),
                   ),
                   if (remote.opensIn case final opensIn?)

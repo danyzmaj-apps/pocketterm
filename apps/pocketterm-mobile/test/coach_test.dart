@@ -128,7 +128,7 @@ void main() {
     await tester.tapAt(const Offset(5, 400));
     await settle(tester);
     expect(tip('swipe-row'), findsNothing);
-    expect(tip('sort'), findsOneWidget);
+    expect(tip('new-session'), findsOneWidget);
     expect(find.byType(SessionPage), findsNothing);
 
     // The same phone, the app started again: the next one, not the ones seen.
@@ -137,8 +137,6 @@ void main() {
     await settle(tester);
     expect(tip('project-heading'), findsNothing);
     expect(tip('swipe-row'), findsNothing);
-    expect(tip('sort'), findsOneWidget);
-    await gotIt(tester);
     expect(tip('new-session'), findsOneWidget);
     await gotIt(tester);
     expect(anyTip, findsNothing);
@@ -149,7 +147,7 @@ void main() {
     state();
     await app(tester);
     await settle(tester);
-    for (final id in ['project-heading', 'swipe-row', 'sort', 'new-session']) {
+    for (final id in ['project-heading', 'swipe-row', 'new-session']) {
       expect(tip(id), findsOneWidget, reason: id);
       await gotIt(tester);
     }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
@@ -206,7 +207,7 @@ class _SwitchSheetState extends State<SwitchSheet> {
     final busy = _busy;
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+        padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -258,7 +259,10 @@ class _SwitchSheetState extends State<SwitchSheet> {
                   const SizedBox(width: 8),
                   FilledButton(
                     key: const ValueKey('switch-confirm'),
-                    onPressed: () => Navigator.of(context).pop(busy),
+                    onPressed: () {
+                      unawaited(HapticFeedback.lightImpact());
+                      Navigator.of(context).pop(busy);
+                    },
                     child: Text(omp ? 'Restart now' : 'Switch'),
                   ),
                 ],

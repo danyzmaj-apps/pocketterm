@@ -636,7 +636,8 @@ class _SessionPageState extends State<SessionPage> {
                               ? (_followUp || !agent.steers ? 'Queue a prompt…' : 'Steer ${agent.label}…')
                               : 'Prompt ${agent.label}…',
                           hintStyle: const TextStyle(color: C.dim2),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                          // 48 tall, like the buttons either side, so one line sits on their center.
+                          contentPadding: const EdgeInsets.symmetric(vertical: 13),
                         ),
                       ),
                     ),

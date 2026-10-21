@@ -53,16 +53,38 @@ class Reveal extends StatelessWidget {
 }
 
 /// A sheet in the app's one style: radius 28 on top, the raised surface,
-/// clear of the notch.
+/// clear of the notch, a grab handle on top. What [builder] shows starts
+/// [sheetTop] below the handle.
 Future<T?> showAppSheet<T>(BuildContext context, {required WidgetBuilder builder, bool isScrollControlled = false}) =>
     showModalBottomSheet<T>(
       context: context,
       isScrollControlled: isScrollControlled,
       useSafeArea: true,
       backgroundColor: isIos ? M.container : M.containerHigh,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-      builder: builder,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(sheetRadius))),
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(
+            height: 20,
+            child: Center(
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: C.line2, borderRadius: BorderRadius.all(Radius.circular(2))),
+                child: SizedBox(width: 36, height: 4),
+              ),
+            ),
+          ),
+          Flexible(child: builder(context)),
+        ],
+      ),
     );
+
+/// A sheet's top corners.
+const sheetRadius = 28.0;
+
+/// Room between a sheet's handle and its title.
+const sheetTop = 6.0;
 
 /// A sheet's title.
 const sheetTitleStyle = TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: C.text);
@@ -76,7 +98,8 @@ EdgeInsets toastMargin(GlobalKey? above) {
 }
 
 /// A screen's big title, with what goes on its right; [onTap]: it picks
-/// something (a chevron after it says so).
+/// something (a chevron after it says so), and a press shows as a rounded
+/// pill around the title and chevron.
 class PageTitle extends StatelessWidget {
   const PageTitle(this.title, {this.trailing = const [], this.onTap, super.key});
   final String title;
@@ -95,25 +118,35 @@ class PageTitle extends StatelessWidget {
           ? const TextStyle(fontSize: 24, fontWeight: FontWeight.w600)
           : const TextStyle(fontSize: 24, fontWeight: FontWeight.w400),
     );
+    // The pill's inset: the title sits 20 from the screen's edge either way.
+    const inset = EdgeInsets.fromLTRB(8, 4, 4, 4);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 10, 12, 6),
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
       child: Row(
         children: [
           // Large text sizes: the title gives way, never the account button.
           Expanded(
             child: onTap == null
-                ? text
-                : Semantics(
-                    button: true,
-                    child: GestureDetector(
-                      onTap: onTap,
-                      behavior: HitTestBehavior.opaque,
-                      child: Row(
-                        children: [
-                          Flexible(child: text),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.keyboard_arrow_down_rounded, color: C.dim, size: 28),
-                        ],
+                ? Padding(padding: inset, child: text)
+                : Align(
+                    alignment: Alignment.centerLeft,
+                    heightFactor: 1,
+                    child: Semantics(
+                      button: true,
+                      child: InkWell(
+                        onTap: onTap,
+                        borderRadius: BorderRadius.circular(Panel.headingRadius),
+                        child: Padding(
+                          padding: inset,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(child: text),
+                              const SizedBox(width: 4),
+                              const Icon(Icons.keyboard_arrow_down_rounded, color: C.dim, size: 28),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -127,7 +160,8 @@ class PageTitle extends StatelessWidget {
 
 /// A group of rows: an inset rounded card (iOS's inset grouped list, or a
 /// Material 3 tonal surface) with thin separators, under an optional small
-/// heading.
+/// heading. The card clips its rows, so a press on the first or last row
+/// rounds with it.
 class Panel extends StatelessWidget {
   const Panel({
     required this.children,
@@ -147,6 +181,16 @@ class Panel extends StatelessWidget {
   /// The first-use tip the heading carries, if any.
   final Tip? titleTip;
 
+  /// The card's corners.
+  static double get radius => isIos ? 22 : 24;
+
+  /// A heading's press, and the other small pills over the list (the sort
+  /// button, the page title).
+  static const headingRadius = 12.0;
+
+  /// Where a row's text starts in the card, which its separator lines up with.
+  static const textInset = 56.0;
+
   @override
   Widget build(BuildContext context) {
     final style = TextStyle(
@@ -155,32 +199,34 @@ class Panel extends StatelessWidget {
       letterSpacing: isIos ? .2 : .1,
       color: isIos ? C.dim : C.accent,
     );
-    final heading = title == null
-        ? null
-        : InkWell(
-            onTap: onTitleTap,
-            onLongPress: onTitleLongPress,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(32, 18, 24, 7),
-              child: Row(
-                children: [
-                  // A long title (a project folder's name) gives way to what
-                  // trails it.
-                  Expanded(
-                    child: Text(title!, maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
-                  ),
-                  ?titleTrailing,
-                ],
+    Widget? heading;
+    if (title != null) {
+      // A pill as wide as the card under it; its text lines up with the rows' icons.
+      heading = InkWell(
+        onTap: onTitleTap,
+        onLongPress: onTitleLongPress,
+        borderRadius: BorderRadius.circular(headingRadius),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 7, 8, 7),
+          child: Row(
+            children: [
+              // A long title (a project folder's name) gives way to what
+              // trails it.
+              Expanded(
+                child: Text(title!, maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
               ),
-            ),
-          );
+              ?titleTrailing,
+            ],
+          ),
+        ),
+      );
+      if (titleTip case final tip?) heading = CoachTarget(tip: tip, radius: headingRadius, padding: 0, child: heading);
+      heading = Padding(padding: const EdgeInsets.fromLTRB(16, 11, 16, 0), child: heading);
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (heading != null && titleTip != null)
-          CoachTarget(tip: titleTip!, radius: 12, padding: 0, child: heading)
-        else
-          ?heading,
+        ?heading,
         // Folding opens and shuts the card instead of popping it.
         Reveal(
           visible: children.isNotEmpty,
@@ -191,7 +237,7 @@ class Panel extends StatelessWidget {
             child: Material(
               color: M.container,
               clipBehavior: Clip.antiAlias,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(isIos ? 22 : 24)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
               child: AnimatedSize(
                 duration: Motion.fast,
                 curve: Motion.ease,
@@ -200,7 +246,7 @@ class Panel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     for (final (i, row) in children.indexed) ...[
-                      if (i > 0) const Divider(height: 1, thickness: 0.5, indent: 52, color: C.line),
+                      if (i > 0) const Divider(height: 1, thickness: 0.5, indent: textInset, color: C.line),
                       row,
                     ],
                   ],
@@ -214,8 +260,9 @@ class Panel extends StatelessWidget {
   }
 }
 
-/// The +: a round accent button on iPhone, Material 3's rounded-square FAB on Android.
-class AddButton extends StatelessWidget {
+/// The +: a round accent button on iPhone, Material 3's rounded-square FAB on Android. On iPhone it darkens while a
+/// finger is on it, as iOS's buttons do; on Android it ripples.
+class AddButton extends StatefulWidget {
   const AddButton({required this.tooltip, required this.onPressed, super.key});
   final String tooltip;
   final VoidCallback? onPressed;
@@ -224,14 +271,37 @@ class AddButton extends StatelessWidget {
   static const contentInset = 96.0;
 
   @override
-  Widget build(BuildContext context) => FloatingActionButton(
-    key: const ValueKey('add'),
-    tooltip: tooltip,
-    onPressed: onPressed,
-    backgroundColor: C.accent,
-    foregroundColor: const Color(0xFF0E0F12),
-    shape: isIos ? const CircleBorder() : null,
-    elevation: isIos ? 2 : null,
-    child: Icon(isIos ? Icons.add_rounded : Icons.add, size: 26),
-  );
+  State<AddButton> createState() => _AddButtonState();
+}
+
+class _AddButtonState extends State<AddButton> {
+  static final Color _pressed = Color.lerp(C.accent, Colors.black, .22)!;
+  bool _down = false;
+
+  void _set(bool down) {
+    if (down != _down) setState(() => _down = down);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final button = FloatingActionButton(
+      key: const ValueKey('add'),
+      tooltip: widget.tooltip,
+      onPressed: widget.onPressed,
+      backgroundColor: isIos && _down ? _pressed : C.accent,
+      foregroundColor: const Color(0xFF0E0F12),
+      shape: isIos ? const CircleBorder() : null,
+      elevation: isIos ? 2 : null,
+      // On iPhone the shadow stays put; the darker fill says it's pressed.
+      highlightElevation: isIos ? 2 : null,
+      child: Icon(isIos ? Icons.add_rounded : Icons.add, size: 26),
+    );
+    if (!isIos) return button;
+    return Listener(
+      onPointerDown: (_) => _set(widget.onPressed != null),
+      onPointerUp: (_) => _set(false),
+      onPointerCancel: (_) => _set(false),
+      child: button,
+    );
+  }
 }

@@ -202,9 +202,12 @@ class MobileApp extends StatelessWidget {
 
   static ThemeData _theme(ThemeData base) => base.copyWith(
     scaffoldBackgroundColor: C.win,
-    // Rows show they were pressed: the iOS cell highlight, Android's ink.
+    // Rows show they were pressed: on iPhone a soft highlight with no ripple, as iOS's cells do; on Android
+    // Material's ink. Either way it's clipped to the card, pill or circle it presses.
     splashFactory: isIos ? NoSplash.splashFactory : InkSparkle.splashFactory,
     highlightColor: const Color(0x14FFFFFF),
+    // A sheet's rows line up with its title, 20 in.
+    listTileTheme: const ListTileThemeData(contentPadding: EdgeInsets.symmetric(horizontal: 20)),
     appBarTheme: AppBarTheme(
       backgroundColor: C.win,
       surfaceTintColor: Colors.transparent,
@@ -532,8 +535,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Padding(
-                padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
-                child: Text('Computers', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                padding: EdgeInsets.fromLTRB(20, sheetTop, 20, 8),
+                child: Text('Computers', style: sheetTitleStyle),
               ),
               if (_desktops.all.isEmpty)
                 Padding(
@@ -567,7 +570,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     context,
     builder: (sheet) => SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+        padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,

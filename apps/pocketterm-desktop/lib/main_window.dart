@@ -482,7 +482,16 @@ class _SettingsPageState extends State<SettingsPage> {
           title: 'Your phones',
           sub: (app.phoneSignedIn ?? false) ? 'A phone is signed in' : 'No phone yet',
           subColor: app.phoneSignedIn == false ? C.warn : C.dim,
-          body: [_button('Add a phone…', () => unawaited(showPairingQr(context, app)))],
+          body: [
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _button('Add a phone…', () => unawaited(showPairingQr(context, app))),
+                _button('Reset key…', () => unawaited(_resetKey()), key: const ValueKey('settings-reset-key')),
+              ],
+            ),
+          ],
         ),
       ),
       _wide(
@@ -516,6 +525,40 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ),
     ];
+  }
+
+  /// A new channel key (after losing a phone): every phone must scan again.
+  Future<void> _resetKey() async {
+    final reset =
+        await showDialog<bool>(
+          context: context,
+          builder: (dialog) => AlertDialog(
+            backgroundColor: C.bar,
+            title: const Text('Reset this computer’s key?'),
+            content: const Text(
+              'Your phones read this computer’s sessions with a key from its code. A new key locks out every phone '
+              'that has the old one, including a lost one. Each phone you keep must scan this computer’s code again: '
+              'Add a phone….',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(dialog).pop(false), child: const Text('Cancel')),
+              TextButton(
+                onPressed: () => Navigator.of(dialog).pop(true),
+                style: TextButton.styleFrom(foregroundColor: const Color(0xFFFCA5A5)),
+                child: const Text('Reset key'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!reset) return;
+    try {
+      await app.resetChannelKey();
+    } on Object catch (e) {
+      if (mounted) Toaster.of(context).show('Key not reset: $e');
+      return;
+    }
+    if (mounted) Toaster.of(context).show('New key made. Scan this computer’s code on each phone.');
   }
 
   // ---------------------------------------------------------------- agents

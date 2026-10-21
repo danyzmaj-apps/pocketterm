@@ -17,7 +17,9 @@ import 'package:pocketterm_core/agent.dart';
 //
 // Computer ↔ phone: the private Realtime broadcast topic
 // `terminal:<user id>:<desktop id>` ([terminalTopic]; RLS: the user's own
-// topics only), one per computer. Nothing is stored on the server.
+// topics only), one per computer. Nothing is stored on the server. Each
+// payload below goes sealed with the computer's channel key (lib/e2e.dart,
+// lib/terminal_channel.dart): the server sees only `{v, n, c}`.
 //
 //   phone → Mac   hello  {from, session?, window?}   every 4 s while the app is in front;
 //                        session: the live session it shows, window: the screen it shows
@@ -1132,9 +1134,10 @@ class ScreenDiff {
   Map<String, dynamic> toJson() => {'drop': drop, 'keep': keep, 'tail': tail};
 }
 
-/// [items] split into lists whose JSON stays under [maxBytes] each (Realtime
-/// refuses big messages).
-List<List<Map<String, dynamic>>> chunkJson(Iterable<Map<String, dynamic>> items, {int maxBytes = 60000}) {
+/// [items] split into lists whose JSON stays under [maxBytes] each: sealed
+/// (lib/e2e.dart) and in base64 a message grows by a third, and Realtime
+/// refuses big ones (a self-hosted server's default limit is 100 KB).
+List<List<Map<String, dynamic>>> chunkJson(Iterable<Map<String, dynamic>> items, {int maxBytes = 40000}) {
   final out = <List<Map<String, dynamic>>>[];
   var current = <Map<String, dynamic>>[];
   var size = 0;

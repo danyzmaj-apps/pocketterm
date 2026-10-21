@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/agent.dart';
+import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
@@ -17,6 +18,7 @@ void main() {
     'u1',
     dir,
     desktopId: desktopId,
+    key: ChannelKey(List.filled(32, 7)),
     from: 'phone',
     send: (event, payload) => sent.add((event, payload)),
   );

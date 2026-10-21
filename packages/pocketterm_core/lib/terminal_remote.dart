@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/ansi.dart';
+import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/live_activity.dart';
 import 'package:pocketterm_core/terminal.dart';
@@ -44,6 +45,10 @@ class TermScreen {
 /// What goes out on the topic; tests pass their own.
 typedef TerminalSend = void Function(String event, Map<String, dynamic> payload);
 
+/// Where images go on their way to the computer (Storage, sealed); tests
+/// pass their own.
+typedef ImageUpload = Future<void> Function(String path, Uint8List sealed);
+
 class _Watch {
   _Watch({this.session, this.window});
   final String? session;
@@ -53,18 +58,21 @@ class _Watch {
 /// The phone side for one computer ([desktopId]): its coding sessions
 /// (structured, per [LiveView]) and terminal windows (as screens). The
 /// channel and the hellos run between [attach] and [detach]: while the app is
-/// in front. Its disk cache is `terminal/<desktopId>` in the given support
-/// directory.
+/// in front. Everything goes sealed with that computer's [key] (lib/e2e.dart).
+/// Its disk cache is `terminal/<desktopId>` in the given support directory.
 class TerminalRemote extends ChangeNotifier {
   TerminalRemote(
     this._client,
     this._userId,
     Directory supportDir, {
     required this.desktopId,
+    required this.key,
     @visibleForTesting TerminalSend? send,
+    @visibleForTesting ImageUpload? upload,
     String? from,
   }) : _cacheDir = Directory('${supportDir.path}/terminal/$desktopId'),
        _transmit = send,
+       _uploadImage = upload,
        from = from ?? const Uuid().v4() {
     _load();
   }
@@ -73,9 +81,13 @@ class TerminalRemote extends ChangeNotifier {
   final String _userId;
   final Directory _cacheDir;
   final TerminalSend? _transmit;
+  final ImageUpload? _uploadImage;
 
   /// The computer this talks to (lib/desktops.dart).
   final String desktopId;
+
+  /// That computer's channel key, from its QR code.
+  final ChannelKey key;
 
   /// What the phone calls that computer (its name in the list), for "asking
   /// MacBook Pro…"; null while not known.
@@ -108,6 +120,8 @@ class TerminalRemote extends ChangeNotifier {
     {
       for (final event in const ['state', 'items', 'live', 'screen', 'ran']) event: (p) => _receive(event, p),
     },
+    key: key,
+    side: ChannelSide.phone,
     name: 'terminal remote',
     onJoined: ({required joined}) {
       // Ops may have gone by while away.
@@ -548,11 +562,16 @@ class TerminalRemote extends ChangeNotifier {
   }
 
   /// Prompts [session] with [text] and [images] (image files: PNG, JPEG),
-  /// which pass through Storage. While omp works the prompt steers it, or
-  /// waits for the turn to end if [followUp]; Claude Code always waits.
+  /// which pass through Storage sealed with [key]. While omp works the
+  /// prompt steers it, or waits for the turn to end if [followUp]; Claude
+  /// Code always waits.
   Future<void> prompt(String session, String text, {List<Uint8List> images = const [], bool followUp = false}) async {
     if (!online) throw const TerminalException('The computer is not answering.');
     final bucket = _client.storage.from(imageBucket);
+    final upload =
+        _uploadImage ??
+        (path, sealed) =>
+            bucket.uploadBinary(path, sealed, fileOptions: const FileOptions(contentType: 'application/octet-stream'));
     final paths = <String>[];
     void forget() {
       if (paths.isEmpty) return;
@@ -562,7 +581,7 @@ class TerminalRemote extends ChangeNotifier {
     try {
       for (final bytes in images) {
         final path = '$_userId/${const Uuid().v4()}';
-        await bucket.uploadBinary(path, bytes);
+        await upload(path, await sealBytes(key, bytes, imageAad(path)));
         paths.add(path);
       }
     } on Object catch (e) {

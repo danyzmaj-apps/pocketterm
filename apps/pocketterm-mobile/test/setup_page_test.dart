@@ -30,7 +30,7 @@ class _FakeSession extends Session {
   bool signedIn = false;
 
   @override
-  Future<void> connectLink(Uri uri) async {
+  Future<void> connectLink(Uri uri, {bool external = false}) async {
     links.add(uri);
     if (failure case final f?) {
       authError = f;

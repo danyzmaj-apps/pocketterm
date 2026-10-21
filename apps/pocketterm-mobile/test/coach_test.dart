@@ -33,6 +33,7 @@ void main() {
       'u1',
       dir,
       desktopId: 'abcd1234',
+      key: testKey,
       from: 'phone',
       send: (event, payload) => sent.add((event, payload)),
     );
@@ -88,7 +89,7 @@ void main() {
           cached: [Desktop(id: 'abcd1234', name: 'MacBook Pro', platform: 'macos', seenAt: DateTime.now())],
           saved: 'abcd1234',
         ),
-        remoteFor: (_) => remote,
+        remoteFor: (_, _) => remote,
       ),
     );
   }

@@ -2,19 +2,24 @@
 @Tags(['posix'])
 library;
 
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/apple_terminal.dart';
+import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/ghostty.dart';
 import 'package:pocketterm_core/iterm.dart';
 import 'package:pocketterm_core/kitty.dart';
 import 'package:pocketterm_core/terminal.dart';
+import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/tmux.dart';
 import 'package:pocketterm_core/wezterm.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:pocketterm_desktop/terminal_bridge.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show SupabaseClient;
 
 /// Terminals that touch nothing on this Mac; [tmux]: an executable that exists.
 Terminals _terms({bool tmux = false}) => Terminals(
@@ -90,6 +95,44 @@ void main() {
         isA<LiveException>().having((e) => e.message, 'message', 'This computer reads PNG and JPEG images only.'),
       ),
     );
+  });
+
+  test("a phone's image is stored sealed, and only this computer's key opens it, for its own path", () async {
+    final dir = Directory.systemTemp.createTempSync('pocketterm_image');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final key = ChannelKey.generate();
+    final stored = <String, Uint8List>{};
+    final runs = <Map<String, dynamic>>[];
+    late final TerminalRemote phone;
+    phone = TerminalRemote(
+      SupabaseClient('http://localhost:1', 'anon'),
+      'u1',
+      dir,
+      desktopId: 'abcd1234',
+      key: key,
+      from: 'phone',
+      upload: (path, sealed) async => stored[path] = sealed,
+      send: (event, payload) {
+        if (event != 'run') return;
+        runs.add(payload);
+        phone.handle('ran', {'id': payload['id']});
+      },
+    )..handle('state', {'windows': const <Object>[], 'sessions': const <Object>[]});
+    final png = Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 1, 2, 3]);
+
+    await phone.prompt('kitty-1/2', 'look', images: [png]);
+
+    final path = (runs.single['images'] as List).single as String;
+    expect(path, startsWith('u1/'));
+    final sealed = stored[path]!;
+    expect(sealed, isNot(containsAllInOrder(png)), reason: 'Storage never holds the image itself');
+    expect(await TerminalBridge.openImage(key, path, sealed), png);
+    expect(
+      (await TerminalBridge.image(await TerminalBridge.openImage(key, path, sealed), macos: false)).mimeType,
+      'image/png',
+    );
+    await expectLater(TerminalBridge.openImage(ChannelKey.generate(), path, sealed), throwsA(isA<LiveException>()));
+    await expectLater(TerminalBridge.openImage(key, 'u1/another', sealed), throwsA(isA<LiveException>()));
   });
 
   group('switching a screen-only agent window to its conversation', () {

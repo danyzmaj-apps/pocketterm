@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/native.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -73,11 +74,32 @@ class Backend {
     return code.isEmpty ? null : code;
   }
 
+  /// The computer and its channel key in a setup link (`d`, `k`: the
+  /// computer's QR), if it has them. A link without them still signs in;
+  /// that computer then stays locked on the phone.
+  static ComputerKey? computerKey(Uri uri) {
+    if (fromLink(uri) == null) return null;
+    final desktop = uri.queryParameters['d'] ?? '';
+    final key = ChannelKey.tryParse(uri.queryParameters['k']);
+    if (key == null || !RegExp(r'^[a-z0-9]{8}$').hasMatch(desktop)) return null;
+    return (desktop: desktop, key: key);
+  }
+
   Uri get link => Uri(scheme: 'pocketterm', host: 'setup', queryParameters: {'url': url, 'key': key});
 
-  /// [link] with a sign-in code: what the Mac's QR holds.
-  Uri linkWithCode(String code) =>
-      Uri(scheme: 'pocketterm', host: 'setup', queryParameters: {'url': url, 'key': key, 'code': code});
+  /// [link] with a sign-in code and, from a computer, its [computer] key:
+  /// what the computer's QR holds. A secret: whoever has it reads that
+  /// computer's sessions.
+  Uri linkWithCode(String code, {ComputerKey? computer}) => Uri(
+    scheme: 'pocketterm',
+    host: 'setup',
+    queryParameters: {
+      'url': url,
+      'key': key,
+      'code': code,
+      if (computer != null) ...{'d': computer.desktop, 'k': computer.key.toBase64Url()},
+    },
+  );
 
   /// The host, for display.
   String get host => Uri.parse(url).host;

@@ -16,6 +16,7 @@ import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/tmux.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_core/wezterm.dart';
+import 'package:pocketterm_desktop/channel_keys.dart';
 import 'package:pocketterm_desktop/controller.dart';
 import 'package:pocketterm_desktop/desktop_host.dart';
 import 'package:pocketterm_desktop/integrations.dart';
@@ -25,7 +26,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show User;
 /// An [AppController] signed in as [fakeUser], its computer's side [host].
 class FakeApp extends AppController {
   FakeApp._(SharedPreferences prefs, this._givenTerminals, Integrations integrations)
-    : super(prefs, 'Mac', FakeDesktopHost(), integrations: integrations);
+    : super(prefs, 'Mac', FakeDesktopHost(), integrations: integrations, secrets: MemorySecrets());
 
   /// [terminals] stand in for the computer's; none found by default.
   /// [prefs]: what this computer had saved. [integrations]: the coding
@@ -62,7 +63,17 @@ class FakeApp extends AppController {
   int pairingLinks = 0;
 
   @override
-  Future<Uri> pairingLink() async => backend!.linkWithCode('PAIR-${++pairingLinks}AAA-BBBB-CCCC-DDDD-EEEE-FFFF');
+  Future<Uri> pairingLink() async =>
+      backend!.linkWithCode('PAIR-${++pairingLinks}AAA-BBBB-CCCC-DDDD-EEEE-FFFF', computer: await pairingComputer());
+
+  /// What went to functions/push, in order.
+  final pushes = <Map<String, Object>>[];
+
+  @override
+  Future<Object?> invokePush(Map<String, Object> body) async {
+    pushes.add(body);
+    return {'sent': 1};
+  }
 
   @override
   FakeDesktopHost get host => super.host as FakeDesktopHost;
@@ -152,6 +163,17 @@ class FakeApp extends AppController {
     revoked.add(id);
     reviewer.removeWhere((c) => c.id == id);
   }
+}
+
+/// Secrets kept in memory, as the Keychain would keep them.
+class MemorySecrets implements SecretStore {
+  final values = <String, String>{};
+
+  @override
+  Future<String?> read(String name) async => values[name];
+
+  @override
+  Future<void> write(String name, String value) async => values[name] = value;
 }
 
 /// The computer's side, recording what it was asked in [calls].

@@ -9,10 +9,12 @@ import 'package:qr_flutter/qr_flutter.dart';
 const pairingLifetime = Duration(minutes: 10);
 
 /// A QR the phone opens in PocketTerm (its Scan button, or the iPhone's Camera):
-/// the server's address plus a one-time sign-in code, so the phone is set up
-/// and signed in by the scan alone (a phone has no other way in). Anyone who
-/// scans it in time gets into the account, so it is made fresh when shown,
-/// works once, and hides itself when it runs out.
+/// the server's address, a one-time sign-in code and this computer's channel
+/// key (lib/e2e.dart), so the phone is set up, signed in and able to read this
+/// computer by the scan alone (a phone has no other way in). Anyone who scans
+/// it gets into the account and can read this computer's sessions, so it is
+/// made fresh when shown, its sign-in works once, and it hides itself when it
+/// runs out; the key stays good until Reset key (Settings → Phone).
 class PairingQr extends StatefulWidget {
   const PairingQr({required this.session, super.key});
   final Session session;
@@ -88,7 +90,8 @@ class _PairingQrState extends State<PairingQr> {
       ),
       const SizedBox(height: 8),
       const Text(
-        'The code works once, for 10 minutes. Anyone who scans it gets into your account, so only show it to your own phone.',
+        "This code is a secret. Anyone who scans it can read this computer's sessions. "
+        'The sign-in works once, for 10 minutes; the key in it works until you reset it in Settings.',
         textAlign: TextAlign.center,
         style: TextStyle(fontSize: 11.5, color: C.dim2, height: 1.4),
       ),

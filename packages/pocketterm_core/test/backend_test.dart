@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/backend.dart';
+import 'package:pocketterm_core/e2e.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -58,6 +59,22 @@ void main() {
     expect(Backend.pairingCode(Uri.parse('pocketterm://todos?code=K7QM')), isNull);
     // A link with a code but no usable server is no link at all.
     expect(Backend.pairingCode(Uri.parse('pocketterm://setup?url=ftp://x&key=k&code=K7QM')), isNull);
+  });
+
+  test("a computer's QR carries its id and key next to the code; a link without them still signs in", () {
+    const b = Backend(url: 'https://abc.supabase.co', key: 'sb_publishable_x');
+    final key = ChannelKey.generate();
+    final link = b.linkWithCode('K7QM-3XRT-AB12', computer: (desktop: 'abcd1234', key: key));
+    expect(Backend.pairingCode(link), 'K7QM-3XRT-AB12');
+    expect(Backend.computerKey(link), (desktop: 'abcd1234', key: key));
+    // Its key is a secret; it rides the link as is, URL-safe.
+    expect(link.queryParameters['k'], key.toBase64Url());
+    expect(Backend.computerKey(b.linkWithCode('K7QM-3XRT-AB12')), isNull);
+    expect(Backend.pairingCode(b.linkWithCode('K7QM-3XRT-AB12')), 'K7QM-3XRT-AB12');
+    // A key cut short, or an id that isn't a computer's, is no key.
+    final good = link.queryParameters;
+    expect(Backend.computerKey(link.replace(queryParameters: {...good, 'k': 'AAAA'})), isNull);
+    expect(Backend.computerKey(link.replace(queryParameters: {...good, 'd': '../etc'})), isNull);
   });
 
   test('a server that drops the connection mid-answer is a message, not a throw', () async {

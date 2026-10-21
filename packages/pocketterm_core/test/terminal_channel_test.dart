@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/terminal_channel.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -102,6 +103,11 @@ void main() {
   late TerminalChannel channel;
   late List<bool> states;
   late List<Map<String, dynamic>> received;
+  final key = ChannelKey(List.filled(32, 3));
+  final topic = terminalTopic('u1', 'abcd1234');
+
+  /// The computer's side of the topic, sealing what [_FakeRealtime.broadcast] relays.
+  final computer = ChannelSeal(key, topic, side: ChannelSide.desktop);
 
   Future<void> setUpServer(List<String> joinReplies) async {
     server = _FakeRealtime(joinReplies);
@@ -111,8 +117,10 @@ void main() {
     received = [];
     channel = TerminalChannel(
       client,
-      terminalTopic('u1', 'abcd1234'),
+      topic,
       {'state': received.add},
+      key: key,
+      side: ChannelSide.phone,
       name: 'test',
       onJoined: ({required joined}) => states.add(joined),
     );
@@ -146,9 +154,22 @@ void main() {
     await until(() => channel.joined);
     expect(states, [true, false, true]);
 
-    server.broadcast('state', {'windows': 3});
+    server.broadcast('state', await computer.seal('state', {'windows': 3}));
     await until(() => received.isNotEmpty);
-    expect(received.single['windows'], 3);
+    expect(received.single, {'windows': 3});
+  });
+
+  test('opened messages reach the handler in the order they came; unsealed ones never do', () async {
+    await setUpServer(const []);
+    channel.open();
+    await until(() => channel.joined);
+
+    server.broadcast('state', {'windows': 99});
+    for (var i = 0; i < 20; i++) {
+      server.broadcast('state', await computer.seal('state', {'windows': i}));
+    }
+    await until(() => received.length == 20);
+    expect([for (final m in received) m['windows']], List.generate(20, (i) => i));
   });
 
   test('a refused join (an expired token) is tried again until it is let in', () async {

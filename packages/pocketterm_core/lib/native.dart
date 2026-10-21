@@ -30,14 +30,23 @@ class Native {
   static Future<String?> takeTappedSession() => _channel.invokeMethod<String>('takeTappedSession');
 
   /// Phone: asks for notification permission and this phone's push token
-  /// (APNs on iOS, FCM on Android), with its push key. Null: not allowed, or
-  /// no token (APNs didn't answer; an Android build without Firebase).
-  static Future<({String token, String key})?> registerPush() async {
-    final m = await _channel.invokeMapMethod<String, String>('registerPush');
-    final token = m?['token'];
-    final key = m?['key'];
-    return token == null || key == null ? null : (token: token, key: key);
-  }
+  /// (APNs on iOS, FCM on Android). Null: not allowed, or no token (APNs
+  /// didn't answer; an Android build without Firebase).
+  static Future<String?> registerPush() async =>
+      (await _channel.invokeMapMethod<String, Object?>('registerPush'))?['token'] as String?;
+
+  /// Phone: the computers' channel keys (lib/e2e.dart), by computer id, kept
+  /// where the push extension reads them too: the Keychain (App Group,
+  /// this device only) on iOS, Keystore-backed storage on Android.
+  static Future<Map<String, String>> channelKeys() async =>
+      await _channel.invokeMapMethod<String, String>('channelKeys') ?? const {};
+
+  /// [key]: standard base64.
+  static Future<void> setChannelKey({required String desktop, required String key}) =>
+      _channel.invokeMethod('setChannelKey', {'desktop': desktop, 'key': key});
+
+  static Future<void> removeChannelKey({required String desktop}) =>
+      _channel.invokeMethod('removeChannelKey', {'desktop': desktop});
 
   // Phone: followed coding sessions, as Live Activities on iOS
   // (apps/pocketterm-mobile/ios/Shared/SessionActivity.swift) and ongoing notifications on Android

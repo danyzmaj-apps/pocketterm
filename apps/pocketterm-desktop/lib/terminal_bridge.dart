@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/agent.dart';
+import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/live_activity.dart';
 import 'package:pocketterm_core/terminal.dart';
@@ -16,14 +17,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// The desktop side of Terminal from the phone (protocol: packages/pocketterm_core/lib/live.dart): the
 /// coding sessions [LiveHub] knows and the terminals' windows
 /// (packages/pocketterm_core/lib/terminals.dart) go out on this computer's
-/// private topic (`terminal:<user id>:<desktop id>`); what the phone asks
-/// for is done here, where the window's terminal can do it. The terminals
-/// are polled only while a phone has said hello lately.
+/// private topic (`terminal:<user id>:<desktop id>`), sealed with its channel
+/// key (packages/pocketterm_core/lib/e2e.dart); what the phone asks for is
+/// done here, where the window's terminal can do it. The terminals are
+/// polled only while a phone has said hello lately.
 class TerminalBridge {
   TerminalBridge(
     this._client,
     this._userId,
     this._desktopId,
+    this._key,
     this._terms,
     this._hub,
     this._host,
@@ -39,6 +42,9 @@ class TerminalBridge {
 
   /// This computer, among the user's (lib/controller.dart).
   final String _desktopId;
+
+  /// This computer's channel key (lib/channel_keys.dart).
+  final ChannelKey _key;
   final Terminals _terms;
   final LiveHub _hub;
 
@@ -72,14 +78,18 @@ class TerminalBridge {
   /// Live ops wait this long to go out together.
   static const _batch = Duration(milliseconds: 150);
 
-  /// Realtime refuses big messages; a full screen is cut to this much JSON.
-  static const _maxScreenJson = 90000;
+  /// Realtime refuses big messages; a full screen is cut to this much JSON
+  /// (sealed and in base64 it grows by a third; see chunkJson in live.dart).
+  static const _maxScreenJson = 60000;
 
-  late final TerminalChannel _ch = TerminalChannel(_client, terminalTopic(_userId, _desktopId), {
-    'hello': _onHello,
-    'sync': _onSync,
-    'run': (m) => unawaited(_onRun(m)),
-  }, name: 'terminal bridge');
+  late final TerminalChannel _ch = TerminalChannel(
+    _client,
+    terminalTopic(_userId, _desktopId),
+    {'hello': _onHello, 'sync': _onSync, 'run': (m) => unawaited(_onRun(m))},
+    key: _key,
+    side: ChannelSide.desktop,
+    name: 'terminal bridge',
+  );
   Timer? _tick;
   int _ticks = 0;
   bool _polling = false;
@@ -566,7 +576,7 @@ class TerminalBridge {
     }
     final bucket = _client.storage.from(imageBucket);
     try {
-      final images = [for (final path in paths) await image(await bucket.download(path))];
+      final images = [for (final path in paths) await image(await openImage(_key, path, await bucket.download(path)))];
       await _hub.prompt(
         p['session'] as String,
         p['text'] as String? ?? '',
@@ -581,6 +591,13 @@ class TerminalBridge {
       }
     }
   }
+
+  /// A phone's image as stored at [path], opened with [key] (the phone
+  /// sealed it for that path: packages/pocketterm_core/lib/terminal_remote.dart).
+  @visibleForTesting
+  static Future<Uint8List> openImage(ChannelKey key, String path, Uint8List sealed) async =>
+      await openBytes(key, sealed, imageAad(path)) ??
+      (throw const LiveException("The image didn't open: it wasn't sealed with this computer's key."));
 
   /// PNG and JPEG go as they are; on a Mac anything else (HEIC from Photos)
   /// becomes PNG first, which every model reads. Elsewhere (no `sips`) only

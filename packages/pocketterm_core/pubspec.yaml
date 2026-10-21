@@ -10,6 +10,8 @@ environment:
 dependencies:
   app_links: ^7.2.2
   crypto: ^3.0.7
+  cryptography: ^2.9.0
+  cryptography_flutter: ^2.3.4
   flutter:
     sdk: flutter
   image_picker: ^1.2.4

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/live_activity.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
@@ -66,14 +67,15 @@ void main() {
     final dir = Directory.systemTemp.createTempSync('pocketterm_activity');
     addTearDown(() => dir.deleteSync(recursive: true));
     final client = SupabaseClient('http://localhost:1', 'anon');
-    final remote = TerminalRemote(client, 'u1', dir, desktopId: 'abcd1234', send: (_, _) {})
-      ..handle('state', {
-        'windows': const <Object>[],
-        'sessions': [
-          {'key': 'kitty-1/1', 'id': 's1', 'title': 'Old', 'cwd': '/x', 'epoch': 'e', 'seq': 0},
-          {'key': 'kitty-1/2', 'id': 's2', 'title': 'Fix it', 'cwd': r'C:\Users\me\app\', 'epoch': 'e', 'seq': 0},
-        ],
-      });
+    final remote =
+        TerminalRemote(client, 'u1', dir, desktopId: 'abcd1234', key: ChannelKey(List.filled(32, 7)), send: (_, _) {})
+          ..handle('state', {
+            'windows': const <Object>[],
+            'sessions': [
+              {'key': 'kitty-1/1', 'id': 's1', 'title': 'Old', 'cwd': '/x', 'epoch': 'e', 'seq': 0},
+              {'key': 'kitty-1/2', 'id': 's2', 'title': 'Fix it', 'cwd': r'C:\Users\me\app\', 'epoch': 'e', 'seq': 0},
+            ],
+          });
     final a = LiveActivities(client, remote);
     await pumpEventQueue();
     expect(a.following('kitty-1/1'), isTrue);

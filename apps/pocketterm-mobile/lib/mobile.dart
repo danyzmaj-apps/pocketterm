@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pocketterm_core/account.dart' show Avatar;
 import 'package:pocketterm_core/desktops.dart';
+import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/live_activity.dart';
 import 'package:pocketterm_core/native.dart';
@@ -16,15 +17,18 @@ import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/coach.dart';
 import 'package:pocketterm_mobile/links.dart';
+import 'package:pocketterm_mobile/onboarding/scan.dart';
 import 'package:pocketterm_mobile/setup_page.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
-/// The phone side of [Session]: registers this phone for the computer's
-/// terminal pushes, and ends the sessions it follows when the account
-/// leaves it. The push key travels through what the native side shares
-/// (ios/Shared/PocketTermShared.swift, android/…/PocketTermShared.kt).
+/// The phone side of [Session]: keeps the computers' channel keys (from
+/// their QR codes; packages/pocketterm_core/lib/e2e.dart) where the native
+/// side reads them too (ios/Shared/PocketTermShared.swift, android/…/
+/// PocketTermShared.kt: the push extension opens a computer's pushes with
+/// its key), registers this phone for the computer's terminal pushes, and
+/// ends the sessions it follows when the account leaves it.
 class MobileSession extends Session {
   MobileSession(this._prefs, super.device);
 
@@ -33,6 +37,44 @@ class MobileSession extends Session {
   /// A phone signs in only with a code from the computer (functions/pair).
   @override
   bool get signsInWithGithub => false;
+
+  final _computerKeys = <String, ChannelKey>{};
+
+  /// Computer [desktopId]'s channel key; null while this phone hasn't
+  /// scanned that computer's code: the computer is locked, nothing from it
+  /// shows and nothing goes to it.
+  ChannelKey? computerKey(String desktopId) => _computerKeys[desktopId];
+
+  @override
+  Future<void> start() async {
+    await loadComputerKeys();
+    await super.start();
+  }
+
+  /// The keys the native side keeps.
+  Future<void> loadComputerKeys() async {
+    try {
+      for (final MapEntry(:key, :value) in (await Native.channelKeys()).entries) {
+        if (ChannelKey.tryParse(value) case final k?) _computerKeys[key] = k;
+      }
+    } on Object catch (e) {
+      debugPrint('PocketTerm: computer keys not read: $e');
+    }
+    notifyListeners();
+  }
+
+  @override
+  Future<void> addComputerKey(ComputerKey computer, {required bool replace}) async {
+    final held = _computerKeys[computer.desktop];
+    if (held == computer.key) return;
+    if (held != null && !replace) {
+      debugPrint("PocketTerm: a link from outside the app doesn't replace a computer's key; scan its code instead");
+      return;
+    }
+    await Native.setChannelKey(desktop: computer.desktop, key: computer.key.toBase64());
+    _computerKeys[computer.desktop] = computer.key;
+    notifyListeners();
+  }
 
   static const _foldedKey = 'pocketterm_terminal_folded';
 
@@ -82,18 +124,18 @@ class MobileSession extends Session {
 
   static const _pushTokenKey = 'pocketterm_push_token';
 
-  /// Hands this phone's push token (APNs on iOS, FCM on Android) and push
-  /// key to the user's server, which from then on pushes the computer's
-  /// terminal news (functions/push).
+  /// Hands this phone's push token (APNs on iOS, FCM on Android) to the
+  /// user's server, which from then on relays the computer's terminal news
+  /// (functions/push), sealed by each computer with its key.
   Future<void> _registerPush(String userId) async {
     try {
-      final push = await Native.registerPush();
-      if (push == null || user?.id != userId) return;
+      final token = await Native.registerPush();
+      if (token == null || user?.id != userId) return;
       await client.functions.invoke(
         'push',
-        body: {'action': 'register', 'token': push.token, 'key': push.key, 'label': device, 'platform': pushPlatform},
+        body: {'action': 'register', 'token': token, 'label': device, 'platform': pushPlatform},
       );
-      await _prefs.setString(_pushTokenKey, push.token);
+      await _prefs.setString(_pushTokenKey, token);
     } on Object catch (e) {
       debugPrint('PocketTerm: push registration failed: $e');
     }
@@ -140,12 +182,21 @@ class MobileSession extends Session {
   }
 
   /// Drops what this phone keeps for the account: the push registration's
-  /// record, and the followed sessions, ended at once. Returns those
-  /// sessions.
+  /// record, the computers' keys (the next sign-in scans a code, which
+  /// brings its computer's), and the followed sessions, ended at once.
+  /// Returns those sessions.
   Future<List<({String key, String? token})>> _forgetHere() async {
     await _prefs.remove(_pushTokenKey);
     await _prefs.remove(_desktopKey);
     await _prefs.remove(_desktopsKey);
+    for (final desktop in [..._computerKeys.keys]) {
+      try {
+        await Native.removeChannelKey(desktop: desktop);
+        _computerKeys.remove(desktop);
+      } on Object catch (e) {
+        debugPrint('PocketTerm: computer key not removed: $e');
+      }
+    }
     final activities = await Native.liveActivities();
     for (final a in activities) {
       await Native.endActivity(a.key, immediate: true);
@@ -177,7 +228,7 @@ class MobileApp extends StatelessWidget {
   final Desktops? desktops;
 
   /// See [HomePage.remoteFor].
-  final TerminalRemote Function(String desktopId)? remoteFor;
+  final TerminalRemote Function(String desktopId, ChannelKey key)? remoteFor;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -250,8 +301,8 @@ class HomePage extends StatefulWidget {
 
   /// Makes the remotes fed by hand (tests, screenshots), never attached or
   /// disposed here; otherwise each joins its computer over the session's
-  /// server.
-  final TerminalRemote Function(String desktopId)? remoteFor;
+  /// server, sealed with that computer's key.
+  final TerminalRemote Function(String desktopId, ChannelKey key)? remoteFor;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -272,7 +323,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   /// The selected computer's coding sessions and terminal windows, through
   /// PocketTerm there; live while the app is in front. Null with no
-  /// computer, and until its cache folder is known.
+  /// computer, with a locked one (no key), and until its cache folder is
+  /// known.
   TerminalRemote? _terminal;
   bool _terminalAttached = false;
 
@@ -284,21 +336,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return state == null || state == AppLifecycleState.resumed;
   }
 
-  /// One remote, for the selected computer: another computer selected, the
-  /// old one goes (with any page on it) and a new one comes.
+  /// One remote, for the selected computer while this phone has its key:
+  /// another computer selected, or a new key scanned, the old one goes (with
+  /// any page on it) and a new one comes.
   void _syncRemote() {
     final d = _desktops.selected;
+    final key = d == null ? null : widget.session.computerKey(d.id);
     final old = _terminal;
-    if (old != null && old.desktopId == d?.id) {
+    if (old != null && old.desktopId == d?.id && old.key == key) {
       old.desktopName = d?.name;
       return;
     }
     TerminalRemote? next;
-    if (d != null) {
+    if (d != null && key != null) {
       if (widget.remoteFor case final make?) {
-        next = make(d.id);
+        next = make(d.id, key);
       } else if (_supportDir case final dir?) {
-        next = TerminalRemote(widget.session.client, widget.userId, dir, desktopId: d.id);
+        next = TerminalRemote(widget.session.client, widget.userId, dir, desktopId: d.id, key: key);
         next.activities = LiveActivities(widget.session.client, next);
       } else {
         return; // Made once the cache folder is known.
@@ -389,6 +443,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // A terminal push tap that launched the app.
     WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_openTappedSession()));
     _desktops.addListener(_syncRemote);
+    // A computer's key scanned.
+    widget.session.addListener(_syncRemote);
     if (widget.remoteFor != null) {
       _syncRemote();
     } else {
@@ -406,6 +462,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     unawaited(_links?.cancel());
     _refreshTimer?.cancel();
     _desktops.removeListener(_syncRemote);
+    widget.session.removeListener(_syncRemote);
     if (_terminal case final t?) _dropRemote(t);
     if (widget.desktops == null) _desktops.dispose();
     super.dispose();
@@ -492,6 +549,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   onSort: (s) => unawaited(widget.session.setProjectSort(s)),
                   computer: selected?.name,
                 ),
+                null when selected != null && widget.session.computerKey(selected.id) == null => _Locked(
+                  computer: selected.name,
+                  onScan: () => unawaited(_scanComputer()),
+                ),
                 null => Center(
                   child: Padding(
                     padding: const EdgeInsets.all(32),
@@ -512,6 +573,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  /// A computer's code, scanned while signed in: this phone gets that
+  /// computer's key ([Session.connectLink]).
+  Future<void> _scanComputer() async {
+    final link = await scanSetupCode(context, signedIn: true);
+    if (link == null || !mounted) return;
+    widget.session.authError = null;
+    await widget.session.connectLink(link);
+    if (!mounted) return;
+    final selected = _desktops.selected;
+    final problem =
+        widget.session.authError ??
+        (selected != null && widget.session.computerKey(selected.id) == null
+            ? 'That code is for another computer. Scan the one ${selected.name} shows.'
+            : null);
+    if (problem != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(problem)));
   }
 
   /// Why the account lists no computer: the store reviewers' demo account
@@ -548,16 +626,27 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   key: ValueKey('desktop-${d.id}'),
                   leading: Icon(d.windows ? Icons.desktop_windows : Icons.laptop_mac, color: C.dim),
                   title: Text(d.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: Text(
-                    d.online ? 'Online' : 'Seen ${ago(d.seenAt)}',
-                    style: TextStyle(color: d.online ? C.accent : C.dim),
-                  ),
+                  subtitle: widget.session.computerKey(d.id) == null
+                      ? const Text('Locked: scan its code', style: TextStyle(color: C.warn))
+                      : Text(
+                          d.online ? 'Online' : 'Seen ${ago(d.seenAt)}',
+                          style: TextStyle(color: d.online ? C.accent : C.dim),
+                        ),
                   trailing: d.id == _desktops.selected?.id ? const Icon(Icons.check, color: C.accent) : null,
                   onTap: () {
                     Navigator.of(sheet).pop();
                     _desktops.select(d.id);
                   },
                 ),
+              ListTile(
+                key: const ValueKey('scan-computer'),
+                leading: const Icon(Icons.qr_code_scanner, color: C.dim),
+                title: const Text('Scan a computer’s code'),
+                onTap: () {
+                  Navigator.of(sheet).pop();
+                  unawaited(_scanComputer());
+                },
+              ),
               const SizedBox(height: 8),
             ],
           ),
@@ -637,6 +726,47 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             ),
           ],
         ),
+      ),
+    ),
+  );
+}
+
+/// The selected computer, while this phone has no key for it: nothing from
+/// it shows and nothing goes to it until its code is scanned.
+class _Locked extends StatelessWidget {
+  const _Locked({required this.computer, required this.onScan});
+  final String computer;
+  final VoidCallback onScan;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.lock_outline, color: C.dim, size: 36),
+          const SizedBox(height: 14),
+          const Text(
+            'Scan this computer’s code to connect',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Its sessions are end-to-end encrypted with a key only its code holds. '
+            'On $computer, open Settings → Add a phone…',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: C.dim, height: 1.5),
+          ),
+          const SizedBox(height: 20),
+          FilledButton.icon(
+            key: const ValueKey('scan-locked-computer'),
+            onPressed: onScan,
+            icon: const Icon(Icons.qr_code_scanner, size: 18),
+            label: const Text('Scan'),
+          ),
+        ],
       ),
     ),
   );

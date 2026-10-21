@@ -54,7 +54,7 @@ flowchart LR
   end
   phone["PocketTerm phone app"]
   relay["Publisher's push relay<br/>ciphertext only"]
-  desktop <-->|"sessions, screens, prompts"| rt
+  desktop <-->|"sessions, screens, prompts<br/>end-to-end encrypted"| rt
   rt <--> phone
   desktop -->|"run finished, needs you"| fn
   fn -->|"encrypted push"| relay
@@ -62,8 +62,9 @@ flowchart LR
 ```
 
 - **The desktop app** finds your coding sessions (the omp extension and Claude Code plugin it installs report to it over `127.0.0.1`) and your terminal windows (through each terminal's own API), and relays them to your phone.
-- **Your Supabase project** is the only server: it signs you in, pairs your phones, carries a private Realtime channel per computer and sends pushes. The free plan is enough for one person. The setup wizard creates it for you.
-- **Pushes** leave your server encrypted with a key only your phone has, and reach Apple or Google through the publisher's relay, which can't read them.
+- **Your Supabase project** is the only server: it signs you in, pairs your phones, carries a private Realtime channel per computer and sends pushes. It relays your sessions, images and notifications only as ciphertext. The free plan is enough for one person. The setup wizard creates it for you.
+- **End-to-end encryption.** Each computer has its own key, which reaches a phone only in that computer's QR code. Sessions, screens, prompts, images and push text are sealed with it on one end and opened on the other.
+- **Pushes** are sealed by the computer and reach Apple or Google through the publisher's relay, which can't read them.
 
 The sessions live on the computer: it has to be awake, with PocketTerm running and **Terminal from phone** on. While that switch is on, PocketTerm keeps the computer from idle sleep; a closed lid (without an external display) or a shut-down computer ends it. A push goes out only when nobody has touched the computer for 60 seconds.
 
@@ -115,7 +116,7 @@ After you sign in with GitHub, **Get this computer ready** installs PocketTerm i
 
 ### 4. Pair your phone
 
-In the phone app, tap **Scan the code from your computer** and scan the QR code the checklist shows (later: **Add a phone…** in Settings). The code works once, for 10 minutes. One phone pairing covers every computer on your account.
+In the phone app, tap **Scan the code from your computer** and scan the QR code the checklist shows (later: **Add a phone…** in Settings). Its sign-in works once, for 10 minutes. One sign-in covers every computer on your account, but each computer's sessions are encrypted with that computer's own key, so scan each computer's code once (the phone shows a computer it can't read yet as locked, with a **Scan** button).
 
 <p align="center">
   <img src="docs/images/wizard-token.png" width="32%" align="top" alt="Setup wizard: Supabase access token">
@@ -146,8 +147,9 @@ Every user runs their own server; nothing is shared between users. [docs/SELF_HO
 ## Security and privacy
 
 - **Your server.** Sign-in, pairing, the terminal channel and push registrations live in your Supabase project, behind row-level security. The apps hold only its publishable key. Sign-up is private: after the first account, nobody gets in unless you allow their email.
-- **Nothing stored.** Sessions and screens travel over a Realtime channel per computer that only your account can join; nothing on it is stored. Images you send pass through a private storage bucket in your project.
-- **Encrypted push.** The relay sees only ciphertext and stores nothing. iPhone Live Activity updates can't be encrypted, so they carry only a session's state, never text.
+- **End-to-end encrypted.** Sessions, screens, prompts, images and notification text are sealed (AES-256-GCM) with a key per computer that never goes to a server: a phone gets it only by scanning that computer's QR code, so treat the QR as a secret. Your server sees who you are, your computers, push tokens and when messages go, never what they say. **Reset key** (Settings → Phone) locks out every phone, a lost one included; the others scan again.
+- **Nothing stored.** Sessions and screens travel over a Realtime channel per computer that only your account can join; nothing on it is stored. Images you send pass sealed through a private storage bucket in your project and are deleted once used.
+- **Encrypted push.** The relay sees only ciphertext and stores nothing. Live Activity updates can't be encrypted, so they carry only a session's state, never text.
 - **Local only.** The desktop app's API listens on `127.0.0.1` behind a random token.
 - **Delete account** (Settings → Account on the computer, or the account sheet on the phone) removes everything.
 

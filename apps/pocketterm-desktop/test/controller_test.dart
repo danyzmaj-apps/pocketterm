@@ -3,9 +3,12 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/backend.dart';
+import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_desktop/controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -30,6 +33,55 @@ void main() {
     app.host.idle = 59;
     expect(await app.notifyPhone('omp finished · app', 'Done.'), isFalse);
     expect(app.host.calls, ['idleSeconds']);
+  });
+
+  testWidgets("a push goes sealed: the server gets the computer's id and nothing it could read", (tester) async {
+    await tester.runAsync(() async {
+      final app = await FakeApp.create();
+      app.host.idle = 600;
+      expect(
+        await app.notifyPhone('omp finished · secret-project', 'Fixed the login bug.', session: 'kitty-1/2'),
+        isTrue,
+      );
+
+      final body = app.pushes.single;
+      final desktop = app.desktopId(app.fakeUser!.id);
+      expect(body.keys, unorderedEquals(['action', 'desktop', 'enc', 'collapse']));
+      expect(body['action'], 'notify');
+      expect(body['desktop'], desktop);
+      expect(jsonEncode(body), isNot(anyOf(contains('secret-project'), contains('login'), contains('finished'))));
+
+      // A phone that scanned this computer's code opens it.
+      final key = Backend.computerKey(await app.pairingLink())!.key;
+      final opened = await openBytes(key, base64Decode(body['enc']! as String), pushAad(desktop));
+      expect(jsonDecode(utf8.decode(opened!)), {
+        'title': 'omp finished · secret-project',
+        'body': 'Fixed the login bug.',
+        'session': '$desktop/kitty-1/2',
+      });
+      expect(await openBytes(key, base64Decode(body['enc']! as String), pushAad('zzzz9999')), isNull);
+    });
+  });
+
+  testWidgets("Reset key: the code carries a new key, and a phone with the old one can't open what comes next", (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final app = await FakeApp.create();
+      app.host.idle = 600;
+      final old = Backend.computerKey(await app.pairingLink())!;
+      expect(Backend.computerKey(await app.pairingLink()), old, reason: 'the key stays until reset');
+
+      await app.resetChannelKey();
+      final fresh = Backend.computerKey(await app.pairingLink())!;
+      expect(fresh.desktop, old.desktop);
+      expect(fresh.key, isNot(old.key));
+
+      await app.notifyPhone('Claude Code needs you · app', 'Allow?');
+      final enc = base64Decode(app.pushes.single['enc']! as String);
+      expect(await openBytes(old.key, enc, pushAad(old.desktop)), isNull);
+      expect(await openBytes(fresh.key, enc, pushAad(old.desktop)), isNotNull);
+    });
   });
 
   group('the first sign-in on this computer', () {

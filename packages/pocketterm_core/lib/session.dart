@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/backend.dart';
+import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart' show imageBucket;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -71,7 +72,7 @@ class Session extends ChangeNotifier {
       onLinkToConfirm();
       return;
     }
-    unawaited(connectLink(uri));
+    unawaited(connectLink(uri, external: true));
   }
 
   /// A setup link to another server, waiting for [answerLink].
@@ -91,14 +92,23 @@ class Session extends ChangeNotifier {
   void onLinkToConfirm() {}
 
   /// A setup link: connects to its server and, with a sign-in code (the
-  /// computer's QR), signs in too. A phone takes only links with a code. Problems
-  /// land in [authError].
-  Future<void> connectLink(Uri uri) async {
+  /// computer's QR), signs in too; a computer key in it ([Backend.computerKey])
+  /// goes to [addComputerKey], also when already signed in (a phone scanning
+  /// one more computer). A phone takes only links with a code. Problems
+  /// land in [authError]. An [external] link (opened from outside the app)
+  /// doesn't replace a key this device already holds for that computer:
+  /// anyone can send a link.
+  Future<void> connectLink(Uri uri, {bool external = false}) async {
     final backend = Backend.fromLink(uri);
     if (backend == null) return;
     final code = Backend.pairingCode(uri);
-    if (_user != null) {
-      if (backend != _backend) authError = 'Sign out before switching to ${backend.host}.';
+    final computer = Backend.computerKey(uri);
+    if (user != null) {
+      if (backend != this.backend) {
+        authError = 'Sign out before switching to ${backend.host}.';
+      } else if (computer != null) {
+        await addComputerKey(computer, replace: !external);
+      }
       notifyListeners();
       return;
     }
@@ -122,6 +132,8 @@ class Session extends ChangeNotifier {
     try {
       final data = (await client.functions.invoke('pair', body: {'action': 'redeem', 'code': code})).data;
       if (data case {'token_hash': final String hash}) {
+        // Before the sign-in lands, so the computer shows unlocked at once.
+        if (computer != null) await addComputerKey(computer, replace: true);
         await client.auth.verifyOTP(type: OtpType.magiclink, tokenHash: hash);
         return;
       }
@@ -144,12 +156,25 @@ class Session extends ChangeNotifier {
   static const _serverTooOld =
       'Your server is older than this app. Update it from your computer (docs/SELF_HOSTING.md), then make a new code.';
 
+  /// A computer's key from a setup link: the phone keeps it. [replace]: also
+  /// over a different one it holds for that computer.
+  @protected
+  Future<void> addComputerKey(ComputerKey computer, {required bool replace}) async {}
+
+  /// This computer and its key, for the setup link a phone scans; null where
+  /// there's none (a phone).
+  @protected
+  Future<ComputerKey?> pairingComputer() async => null;
+
   /// A setup link that also signs a new device in (functions/pair, action
-  /// create): works once, for 10 minutes. Only while signed in. Fails with a
-  /// [PairingException] that says why.
+  /// create) and carries this computer's key ([pairingComputer]): the code
+  /// works once, for 10 minutes; the key until reset. Only while signed in.
+  /// Fails with a [PairingException] that says why.
   Future<Uri> pairingLink() async {
     final data = await _pair({'action': 'create'});
-    if (data case {'code': final String code}) return _backend!.linkWithCode(code);
+    if (data case {'code': final String code}) {
+      return _backend!.linkWithCode(code, computer: await pairingComputer());
+    }
     throw const PairingException("The server didn't send a code. Update it (docs/SELF_HOSTING.md), then retry.");
   }
 

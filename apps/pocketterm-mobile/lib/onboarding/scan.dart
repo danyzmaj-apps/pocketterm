@@ -6,13 +6,16 @@ import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/ui.dart';
 
 /// Opens the camera to read the code the computer shows (Settings → Add a phone,
-/// or a reviewer code): a setup link with a sign-in code in it. Pops with
-/// that link, or null when cancelled.
-Future<Uri?> scanSetupCode(BuildContext context) =>
-    Navigator.of(context).push<Uri>(MaterialPageRoute(fullscreenDialog: true, builder: (_) => const _ScanPage()));
+/// or a reviewer code): a setup link with a sign-in code in it or, when
+/// [signedIn] (a phone adding a computer's key), with that computer's key.
+/// Pops with that link, or null when cancelled.
+Future<Uri?> scanSetupCode(BuildContext context, {bool signedIn = false}) =>
+    Navigator.of(context)
+        .push<Uri>(MaterialPageRoute(fullscreenDialog: true, builder: (_) => _ScanPage(signedIn: signedIn)));
 
 class _ScanPage extends StatefulWidget {
-  const _ScanPage();
+  const _ScanPage({required this.signedIn});
+  final bool signedIn;
 
   @override
   State<_ScanPage> createState() => _ScanPageState();
@@ -37,14 +40,17 @@ class _ScanPageState extends State<_ScanPage> {
     for (final code in capture.barcodes) {
       final link = Uri.tryParse(code.rawValue ?? '');
       if (link == null || Backend.fromLink(link) == null) continue;
-      if (Backend.pairingCode(link) != null) {
+      final usable = widget.signedIn ? Backend.computerKey(link) != null : Backend.pairingCode(link) != null;
+      if (usable) {
         _done = true;
         Navigator.of(context).pop(link);
         return;
       }
-      problem =
-          'That code has no sign-in in it. Scan the one under Your phone in PocketTerm\u2019s setup checklist '
-          'on your computer, or in its Settings \u2192 Add a phone\u2026';
+      problem = widget.signedIn
+          ? 'That code has no key for a computer. Update PocketTerm on your computer, then scan its code in '
+                'Settings \u2192 Add a phone\u2026'
+          : 'That code has no sign-in in it. Scan the one under Your phone in PocketTerm\u2019s setup checklist '
+                'on your computer, or in its Settings \u2192 Add a phone\u2026';
     }
     problem ??= "That's not a PocketTerm code. Scan the one on your computer.";
     if (_notOurs != problem) setState(() => _notOurs = problem);

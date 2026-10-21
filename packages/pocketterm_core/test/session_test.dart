@@ -27,7 +27,7 @@ class _LinkSession extends Session {
   final connected = <Uri>[];
 
   @override
-  Future<void> connectLink(Uri uri) async => connected.add(uri);
+  Future<void> connectLink(Uri uri, {bool external = false}) async => connected.add(uri);
 }
 
 String _jwt(Map<String, Object> claims) {

@@ -2,6 +2,18 @@
 
 User-visible changes to PocketTerm. Each release says whether servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again and whether the push relay must be redeployed.
 
+## Unreleased
+
+**End-to-end encryption.** Your server (Supabase) now relays only ciphertext between a computer and its phones: sessions, screens, prompts, images and notification text.
+
+**Servers:** run `apps/pocketterm-desktop/tool/setup-backend.sh` again ([Updating](docs/SELF_HOSTING.md#updating)): `push` forwards notifications the computer sealed, and a migration drops the per-phone push keys. The push relay must be redeployed first (`apps/pocketterm-desktop/tool/deploy-relay.sh`, publisher only); it still serves servers that aren't updated yet. **Phones pair again once:** scan each computer's code (Settings → Add a phone…) on each phone.
+
+- **A key per computer.** Each computer makes its own key and keeps it in the Keychain (Mac) or Credential Manager (Windows). It reaches a phone only in that computer's QR code, which now says it's a secret. Live messages carry a timestamp and are dropped when more than 5 minutes off; the computer drops a phone message it has already seen.
+- **Phone: locked computers.** A computer whose code this phone hasn't scanned shows **Scan this computer's code to connect** with a **Scan** button, and nothing from it shows or goes to it. Scanning a code while signed in adds that computer's key without signing in again. The computer picker marks locked computers and has **Scan a computer's code**. Signing out removes the keys.
+- **Desktop: Reset key** (Settings → Phone) makes a new key after losing a phone; every phone scans again.
+- **Images** from the phone are sealed before upload; the computer opens them.
+- **Push text** is sealed by the computer; your server and the relay pass it on unread. A phone without that computer's key shows a plain "PocketTerm" notification. Live Activity updates still carry only a session's state, unencrypted.
+
 ## 0.1.0
 
 The first release: your computer's omp and Claude Code sessions on your phone, through a Supabase server you own.

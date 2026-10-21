@@ -74,9 +74,9 @@ At the end it checks that GitHub sign-in is on and prints a **setup link**: `poc
 ## Connect the apps
 
 - **Mac or Windows PC**: install PocketTerm from [Releases](https://github.com/danyzmaj-apps/pocketterm/releases/latest) (the phone app's first screen links there too: **Get PocketTerm for Mac or Windows**), then open the setup link (on a Mac the script offers to) or paste it into the wizard's **I already have one: connect it**. Sign in with GitHub. Every computer you sign in on shows up in the phone's list of computers.
-- **iPhone and Android**: phones sign in only with a code from a computer, never with GitHub. On the computer, **Settings → Add a phone…** shows a QR code. In the phone app, tap **Scan the code from your computer**. The code carries the server address, its publishable key and a one-time sign-in code, so the phone signs in as you. It works once and expires after 10 minutes; anyone who scans it gets into your account, so only show it to your own phone. No camera? **Paste a code instead** takes the same code as text (the whole `pocketterm://setup?…&code=…` link). A phone that signs out, or whose sign-in ends, is back on that screen and needs a new code.
+- **iPhone and Android**: phones sign in only with a code from a computer, never with GitHub. On the computer, **Settings → Add a phone…** shows a QR code. In the phone app, tap **Scan the code from your computer**. The code carries the server address, its publishable key, a one-time sign-in code and that computer's encryption key, so the phone signs in as you and can read that computer's sessions. The sign-in works once and expires after 10 minutes; the key works until you **Reset key** (Settings → Phone). Anyone who scans the code gets into your account and can read that computer's sessions, so only show it to your own phone. No camera? **Paste a code instead** takes the same code as text (the whole `pocketterm://setup?…&code=…` link). A phone that signs out, or whose sign-in ends, is back on that screen and needs a new code.
 
-The first account that signs in **owns the server**. One phone pairing is enough for all your computers: they share the account.
+The first account that signs in **owns the server**. One phone sign-in covers all your computers (they share the account), but each computer encrypts its sessions with its own key: scan each computer's code once. A computer the phone can't read yet shows as locked with a **Scan** button (or **Scan a computer's code** in the computer picker). After **Reset key**, every phone scans that computer's code again.
 
 ## Reviewer codes
 
@@ -104,6 +104,8 @@ git pull && apps/pocketterm-desktop/tool/setup-backend.sh <project-ref>
 ```
 
 The Mac app updates itself; on Windows, Settings links to a new version when one is out. [CHANGELOG.md](../CHANGELOG.md) says when a new app version needs a backend update.
+
+**Updating to end-to-end encryption.** Run the setup script again (above): the `push` function now forwards notifications the computer sealed, and a migration drops the old per-phone push keys. Then update the apps, and scan each computer's code once more on each phone (**Settings → Add a phone…**): a computer's key travels only in its QR code, so a phone paired before shows each computer as locked until it scans that computer's code.
 
 ## Push
 

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/agent.dart';
+import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_mobile/mobile.dart';
 import 'package:pocketterm_mobile/session_view.dart';
@@ -35,6 +36,7 @@ void main() {
       'u1',
       dir,
       desktopId: 'abcd1234',
+      key: ChannelKey(List.filled(32, 9)),
       from: 'phone',
       send: (event, payload) => sent.add((event, payload)),
     );

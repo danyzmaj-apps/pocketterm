@@ -215,15 +215,17 @@ void main() {
   }
 
   /// The app, signed in (else on its setup page), its Terminal list fed by [terminal].
-  /// [tips]: its first-use tips not seen yet.
+  /// [tips]: its first-use tips not seen yet. [locked]: its computer's code not scanned yet.
   Future<void> app(
     WidgetTester tester, {
     required TerminalRemote terminal,
     bool signedIn = true,
     bool tips = false,
+    bool locked = false,
   }) async {
     phone(tester);
     final session = await FakeSession.create(signedIn: signedIn, tips: tips);
+    if (locked) session.locked.add('abcd1234');
     await tester.pumpWidget(
       RepaintBoundary(
         key: shot,
@@ -234,7 +236,7 @@ void main() {
             cached: [Desktop(id: 'abcd1234', name: 'MacBook Pro', platform: 'macos', seenAt: DateTime.now())],
             saved: 'abcd1234',
           ),
-          remoteFor: (_) => terminal,
+          remoteFor: (_, _) => terminal,
         ),
       ),
     );
@@ -250,6 +252,7 @@ void main() {
           'user',
           cache,
           desktopId: 'abcd1234',
+          key: testKey,
           from: 'phone',
           send: (_, _) {},
         )
@@ -277,6 +280,14 @@ void main() {
     r.flush();
   });
 
+  testWidgets('a computer whose code the phone has not scanned', variant: _ios, (tester) async {
+    if (skipped()) return;
+    final r = remote();
+    await app(tester, terminal: r, locked: true);
+    await save(tester, 'phone-locked.png');
+    r.flush();
+  });
+
   testWidgets('terminal, a row swiped open', variant: _ios, (tester) async {
     if (skipped()) return;
     final r = remote();
@@ -299,6 +310,7 @@ void main() {
             'user',
             cache,
             desktopId: 'abcd1234',
+            key: testKey,
             from: 'phone',
             // omp is at work in it.
             send: (event, p) {

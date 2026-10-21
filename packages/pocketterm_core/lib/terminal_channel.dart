@@ -1,15 +1,66 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:pocketterm_core/e2e.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Receives one broadcast: the payload's fields at the top level, next to
-/// `event` and `type`.
+/// Receives one message, opened: its fields as the sender gave them.
 typedef TopicHandler = void Function(Map<String, dynamic> payload);
+
+/// Which end of a computer's topic this is.
+enum ChannelSide {
+  /// The computer: the phones' messages must carry a `mid` it hasn't seen.
+  desktop,
+
+  /// A phone: its messages carry a `mid`.
+  phone,
+}
+
+/// Seals what goes out on [topic] with the computer's [key] and opens what
+/// comes in (lib/e2e.dart): each message gets a `ts`, a phone's a `mid`
+/// too; a message that doesn't open, is more than 5 minutes off, or (on the
+/// computer) was seen before, is dropped and logged once per kind.
+class ChannelSeal {
+  ChannelSeal(this.key, this.topic, {required this.side, this.name = 'channel', DateTime Function()? clock})
+    : _clock = clock ?? DateTime.now,
+      _guard = ReplayGuard(requireMid: side == ChannelSide.desktop, clock: clock);
+
+  final ChannelKey key;
+  final String topic;
+  final ChannelSide side;
+
+  /// Who this is, in the log.
+  final String name;
+  final DateTime Function() _clock;
+  final ReplayGuard _guard;
+  final _logged = <String>{};
+
+  /// [payload] of [event], as it goes on the topic.
+  Future<Map<String, dynamic>> seal(String event, Map<String, dynamic> payload) => sealEnvelope(key, {
+    ...payload,
+    'ts': _clock().millisecondsSinceEpoch,
+    if (side == ChannelSide.phone) 'mid': newMessageId(),
+  }, channelAad(topic, event));
+
+  /// What [wire] (an [event] off the topic) says, without its `ts` and
+  /// `mid`; null when it's dropped.
+  Future<Map<String, dynamic>?> open(String event, Map<String, dynamic> wire) async {
+    final (:message, :drop) = await openEnvelope(key, wire, channelAad(topic, event));
+    final why = drop ?? _guard.check(message!);
+    if (why != null) {
+      if (_logged.add('$event $why')) debugPrint('PocketTerm: $name: dropped $event ($why); more alike go unlogged');
+      return null;
+    }
+    return message!
+      ..remove('ts')
+      ..remove('mid');
+  }
+}
 
 /// A private Realtime [topic] (`terminal:<user id>:<desktop id>`, see
 /// terminalTopic in lib/live.dart; RLS: the user's own topics only), kept
-/// joined while open.
+/// joined while open. Everything on it is sealed with the computer's key
+/// ([ChannelSeal]): handlers get the opened messages, in the order they came.
 ///
 /// realtime_client drops a channel for good once the server closes it, and a
 /// rejoin with a token that expired while the Mac slept or the phone was away
@@ -18,19 +69,33 @@ typedef TopicHandler = void Function(Map<String, dynamic> payload);
 /// that times out or never answers), this makes a new one, with a fresh token,
 /// after 1 s, 2 s, 4 s … up to [_maxWait].
 class TerminalChannel {
-  TerminalChannel(this._client, this.topic, this._handlers, {required this.name, this.onJoined});
+  TerminalChannel(
+    this._client,
+    this.topic,
+    this._handlers, {
+    required ChannelKey key,
+    required ChannelSide side,
+    required this.name,
+    this.onJoined,
+  }) : _seal = ChannelSeal(key, topic, side: side, name: name);
 
   final SupabaseClient _client;
 
   /// The topic joined.
   final String topic;
   final Map<String, TopicHandler> _handlers;
+  final ChannelSeal _seal;
 
   /// Who this is, in the log.
   final String name;
 
   /// The channel joined (true), or stopped being joined (false).
   final void Function({required bool joined})? onJoined;
+
+  /// Sealing and opening take a moment (the system's AES-GCM, through a
+  /// platform channel); messages still go out and are handled in order.
+  Future<void> _outbox = Future.value();
+  Future<void> _inbox = Future.value();
 
   static const _firstWait = Duration(seconds: 1);
   static const _maxWait = Duration(seconds: 30);
@@ -87,10 +152,26 @@ class TerminalChannel {
 
   /// Drops [event] if the channel isn't joined: whoever waits on an answer
   /// times out, and the other side catches up after the next join.
-  Future<void> send(String event, Map<String, dynamic> payload) async {
-    final ch = _ch;
-    if (ch == null || !_joined) return;
-    await ch.sendBroadcastMessage(event: event, payload: payload);
+  Future<void> send(String event, Map<String, dynamic> payload) {
+    if (_ch == null || !_joined) return Future.value();
+    final out = _outbox.then((_) async {
+      final sealed = await _seal.seal(event, payload);
+      final ch = _ch;
+      if (ch == null || !_joined) return;
+      await ch.sendBroadcastMessage(event: event, payload: sealed);
+    });
+    _outbox = out.then((_) {}, onError: (Object _) {});
+    return out;
+  }
+
+  void _receive(String event, TopicHandler handler, Map<String, dynamic> wire) {
+    _inbox = _inbox.then((_) async {
+      try {
+        if (await _seal.open(event, wire) case final message?) handler(message);
+      } on Object catch (e) {
+        debugPrint('PocketTerm: $name: $event: $e');
+      }
+    });
   }
 
   Future<void> _join(int gen) async {
@@ -111,7 +192,7 @@ class TerminalChannel {
       if (stale()) return;
       final ch = _client.channel(topic, opts: const RealtimeChannelConfig(private: true));
       for (final MapEntry(:key, :value) in _handlers.entries) {
-        ch.onBroadcast(event: key, callback: value);
+        ch.onBroadcast(event: key, callback: (wire) => _receive(key, value, wire));
       }
       _ch = ch;
       _joinedAt = DateTime.now();

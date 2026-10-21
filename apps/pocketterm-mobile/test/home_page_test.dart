@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/desktops.dart';
+import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_mobile/mobile.dart';
 import 'package:pocketterm_mobile/session_view.dart';
@@ -46,15 +48,16 @@ void main() {
   }
 
   /// A computer answering with one session, titled [title].
-  TerminalRemote remoteFor(String desktopId, String title) =>
-      TerminalRemote(client, 'u1', dir, desktopId: desktopId, from: 'phone', send: (_, _) {})..handle('state', {
-        'windows': <Object>[],
-        'sessions': [
-          {'key': 'kitty-1/1', 'id': 's1', 'title': title, 'cwd': '/Users/me/app', 'epoch': 'e', 'seq': 0},
-        ],
-      });
+  TerminalRemote remoteFor(String desktopId, String title, ChannelKey key) =>
+      TerminalRemote(client, 'u1', dir, desktopId: desktopId, key: key, from: 'phone', send: (_, _) {})
+        ..handle('state', {
+          'windows': <Object>[],
+          'sessions': [
+            {'key': 'kitty-1/1', 'id': 's1', 'title': title, 'cwd': '/Users/me/app', 'epoch': 'e', 'seq': 0},
+          ],
+        });
 
-  Future<Desktops> pumpHome(WidgetTester tester) async {
+  Future<Desktops> pumpHome(WidgetTester tester, {FakeSession? session}) async {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
@@ -70,9 +73,9 @@ void main() {
       ]);
     await tester.pumpWidget(
       MobileApp(
-        session: await FakeSession.create(),
+        session: session ?? await FakeSession.create(),
         desktops: desktops,
-        remoteFor: (id) => made[id] = remoteFor(id, id == 'mac00001' ? 'Mac work' : 'PC work'),
+        remoteFor: (id, key) => made[id] = remoteFor(id, id == 'mac00001' ? 'Mac work' : 'PC work', key),
       ),
     );
     await tester.pump();
@@ -97,6 +100,58 @@ void main() {
     expect(find.text('Gaming PC'), findsOneWidget);
     expect(find.text('PC work'), findsOneWidget);
     expect(find.text('Mac work'), findsNothing);
+    flush();
+  });
+
+  testWidgets("a computer whose code wasn't scanned stays locked until it is; a link from outside replaces no key", (
+    tester,
+  ) async {
+    final setKeys = <Object?>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('pocketterm/native'), (
+      call,
+    ) async {
+      if (call.method == 'setChannelKey') setKeys.add(call.arguments);
+      return null;
+    });
+    const server = Backend(url: 'https://abc.supabase.co', key: 'sb_publishable_x');
+    final session = await FakeSession.create()
+      ..server = server
+      ..locked.add('win00001');
+    final desktops = await pumpHome(tester, session: session);
+
+    desktops.select('win00001');
+    await tester.pumpAndSettle();
+    expect(find.text('Scan this computer’s code to connect'), findsOneWidget);
+    expect(find.byKey(const ValueKey('scan-locked-computer')), findsOneWidget);
+    expect(made.keys, ['mac00001'], reason: 'nothing joins a locked computer');
+    expect(find.byTooltip('New session'), findsNothing);
+
+    await tester.tap(find.text('Gaming PC'));
+    await tester.pumpAndSettle();
+    expect(find.text('Locked: scan its code'), findsOneWidget);
+    expect(find.byKey(const ValueKey('scan-computer')), findsOneWidget);
+    Navigator.of(tester.element(find.text('Locked: scan its code'))).pop();
+    await tester.pumpAndSettle();
+
+    // What the scanner hands over, signed in: the computer's code, with its key.
+    final key = ChannelKey.generate();
+    await session.connectLink(server.linkWithCode('ABCD-1234', computer: (desktop: 'win00001', key: key)));
+    await tester.pumpAndSettle();
+    expect(session.user, isNotNull, reason: 'still the same account');
+    expect(setKeys, [
+      {'desktop': 'win00001', 'key': key.toBase64()},
+    ]);
+    expect(made['win00001']?.key, key);
+    expect(find.text('PC work'), findsOneWidget);
+    expect(find.text('Scan this computer’s code to connect'), findsNothing);
+
+    // Anyone can send a link: one opened from outside doesn't swap the key.
+    await session.connectLink(
+      server.linkWithCode('ABCD-1234', computer: (desktop: 'win00001', key: ChannelKey.generate())),
+      external: true,
+    );
+    expect(session.computerKey('win00001'), key);
+    expect(setKeys, hasLength(1));
     flush();
   });
 
@@ -131,7 +186,7 @@ void main() {
         MobileApp(
           session: await FakeSession.create(demo: demo),
           desktops: Desktops(client)..apply(const []),
-          remoteFor: (_) => fail('no computer to reach'),
+          remoteFor: (_, _) => fail('no computer to reach'),
         ),
       );
       await tester.pump();

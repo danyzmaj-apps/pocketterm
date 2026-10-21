@@ -1,13 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/agent.dart';
+import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/session.dart';
 import 'package:pocketterm_core/terminal.dart' show TermWindow;
 import 'package:pocketterm_core/terminals.dart';
+import 'package:pocketterm_desktop/channel_keys.dart';
 import 'package:pocketterm_desktop/desktop_host.dart';
 import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
@@ -19,8 +22,9 @@ import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
 /// The desktop app: [Session] plus its main window and the terminal bridge.
 class AppController extends Session {
-  AppController(this._prefs, super.device, this.host, {Integrations? integrations})
-    : integrations = integrations ?? Integrations();
+  AppController(this._prefs, super.device, this.host, {Integrations? integrations, SecretStore? secrets})
+    : integrations = integrations ?? Integrations(),
+      _keys = ChannelKeys(secrets ?? SystemSecrets());
 
   final SharedPreferences _prefs;
 
@@ -86,6 +90,22 @@ class AppController extends Session {
     final id = String.fromCharCodes([for (var i = 0; i < 8; i++) _idChars.codeUnitAt(r.nextInt(_idChars.length))]);
     unawaited(_prefs.setString(key, id));
     return id;
+  }
+
+  final ChannelKeys _keys;
+
+  /// This computer's channel key for the signed-in account (lib/channel_keys.dart).
+  Future<ChannelKey> channelKey() => _keys.of(desktopId(user!.id));
+
+  @override
+  Future<ComputerKey?> pairingComputer() async => (desktop: desktopId(user!.id), key: await channelKey());
+
+  /// A new channel key (Settings → Phone → Reset key): every phone has to
+  /// scan this computer's code again. The bridge starts over with it.
+  Future<void> resetChannelKey() async {
+    await _keys.reset(desktopId(user!.id));
+    _bridgeUser = null;
+    await _startBridge();
   }
 
   /// What the phone calls this computer: its name, as the server takes it.
@@ -285,12 +305,14 @@ class AppController extends Session {
     _seenTimer = null;
     await old?.stop();
     if (want != null) {
-      _bridgeUser = want;
       final id = desktopId(want);
+      final key = await _keys.of(id);
+      _bridgeUser = want;
       await (_bridge = TerminalBridge(
         client,
         want,
         id,
+        key,
         terminals,
         live,
         host,
@@ -437,27 +459,34 @@ class AppController extends Session {
 
   /// Pushes [title] / [body] to the user's phones (functions/push) when
   /// nobody has touched this computer for a minute: at the desk, its own
-  /// screen says it already. [session]: the coding session a tap opens,
-  /// whose Live Activities move to [activity] (done, needs). False if it
+  /// screen says it already. [session]: the coding session a tap opens;
+  /// [activity]: where it stands (done, needs). Sealed with this computer's
+  /// key: the server and the push services see only which computer it came
+  /// from (Live Activities move by the bridge's own pushes). False if it
   /// didn't go.
   Future<bool> notifyPhone(String title, String body, {String? session, String? activity}) async {
     if (user == null || await host.idleSeconds() < 60) return false;
     try {
-      final res = await client.functions.invoke(
-        'push',
-        body: {
-          'action': 'notify',
-          'title': title,
-          'body': body,
-          if (session != null) 'session': routedKey(desktopId(user!.id), session),
-          'state': ?activity,
-        },
-      );
-      final data = res.data;
+      final id = desktopId(user!.id);
+      final routed = session == null ? null : routedKey(id, session);
+      final notice = {'title': title, 'body': body, 'session': ?routed, 'state': ?activity};
+      final enc = await sealBytes(await channelKey(), utf8.encode(jsonEncode(notice)), pushAad(id));
+      final data = await invokePush({
+        'action': 'notify',
+        'desktop': id,
+        'enc': base64Encode(enc),
+        // Lets a newer push for the same session replace an older one.
+        if (routed != null && RegExp(r'^[\w.:/-]{1,64}$').hasMatch(routed)) 'collapse': routed,
+      });
       return data is Map && (data['sent'] as int? ?? 0) > 0;
     } on Object catch (e) {
       debugPrint('PocketTerm: notify failed: $e');
       return false;
     }
   }
+
+  /// functions/push with [body]; its answer.
+  @protected
+  Future<Object?> invokePush(Map<String, Object> body) async =>
+      (await client.functions.invoke('push', body: body)).data;
 }

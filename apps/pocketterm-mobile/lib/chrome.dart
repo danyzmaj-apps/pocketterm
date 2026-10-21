@@ -89,9 +89,11 @@ class PageTitle extends StatelessWidget {
       title,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
+      // Smaller than iOS's 34pt large title: a computer's full name ("Danijel's MacBook Pro") fits beside the
+      // chevron and the account button.
       style: isIos
-          ? const TextStyle(fontSize: 34, fontWeight: FontWeight.w700, letterSpacing: .4)
-          : const TextStyle(fontSize: 28, fontWeight: FontWeight.w500),
+          ? const TextStyle(fontSize: 24, fontWeight: FontWeight.w600)
+          : const TextStyle(fontSize: 24, fontWeight: FontWeight.w400),
     );
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 10, 12, 6),

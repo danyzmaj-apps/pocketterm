@@ -694,37 +694,44 @@ void main() {
       remote.flush();
     });
 
-    testWidgets('omp: the sheet asks whether it works, warns that it does, then it switches and its session opens', (
-      tester,
-    ) async {
+    /// The omp in [window] is at work: the sheet asks, warns and offers both restarts.
+    Future<void> busySheet(WidgetTester tester, String window) async {
       screensOnly();
-      await openScreen(tester, 'kitty-1/7');
+      await openScreen(tester, window);
       await openSheet(tester);
       expect(find.textContaining('picks the same conversation back up'), findsOneWidget);
       // Asking the computer first: no buttons yet.
       expect(find.byKey(const ValueKey('switch-probing')), findsOneWidget);
-      expect(find.text('Restart now'), findsNothing);
+      expect(find.text('Restart and continue'), findsNothing);
       final probe = runs('probe').single;
-      expect(probe, containsPair('window', 'kitty-1/7'));
+      expect(probe, containsPair('window', window));
       remote.handle('ran', {'id': probe['id'], 'busy': true});
       await tester.pump();
       expect(find.byKey(const ValueKey('switch-busy')), findsOneWidget);
-      expect(find.textContaining('afterwards tap Continue'), findsOneWidget);
+      expect(find.text('Restart and continue'), findsOneWidget);
+      expect(find.text('Just restart'), findsOneWidget);
+      expect(find.text('Not now'), findsOneWidget);
+      expect(find.text('Restart now'), findsNothing);
+    }
 
-      await tester.tap(find.text('Restart now'));
+    /// Taps [choice] in the sheet; the switch goes and omp reports from [window] (at work if [busy]), whose session
+    /// page opens.
+    Future<void> restart(WidgetTester tester, String window, String choice, {bool busy = false}) async {
+      await tester.tap(find.text(choice));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       final switched = runs('switch').single;
-      expect(switched, allOf(containsPair('window', 'kitty-1/7'), containsPair('agent', 'omp')));
+      expect(switched, allOf(containsPair('window', window), containsPair('agent', 'omp')));
       expect(find.text('Switching…'), findsOneWidget);
       remote.handle('ran', {'id': switched['id']});
       await tester.pump();
       expect(find.text('Switching…'), findsOneWidget, reason: 'until omp reports');
+      expect(runs('prompt'), isEmpty);
 
       // omp reports from the window: its session's page takes the screen's place.
       screensOnly(
         sessions: [
-          {'key': 'kitty-1/7', 'id': 's7', 'agent': 'omp', 'window': 'kitty-1/7', 'title': 'Back', 'cwd': _a},
+          {'key': window, 'id': 's7', 'agent': 'omp', 'window': window, 'title': 'Back', 'cwd': _a, 'busy': busy},
         ],
       );
       await tester.pump();
@@ -732,8 +739,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byType(TerminalPage), findsNothing);
       expect(find.byType(SessionPage), findsOneWidget);
+    }
 
-      // It was at work: Continue carries on, once.
+    testWidgets('omp at work, Just restart: its session opens with Continue, which carries on once', (tester) async {
+      await busySheet(tester, 'kitty-1/7');
+      await restart(tester, 'kitty-1/7', 'Just restart');
+      expect(runs('prompt'), isEmpty, reason: 'nothing goes on its own');
+
       await tester.tap(find.byKey(const ValueKey('continue')));
       await tester.pump();
       await tester.pump(Duration.zero);
@@ -750,6 +762,52 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byType(TerminalList), findsOneWidget);
       expect(find.byType(TerminalPage), findsNothing);
+      remote.flush();
+    });
+
+    testWidgets('omp at work, Restart and continue: continue goes once its session reports at rest, no chip', (
+      tester,
+    ) async {
+      await busySheet(tester, 'kitty-1/7');
+      // It reports at work first: continue waits rather than going in the middle of it, or not at all.
+      await restart(tester, 'kitty-1/7', 'Restart and continue', busy: true);
+      expect(runs('prompt'), isEmpty);
+      screensOnly(
+        sessions: [
+          {'key': 'kitty-1/7', 'id': 's7', 'agent': 'omp', 'window': 'kitty-1/7', 'title': 'Back', 'cwd': _a},
+        ],
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      final prompt = runs('prompt').single;
+      expect(prompt, allOf(containsPair('session', 'kitty-1/7'), containsPair('text', 'continue')));
+      expect(find.byKey(const ValueKey('continue')), findsNothing);
+      remote.handle('ran', {'id': prompt['id']});
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // More reports and rebuilds send nothing more.
+      screensOnly(
+        sessions: [
+          {'key': 'kitty-1/7', 'id': 's7', 'agent': 'omp', 'window': 'kitty-1/7', 'title': 'Again', 'cwd': _a},
+        ],
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(runs('prompt'), hasLength(1));
+      expect(find.byKey(const ValueKey('continue')), findsNothing);
+      remote.flush();
+    });
+
+    testWidgets('omp at work, Restart and continue: when continue fails, the chip offers it', (tester) async {
+      await busySheet(tester, 'kitty-1/7');
+      await restart(tester, 'kitty-1/7', 'Restart and continue');
+      final prompt = runs('prompt').single;
+      remote.handle('ran', {'id': prompt['id'], 'error': 'It isn’t taking prompts.'});
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('continue')), findsOneWidget);
+      expect(runs('prompt'), hasLength(1), reason: 'not again on its own');
       remote.flush();
     });
 

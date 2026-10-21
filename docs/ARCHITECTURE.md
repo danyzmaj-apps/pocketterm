@@ -99,7 +99,7 @@ Each terminal is a `TerminalHost` (`core/lib/terminal.dart`): list its windows (
 | `probe {window}` | Reads the screen, waits 2 s, reads it again | `ran {busy}`: the text changed (the agent is at work) |
 | `switch {window, agent}` | omp: Esc (stops a run), Ctrl+C (empties its editor; Ctrl+U clears one line only), Ctrl+D (quits on an empty editor), waits until the tty's foreground program isn't omp (up to 8 s; 2 s where the terminal tells no tty), then types `omp -c` and Enter. Claude Code: types `/reload-plugins` and Enter | `ran {}`, or `ran {error}` |
 
-The phone shows "Switching…" until a session reports from that window, then its session page replaces the screen (with **Continue**, which prompts `continue`, when the probe said busy); after 25 s it says the window didn't come back as a conversation.
+The phone shows "Switching…" until a session reports from that window, then its session page replaces the screen; after 25 s it says the window didn't come back as a conversation. When the probe said busy, the sheet offers **Restart and continue**, whose session page prompts `continue` once the session is online and at rest (showing **Continue** instead if that fails), and **Just restart**, whose session page shows **Continue**.
 
 ## Local API
 

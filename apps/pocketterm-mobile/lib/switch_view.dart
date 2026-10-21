@@ -28,6 +28,10 @@ const switchWait = Duration(seconds: 25);
 
 enum _Phase { idle, switching, failed }
 
+/// What the session page does once a switched agent reports: an omp that was at work when its restart stopped it
+/// is prompted `continue` right away ([send]), or offers a Continue chip ([offer]).
+enum AfterSwitch { nothing, offer, send }
+
 /// The top of a screen-only agent window's page ([canSwitch]): a banner offering the switch to the conversation
 /// view, then "Switching…" until the agent reports as a live session in this window, whose page then replaces this
 /// one; or, after [switchWait], that it didn't come back.
@@ -47,8 +51,8 @@ class _SwitchBannerState extends State<SwitchBanner> {
   /// The agent being switched: its window's program is a shell for a moment while omp restarts.
   late Agent _agent;
 
-  /// It was at work when the switch stopped it: its session page offers Continue.
-  bool _wasBusy = false;
+  /// What its session page does about a run the switch stopped.
+  AfterSwitch _after = AfterSwitch.nothing;
   Timer? _timeout;
 
   @override
@@ -64,15 +68,17 @@ class _SwitchBannerState extends State<SwitchBanner> {
   }
 
   Future<void> _offer(Agent agent) async {
-    final busy = await showAppSheet<bool>(
+    final after = await showAppSheet<AfterSwitch>(
       context,
+      // Its height is its content's: the choices at work take more than the default share of the screen.
+      isScrollControlled: true,
       builder: (_) => SwitchSheet(remote: remote, window: widget.window, agent: agent),
     );
-    if (busy == null || !mounted) return;
+    if (after == null || !mounted) return;
     setState(() {
       _phase = _Phase.switching;
       _agent = agent;
-      _wasBusy = busy;
+      _after = after;
     });
     _stop();
     remote.addListener(_check);
@@ -98,7 +104,12 @@ class _SwitchBannerState extends State<SwitchBanner> {
     Coach.maybeOf(context)?.switched(widget.window);
     final route = ModalRoute.of(context);
     final page = MaterialPageRoute<void>(
-      builder: (_) => SessionPage(remote: remote, sessionKey: s.key, offerContinue: _wasBusy),
+      builder: (_) => SessionPage(
+        remote: remote,
+        sessionKey: s.key,
+        offerContinue: _after == AfterSwitch.offer,
+        autoContinue: _after == AfterSwitch.send,
+      ),
     );
     final nav = Navigator.of(context);
     if (route == null || route.isCurrent) {
@@ -165,8 +176,8 @@ class _SwitchBannerState extends State<SwitchBanner> {
 }
 
 /// What switching [agent] in [window] does, asked before it's done. omp restarts, so the sheet first asks the
-/// computer whether it's at work and warns that restarting stops it. Pops whether it was at work once confirmed,
-/// null if not.
+/// computer whether it's at work, warns that restarting stops it and offers to have it carry on. Pops what the
+/// session page does about the stopped run once confirmed, null if not.
 class SwitchSheet extends StatefulWidget {
   const SwitchSheet({required this.remote, required this.window, required this.agent, super.key});
   final TerminalRemote remote;
@@ -232,8 +243,8 @@ class _SwitchSheetState extends State<SwitchSheet> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'It’s working right now. Restarting stops what it’s doing; afterwards tap Continue and it '
-                        'carries on.',
+                        'It’s working right now, and restarting stops it. Restart and continue has it carry on; '
+                        'Just restart leaves it stopped.',
                         style: TextStyle(fontSize: 14, color: C.warn, height: 1.4),
                       ),
                     ),
@@ -247,22 +258,17 @@ class _SwitchSheetState extends State<SwitchSheet> {
                 height: 48,
                 child: Center(child: SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))),
               )
+            else if (busy)
+              ..._busyChoices()
             else
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  TextButton(
-                    key: const ValueKey('switch-cancel'),
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Not now', style: TextStyle(color: C.text)),
-                  ),
+                  _notNow(),
                   const SizedBox(width: 8),
                   FilledButton(
                     key: const ValueKey('switch-confirm'),
-                    onPressed: () {
-                      unawaited(HapticFeedback.lightImpact());
-                      Navigator.of(context).pop(busy);
-                    },
+                    onPressed: () => _pick(AfterSwitch.nothing),
                     child: Text(omp ? 'Restart now' : 'Switch'),
                   ),
                 ],
@@ -272,4 +278,32 @@ class _SwitchSheetState extends State<SwitchSheet> {
       ),
     );
   }
+
+  void _pick(AfterSwitch after) {
+    unawaited(HapticFeedback.lightImpact());
+    Navigator.of(context).pop(after);
+  }
+
+  Widget _notNow() => TextButton(
+    key: const ValueKey('switch-cancel'),
+    onPressed: () => Navigator.of(context).pop(),
+    child: const Text('Not now', style: TextStyle(color: C.text)),
+  );
+
+  /// omp at work: restart and have it carry on, or just restart, stacked so both read in full.
+  List<Widget> _busyChoices() => [
+    FilledButton(
+      key: const ValueKey('switch-continue'),
+      onPressed: () => _pick(AfterSwitch.send),
+      child: const Text('Restart and continue'),
+    ),
+    const SizedBox(height: 8),
+    OutlinedButton(
+      key: const ValueKey('switch-confirm'),
+      onPressed: () => _pick(AfterSwitch.offer),
+      child: const Text('Just restart'),
+    ),
+    const SizedBox(height: 4),
+    _notNow(),
+  ];
 }

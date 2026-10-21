@@ -29,6 +29,7 @@ class SessionPage extends StatefulWidget {
     required this.sessionKey,
     this.starting = false,
     this.offerContinue = false,
+    this.autoContinue = false,
     super.key,
   });
   final TerminalRemote remote;
@@ -40,6 +41,10 @@ class SessionPage extends StatefulWidget {
   /// It was just restarted from the phone in the middle of a run: a Continue chip above the composer prompts it
   /// to carry on, once.
   final bool offerContinue;
+
+  /// Like [offerContinue], but `continue` is sent as soon as the session can take a prompt, once; the chip shows
+  /// only if that fails.
+  final bool autoContinue;
 
   @override
   State<SessionPage> createState() => _SessionPageState();
@@ -67,6 +72,9 @@ class _SessionPageState extends State<SessionPage> {
 
   /// [SessionPage.offerContinue] until Continue went.
   late bool _continue = widget.offerContinue;
+
+  /// [SessionPage.autoContinue] until `continue` went out.
+  late bool _autoContinue = widget.autoContinue;
   bool _loadingOlder = false;
 
   /// The close button was tapped: the page asks above the composer.
@@ -98,11 +106,16 @@ class _SessionPageState extends State<SessionPage> {
       _atBottom = p.pixels >= p.maxScrollExtent - 24;
     });
     _unwatch = remote.watchSession(key);
+    if (_autoContinue) {
+      remote.addListener(_continueWhenReady);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _continueWhenReady());
+    }
   }
 
   @override
   void dispose() {
     _unwatch();
+    remote.removeListener(_continueWhenReady);
     _scroll.dispose();
     _field.dispose();
     _attachments.dispose();
@@ -181,6 +194,16 @@ class _SessionPageState extends State<SessionPage> {
       setState(() => _continue = true);
       termToast(context, e, above: _composerKey);
     }
+  }
+
+  /// [SessionPage.autoContinue]: prompts `continue` once the session is there, at rest, and the phone is online.
+  void _continueWhenReady() {
+    if (!_autoContinue || !mounted) return;
+    final s = remote.session(key);
+    if (!remote.online || s == null || s.busy || _sending) return;
+    _autoContinue = false;
+    remote.removeListener(_continueWhenReady);
+    unawaited(_sendContinue());
   }
 
   /// Why [agent]'s slash commands can't be sent from here.

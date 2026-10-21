@@ -63,6 +63,11 @@ class FakeSupabase {
     if (path.endsWith('/database/query')) {
       final sql = (jsonDecode(req.body) as Map)['query'] as String;
       queries.add(sql);
+      if (sql.contains('as ready')) {
+        return _json([
+          {'ready': true},
+        ], 201);
+      }
       if (sql.contains('as recorded')) {
         return _json([
           {'recorded': pocketTermInstalled},

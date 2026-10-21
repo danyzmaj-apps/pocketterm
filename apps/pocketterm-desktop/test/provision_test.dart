@@ -10,6 +10,9 @@ import 'package:pocketterm_desktop/onboarding/supabase_admin.dart';
 class FakeApi {
   final applied = <String>{'20260101000000'};
   final queries = <String>[];
+
+  /// Whether Realtime and Storage have made their tables yet.
+  bool schemasReady = true;
   Map<String, dynamic> auth = {'uri_allow_list': 'https://example.com', 'site_url': 'http://localhost:3000'};
   final deployed = <String, Map<String, dynamic>>{};
 
@@ -18,6 +21,14 @@ class FakeApi {
     if (path.endsWith('/database/query')) {
       final sql = (jsonDecode(req.body) as Map)['query'] as String;
       queries.add(sql);
+      if (sql.contains('as ready')) {
+        return http.Response(
+          jsonEncode([
+            {'ready': schemasReady},
+          ]),
+          201,
+        );
+      }
       if (sql.startsWith('select version')) {
         return http.Response(
           jsonEncode([
@@ -96,6 +107,39 @@ void main() {
 
     // Running again changes nothing.
     expect(await p.migrate(), 0);
+  });
+
+  test('a project whose Realtime has not started yet is woken, then migrated', () async {
+    final api = FakeApi()..schemasReady = false;
+    var wakes = 0;
+    final p = Provisioner(
+      admin: SupabaseAdmin('sbp_x', client: api.streaming),
+      ref: 'abc',
+      source: FakeSource(),
+      schemaPoll: Duration.zero,
+      wakeRealtime: (_) async {
+        wakes++;
+        api.schemasReady = true;
+      },
+    );
+
+    expect(await p.migrate(), 2);
+    expect(wakes, 1);
+  });
+
+  test('a project whose Realtime never starts fails with a retryable message, migrating nothing', () async {
+    final api = FakeApi()..schemasReady = false;
+    final p = Provisioner(
+      admin: SupabaseAdmin('sbp_x', client: api.streaming),
+      ref: 'abc',
+      source: FakeSource(),
+      schemaPoll: Duration.zero,
+      schemaWait: Duration.zero,
+      wakeRealtime: (_) async {},
+    );
+
+    await expectLater(p.migrate(), throwsA(isA<AdminException>()));
+    expect(api.queries.where((q) => q.startsWith('begin;')), isEmpty);
   });
 
   test('the whole setup configures sign-in and functions and returns the publishable key', () async {

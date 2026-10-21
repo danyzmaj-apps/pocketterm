@@ -1,3 +1,8 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_desktop/onboarding/supabase_admin.dart';
@@ -49,11 +54,46 @@ enum ProvisionStep {
 /// tool/setup-backend.sh does with the CLI. Every step can run again: applied
 /// migrations are skipped, the rest is overwritten with the same values.
 class Provisioner {
-  Provisioner({required this.admin, required this.ref, this.source = const AssetBackendSource()});
+  Provisioner({
+    required this.admin,
+    required this.ref,
+    this.source = const AssetBackendSource(),
+    this.schemaPoll = const Duration(seconds: 3),
+    this.schemaWait = const Duration(minutes: 3),
+    Future<void> Function(Provisioner)? wakeRealtime,
+  }) : wakeRealtime = wakeRealtime ?? _connectRealtime;
 
   final SupabaseAdmin admin;
   final String ref;
   final BackendSource source;
+
+  /// A new project reports healthy before Realtime and Storage have created
+  /// their tables, which the migrations add policies to. Realtime creates
+  /// `realtime.messages` only once a client first connects, so [migrate]
+  /// connects ([wakeRealtime]) and waits.
+  final Duration schemaPoll;
+  final Duration schemaWait;
+  final Future<void> Function(Provisioner) wakeRealtime;
+
+  static Future<void> _connectRealtime(Provisioner p) async {
+    final key = await p.admin.publishableKey(p.ref);
+    final ws = await WebSocket.connect(
+      'wss://${p.ref}.supabase.co/realtime/v1/websocket?apikey=${Uri.encodeQueryComponent(key)}&vsn=1.0.0',
+    ).timeout(const Duration(seconds: 15));
+    ws.add(
+      jsonEncode({
+        'topic': 'realtime:pocketterm-setup',
+        'event': 'phx_join',
+        'payload': <String, Object>{},
+        'ref': '1',
+      }),
+    );
+    try {
+      await ws.first.timeout(const Duration(seconds: 15));
+    } finally {
+      await ws.close();
+    }
+  }
 
   static const redirect = 'pocketterm://login-callback';
   static const hook = 'pg-functions://postgres/public/before_user_created';
@@ -143,6 +183,7 @@ select
   /// transaction, recording them where the Supabase CLI does (so a later
   /// `supabase db push` agrees). Returns how many were applied.
   Future<int> migrate() async {
+    await _waitForSchemas();
     await admin.query(
       ref,
       '''
@@ -165,6 +206,30 @@ create table if not exists supabase_migrations.schema_migrations (version text p
       count++;
     }
     return count;
+  }
+
+  Future<void> _waitForSchemas() async {
+    final deadline = DateTime.now().add(schemaWait);
+    var woken = false;
+    while (true) {
+      final r = await admin.query(
+        ref,
+        "select to_regclass('realtime.messages') is not null and to_regclass('storage.buckets') is not null as ready",
+      );
+      if (r.firstOrNull?['ready'] == true) return;
+      if (DateTime.now().isAfter(deadline)) {
+        throw const AdminException('Supabase is still starting the project. Wait a minute, then retry.');
+      }
+      if (!woken) {
+        woken = true;
+        try {
+          await wakeRealtime(this);
+        } on Object catch (e) {
+          debugPrint('PocketTerm: waking Realtime failed: $e');
+        }
+      }
+      await Future<void>.delayed(schemaPoll);
+    }
   }
 
   /// GitHub as the only way in, the app's redirect, and the private-server

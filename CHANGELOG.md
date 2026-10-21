@@ -2,6 +2,12 @@
 
 User-visible changes to PocketTerm. Each release says whether servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again (or an update from the setup wizard) and whether the push relay must be redeployed.
 
+## Unreleased
+
+No server update or relay redeploy needed.
+
+- **Settings: Reviewer access is hidden.** It's only for publishing the phone apps (App Store / Play review codes), so it appears once you press ⌥ Option (Alt on Windows) in Settings, until the window is shown again.
+
 ## 0.1.2
 
 No server update or relay redeploy needed.

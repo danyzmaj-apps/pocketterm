@@ -42,7 +42,9 @@ class _ScanPageState extends State<_ScanPage> {
         Navigator.of(context).pop(link);
         return;
       }
-      problem = 'That code has no sign-in in it. On your computer: Settings → Set up phone…';
+      problem =
+          'That code has no sign-in in it. Scan the one under Your phone in PocketTerm\u2019s setup checklist '
+          'on your computer, or in its Settings \u2192 Set up phone\u2026';
     }
     problem ??= "That's not a PocketTerm code. Scan the one on your computer.";
     if (_notOurs != problem) setState(() => _notOurs = problem);
@@ -106,7 +108,9 @@ class _ScanPageState extends State<_ScanPage> {
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(32, box + 80, 32, 0),
                           child: Text(
-                            _notOurs ?? 'On your computer: Settings → Set up phone.\nPoint this camera at the code.',
+                            _notOurs ??
+                                'On your computer: Your phone in PocketTerm\u2019s setup checklist, '
+                                    'or Settings \u2192 Set up phone\u2026\nPoint this camera at the code.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: _notOurs == null ? Colors.white : C.warn,

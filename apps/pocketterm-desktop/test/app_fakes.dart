@@ -18,19 +18,51 @@ import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_core/wezterm.dart';
 import 'package:pocketterm_desktop/controller.dart';
 import 'package:pocketterm_desktop/desktop_host.dart';
+import 'package:pocketterm_desktop/integrations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
 /// An [AppController] signed in as [fakeUser], its computer's side [host].
 class FakeApp extends AppController {
-  FakeApp._(SharedPreferences prefs, this._givenTerminals) : super(prefs, 'Mac', FakeDesktopHost());
+  FakeApp._(SharedPreferences prefs, this._givenTerminals, Integrations integrations)
+    : super(prefs, 'Mac', FakeDesktopHost(), integrations: integrations);
 
   /// [terminals] stand in for the computer's; none found by default.
-  /// [prefs]: what this computer had saved.
-  static Future<FakeApp> create({Terminals? terminals, Map<String, Object> prefs = const {}}) async {
+  /// [prefs]: what this computer had saved. [integrations]: the coding
+  /// agents', in a home of their own; by default no agent is found.
+  static Future<FakeApp> create({
+    Terminals? terminals,
+    Map<String, Object> prefs = const {},
+    Integrations? integrations,
+  }) async {
     SharedPreferences.setMockInitialValues(prefs);
-    return FakeApp._(await SharedPreferences.getInstance(), terminals);
+    return FakeApp._(
+      await SharedPreferences.getInstance(),
+      terminals,
+      integrations ?? noAgents('/nonexistent-pocketterm-test'),
+    );
   }
+
+  /// Integrations in [home] with neither omp nor `claude` around.
+  static Integrations noAgents(String home) => Integrations(
+    home: home,
+    run: (_, _) async => ProcessResult(0, 1, '', ''),
+    claudePaths: const [],
+    ompPaths: const [],
+  );
+
+  /// Whether a phone has signed in with a code from here (the server's
+  /// answer to [phoneCodeUsed]).
+  bool phoneUsedCode = false;
+
+  @override
+  Future<bool> phoneCodeUsed() async => phoneUsedCode;
+
+  /// Codes the pairing QR made.
+  int pairingLinks = 0;
+
+  @override
+  Future<Uri> pairingLink() async => backend!.linkWithCode('PAIR-${++pairingLinks}AAA-BBBB-CCCC-DDDD-EEEE-FFFF');
 
   @override
   FakeDesktopHost get host => super.host as FakeDesktopHost;

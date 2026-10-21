@@ -476,6 +476,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   onFolded: (f) => unawaited(widget.session.setCollapsedProjects(f)),
                   sort: widget.session.projectSort,
                   onSort: (s) => unawaited(widget.session.setProjectSort(s)),
+                  computer: selected?.name,
                 ),
                 null => Center(
                   child: Padding(

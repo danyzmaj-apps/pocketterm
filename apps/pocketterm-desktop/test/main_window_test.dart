@@ -6,8 +6,8 @@ import 'package:pocketterm_core/account.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/wezterm.dart';
-import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/main_window.dart';
+import 'package:pocketterm_desktop/onboarding/get_ready.dart';
 import 'package:pocketterm_desktop/setup_page.dart';
 
 import 'app_fakes.dart';
@@ -18,19 +18,25 @@ void main() {
   setUp(() => home = Directory.systemTemp.createTempSync('pocketterm-window'));
   tearDown(() => home.deleteSync(recursive: true));
 
-  Future<FakeApp> pumpWindow(WidgetTester tester, void Function(FakeApp app) given, {Terminals? terminals}) async {
+  /// The window over [given]'s app; [prefs] what this computer had saved
+  /// (by default the setup checklist is done).
+  Future<FakeApp> pumpWindow(
+    WidgetTester tester,
+    void Function(FakeApp app) given, {
+    Terminals? terminals,
+    Map<String, Object> prefs = const {'get_ready_done': true},
+  }) async {
     tester.view
-      ..physicalSize = const Size(1000, 1400)
+      ..physicalSize = const Size(1000, 2400)
       ..devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    final app = await FakeApp.create(terminals: terminals);
+    final app = await FakeApp.create(terminals: terminals, prefs: prefs, integrations: FakeApp.noAgents(home.path));
     given(app);
-    final integrations = Integrations(home: home.path, run: (_, _) async => ProcessResult(0, 1, '', ''));
     await tester.pumpWidget(
       window(
         ListenableBuilder(
           listenable: app,
-          builder: (_, _) => MainWindow(app: app, integrations: integrations),
+          builder: (_, _) => MainWindow(app: app),
         ),
       ),
     );
@@ -62,6 +68,22 @@ void main() {
     expect(find.text('Done'), findsNothing);
     await tester.tap(find.text('Quit PocketTerm'));
     expect(app.host.calls.last, 'quit');
+  });
+
+  testWidgets('until the setup checklist is done, it is the signed-in window; Settings opens it again', (tester) async {
+    final app = await pumpWindow(tester, (_) {}, prefs: const {});
+    expect(find.byType(GetReadyPage), findsOneWidget);
+    expect(find.byType(SettingsPage), findsNothing);
+
+    await tester.ensureVisible(find.text('Done'));
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(app.getReadyDone, isTrue);
+    expect(find.byType(SettingsPage), findsOneWidget);
+
+    await tester.tap(find.text('Open setup checklist'));
+    await tester.pumpAndSettle();
+    expect(find.byType(GetReadyPage), findsOneWidget);
   });
 
   testWidgets('the hidden window looks at the terminals again each time it is shown', (tester) async {

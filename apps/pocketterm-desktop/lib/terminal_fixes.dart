@@ -4,7 +4,7 @@ import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
 
 /// A Mac terminal's one-click fix ([TermStatus.fix]), as Settings and the
-/// setup wizard offer it: kitty's lines added to kitty.conf, or System
+/// setup checklist offer it: kitty's lines added to kitty.conf, or System
 /// Settings opened where Automation is allowed. Returns what to tell the
 /// person next. WezTerm's install (Windows) is `WezTermSetup`'s.
 Future<String> fixTerminal(Terminals terminals, TermStatus s) async {
@@ -26,3 +26,15 @@ Future<String> fixTerminal(Terminals terminals, TermStatus s) async {
       return '';
   }
 }
+
+/// The terminals the phone can't reach until the person acts: one that
+/// needs setup or a permission, WezTerm not installed on Windows.
+List<TermStatus> terminalsNeedingSetup(List<TermStatus> statuses) => [
+  for (final s in statuses)
+    if (s.state == TermState.setup || (s.fix == TermFix.install && s.state == TermState.missing)) s,
+];
+
+/// No terminal app the phone could use is installed (tmux alone isn't one);
+/// WezTerm to install on Windows counts, [terminalsNeedingSetup] has it.
+bool noTerminalApp(List<TermStatus> statuses) =>
+    !statuses.any((s) => s.id != 'tmux' && (s.state != TermState.missing || s.fix == TermFix.install));

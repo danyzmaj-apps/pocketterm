@@ -4,12 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/logo.dart';
-import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_desktop/onboarding/flow.dart';
 import 'package:pocketterm_desktop/onboarding/provision.dart';
-import 'package:pocketterm_desktop/onboarding/terminals_card.dart';
-import 'package:pocketterm_desktop/wezterm_setup.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 const _tokensUrl = 'https://supabase.com/dashboard/account/tokens';
@@ -18,17 +15,10 @@ const _homepage = 'https://github.com/danyzmaj-apps/pocketterm';
 void _open(String url) => unawaited(launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication));
 
 /// The guided setup: one step at a time, each with what to do, a button that
-/// opens the right page, and the field to paste into. On Windows, the
-/// server's minute of setting up also gets WezTerm onto the PC.
+/// opens the right page, and the field to paste into. After sign-in, the
+/// setup checklist (get_ready.dart) gets the computer and the phone ready.
 class SetupWizard extends StatefulWidget {
-  const SetupWizard({
-    required this.flow,
-    required this.onConnect,
-    required this.onExisting,
-    this.wezterm,
-    this.macTerminals,
-    super.key,
-  });
+  const SetupWizard({required this.flow, required this.onConnect, required this.onExisting, super.key});
   final SetupFlow flow;
 
   /// Connects the app to the finished server (the session's connect).
@@ -36,12 +26,6 @@ class SetupWizard extends StatefulWidget {
 
   /// "I already have a server": the plain connect form.
   final VoidCallback onExisting;
-
-  /// Windows: WezTerm, which PocketTerm needs there; null elsewhere.
-  final WezTermSetup? wezterm;
-
-  /// Mac: its terminals, for the last step's card; null elsewhere.
-  final Terminals? macTerminals;
 
   @override
   State<SetupWizard> createState() => _SetupWizardState();
@@ -67,7 +51,7 @@ class _SetupWizardState extends State<SetupWizard> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([flow, ?widget.wezterm]),
+    listenable: flow,
     // A tap outside a field takes the focus off it.
     builder: (context, _) => GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -460,7 +444,7 @@ class _SetupWizardState extends State<SetupWizard> {
         finished ? 'Your server is ready' : '4. Setting up your server',
         finished
             ? 'Connect, then sign in with GitHub. The first account to sign in owns this server. '
-                  'To add your phone afterwards: Settings → Set up phone, and scan the code.\n'
+                  'Next: get this computer and your phone ready.\n'
                   'You can now delete the "PocketTerm setup" token in Supabase (Account → Access Tokens).'
             : 'This takes about a minute.',
       ),
@@ -485,78 +469,12 @@ class _SetupWizardState extends State<SetupWizard> {
             ],
           ),
         ),
-      if (widget.wezterm case final w?) ...[const SizedBox(height: 18), _weztermCard(w)],
-      if (widget.macTerminals case final t?) ...[const SizedBox(height: 18), MacTerminalsCard(terminals: t)],
       const SizedBox(height: 18),
       // A failed connect shows its error below, and the button tries again.
       if (finished) ...[_primary('Connect and sign in', () => unawaited(flow.connect(widget.onConnect)))],
       if (failed) ...[_primary('Retry', () => unawaited(flow.setUp())), _back(WizardStep.github)],
     ];
   }
-
-  /// Windows: WezTerm, checked off when it's on the PC, else one button to
-  /// install it (its own installer, visible) and the winget line for those
-  /// who'd rather type it.
-  Widget _weztermCard(WezTermSetup w) => Container(
-    key: const ValueKey('wizard-wezterm'),
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: C.field,
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: C.line2),
-    ),
-    child: w.installed
-        ? const Row(
-            children: [
-              Icon(Icons.check_circle, size: 18, color: C.ok),
-              SizedBox(width: 10),
-              Expanded(child: Text('WezTerm is installed: your phone can reach its windows.')),
-            ],
-          )
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('Your terminal: WezTerm', style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 6),
-              const Text(
-                'On Windows, PocketTerm works through WezTerm, a free terminal app. Sessions you start from '
-                'your phone open in it, and its windows show on your phone. Windows Terminal and PowerShell '
-                "windows don't.",
-                style: TextStyle(color: C.dim, height: 1.45, fontSize: 13),
-              ),
-              const SizedBox(height: 12),
-              FilledButton.tonal(
-                key: const ValueKey('wizard-wezterm-install'),
-                onPressed: w.state == WezTermSetupState.missing ? () => unawaited(w.install()) : null,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(switch (w.state) {
-                    WezTermSetupState.downloading => 'Downloading WezTerm…',
-                    WezTermSetupState.installing => 'Finish in WezTerm\u2019s installer',
-                    _ => 'Install WezTerm',
-                  }),
-                ),
-              ),
-              if (w.state == WezTermSetupState.downloading) ...[
-                const SizedBox(height: 8),
-                LinearProgressIndicator(value: w.progress, minHeight: 3),
-              ],
-              if (w.note case final n? when w.state != WezTermSetupState.downloading) ...[
-                const SizedBox(height: 8),
-                Text(
-                  n,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    height: 1.4,
-                    color: w.error != null ? const Color(0xFFFCA5A5) : C.dim,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              _copyRow('Or type this in PowerShell', WezTermSetup.wingetCommand),
-            ],
-          ),
-  );
 
   // ---------------------------------------------------------------- inputs
 

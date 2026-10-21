@@ -21,9 +21,11 @@ import 'package:pocketterm_core/agent.dart';
 //
 //   phone → Mac   hello  {from, session?, window?}   every 4 s while the app is in front;
 //                        session: the live session it shows, window: the screen it shows
-//   Mac → phone   state  {windows, sessions, projects, roots, home, agent, error?}   on every hello and on changes;
+//   Mac → phone   state  {windows, sessions, projects, roots, home, agent, agents?, error?}   on every hello and on changes;
 //                        sessions: LiveSummary.toJson, its slash commands as `cmds` [[name, description?]];
 //                        agent: what a new session starts (Agent.name, the Mac's setting);
+//                        agents: {agent: installed | outdated | missing | off} for the coding agents found on the
+//                        computer; missing from an older computer
 //                        roots: the Mac's Project folders; projects: the git repositories under them
 //   phone → Mac   sync   {from, session, epoch?, since}   catch up after a gap or on opening
 //   Mac → phone   items  {to, session, epoch, seq, reset, items, last}   answer to sync, in chunks

@@ -15,6 +15,18 @@ typedef Run = Future<ProcessResult> Function(String executable, List<String> arg
 /// being installed at all.
 typedef IntegrationState = ({bool installed, bool current, String? problem});
 
+/// A coding agent found on this computer and PocketTerm in it: `state` as
+/// [Integrations.state] has it, `modsOff` as [Integrations.claudeModsOff].
+typedef AgentCheck = ({IntegrationState state, bool modsOff});
+
+/// What the phone hears of [check] (lib/live.dart's `agents`).
+AgentIntegration integrationOf(AgentCheck check) {
+  final s = check.state;
+  if (!s.installed || s.problem != null) return AgentIntegration.missing;
+  if (!s.current) return AgentIntegration.outdated;
+  return check.modsOff ? AgentIntegration.off : AgentIntegration.installed;
+}
+
 /// Installing an integration failed: [message] says why, for Settings.
 class IntegrationException implements Exception {
   IntegrationException(this.message);
@@ -29,7 +41,7 @@ class IntegrationException implements Exception {
 class Integrations {
   /// [windows]: look for `claude` as on Windows (PATH, then the native
   /// installer's `claude.exe`; no login shell), else as the running platform.
-  Integrations({String? home, AssetBundle? bundle, Run? run, this._claudePaths, bool? windows})
+  Integrations({String? home, AssetBundle? bundle, Run? run, this._claudePaths, this._ompPaths, bool? windows})
     : _windows = windows ?? Platform.isWindows,
       home = home ?? homeDir(windows: windows),
       _bundle = bundle ?? rootBundle,
@@ -54,11 +66,22 @@ class Integrations {
   /// after PATH. The usual install places if null.
   final List<String>? _claudePaths;
 
+  /// Where `omp` may be, as [_claudePaths] for `claude`; the usual install
+  /// places if null.
+  final List<String>? _ompPaths;
+
   /// What Settings calls the agent: Claude's product name in full.
   static String name(Agent agent) => switch (agent) {
     Agent.omp => 'omp',
     Agent.claude => 'Claude Code',
   };
+
+  /// What to do while Claude Code has mods off ([claudeModsOff]): its
+  /// rollout switch stays cached as off until Claude Code, logged in,
+  /// fetches it again.
+  static const modsOffHint =
+      'Claude Code has mods turned off for now: run claude /login, start claude once, '
+      'then restart your Claude sessions';
 
   /// The oldest Claude Code whose plugins may have mods (hooks/*.ts).
   static const minClaude = [2, 1, 287];
@@ -90,6 +113,16 @@ class Integrations {
         );
     }
   }
+
+  /// [agent] is on this computer: omp's folder (`~/.omp`, made the first
+  /// time it runs) or its executable; Claude Code's executable, even one too
+  /// old for PocketTerm ([state] says so).
+  Future<bool> found(Agent agent) async => switch (agent) {
+    Agent.omp =>
+      Directory(p.join(home, '.omp')).existsSync() ||
+          await _find('omp', _ompPaths ?? [p.join(home, '.bun', 'bin', _windows ? 'omp.exe' : 'omp')]) != null,
+    Agent.claude => (await _claude()).path != null,
+  };
 
   /// Installs [agent]'s integration, or updates it to the bundled copy. Its
   /// running sessions load it when they restart.
@@ -174,33 +207,34 @@ class Integrations {
     }
   }
 
-  /// The `claude` executable and whether it's new enough. A GUI app has no
-  /// login shell's PATH: on macOS the usual install places first, then the
-  /// shell; on Windows PATH, then the native installer's place.
+  /// [name]'s executable: on macOS in [candidates] before asking a login
+  /// shell (a GUI app has no login shell's PATH); on Windows PATH, then
+  /// [candidates].
+  Future<String?> _find(String name, List<String> candidates) async {
+    if (_windows) return findExecutable(name, extra: candidates, windows: true);
+    final path = candidates.where((c) => File(c).existsSync()).firstOrNull;
+    if (path != null) return path;
+    final r = await _run('/bin/zsh', ['-lc', 'command -v $name']);
+    final found = '${r.stdout}'.trim();
+    return r.exitCode == 0 && found.isNotEmpty ? found : null;
+  }
+
+  /// The `claude` executable and whether it's new enough: on macOS the usual
+  /// install places first, then the shell; on Windows PATH, then the native
+  /// installer's place.
   Future<({String? path, String? problem})> _claude() async {
-    String? path;
-    if (_windows) {
-      path = findExecutable(
-        'claude',
-        extra: _claudePaths ?? [p.join(home, '.local', 'bin', 'claude.exe')],
-        windows: true,
-      );
-    } else {
-      final candidates =
-          _claudePaths ??
-          [
-            '$home/.local/bin/claude',
-            '$home/.claude/local/claude',
-            '/opt/homebrew/bin/claude',
-            '/usr/local/bin/claude',
-          ];
-      path = candidates.where((c) => File(c).existsSync()).firstOrNull;
-      if (path == null) {
-        final r = await _run('/bin/zsh', ['-lc', 'command -v claude']);
-        final found = '${r.stdout}'.trim();
-        if (r.exitCode == 0 && found.isNotEmpty) path = found;
-      }
-    }
+    final path = await _find(
+      'claude',
+      _claudePaths ??
+          (_windows
+              ? [p.join(home, '.local', 'bin', 'claude.exe')]
+              : [
+                  '$home/.local/bin/claude',
+                  '$home/.claude/local/claude',
+                  '/opt/homebrew/bin/claude',
+                  '/usr/local/bin/claude',
+                ]),
+    );
     if (path == null) return (path: null, problem: "Claude Code isn't installed");
     final r = await _run(path, ['--version']);
     final version = RegExp(r'(\d+)\.(\d+)\.(\d+)').firstMatch('${r.stdout}');

@@ -134,6 +134,10 @@ class TerminalRemote extends ChangeNotifier {
   /// What a new session starts on the Mac (its setting).
   Agent agent = Agent.omp;
 
+  /// Where PocketTerm stands in each coding agent found on the computer;
+  /// empty from a computer that doesn't say.
+  Map<Agent, AgentIntegration> agents = const {};
+
   /// Where a session the phone starts opens ("iTerm2", "Terminal (in tmux)");
   /// null from a Mac that doesn't say.
   String? opensIn;
@@ -334,6 +338,7 @@ class TerminalRemote extends ChangeNotifier {
     roots = (p['roots'] as List?)?.cast<String>();
     home = p['home'] as String? ?? home;
     agent = Agent.parse(p['agent']);
+    agents = AgentIntegration.parseAll(p['agents']);
     opensIn = p['opensIn'] as String?;
     terminals = [for (final t in p['terminals'] as List? ?? const []) TermStatus.fromJson((t as Map).cast())];
   }
@@ -646,6 +651,7 @@ class TerminalRemote extends ChangeNotifier {
         'roots': ?roots,
         'home': home,
         'agent': agent.name,
+        'agents': AgentIntegration.toJsonAll(agents),
         'opensIn': ?opensIn,
         'terminals': [for (final t in terminals) t.toJson()],
         'at': stateAt?.millisecondsSinceEpoch ?? now,

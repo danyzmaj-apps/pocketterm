@@ -29,7 +29,7 @@ class WezTerm extends TerminalHost {
   String? _found;
 
   /// Looked for again while it isn't found: WezTerm installed while
-  /// PocketTerm runs (Settings or the setup wizard installs it) counts.
+  /// PocketTerm runs (Settings or the setup checklist installs it) counts.
   String? get _exe => _given ?? (_found ??= _find(windows: _windows));
 
   final String _dir;

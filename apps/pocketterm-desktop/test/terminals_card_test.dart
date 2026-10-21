@@ -37,9 +37,9 @@ void main() {
     ]);
     await pump(tester, mac);
 
-    expect(find.byKey(const ValueKey('wizard-terminal-kitty')), findsOneWidget);
-    expect(find.byKey(const ValueKey('wizard-terminal-terminal')), findsOneWidget);
-    expect(find.byKey(const ValueKey('wizard-terminal-iterm')), findsNothing, reason: 'not installed');
+    expect(find.byKey(const ValueKey('terminal-kitty')), findsOneWidget);
+    expect(find.byKey(const ValueKey('terminal-terminal')), findsOneWidget);
+    expect(find.byKey(const ValueKey('terminal-iterm')), findsNothing, reason: 'not installed');
     expect(find.text('Set up'), findsOneWidget);
     expect(find.text('Allow…'), findsOneWidget);
     expect(find.text('brew install tmux'), findsOneWidget);
@@ -54,7 +54,7 @@ void main() {
     await tester.pump();
     expect(find.text('Allow…'), findsNothing);
     expect(find.text('brew install tmux'), findsNothing);
-    expect(find.byKey(const ValueKey('wizard-terminal-tmux')), findsOneWidget);
+    expect(find.byKey(const ValueKey('terminal-tmux')), findsOneWidget);
   });
 
   testWidgets("a fix's note stays while the terminal still needs that fix, then gives way to its status", (

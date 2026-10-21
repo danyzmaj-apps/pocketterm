@@ -100,8 +100,8 @@ class _ConnectServerFormState extends State<ConnectServerForm> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Paste its setup link (on another device: Settings → Copy setup link), or the project URL '
-                'and publishable key.',
+                'Paste its setup link (setup-backend.sh prints one), or the project URL and publishable key '
+                '(Supabase dashboard → Project Settings → API).',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: C.dim, height: 1.4),
               ),

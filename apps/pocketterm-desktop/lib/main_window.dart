@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +9,7 @@ import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_desktop/controller.dart';
 import 'package:pocketterm_desktop/integrations.dart';
+import 'package:pocketterm_desktop/onboarding/get_ready.dart';
 import 'package:pocketterm_desktop/onboarding/pair.dart';
 import 'package:pocketterm_desktop/onboarding/reviewer.dart';
 import 'package:pocketterm_desktop/setup_page.dart';
@@ -17,14 +17,12 @@ import 'package:pocketterm_desktop/terminal_fixes.dart';
 import 'package:pocketterm_desktop/wezterm_setup.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// The window: the setup wizard, then sign-in, then Settings. Closing it
-/// only hides it (lib/desktop_host.dart); the app keeps running.
+/// The window: the setup wizard, then sign-in, then the setup checklist
+/// until it's done, then Settings. Closing it only hides it
+/// (lib/desktop_host.dart); the app keeps running.
 class MainWindow extends StatelessWidget {
-  const MainWindow({required this.app, this.integrations, super.key});
+  const MainWindow({required this.app, super.key});
   final AppController app;
-
-  /// Settings' [SettingsPage.integrations].
-  final Integrations? integrations;
 
   @override
   Widget build(BuildContext context) {
@@ -34,15 +32,13 @@ class MainWindow extends StatelessWidget {
       child: Stack(
         children: [
           if (app.backend == null)
-            SetupPage(
-              session: app,
-              wezterm: () => WezTermSetup.forHost(app.terminals.wezterm),
-              macTerminals: Platform.isMacOS ? app.terminals : null,
-            )
+            SetupPage(session: app)
           else if (!signedIn)
             SignInPage(session: app)
+          else if (!app.getReadyDone)
+            GetReadyPage(app: app)
           else
-            SettingsPage(app: app, integrations: integrations),
+            SettingsPage(app: app),
           Positioned(
             top: 0,
             left: 80,
@@ -74,11 +70,8 @@ class MainWindow extends StatelessWidget {
 
 /// Settings, the whole window while signed in.
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({required this.app, this.integrations, super.key});
+  const SettingsPage({required this.app, super.key});
   final AppController app;
-
-  /// Installs the coding agents' PocketTerm integrations; the real ones if null.
-  final Integrations? integrations;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -104,7 +97,13 @@ class _SettingsPageState extends State<SettingsPage> {
   /// ([Integrations.claudeModsOff]).
   bool _modsOff = false;
   bool _installing = false;
-  late final Integrations _integrations = widget.integrations ?? Integrations();
+
+  /// Agent windows no live session claims, as of [_checkTerminals].
+  List<TermWindow> _unreported = const [];
+  late final StreamSubscription<void> _live;
+
+  /// Agents PocketTerm is going into from the status card.
+  final _installingAgents = <Agent>{};
 
   /// Windows: installing WezTerm from its row; null elsewhere.
   late final WezTermSetup? _wezterm = WezTermSetup.forHost(app.terminals.wezterm)?..addListener(_weztermChanged);
@@ -131,6 +130,7 @@ class _SettingsPageState extends State<SettingsPage> {
     super.initState();
     _check();
     app.mainShown.addListener(_shown);
+    _live = app.live.changes.listen((_) => unawaited(_checkUnreported()));
     HardwareKeyboard.instance.addHandler(_onKey);
   }
 
@@ -138,6 +138,7 @@ class _SettingsPageState extends State<SettingsPage> {
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_onKey);
     app.mainShown.removeListener(_shown);
+    unawaited(_live.cancel());
     _wezterm?.dispose();
     super.dispose();
   }
@@ -155,21 +156,34 @@ class _SettingsPageState extends State<SettingsPage> {
     unawaited(app.refreshLaunchAtLogin());
     unawaited(_checkTerminals());
     unawaited(_checkIntegration());
+    unawaited(app.checkAgents());
+    unawaited(app.checkPhone());
   }
 
   Future<void> _checkTerminals() async {
     final statuses = await app.terminals.statuses();
-    var windows = 0;
+    var windows = const <TermWindow>[];
     try {
-      windows = (await app.terminals.windows()).length;
+      windows = await app.terminals.windows();
     } on TerminalException {
       // Counted as none.
     }
     if (!mounted) return;
     setState(() {
       _terminals = statuses;
-      _windowCount = windows;
+      _windowCount = windows.length;
+      _unreported = app.unreportedAgentWindows(windows);
     });
+  }
+
+  /// A coding session came or went: the agent windows it claims change.
+  Future<void> _checkUnreported() async {
+    try {
+      final windows = await app.terminals.windows();
+      if (mounted) setState(() => _unreported = app.unreportedAgentWindows(windows));
+    } on TerminalException {
+      // As before.
+    }
   }
 
   /// Settings' one click for [s]: [fixTerminal] on the Mac, or WezTerm's
@@ -204,20 +218,23 @@ class _SettingsPageState extends State<SettingsPage> {
     return _row(
       label: s.label,
       sub: note,
-      subError: (s.state == TermState.setup && _fixed[s.id] == null) || (installing != null && _wezterm!.error != null),
-      trailing: switch (s.fix) {
-        TermFix.kittyConfig when _fixed[s.id] == null => _button('Set up', () => unawaited(_fix(s))),
-        TermFix.automation => _button('Allow…', () => unawaited(_fix(s))),
-        TermFix.install when _wezterm == null => const SizedBox.shrink(),
-        TermFix.install when _wezterm!.state == WezTermSetupState.missing => _button(
-          'Install',
-          () => unawaited(_fix(s)),
-        ),
-        TermFix.install => const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-        _ => const SizedBox.shrink(),
-      },
+      attention:
+          _fixed[s.id] == null &&
+          (s.state == TermState.setup || (s.fix == TermFix.install && s.state == TermState.missing)),
+      subError: installing != null && _wezterm!.error != null,
+      trailing: _fixButton(s),
     );
   }
+
+  /// [s]'s one-click fix, as its row and the status card offer it.
+  Widget _fixButton(TermStatus s) => switch (s.fix) {
+    TermFix.kittyConfig when _fixed[s.id] == null => _button('Set up', () => unawaited(_fix(s))),
+    TermFix.automation => _button('Allow…', () => unawaited(_fix(s))),
+    TermFix.install when _wezterm == null => const SizedBox.shrink(),
+    TermFix.install when _wezterm!.state == WezTermSetupState.missing => _button('Install', () => unawaited(_fix(s))),
+    TermFix.install => const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+    _ => const SizedBox.shrink(),
+  };
 
   /// Settings → Project folders → Add folder…: the picked folders join the
   /// list, each once.
@@ -284,8 +301,8 @@ class _SettingsPageState extends State<SettingsPage> {
     IntegrationState r;
     var modsOff = false;
     try {
-      r = await _integrations.state(agent);
-      if (agent == Agent.claude && r.installed) modsOff = await _integrations.claudeModsOff();
+      r = await app.integrations.state(agent);
+      if (agent == Agent.claude && r.installed) modsOff = await app.integrations.claudeModsOff();
     } on Object catch (e) {
       r = (installed: false, current: false, problem: '$e');
     }
@@ -296,12 +313,6 @@ class _SettingsPageState extends State<SettingsPage> {
       });
     }
   }
-
-  /// What to do while Claude Code has mods off: its rollout switch stays
-  /// cached as off until Claude Code, logged in, fetches it again.
-  static const _modsOffHint =
-      'Claude Code has mods turned off for now: run claude /login, start claude once, '
-      'then restart your Claude sessions';
 
   Future<void> _setAgent(Agent agent) async {
     if (agent == app.codingAgent) return;
@@ -318,7 +329,7 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() => _installing = true);
     String? error;
     try {
-      await _integrations.install(agent);
+      await app.installAgent(agent);
     } on Object catch (e) {
       error = "Couldn't install: $e";
     }
@@ -332,7 +343,9 @@ class _SettingsPageState extends State<SettingsPage> {
       _installing = false;
       _installNote =
           error ??
-          (_modsOff ? 'Installed · $_modsOffHint' : 'Installed · restart your ${agent.label} sessions to load it');
+          (_modsOff
+              ? 'Installed · ${Integrations.modsOffHint}'
+              : 'Installed · restart your ${agent.label} sessions to load it');
       _installFailed = error != null || _modsOff;
     });
     if (error != null) await _checkIntegration();
@@ -356,7 +369,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (s == null) return 'Checking…';
     if (s.problem case final p?) return p;
     if (!s.installed) return "Not installed · this agent's sessions on your phone need it";
-    if (_modsOff) return _modsOffHint;
+    if (_modsOff) return Integrations.modsOffHint;
     return s.current ? 'Installed and up to date' : 'Out of date';
   }
 
@@ -374,6 +387,7 @@ class _SettingsPageState extends State<SettingsPage> {
             const Center(
               child: Text('Settings', style: TextStyle(fontWeight: FontWeight.w600)),
             ),
+            _statusCard(),
             if (app.updates?.update case final u?)
               _group('UPDATE', [
                 _row(
@@ -468,7 +482,13 @@ class _SettingsPageState extends State<SettingsPage> {
               _row(
                 label: 'PocketTerm in ${Integrations.name(app.codingAgent)}',
                 sub: _installNote ?? _integrationSub,
-                subError: _installNote != null ? _installFailed : _integration?.problem != null || _modsOff,
+                subError: _installNote != null && _installFailed && !_modsOff,
+                attention: _installNote != null
+                    ? _modsOff
+                    : switch (_integration) {
+                        null => false,
+                        final i => i.problem != null || !i.installed || !i.current || _modsOff,
+                      },
                 trailing: _installing
                     ? _button('Installing…', () {}, active: true)
                     : switch (_integration) {
@@ -522,6 +542,162 @@ class _SettingsPageState extends State<SettingsPage> {
   /// "1 terminal window", "2 terminal windows".
   static String _count(int n, String noun) => '$n $noun${n == 1 ? '' : 's'}';
 
+  // ---------------------------------------------------------------- status
+
+  /// What needs the person on this computer, each with the button that does
+  /// it where one can: the status card's list.
+  List<({String text, Widget? action})> get _attention {
+    final items = <({String text, Widget? action})>[];
+    if (app.agents case final agents?) {
+      if (agents.isEmpty) {
+        items.add((
+          text: 'No coding agent found: install omp or Claude Code, and PocketTerm offers to set it up here',
+          action: null,
+        ));
+      }
+      for (final MapEntry(key: agent, value: check) in agents.entries) {
+        final name = Integrations.name(agent);
+        switch (integrationOf(check)) {
+          case AgentIntegration.installed:
+            break;
+          case AgentIntegration.off:
+            items.add((text: Integrations.modsOffHint, action: null));
+          case AgentIntegration.outdated:
+            items.add((text: 'PocketTerm in $name is out of date', action: _agentButton(agent, 'Update')));
+          case AgentIntegration.missing:
+            final problem = check.state.problem;
+            items.add((
+              text: problem ?? 'PocketTerm isn’t installed in $name',
+              action: problem == null ? _agentButton(agent, 'Install') : null,
+            ));
+        }
+      }
+    }
+    for (final agent in Agent.values) {
+      final n = _unreported.where((w) => w.agent == agent).length;
+      if (n == 0) continue;
+      items.add((
+        text:
+            '${_count(n, '${agent.label} session')} started before PocketTerm: quit ${agent.label} in '
+            '${n == 1 ? 'it' : 'them'} and run ${agent.command} -c',
+        action: null,
+      ));
+    }
+    final terminals = _terminals ?? const <TermStatus>[];
+    for (final s in terminalsNeedingSetup(terminals)) {
+      items.add((
+        // Their notes name the terminal already.
+        text: _fixed[s.id] ?? (s.note.isEmpty ? '${s.label} needs setup' : s.note),
+        action: _fixButton(s),
+      ));
+    }
+    if (_terminals != null && noTerminalApp(terminals)) {
+      items.add((
+        text: 'No terminal app found: PocketTerm works with kitty, iTerm2, WezTerm, Ghostty and Terminal',
+        action: null,
+      ));
+    }
+    if (app.phoneSignedIn == false) {
+      items.add((
+        text: 'No phone signed in yet',
+        action: _button('Set up phone…', () => unawaited(showPairingQr(context, app))),
+      ));
+    }
+    if (app.projectRoots.isEmpty) {
+      items.add((
+        text: 'No project folders: your phone can’t list your projects',
+        action: _button('Add folder…', () => unawaited(_addFolders())),
+      ));
+    }
+    return items;
+  }
+
+  /// Settings' top: all set, or what needs attention; and the way back to
+  /// the setup checklist.
+  Widget _statusCard() {
+    final checking = app.agents == null || _terminals == null;
+    final items = checking ? const <({String text, Widget? action})>[] : _attention;
+    final ok = !checking && items.isEmpty;
+    final n = items.length;
+    return Padding(
+      padding: const EdgeInsets.only(top: 18),
+      child: Container(
+        key: const ValueKey('settings-status'),
+        padding: const EdgeInsets.fromLTRB(14, 8, 8, 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1B1D23),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: n > 0 ? C.warn.withValues(alpha: .5) : C.line),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                SizedBox.square(
+                  dimension: 18,
+                  child: checking
+                      // Not a spinner: a look may take a while (claude), and nothing moves meanwhile.
+                      ? const Icon(Icons.more_horiz, size: 18, color: C.dim)
+                      : Icon(
+                          ok ? Icons.check_circle : Icons.warning_amber_rounded,
+                          size: 18,
+                          color: ok ? C.ok : C.warn,
+                        ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    checking
+                        ? 'Checking this computer…'
+                        : ok
+                        ? 'All set'
+                        : '$n ${n == 1 ? 'thing needs' : 'things need'} attention',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => unawaited(app.setGetReadyDone(done: false)),
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact, foregroundColor: C.accent),
+                  child: const Text('Open setup checklist', style: TextStyle(fontSize: 12)),
+                ),
+              ],
+            ),
+            for (final item in items)
+              Padding(
+                padding: const EdgeInsets.only(left: 28, top: 6, right: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(item.text, style: const TextStyle(fontSize: 12, color: C.warn, height: 1.35)),
+                    ),
+                    if (item.action case final a?) ...[const SizedBox(width: 10), a],
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _agentButton(Agent agent, String label) => _installingAgents.contains(agent)
+      ? _button('Installing…', () {}, active: true)
+      : _button(label, () => unawaited(_installAgent(agent)));
+
+  /// The status card's Install (or Update) for [agent].
+  Future<void> _installAgent(Agent agent) async {
+    setState(() => _installingAgents.add(agent));
+    try {
+      await app.installAgent(agent);
+    } on Object catch (e) {
+      if (mounted) Toaster.of(context).show('Couldn’t install PocketTerm in ${Integrations.name(agent)}: $e');
+    }
+    if (!mounted) return;
+    setState(() => _installingAgents.remove(agent));
+    await _checkIntegration();
+  }
+
   Widget _group(String title, List<Widget> rows) => Padding(
     padding: const EdgeInsets.only(top: 18),
     child: Column(
@@ -545,26 +721,53 @@ class _SettingsPageState extends State<SettingsPage> {
     ),
   );
 
-  Widget _row({required String label, required Widget trailing, Widget? leading, String? sub, bool subError = false}) =>
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Row(
-          children: [
-            if (leading != null) ...[leading, const SizedBox(width: 12)],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label, style: const TextStyle(fontSize: 13)),
-                  if (sub != null)
-                    Text(sub, style: TextStyle(fontSize: 11, color: subError ? const Color(0xFFFCA5A5) : C.dim)),
-                ],
-              ),
-            ),
-            trailing,
-          ],
+  /// [attention]: something here needs the person (warn color and icon);
+  /// [subError]: something they did failed.
+  Widget _row({
+    required String label,
+    required Widget trailing,
+    Widget? leading,
+    String? sub,
+    bool subError = false,
+    bool attention = false,
+  }) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    child: Row(
+      children: [
+        if (leading != null) ...[leading, const SizedBox(width: 12)],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (attention)
+                Row(
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, size: 14, color: C.warn),
+                    const SizedBox(width: 5),
+                    Flexible(child: Text(label, style: const TextStyle(fontSize: 13))),
+                  ],
+                )
+              else
+                Text(label, style: const TextStyle(fontSize: 13)),
+              if (sub != null)
+                Text(
+                  sub,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: subError
+                        ? const Color(0xFFFCA5A5)
+                        : attention
+                        ? C.warn
+                        : C.dim,
+                  ),
+                ),
+            ],
+          ),
         ),
-      );
+        trailing,
+      ],
+    ),
+  );
 
   Widget _button(String label, VoidCallback onTap, {bool danger = false, bool active = false}) => Hoverable(
     onTap: onTap,

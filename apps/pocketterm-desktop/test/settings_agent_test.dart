@@ -26,19 +26,19 @@ void main() {
       ..physicalSize = const Size(1000, 1400)
       ..devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    app = await FakeApp.create();
-    final integrations = Integrations(
-      home: home,
-      run: claude?.run ?? (_, _) async => ProcessResult(0, 1, '', ''),
-      claudePaths: [?claude?.path],
+    app = await FakeApp.create(
+      integrations: Integrations(
+        home: home,
+        run: claude?.run ?? (_, _) async => ProcessResult(0, 1, '', ''),
+        claudePaths: [?claude?.path],
+        ompPaths: const [],
+      ),
     );
     await tester.pumpWidget(
       window(
         ListenableBuilder(
           listenable: app,
-          builder: (_, _) => Stack(
-            children: [SettingsPage(app: app, integrations: integrations)],
-          ),
+          builder: (_, _) => Stack(children: [SettingsPage(app: app)]),
         ),
       ),
     );
@@ -94,8 +94,9 @@ void main() {
     const hint = 'run claude /login, start claude once, then restart your Claude sessions';
     expect(find.text('Claude Code has mods turned off for now: $hint'), findsOneWidget);
 
-    // Installed, not the bundled copy yet: updating can't turn mods on.
-    await tester.tap(find.text('Update'));
+    // Installed, not the bundled copy yet: updating can't turn mods on. (The
+    // last Update is the row's; the status card above offers one too.)
+    await tester.tap(find.text('Update').last);
     await settle(tester, 'Installed ·');
     expect(find.text('Installed · Claude Code has mods turned off for now: $hint'), findsOneWidget);
 

@@ -6,8 +6,10 @@ import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/session.dart';
+import 'package:pocketterm_core/terminal.dart' show TermWindow;
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_desktop/desktop_host.dart';
+import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:pocketterm_desktop/terminal_bridge.dart';
 import 'package:pocketterm_desktop/update_check.dart';
@@ -17,13 +19,17 @@ import 'package:supabase_flutter/supabase_flutter.dart' show User;
 
 /// The desktop app: [Session] plus its main window and the terminal bridge.
 class AppController extends Session {
-  AppController(this._prefs, super.device, this.host);
+  AppController(this._prefs, super.device, this.host, {Integrations? integrations})
+    : integrations = integrations ?? Integrations();
 
   final SharedPreferences _prefs;
 
   /// The computer's side: the window, the menu-bar or tray item, launch at
   /// login, keeping awake.
   final DesktopHost host;
+
+  /// Installs PocketTerm into the coding agents (lib/integrations.dart).
+  final Integrations integrations;
 
   /// Whether PocketTerm starts at login, as the system has it; null until
   /// [refreshLaunchAtLogin] asked.
@@ -133,6 +139,117 @@ class AppController extends Session {
     notifyListeners();
   }
 
+  static const _getReadyKey = 'get_ready_done';
+
+  /// The setup checklist (lib/onboarding/get_ready.dart) was finished or
+  /// skipped on this computer; until then the signed-in window shows it.
+  bool get getReadyDone => _prefs.getBool(_getReadyKey) ?? false;
+
+  Future<void> setGetReadyDone({required bool done}) async {
+    await _prefs.setBool(_getReadyKey, done);
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------- agents
+
+  /// The coding agents found on this computer and PocketTerm in each, as of
+  /// the last [checkAgents]; null before the first one ends.
+  Map<Agent, AgentCheck>? get agents => _agents;
+  Map<Agent, AgentCheck>? _agents;
+  Future<void>? _checkingAgents;
+  DateTime? _agentsAt;
+
+  /// Looks for the coding agents and PocketTerm in them. One look at a time:
+  /// a call while one runs waits for it.
+  Future<void> checkAgents() => _checkingAgents ??= _lookForAgents().whenComplete(() => _checkingAgents = null);
+
+  Future<void> _lookForAgents() async {
+    final found = <Agent, AgentCheck>{};
+    for (final agent in Agent.values) {
+      try {
+        if (!await integrations.found(agent)) continue;
+        final state = await integrations.state(agent);
+        final modsOff = agent == Agent.claude && state.installed && await integrations.claudeModsOff();
+        found[agent] = (state: state, modsOff: modsOff);
+      } on Object catch (e) {
+        found[agent] = (state: (installed: false, current: false, problem: '$e'), modsOff: false);
+      }
+    }
+    _agents = found;
+    _agentsAt = DateTime.now();
+    notifyListeners();
+  }
+
+  /// Installs (or updates) PocketTerm in [agent], then looks again. Throws
+  /// what went wrong.
+  Future<void> installAgent(Agent agent) async {
+    try {
+      await integrations.install(agent);
+    } finally {
+      await checkAgents();
+    }
+  }
+
+  /// What the phone hears ([TerminalBridge]): looked at again when the last
+  /// look is older than [_agentsEvery], since it runs `claude`.
+  Future<Map<Agent, AgentIntegration>> _agentsForPhone() async {
+    final at = _agentsAt;
+    if (at == null || DateTime.now().difference(at) > _agentsEvery) await checkAgents();
+    return {for (final MapEntry(:key, :value) in (_agents ?? const {}).entries) key: integrationOf(value)};
+  }
+
+  static const _agentsEvery = Duration(seconds: 30);
+
+  /// The terminal windows running a coding agent that no live session
+  /// claims: started before PocketTerm was in it (or with it off), so they
+  /// reach the phone only as screens.
+  List<TermWindow> unreportedAgentWindows(List<TermWindow> windows) {
+    final claimed = {for (final s in live.sessions) ?s.window};
+    return [
+      for (final w in windows)
+        if (w.agent != null && !claimed.contains(w.key)) w,
+    ];
+  }
+
+  // ---------------------------------------------------------------- phone
+
+  /// A phone has signed in to this account: it used a code from here
+  /// ([phoneCodeUsed]) or said hello to this computer. Null until known.
+  bool? get phoneSignedIn => _phoneSignedIn;
+  bool? _phoneSignedIn;
+
+  /// Asks the server, until the answer is yes.
+  Future<void> checkPhone() async {
+    if (_phoneSignedIn ?? false) return;
+    try {
+      final used = await phoneCodeUsed();
+      if (used == _phoneSignedIn) return;
+      _phoneSignedIn = used;
+      notifyListeners();
+    } on Object catch (e) {
+      debugPrint('PocketTerm: phone sign-in unknown: $e');
+    }
+  }
+
+  /// A phone code this user made has been used: a phone signed in with it
+  /// (functions/pair keeps used ones; RLS shows a user their own).
+  @protected
+  Future<bool> phoneCodeUsed() async {
+    final rows = await client
+        .from('pairing_codes')
+        .select('id')
+        .eq('reusable', false)
+        .not('last_used_at', 'is', null)
+        .limit(1);
+    return rows.isNotEmpty;
+  }
+
+  void _phoneHeard() {
+    if (_phoneSignedIn ?? false) return;
+    _phoneSignedIn = true;
+    notifyListeners();
+  }
+
   /// The coding sessions reporting to the local API (integrations/).
   late final live = LiveHub(locate: (term, cwd) => terminals.locate(term, cwd: cwd))
     ..events.listen((e) => unawaited(_onLive(e)));
@@ -175,6 +292,8 @@ class AppController extends Session {
         () => codingAgent,
         () => terminalApp,
         () => projectRoots,
+        agents: _agentsForPhone,
+        onPhone: _phoneHeard,
       )).start();
       _seen(id);
       _seenTimer = Timer.periodic(_seenEvery, (_) => _seen(id));
@@ -270,6 +389,8 @@ class AppController extends Session {
   /// the account was deleted on another device): the terminal bridge stops.
   @override
   Future<void> onSignedOut() async {
+    // The next account's phones are its own.
+    _phoneSignedIn = null;
     try {
       await _startBridge();
     } on Object catch (e) {

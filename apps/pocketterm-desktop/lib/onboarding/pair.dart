@@ -81,7 +81,7 @@ class _PairingQrState extends State<PairingQr> {
       ),
       const SizedBox(height: 14),
       const Text(
-        'On your phone: install PocketTerm and scan this code with its Scan button '
+        'On your phone: install PocketTerm and tap Scan the code from your computer '
         '(on iPhone the Camera works too). It connects and signs in; nothing to type.',
         textAlign: TextAlign.center,
         style: TextStyle(color: C.dim, height: 1.45),

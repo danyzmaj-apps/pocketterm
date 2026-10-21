@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/session.dart';
-import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/main_window.dart';
 import 'package:pocketterm_desktop/onboarding/reviewer.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -29,16 +28,9 @@ void main() {
   /// Settings → Reviewer access → Codes…, with [existing] codes on the server.
   Future<void> openFromSettings(WidgetTester tester, {List<ReviewerCode> existing = const []}) async {
     macSize(tester);
-    app = await FakeApp.create();
+    app = await FakeApp.create(integrations: FakeApp.noAgents(home.path));
     app.reviewer.addAll(existing);
-    final integrations = Integrations(home: home.path, run: (_, _) async => ProcessResult(0, 1, '', ''));
-    await tester.pumpWidget(
-      window(
-        Stack(
-          children: [SettingsPage(app: app, integrations: integrations)],
-        ),
-      ),
-    );
+    await tester.pumpWidget(window(Stack(children: [SettingsPage(app: app)])));
     await tester.pumpAndSettle();
     expect(find.text('Reviewer access'), findsNothing, reason: "it's the publisher's, hidden from users");
     await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);

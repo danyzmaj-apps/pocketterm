@@ -6,16 +6,29 @@ A PocketTerm server is its own thing: give PocketTerm a Supabase project of its 
 
 ## The easy way: the desktop app
 
-Install PocketTerm on your Mac or Windows PC and open it. With no server yet, its window is a setup wizard:
+Install PocketTerm on your Mac or Windows PC and open it. With no server yet, its window is a setup wizard; it sets up the server only, and a checklist after sign-in takes care of the computer and your phone ([After the first sign-in](#after-the-first-sign-in)):
 
 1. **Supabase access token.** Create one at [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens) (`sbp_…`) and paste it. It's used for this setup only and never saved.
 2. **Project.** **Create a new project** (region guessed from your time zone), or **Use an existing project**. A project of its own is best: PocketTerm makes sign-in private to your account, so it won't go on a project that already has accounts or tables of the same names, and it says which of the project's settings it would replace. The free plan allows two active projects; pause one you don't use if it's full.
 3. **GitHub sign-in.** **Open GitHub: new OAuth app** opens GitHub's form; copy in the application name and callback URL the wizard shows, then paste back the client ID and secret.
 4. **Setup.** PocketTerm creates the tables and security rules (**Database**), turns on GitHub sign-in, turns email sign-up off (GitHub is the only way in), makes sign-up private and allows the `pocketterm://` redirect (**GitHub sign-in**), deploys the `pair` and `push` functions (**Server functions**) and fetches the publishable key (**Connection key**). If a step fails, **Retry** resumes from it, and redoes any step whose values you changed after going back.
 
-The last step also shows your terminals. On Windows, PocketTerm works through WezTerm: **Install WezTerm** downloads WezTerm's own installer from its GitHub release, checks it against WezTerm's published checksum and opens it for you to click through, or you type the `winget` line it shows into PowerShell. On a Mac, it lists the terminals it found, with **Set up** for kitty and **Allow…** for those that need Automation permission, and a `brew install tmux` line when tmux is missing. Both catch up on their own once WezTerm is installed or a permission is given.
+Then **Connect and sign in** with GitHub. Push notifications need nothing more: each phone registers itself, and your server sends through the publisher's relay, encrypted so only that phone can read them ([Push](#push)).
 
-Then **Connect and sign in** with GitHub. Push notifications need nothing more: each phone registers itself, and your server sends through the publisher's relay, encrypted so only that phone can read them ([Push](#push)). For your phones, see [Connect the apps](#connect-the-apps).
+<p align="center"><img src="images/wizard-ready.png" width="45%" alt="Setup wizard: your server is ready"></p>
+
+### After the first sign-in
+
+The first sign-in on a computer, by the wizard or by **I already have one: connect it**, opens **Get this computer ready**, a checklist whose steps check themselves off:
+
+1. **Your coding agents.** PocketTerm installs itself into every coding agent it finds (omp, Claude Code), says how each went, and offers **Retry** if one failed. An agent that isn't installed is left for later: Settings offers it once it shows up. Agent sessions that started before PocketTerm was in them are listed until you quit them and run `omp -c` (or `claude -c`).
+2. **Your terminals.** On a Mac, the terminals it found, with **Set up** for kitty and **Allow…** for those that need Automation permission, and a `brew install tmux` line when tmux is missing. On Windows, PocketTerm works through WezTerm: **Install WezTerm** downloads WezTerm's own installer from its GitHub release, checks it against WezTerm's published checksum and opens it for you to click through, or you type the `winget` line it shows into PowerShell. Both catch up on their own once WezTerm is installed or a permission is given.
+3. **Project folders** (optional). The usual folders found in your home folder (`Dev`, `Developer`, `Projects`, `code`, `src`, `repos`; on Windows also `source\repos` and `Documents\GitHub`), one click each, or **Choose folder…**.
+4. **Your phone.** The QR code from [Connect the apps](#connect-the-apps), checked off once a phone has signed in.
+
+Every step can be skipped; **Done** goes to Settings and says what's still left. Settings starts with a status card: **All set**, or each thing that needs attention with the button that fixes it, including a coding agent installed later. **Open setup checklist** shows the checklist again.
+
+<p align="center"><img src="images/mac-settings-status.png" width="60%" alt="Settings: the status card, four things need attention, each with its button"></p>
 
 Servers are set up from a computer (or the script below), never from a phone: the iPhone and Android apps only pair with a server that exists.
 
@@ -124,6 +137,7 @@ supabase secrets set PUSH_RELAY_URL=https://<relay-project-ref>.supabase.co/func
 | Windows: no windows show up | Only WezTerm windows are listed. Install it with **Install** in **Settings → Terminals** (or `winget install --id wez.wezterm --exact`) and run your agent in WezTerm. |
 | Windows: "This computer reads PNG and JPEG images only." | Send PNG or JPEG images; the phone apps send JPEG. |
 | Claude Code sessions don't show up | Claude Code needs 2.1.287 or later with mods on. If Settings says mods are off, run `claude /login`, start `claude` once, then restart your sessions. |
+| Phone: omp or Claude windows show only as screens, not as conversations | The note above them says why, from what the computer reports: PocketTerm isn't installed in that agent (**Install** in Settings' status card or **Settings → Coding agent**), it's out of date (**Update**), or those sessions started before it was installed: quit the agent there and run `omp -c` (or `claude -c`). |
 
 A local Supabase (`supabase start`) works for development, but it doesn't check API keys, so the setup screen accepts any key there.
 

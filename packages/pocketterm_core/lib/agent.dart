@@ -23,3 +23,33 @@ enum Agent {
   /// The agent a terminal window's foreground [program] is, if it is one.
   static Agent? ofProgram(String program) => values.asNameMap()[program];
 }
+
+/// Where PocketTerm stands in a coding agent found on a computer, as the
+/// computer tells the phone (the state's `agents`, lib/live.dart): its
+/// sessions report to PocketTerm only once it's [installed] and they
+/// started after that.
+enum AgentIntegration {
+  /// Installed and the same as the app's copy.
+  installed,
+
+  /// Installed, older than the app's copy.
+  outdated,
+
+  /// Not installed, or the agent can't take it (Claude Code too old).
+  missing,
+
+  /// Installed in Claude Code, which has mods (its plugins' runtime) turned off.
+  off;
+
+  /// The state's `agents`: agent name to value; agents or values this side
+  /// doesn't know are left out, and an older computer sends none (empty).
+  static Map<Agent, AgentIntegration> parseAll(Object? json) => {
+    if (json is Map)
+      for (final MapEntry(:key, :value) in json.entries)
+        if ((Agent.values.asNameMap()[key], values.asNameMap()[value]) case (final a?, final i?)) a: i,
+  };
+
+  static Map<String, String> toJsonAll(Map<Agent, AgentIntegration> agents) => {
+    for (final MapEntry(:key, :value) in agents.entries) key.name: value.name,
+  };
+}

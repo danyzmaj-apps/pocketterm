@@ -29,8 +29,10 @@ class TerminalBridge {
     this._host,
     this._agent,
     this._app,
-    this._roots,
-  );
+    this._roots, {
+    this._agents,
+    this._onPhone,
+  });
 
   final SupabaseClient _client;
   final String _userId;
@@ -51,6 +53,14 @@ class TerminalBridge {
 
   /// The Mac's Project folders setting.
   final List<String> Function() _roots;
+
+  /// Where PocketTerm stands in each coding agent found here (the Mac's
+  /// checks, which keep themselves fresh); none told if null.
+  final Future<Map<Agent, AgentIntegration>> Function()? _agents;
+  Map<Agent, AgentIntegration>? _agentsNow;
+
+  /// A phone said hello: one is signed in to this account.
+  final VoidCallback? _onPhone;
 
   /// A phone that hasn't said hello for this long has left.
   static const _gone = Duration(seconds: 12);
@@ -201,6 +211,7 @@ class TerminalBridge {
     final window = p['window'] as String?;
     final before = _phones[from];
     _phones[from] = (session: p['session'] as String?, window: window, seen: DateTime.now());
+    if (before == null) _onPhone?.call();
     // Every hello gets the state: it's how the phone knows the Mac is there.
     _sentState = null;
     if (window != null && before?.window != window) _fullScreen.add(window);
@@ -330,6 +341,7 @@ class TerminalBridge {
       'opensIn': ?_opensIn,
       'terminals': [for (final s in phoneTerminals(_statuses)) s.toJson()],
       'error': ?_termError,
+      if (_agentsNow case final a?) 'agents': AgentIntegration.toJsonAll(a),
     };
     final key = jsonEncode({
       ...state,
@@ -344,6 +356,25 @@ class TerminalBridge {
     _sentClock = clock;
     _sentAt = now;
     _send('state', state);
+  }
+
+  bool _askingAgents = false;
+
+  /// Where the agents stand, in the background (it may run `claude`); a
+  /// change goes out with the next state.
+  void _askAgents() {
+    final ask = _agents;
+    if (ask == null || _askingAgents) return;
+    _askingAgents = true;
+    unawaited(
+      ask()
+          .then((a) {
+            if (_stopped || mapEquals(a, _agentsNow)) return;
+            _agentsNow = a;
+            _stateChanged();
+          }, onError: (Object e) => debugPrint('PocketTerm: coding agents: $e'))
+          .whenComplete(() => _askingAgents = false),
+    );
   }
 
   // ------------------------------------------------------------ terminals
@@ -371,6 +402,7 @@ class TerminalBridge {
           _opensIn = _terms.describe(await _terms.opensIn(_app()));
         }
         _termError = terminalsError(_statuses, nothingShown: _windows.isEmpty && _hub.sessions.isEmpty);
+        _askAgents();
         final roots = _roots();
         if (_projectsAt == null ||
             !listEquals(roots, _projectsRoots) ||

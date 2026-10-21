@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
@@ -131,6 +132,26 @@ void main() {
     expect(b.terminals, isEmpty);
     // No Project folders at all, not none added: it can't make a project.
     expect(b.roots, isNull);
+  });
+
+  test("where PocketTerm stands in each agent survives the cache; unknown ones and an older Mac's give none", () {
+    final a = remote()
+      ..handle('state', {
+        ...state(),
+        'agents': {'omp': 'installed', 'claude': 'off', 'codex': 'installed', 'other': 'weird'},
+      });
+    expect(a.agents, {Agent.omp: AgentIntegration.installed, Agent.claude: AgentIntegration.off});
+    a.flush();
+
+    final b = remote();
+    expect(b.agents, {Agent.omp: AgentIntegration.installed, Agent.claude: AgentIntegration.off});
+    b.handle('state', {
+      ...state(),
+      'agents': {'omp': 'bogus', 'claude': 'missing'},
+    });
+    expect(b.agents, {Agent.claude: AgentIntegration.missing});
+    b.handle('state', state());
+    expect(b.agents, isEmpty);
   });
 
   test('watching asks for what the cached view misses', () {

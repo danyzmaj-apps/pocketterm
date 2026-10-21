@@ -333,6 +333,7 @@ class TerminalList extends StatefulWidget {
     required this.onFolded,
     required this.sort,
     required this.onSort,
+    this.computer,
     super.key,
   });
   final TerminalRemote remote;
@@ -345,6 +346,9 @@ class TerminalList extends StatefulWidget {
   /// How projects are ordered, as kept; [onSort] keeps a new choice.
   final ProjectSort sort;
   final ValueChanged<ProjectSort> onSort;
+
+  /// The computer's name, for advice about it; null says "the computer".
+  final String? computer;
 
   @override
   State<TerminalList> createState() => _TerminalListState();
@@ -779,18 +783,10 @@ class _TerminalListState extends State<TerminalList> {
                         Padding(
                           key: ValueKey('${agent.command}-screens-only'),
                           padding: const EdgeInsets.fromLTRB(32, 0, 24, 8),
-                          child: Text(switch (agent) {
-                            Agent.omp =>
-                              'These omp windows show only as screens: PocketTerm’s omp extension isn’t reporting from '
-                                  'them. It may be out of date (update it in PocketTerm’s Settings on the computer), or omp there '
-                                  'started before it was installed. Then quit omp there and start it again (omp -c '
-                                  'picks the conversation back up) to see it above, as a conversation.',
-                            Agent.claude =>
-                              'These Claude windows show only as screens: PocketTerm’s Claude Code plugin isn’t reporting '
-                                  'from them. It may be out of date (update it in PocketTerm’s Settings on the computer), or '
-                                  'Claude there started before it was installed. Then quit Claude there and start it '
-                                  'again (claude -c picks the conversation back up) to see it above, as a conversation.',
-                          }, style: const TextStyle(fontSize: 12, color: C.dim2, height: 1.4)),
+                          child: Text(
+                            _screensOnly(agent, remote.agents[agent], widget.computer ?? 'the computer'),
+                            style: const TextStyle(fontSize: 12, color: C.dim2, height: 1.4),
+                          ),
                         ),
                     Panel(key: const ValueKey('windows'), children: [for (final w in windows) _window(w)]),
                   ],
@@ -802,6 +798,41 @@ class _TerminalListState extends State<TerminalList> {
       );
     },
   );
+}
+
+/// Why [agent]'s windows show only as screens, from where PocketTerm stands in it ([integration], null from a
+/// computer that doesn't say) on [computer].
+String _screensOnly(Agent agent, AgentIntegration? integration, String computer) {
+  final (name, app, command) = switch (agent) {
+    Agent.omp => ('omp', 'omp', 'omp'),
+    Agent.claude => ('Claude', 'Claude Code', 'claude'),
+  };
+  return switch (integration) {
+    AgentIntegration.missing =>
+      'PocketTerm isn’t installed in $app on $computer. On the computer: PocketTerm Settings → Install, then '
+          'restart $name there ($command -c).',
+    AgentIntegration.installed =>
+      'These $name sessions started before PocketTerm was installed in $app. Quit $name in them and run $command -c '
+          'to see them here as conversations.',
+    AgentIntegration.outdated =>
+      'PocketTerm in $app is out of date on $computer. On the computer: PocketTerm Settings → Update, then '
+          'restart $name there ($command -c).',
+    AgentIntegration.off =>
+      '$app on $computer has mods turned off, so PocketTerm’s ${agent == Agent.omp ? 'extension' : 'plugin'} doesn’t '
+          'run. There: run $command /login, start $command once, then restart these sessions ($command -c).',
+    null => switch (agent) {
+      Agent.omp =>
+        'These omp windows show only as screens: PocketTerm’s omp extension isn’t reporting from '
+            'them. It may be out of date (update it in PocketTerm’s Settings on the computer), or omp there '
+            'started before it was installed. Then quit omp there and start it again (omp -c '
+            'picks the conversation back up) to see it above, as a conversation.',
+      Agent.claude =>
+        'These Claude windows show only as screens: PocketTerm’s Claude Code plugin isn’t reporting '
+            'from them. It may be out of date (update it in PocketTerm’s Settings on the computer), or '
+            'Claude there started before it was installed. Then quit Claude there and start it '
+            'again (claude -c picks the conversation back up) to see it above, as a conversation.',
+    },
+  };
 }
 
 /// The screen stays on while the Terminal list is up (and the session and

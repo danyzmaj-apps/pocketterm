@@ -1,6 +1,6 @@
 // The Mac screenshots in the docs: the real widgets, made-up data, the Mac's own fonts.
 // Run from apps/pocketterm-desktop: fvm flutter test --tags screenshots --run-skipped
-// They're written to docs/images/mac-*.png and wizard-*.png; a plain `fvm flutter test` skips
+// They're written to docs/images/mac-*.png, wizard-*.png and get-ready.png; a plain `fvm flutter test` skips
 // them (dart_test.yaml).
 @Tags(['screenshots', 'posix'])
 library;
@@ -26,9 +26,9 @@ import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:pocketterm_desktop/main_window.dart';
 import 'package:pocketterm_desktop/onboarding/flow.dart';
+import 'package:pocketterm_desktop/onboarding/get_ready.dart';
 import 'package:pocketterm_desktop/onboarding/provision.dart';
 import 'package:pocketterm_desktop/onboarding/wizard.dart';
-import 'package:pocketterm_desktop/wezterm_setup.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_fakes.dart';
@@ -115,19 +115,13 @@ Future<void> save(WidgetTester tester, String name, {Rect? crop, double radius =
 
 /// The setup wizard at [flow]'s step, as the main window shows it before
 /// there is a server.
-Future<void> pumpWizard(WidgetTester tester, SetupFlow flow, {WezTermSetup? wezterm, Terminals? macTerminals}) async {
+Future<void> pumpWizard(WidgetTester tester, SetupFlow flow) async {
   addTearDown(flow.dispose);
   await tester.pumpWidget(
     subject(
       ColoredBox(
         color: C.win,
-        child: SetupWizard(
-          flow: flow,
-          onConnect: (_) async {},
-          onExisting: () {},
-          wezterm: wezterm,
-          macTerminals: macTerminals,
-        ),
+        child: SetupWizard(flow: flow, onConnect: (_) async {}, onExisting: () {}),
       ),
     ),
   );
@@ -143,10 +137,10 @@ Future<void> fillField(WidgetTester tester, int index, String text) async {
 
 /// A Mac's terminals as Settings finds them: by default kitty, macOS's
 /// Terminal and tmux, as a typical Mac might have; [found] for others.
+/// [shown]: its windows; ten shells by default.
 class DemoTerminals extends Terminals {
-  DemoTerminals({this.found})
+  DemoTerminals({this.found, this.shown, super.home = '/nonexistent-pocketterm-demo'})
     : super(
-        home: '/nonexistent-pocketterm-demo',
         kitty: Kitty(socketDir: '/nonexistent-pocketterm-demo', home: '/nonexistent-pocketterm-demo'),
         tmux: Tmux(executable: '/nonexistent-pocketterm-demo/tmux', socketDirs: const []),
         wezterm: WezTerm(executable: '/nonexistent-pocketterm-demo/wezterm', socketDir: '/nonexistent-pocketterm-demo'),
@@ -158,6 +152,7 @@ class DemoTerminals extends Terminals {
       );
 
   final List<TermStatus> Function(DemoTerminals t)? found;
+  final List<TermWindow>? shown;
 
   @override
   Future<List<TermStatus>> statuses() async =>
@@ -172,14 +167,12 @@ class DemoTerminals extends Terminals {
       ];
 
   @override
-  Future<List<TermWindow>> windows() async => [
-    for (var i = 0; i < 10; i++) TermWindow(key: 'demo:$i', title: '', tab: '', cwd: '', program: ''),
-  ];
+  Future<List<TermWindow>> windows() async =>
+      shown ?? [for (var i = 0; i < 10; i++) TermWindow(key: 'demo:$i', title: '', tab: '', cwd: '', program: '')];
 }
 
-/// The setup wizard's last step on a Mac with kitty not set up yet, Terminal
-/// waiting for Automation, and no tmux.
-List<TermStatus> _freshMac(DemoTerminals t) => [
+/// The setup checklist's Mac: kitty not set up yet, tmux, Terminal and Ghostty.
+List<TermStatus> _kittyToSetUp(DemoTerminals t) => [
   TermStatus(
     t.kitty!.id,
     t.kitty!.label,
@@ -187,17 +180,11 @@ List<TermStatus> _freshMac(DemoTerminals t) => [
     note: "kitty doesn't let PocketTerm in yet",
     fix: TermFix.kittyConfig,
   ),
-  TermStatus(t.tmux!.id, t.tmux!.label, TermState.missing),
+  TermStatus(t.tmux!.id, t.tmux!.label, TermState.ready, note: '1 pane'),
   TermStatus(t.wezterm!.id, t.wezterm!.label, TermState.missing),
   TermStatus(t.iterm!.id, t.iterm!.label, TermState.missing),
-  TermStatus(
-    t.terminal!.id,
-    t.terminal!.label,
-    TermState.setup,
-    note: 'Allow PocketTerm to control Terminal',
-    fix: TermFix.automation,
-  ),
-  TermStatus(t.ghostty!.id, t.ghostty!.label, TermState.missing),
+  TermStatus(t.terminal!.id, t.terminal!.label, TermState.limited, note: '1 window · ${t.terminal!.limits}'),
+  TermStatus(t.ghostty!.id, t.ghostty!.label, TermState.idle),
 ];
 
 /// A coding agent's extension connection that goes nowhere.
@@ -214,9 +201,14 @@ void main() {
   shot('settings: terminals', const Size(560, 2000), (tester) async {
     final home = Directory.systemTemp.createTempSync('pocketterm-shots').path;
     addTearDown(() => Directory(home).deleteSync(recursive: true));
-    final integrations = Integrations(home: home, run: (_, _) async => ProcessResult(0, 1, '', ''));
+    final integrations = Integrations(
+      home: home,
+      run: (_, _) async => ProcessResult(0, 1, '', ''),
+      claudePaths: const [],
+      ompPaths: const [],
+    );
     await tester.runAsync(() => integrations.install(Agent.omp));
-    final app = await FakeApp.create(terminals: DemoTerminals())
+    final app = await FakeApp.create(terminals: DemoTerminals(), integrations: integrations)
       ..name = 'Ana';
     await (await SharedPreferences.getInstance()).setBool('terminal_bridge', true);
     // DemoTerminals' home, so it reads ~/Dev.
@@ -237,7 +229,7 @@ void main() {
           color: C.win,
           child: ListenableBuilder(
             listenable: app,
-            builder: (_, _) => SettingsPage(app: app, integrations: integrations),
+            builder: (_, _) => SettingsPage(app: app),
           ),
         ),
       ),
@@ -289,24 +281,93 @@ void main() {
     await save(tester, 'wizard-ready.png', radius: wizardCard.radius, border: wizardCard.border);
   });
 
-  shot('wizard: WezTerm on Windows', const Size(540, 900), (tester) async {
-    final flow = SetupFlow()
-      ..step = WizardStep.setup
-      ..ready = true;
-    flow.done.addAll(ProvisionStep.values);
-    final wezterm = WezTermSetup(isInstalled: () => false);
-    await pumpWizard(tester, flow, wezterm: wezterm);
-    await save(tester, 'wizard-wezterm.png', radius: wizardCard.radius, border: wizardCard.border);
-    // Its watch for WezTerm would outlive the test.
-    wezterm.dispose();
+  shot('get ready: a Mac after the first sign-in', const Size(560, 1700), (tester) async {
+    final home = Directory.systemTemp.createTempSync('pocketterm-shots').resolveSymbolicLinksSync();
+    addTearDown(() => Directory(home).deleteSync(recursive: true));
+    for (final d in ['Dev', 'Projects', 'Documents']) {
+      Directory('$home/$d').createSync();
+    }
+    final integrations = Integrations(
+      home: home,
+      run: (_, _) async => ProcessResult(0, 1, '', ''),
+      claudePaths: const [],
+      ompPaths: const [],
+    );
+    await tester.runAsync(() => integrations.install(Agent.omp));
+    final app = await FakeApp.create(
+      terminals: DemoTerminals(
+        home: home,
+        found: _kittyToSetUp,
+        shown: [TermWindow(key: 'kitty-1/4', title: 'omp', tab: '', cwd: '$home/Dev/garden-api', program: 'omp')],
+      ),
+      integrations: integrations,
+    );
+    await tester.pumpWidget(
+      subject(
+        ColoredBox(
+          color: C.win,
+          child: ListenableBuilder(
+            listenable: app,
+            builder: (_, _) => GetReadyPage(app: app),
+          ),
+        ),
+      ),
+    );
+    for (var i = 0; i < 100 && find.text('PocketTerm is installed in omp').evaluate().isEmpty; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    final page = tester.getRect(find.byWidgetPredicate((w) => w is ConstrainedBox && w.constraints.maxWidth == 500));
+    await save(
+      tester,
+      'get-ready.png',
+      crop: Rect.fromLTRB(page.left - 24, page.top - 24, page.right + 24, page.bottom + 24),
+      radius: wizardCard.radius,
+      border: wizardCard.border,
+    );
   });
 
-  shot('wizard: terminals on a Mac', const Size(540, 1000), (tester) async {
-    final flow = SetupFlow()
-      ..step = WizardStep.setup
-      ..ready = true;
-    flow.done.addAll(ProvisionStep.values);
-    await pumpWizard(tester, flow, macTerminals: DemoTerminals(found: _freshMac));
-    await save(tester, 'wizard-terminals.png', radius: wizardCard.radius, border: wizardCard.border);
+  shot('settings: status card', const Size(560, 2000), (tester) async {
+    final home = Directory.systemTemp.createTempSync('pocketterm-shots').path;
+    addTearDown(() => Directory(home).deleteSync(recursive: true));
+    final integrations = Integrations(
+      home: home,
+      run: (_, _) async => ProcessResult(0, 1, '', ''),
+      claudePaths: const [],
+      ompPaths: const [],
+    );
+    // omp was used here, PocketTerm isn't in it yet.
+    Directory('$home/.omp').createSync();
+    final app =
+        await FakeApp.create(
+            terminals: DemoTerminals(found: _kittyToSetUp),
+            integrations: integrations,
+          )
+          ..name = 'Ana';
+    await tester.pumpWidget(
+      subject(
+        ColoredBox(
+          color: C.win,
+          child: ListenableBuilder(
+            listenable: app,
+            builder: (_, _) => SettingsPage(app: app),
+          ),
+        ),
+      ),
+    );
+    for (var i = 0; i < 100 && find.textContaining('need attention').evaluate().isEmpty; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    final card = tester.getRect(find.byKey(const ValueKey('settings-status')));
+    await save(
+      tester,
+      'mac-settings-status.png',
+      crop: Rect.fromLTRB(card.left - 24, card.top - 20, card.right + 24, card.bottom + 20),
+      radius: 12,
+      border: C.line2,
+    );
   });
 }

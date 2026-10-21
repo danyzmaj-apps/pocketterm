@@ -96,4 +96,4 @@ TestFlight builds use APNs production; the relay handles both production and san
 
 ### Reviewer codes
 
-Not needed for internal testing. **Settings → Reviewer access** in the desktop app makes codes that sign a phone into a separate demo account on your server; they're only for a build someone outside your account has to try (TestFlight external testing goes through Beta App Review, which needs a way in).
+Not needed for internal testing. **Settings → Reviewer access** in the desktop app (press ⌥ Option to show it) makes codes that sign a phone into a separate demo account on your server; they're only for a build someone outside your account has to try (TestFlight external testing goes through Beta App Review, which needs a way in).

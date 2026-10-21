@@ -111,16 +111,33 @@ class _SettingsPageState extends State<SettingsPage> {
 
   AppController get app => widget.app;
 
+  /// Reviewer access is the publisher's (App Store / Play review), not a user's: it shows only once
+  /// ⌥ Option (Alt) is pressed in Settings, until the window is shown again.
+  bool _publisher = false;
+
+  bool _onKey(KeyEvent e) {
+    final alt = e.logicalKey == LogicalKeyboardKey.altLeft || e.logicalKey == LogicalKeyboardKey.altRight;
+    if (alt && e is KeyDownEvent && !_publisher && mounted) setState(() => _publisher = true);
+    return false;
+  }
+
+  void _shown() {
+    if (_publisher && mounted) setState(() => _publisher = false);
+    _check();
+  }
+
   @override
   void initState() {
     super.initState();
     _check();
-    app.mainShown.addListener(_check);
+    app.mainShown.addListener(_shown);
+    HardwareKeyboard.instance.addHandler(_onKey);
   }
 
   @override
   void dispose() {
-    app.mainShown.removeListener(_check);
+    HardwareKeyboard.instance.removeHandler(_onKey);
+    app.mainShown.removeListener(_shown);
     _wezterm?.dispose();
     super.dispose();
   }
@@ -379,11 +396,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 sub: '${app.backend?.host ?? ''} · Scan a code with your phone to connect it',
                 trailing: _button('Set up phone…', () => unawaited(showPairingQr(context, app))),
               ),
-              _row(
-                label: 'Reviewer access',
-                sub: 'For App Store / Play review: a code for a separate demo account',
-                trailing: _button('Codes…', () => unawaited(showReviewerAccess(context, app))),
-              ),
+              if (_publisher)
+                _row(
+                  label: 'Reviewer access',
+                  sub: 'For App Store / Play review: a code for a separate demo account',
+                  trailing: _button('Codes…', () => unawaited(showReviewerAccess(context, app))),
+                ),
               _row(
                 label: 'Delete account',
                 sub: 'Removes everything you saved, on every device',

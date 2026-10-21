@@ -148,7 +148,7 @@ Point the desktop app at `http://127.0.0.1:54321` with the local publishable key
 
 The checks to run before a pull request, and which of them CI runs (`.github/workflows/ci.yml`), are listed in [CONTRIBUTING.md](../CONTRIBUTING.md#pull-requests). On Windows, tests that need a POSIX system (`/bin/sh`, unix sockets, `chmod`) are tagged `posix`: run `fvm flutter test --exclude-tags posix` there.
 
-[Maestro](https://maestro.mobile.dev) drives the iOS simulator app with `apps/pocketterm-mobile/maestro/sign_in.yaml`. It needs a simulator and a test backend. Set `appId` in the flow to your bundle id. Phones sign in only with a code from a computer, so the flow pastes one when the app isn't signed in: pass a reviewer code's link (**Settings → Reviewer access**, reusable) as `SETUP_LINK`, or a fresh **Set up phone…** code for a single run.
+[Maestro](https://maestro.mobile.dev) drives the iOS simulator app with `apps/pocketterm-mobile/maestro/sign_in.yaml`. It needs a simulator and a test backend. Set `appId` in the flow to your bundle id. Phones sign in only with a code from a computer, so the flow pastes one when the app isn't signed in: pass a reviewer code's link (**Settings → Reviewer access**, shown after pressing ⌥ Option; reusable) as `SETUP_LINK`, or a fresh **Set up phone…** code for a single run.
 
 ```sh
 maestro test -e SETUP_LINK='pocketterm://setup?url=…&key=…&code=…' apps/pocketterm-mobile/maestro/sign_in.yaml

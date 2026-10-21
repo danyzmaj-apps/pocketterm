@@ -40,6 +40,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.text('Reviewer access'), findsNothing, reason: "it's the publisher's, hidden from users");
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
     expect(find.text('Reviewer access'), findsOneWidget);
     await tester.tap(find.text('Codes…'));
     await tester.pumpAndSettle();

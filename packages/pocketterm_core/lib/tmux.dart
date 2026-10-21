@@ -62,6 +62,9 @@ class Tmux extends TerminalHost {
     return exe != null && File(exe).existsSync();
   }
 
+  /// The tmux found (an absolute path), or null when it isn't installed.
+  String? get executable => installed ? _exe : null;
+
   @override
   String get id => 'tmux';
 

@@ -6,10 +6,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/ghostty.dart';
 import 'package:pocketterm_core/iterm.dart';
 import 'package:pocketterm_core/kitty.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
+import 'package:pocketterm_core/tmux.dart';
 import 'package:pocketterm_desktop/main_window.dart';
 
 import 'app_fakes.dart';
@@ -29,6 +31,27 @@ class _Mac extends Terminals {
   Future<List<TermStatus>> statuses() async => [
     TermStatus(kitty!.id, kitty!.label, TermState.ready),
     TermStatus(iterm!.id, iterm!.label, TermState.idle),
+  ];
+
+  @override
+  Future<List<TermWindow>> windows() async => const [];
+}
+
+/// A Mac in [home] with Ghostty, and tmux when [tmux] is installed.
+class _GhosttyMac extends Terminals {
+  _GhosttyMac(String home, {required bool tmux})
+    : super(
+        home: home,
+        tmux: Tmux(executable: tmux ? '/bin/sh' : '$home/no-tmux', socketDirs: const []),
+        ghostty: Ghostty(appPath: '$home/Ghostty.app'),
+        recency: () async => const [],
+        snapshot: () async => Procs(const []),
+      );
+
+  @override
+  Future<List<TermStatus>> statuses() async => [
+    TermStatus(tmux!.id, tmux!.label, tmux!.installed ? TermState.ready : TermState.missing),
+    TermStatus(ghostty!.id, ghostty!.label, TermState.ready),
   ];
 
   @override
@@ -107,6 +130,51 @@ void main() {
     await tester.pumpAndSettle();
     expect(app.terminalApp, 'iterm');
     expect(find.text('Always iTerm2'), findsOneWidget);
+  });
+
+  group('Ghostty: start new windows in tmux', () {
+    Finder button() => find.byKey(const ValueKey('settings-ghostty-tmux'));
+    String config() => '$home/.config/ghostty/config.ghostty';
+
+    Future<void> openTerminals(WidgetTester tester, {required bool tmux}) async {
+      await pumpSettings(tester, terminals: _GhosttyMac(home, tmux: tmux));
+      await tester.tap(find.byKey(const ValueKey('settings-tab-terminals')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('offered only with tmux installed', (tester) async {
+      await openTerminals(tester, tmux: false);
+      expect(find.byKey(const ValueKey('settings-terminal-ghostty')), findsOneWidget);
+      expect(button(), findsNothing);
+    });
+
+    testWidgets('adds its lines, then Remove puts the config back as it was', (tester) async {
+      File(config())
+        ..createSync(recursive: true)
+        ..writeAsStringSync('font-size = 14\n');
+      await openTerminals(tester, tmux: true);
+      expect(find.text('Start new windows in tmux'), findsOneWidget);
+
+      await tester.tap(button());
+      await tester.pumpAndSettle();
+      expect(File(config()).readAsStringSync(), contains('command = /bin/sh new-session'));
+      expect(find.textContaining('Open new Ghostty windows to get full control.'), findsOneWidget);
+
+      await tester.tap(find.text('Remove'));
+      await tester.pumpAndSettle();
+      expect(File(config()).readAsStringSync(), 'font-size = 14\n');
+      expect(find.text('Start new windows in tmux'), findsOneWidget);
+    });
+
+    testWidgets("a command of the person's own is explained and left alone", (tester) async {
+      File(config())
+        ..createSync(recursive: true)
+        ..writeAsStringSync('command=/bin/zsh -l\n');
+      await openTerminals(tester, tmux: true);
+      expect(find.textContaining('already sets command = /bin/zsh -l'), findsOneWidget);
+      expect(button(), findsNothing);
+      expect(File(config()).readAsStringSync(), 'command=/bin/zsh -l\n');
+    });
   });
 
   testWidgets('project folders: added ones show with ~, their ✕ drops them', (tester) async {

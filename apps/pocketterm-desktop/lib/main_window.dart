@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pocketterm_core/account.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/connect.dart' show ConfirmLink;
+import 'package:pocketterm_core/ghostty_config.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_desktop/controller.dart';
@@ -128,6 +129,13 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Windows: installing WezTerm from its card; null elsewhere.
   late final WezTermSetup? _wezterm = WezTermSetup.forHost(app.terminals.wezterm)?..addListener(_weztermChanged);
 
+  /// Ghostty's config, for starting its new windows in tmux; null without
+  /// Ghostty (Windows). What it says, as of [_checkTerminals].
+  late final GhosttyConfig? _ghosttyConfig = app.terminals.ghostty == null
+      ? null
+      : GhosttyConfig.standard(home: app.terminals.home);
+  GhosttyCommand? _ghosttyCommand;
+
   /// This build's version, for the Account tab's footer; null until known.
   String? _version;
 
@@ -199,6 +207,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _checkTerminals() async {
     final statuses = await app.terminals.statuses();
+    final ghosttyCommand = _ghosttyConfig?.read();
     var windows = const <TermWindow>[];
     try {
       windows = await app.terminals.windows();
@@ -208,6 +217,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!mounted) return;
     setState(() {
       _terminals = statuses;
+      _ghosttyCommand = ghosttyCommand;
       _windowCount = windows.length;
       _unreported = app.unreportedAgentWindows(windows);
     });
@@ -232,6 +242,23 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     _fixed[s.id] = await fixTerminal(app.terminals, s);
     if (mounted) setState(() {});
+    await _checkTerminals();
+  }
+
+  /// Ghostty's new windows in tmux ([GhosttyConfig.add]), or back to the
+  /// shell ([GhosttyConfig.remove]).
+  Future<void> _ghosttyTmux({required bool on}) async {
+    final config = _ghosttyConfig!;
+    final tmux = app.terminals.tmux?.executable;
+    try {
+      if (on && tmux != null) {
+        config.add(tmux);
+      } else if (!on) {
+        config.remove();
+      }
+    } on TerminalException catch (e) {
+      if (mounted) Toaster.of(context).show(e.message);
+    }
     await _checkTerminals();
   }
 
@@ -694,7 +721,36 @@ class _SettingsPageState extends State<SettingsPage> {
           ? C.ok
           : C.dim,
       trailing: _fixButton(s),
+      body: s.id == 'ghostty' && s.state != TermState.missing ? _ghosttyTmuxBody() : const [],
     );
+  }
+
+  /// Ghostty's card: new windows in tmux with one click, where tmux is
+  /// installed and the person's config sets no command of its own.
+  List<Widget> _ghosttyTmuxBody() {
+    final command = _ghosttyCommand;
+    final tmux = app.terminals.tmux?.installed ?? false;
+    Widget note(String text) => Text(text, style: _subStyle(C.dim));
+    return switch (command?.state) {
+      GhosttyCommandState.ours => [
+        note('Open new Ghostty windows to get full control. Windows already open stay as they are.'),
+        _button('Remove', () => unawaited(_ghosttyTmux(on: false)), key: const ValueKey('settings-ghostty-tmux')),
+      ],
+      GhosttyCommandState.theirs when tmux => [
+        note(
+          'Your Ghostty config already sets command = ${command!.command}, so PocketTerm leaves it alone. '
+          'Add tmux to that command yourself for full control.',
+        ),
+      ],
+      GhosttyCommandState.none when tmux => [
+        _button(
+          'Start new windows in tmux',
+          () => unawaited(_ghosttyTmux(on: true)),
+          key: const ValueKey('settings-ghostty-tmux'),
+        ),
+      ],
+      _ => const [],
+    };
   }
 
   // ---------------------------------------------------------------- account

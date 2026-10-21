@@ -138,19 +138,27 @@ Future<void> fillField(WidgetTester tester, int index, String text) async {
 
 /// A Mac's terminals as Settings finds them: by default kitty, macOS's
 /// Terminal and tmux, as a typical Mac might have; [found] for others.
-/// [shown]: its windows; ten shells by default.
+/// [shown]: its windows; ten shells by default. `tmuxExe`: tmux's
+/// executable, installed when it exists.
 class DemoTerminals extends Terminals {
-  DemoTerminals({this.found, this.shown, super.home = '/nonexistent-pocketterm-demo'})
-    : super(
-        kitty: Kitty(socketDir: '/nonexistent-pocketterm-demo', home: '/nonexistent-pocketterm-demo'),
-        tmux: Tmux(executable: '/nonexistent-pocketterm-demo/tmux', socketDirs: const []),
-        wezterm: WezTerm(executable: '/nonexistent-pocketterm-demo/wezterm', socketDir: '/nonexistent-pocketterm-demo'),
-        iterm: ITerm(appPath: '/nonexistent-pocketterm-demo/iTerm.app'),
-        terminal: AppleTerminal(appPath: '/nonexistent-pocketterm-demo/Terminal.app'),
-        ghostty: Ghostty(appPath: '/nonexistent-pocketterm-demo/Ghostty.app'),
-        recency: () async => const [],
-        snapshot: () async => Procs(const []),
-      );
+  DemoTerminals({
+    this.found,
+    this.shown,
+    super.home = '/nonexistent-pocketterm-demo',
+    String tmuxExe = '/nonexistent-pocketterm-demo/tmux',
+  }) : super(
+         kitty: Kitty(socketDir: '/nonexistent-pocketterm-demo', home: '/nonexistent-pocketterm-demo'),
+         tmux: Tmux(executable: tmuxExe, socketDirs: const []),
+         wezterm: WezTerm(
+           executable: '/nonexistent-pocketterm-demo/wezterm',
+           socketDir: '/nonexistent-pocketterm-demo',
+         ),
+         iterm: ITerm(appPath: '/nonexistent-pocketterm-demo/iTerm.app'),
+         terminal: AppleTerminal(appPath: '/nonexistent-pocketterm-demo/Terminal.app'),
+         ghostty: Ghostty(appPath: '/nonexistent-pocketterm-demo/Ghostty.app'),
+         recency: () async => const [],
+         snapshot: () async => Procs(const []),
+       );
 
   final List<TermStatus> Function(DemoTerminals t)? found;
   final List<TermWindow>? shown;
@@ -225,13 +233,29 @@ void main() {
     final app =
         await FakeApp.create(
             terminals: DemoTerminals(
+              // An installed tmux, for Ghostty's Start new windows in tmux.
+              tmuxExe: '/bin/sh',
               found: (t) => [
                 TermStatus(t.kitty!.id, t.kitty!.label, TermState.ready, note: '10 windows'),
                 TermStatus(t.tmux!.id, t.tmux!.label, TermState.ready, note: '2 panes'),
                 TermStatus(t.wezterm!.id, t.wezterm!.label, TermState.missing),
                 TermStatus(t.iterm!.id, t.iterm!.label, TermState.idle),
-                TermStatus(t.terminal!.id, t.terminal!.label, TermState.limited, note: t.terminal!.limits),
-                TermStatus(t.ghostty!.id, t.ghostty!.label, TermState.missing),
+                TermStatus(
+                  t.terminal!.id,
+                  t.terminal!.label,
+                  TermState.ready,
+                  note:
+                      'Sessions from your phone run in tmux, with full control. '
+                      'In windows you open yourself: ${t.terminal!.limits}',
+                ),
+                TermStatus(
+                  t.ghostty!.id,
+                  t.ghostty!.label,
+                  TermState.ready,
+                  note:
+                      '2 windows · Sessions from your phone run in tmux, with full control. '
+                      'In windows you open yourself: ${t.ghostty!.limits}',
+                ),
               ],
               // Ten shells, and two omp sessions opened before PocketTerm.
               shown: [

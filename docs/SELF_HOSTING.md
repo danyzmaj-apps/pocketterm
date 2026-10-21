@@ -139,7 +139,7 @@ supabase secrets set PUSH_RELAY_URL=https://<relay-project-ref>.supabase.co/func
 | "The project refused this key" on the setup screen | Use the **publishable** key (Project Settings → API Keys), never a secret one. |
 | Terminal: "PocketTerm may not control iTerm2" (or Terminal, Ghostty) | Allow it in System Settings → Privacy & Security → Automation → PocketTerm. |
 | Terminal: "kitty isn't listening" | **Settings → Terminals → Set up** next to kitty, then restart kitty. |
-| Terminal: Ghostty windows show no screen | Expected: Ghostty's screen can't be read. Install tmux (`brew install tmux`) and start sessions from the phone: they run inside tmux with full control. |
+| Terminal: Ghostty windows show no screen | Expected: Ghostty's screen can't be read. Install tmux (`brew install tmux`) and start sessions from the phone: they run inside tmux with full control. For windows you open yourself, **Settings → Terminals → Start new windows in tmux** (then open a new Ghostty window). |
 | Terminal: can't answer or press keys in a Terminal (macOS) window | Expected: Terminal takes only whole lines. Same fix: install tmux and start sessions from the phone. |
 | Terminal: a Ghostty session isn't matched to its window | Ghostty tells no tty, so PocketTerm matches the session by its folder: keep one Ghostty window per folder. |
 | Windows: no windows show up | Only WezTerm windows are listed. Install it with **Install** in **Settings → Terminals** (or `winget install --id wez.wezterm --exact`) and run your agent in WezTerm. |

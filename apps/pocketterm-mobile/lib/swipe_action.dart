@@ -9,7 +9,7 @@ const swipeActionColor = Color(0xFF7F1D1D);
 const swipeActionText = Color(0xFFFCA5A5);
 
 /// A list row that slides left under the finger, showing one red action
-/// behind its right end: [icon] over [label]. Let go past 40% of the action's
+/// behind its right end: a close icon over [label]. Let go past 40% of the action's
 /// width, or flung left, it slides open and stays; else it slides back.
 /// Open, the action is one tap ([onAction]); a tap on the row or a swipe
 /// right shuts it.
@@ -27,7 +27,6 @@ class SwipeAction extends StatefulWidget {
     required this.onAction,
     required this.child,
     this.onSwipe,
-    this.icon = Icons.close,
     this.enabled = true,
     this.busy = false,
     this.actionKey,
@@ -37,7 +36,6 @@ class SwipeAction extends StatefulWidget {
   final ValueChanged<bool> onOpen;
   final VoidCallback? onSwipe;
   final String label;
-  final IconData icon;
   final VoidCallback onAction;
   final bool enabled;
   final bool busy;
@@ -189,7 +187,7 @@ class _SwipeActionState extends State<SwipeAction> with SingleTickerProviderStat
                             padding: EdgeInsets.all(3),
                             child: CircularProgressIndicator(strokeWidth: 2, color: swipeActionText),
                           )
-                        : Icon(widget.icon, size: 22, color: swipeActionText),
+                        : const Icon(Icons.close, size: 22, color: swipeActionText),
                   ),
                   const SizedBox(height: 4),
                   Text(

@@ -9,7 +9,7 @@ import 'package:pasteboard/pasteboard.dart';
 import 'package:pocketterm_core/ui.dart';
 
 /// How many images one message to a session takes.
-const maxChatImages = 4;
+const _maxChatImages = 4;
 
 /// The longest side an image is sent at: plenty for reading a screenshot,
 /// and it keeps uploads and the model's image tokens small.
@@ -77,14 +77,14 @@ String? sniffImageType(Uint8List b) {
 
 /// What's on the clipboard as an image (a screenshot, an image copied in a
 /// browser). Empty if none.
-Future<List<Uint8List>> clipboardImages() async {
+Future<List<Uint8List>> _clipboardImages() async {
   final image = await Pasteboard.image;
   return image == null ? const [] : [image];
 }
 
 /// Images picked from the photo picker. `imageQuality` makes image_picker
 /// re-encode each as JPEG, so a HEIC photo never reaches the computer.
-Future<List<Uint8List>> pickImages({required int limit}) async {
+Future<List<Uint8List>> _pickImages({required int limit}) async {
   if (limit <= 0) return const [];
   final picked = limit == 1
       ? [?await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 90)]
@@ -100,14 +100,14 @@ class ChatAttachments extends ChangeNotifier {
   String? problem;
 
   bool get isEmpty => images.isEmpty;
-  int get room => maxChatImages - images.length;
+  int get room => _maxChatImages - images.length;
 
   Future<void> addAll(List<Uint8List> raws) async {
     problem = null;
     var skipped = 0;
     for (final raw in raws) {
       if (room <= 0) {
-        problem = 'At most $maxChatImages images per message.';
+        problem = 'At most $_maxChatImages images per message.';
         break;
       }
       final image = await prepareChatImage(raw);
@@ -126,27 +126,18 @@ class ChatAttachments extends ChangeNotifier {
   /// Pastes images from the clipboard; false if it holds none (a text paste
   /// then goes ahead as usual).
   Future<bool> paste() async {
-    final raws = await clipboardImages();
+    final raws = await _clipboardImages();
     if (raws.isEmpty) return false;
     await addAll(raws);
     return true;
   }
 
-  Future<void> pick() async => await addAll(await pickImages(limit: room));
+  Future<void> pick() async => await addAll(await _pickImages(limit: room));
 
   void removeAt(int i) {
     images.removeAt(i);
     problem = null;
     notifyListeners();
-  }
-
-  /// Hands the images over for sending and empties the composer.
-  List<ChatImage> take() {
-    final taken = List.of(images);
-    images.clear();
-    problem = null;
-    notifyListeners();
-    return taken;
   }
 }
 

@@ -82,9 +82,6 @@ class FakeApp extends AppController {
     createdAt: '2026-10-01T10:00:00Z',
   );
 
-  /// What runs when the user goes without [signOut] here.
-  Future<void> signedOutByServer() => onSignedOut();
-
   /// What runs when [fakeUser] signs in (or is restored at launch).
   Future<void> signedIn() => onSignedIn(fakeUser!);
 

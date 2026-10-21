@@ -481,12 +481,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
 
   // ---------------------------------------------------------------- pieces
 
-  /// [path] with the home folder as `~`.
-  String _tilde(String path) {
-    final home = app.terminals.home;
-    if (path == home) return '~';
-    return p.isWithin(home, path) ? '~${path.substring(home.length)}' : path;
-  }
+  String _tilde(String path) => _tildePath(path, app.terminals.home);
 
   Widget _line(_Status status, String text, {Widget? trailing, bool error = false}) => Padding(
     padding: const EdgeInsets.only(top: 2),
@@ -554,8 +549,7 @@ class _SessionToPickUpState extends State<SessionToPickUp> {
   Widget build(BuildContext context) {
     final w = widget.window;
     final agent = w.agent!;
-    final home = widget.terminals.home;
-    final cwd = w.cwd == home ? '~' : (p.isWithin(home, w.cwd) ? '~${w.cwd.substring(home.length)}' : w.cwd);
+    final cwd = _tildePath(w.cwd, widget.terminals.home);
     final where = [
       if (w.cwd.isNotEmpty) 'in $cwd',
       widget.terminals.hosts.where((h) => h.id == w.app).firstOrNull?.label ?? w.app,
@@ -596,6 +590,12 @@ class _SessionToPickUpState extends State<SessionToPickUp> {
       ],
     );
   }
+}
+
+/// [path] with [home] as `~`.
+String _tildePath(String path, String home) {
+  if (path == home) return '~';
+  return p.isWithin(home, path) ? '~${path.substring(home.length)}' : path;
 }
 
 /// A command as typed in a terminal.

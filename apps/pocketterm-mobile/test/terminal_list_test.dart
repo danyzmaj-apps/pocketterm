@@ -7,6 +7,7 @@ import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_mobile/mobile.dart';
 import 'package:pocketterm_mobile/session_view.dart';
+import 'package:pocketterm_mobile/swipe_action.dart';
 import 'package:pocketterm_mobile/switch_view.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -180,7 +181,7 @@ void main() {
     expect(find.text('OTHER WINDOWS'), findsOneWidget);
     expect(find.byKey(const ValueKey('term-kitty-1/4')), findsOneWidget);
     expect(
-      find.ancestor(of: session('pid:9'), matching: find.byType(Dismissible)),
+      find.ancestor(of: session('pid:9'), matching: find.byType(SwipeAction)),
       findsNothing,
       reason: 'a session without a window has nothing to close',
     );

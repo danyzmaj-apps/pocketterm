@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -280,7 +279,7 @@ class _SessionPageState extends State<SessionPage> {
     if (!await activities.follow(key, title: _title(s)) && mounted) {
       termToast(
         context,
-        defaultTargetPlatform == TargetPlatform.iOS
+        isIos
             ? 'Live Activities are off for PocketTerm: turn them on in Settings → PocketTerm.'
             : 'Notifications are off for PocketTerm: turn them on in Settings → Apps → PocketTerm.',
         above: _composerKey,
@@ -684,7 +683,7 @@ class _SessionPageState extends State<SessionPage> {
             if (remote.activities case final activities? when s != null)
               IconButton(
                 key: const ValueKey('follow-lock-screen'),
-                tooltip: switch ((defaultTargetPlatform == TargetPlatform.iOS, activities.following(key))) {
+                tooltip: switch ((isIos, activities.following(key))) {
                   (true, true) => 'Stop following on Lock Screen',
                   (true, false) => 'Follow on Lock Screen',
                   (false, true) => 'Stop following in notifications',

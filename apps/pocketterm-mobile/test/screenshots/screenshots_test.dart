@@ -5,6 +5,7 @@
 @Tags(['screenshots'])
 library;
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -296,7 +297,9 @@ void main() {
             from: 'phone',
             // omp is at work in it.
             send: (event, p) {
-              if (event == 'run' && p['op'] == 'probe') Future(() => r.handle('ran', {'id': p['id'], 'busy': true}));
+              if (event == 'run' && p['op'] == 'probe') {
+                unawaited(Future(() => r.handle('ran', {'id': p['id'], 'busy': true})));
+              }
             },
           )
           ..handle('state', {
@@ -317,7 +320,7 @@ void main() {
               ' add the new varieties with their sowing months.',
               '',
               ' ╭──────────────────────────────────────────────╮',
-              ' │ \$ python scripts/import_seeds.py suppliers.csv │',
+              r' │ $ python scripts/import_seeds.py suppliers.csv │',
               ' ├─── Output ───────────────────────────────────┤',
               ' │ 412 rows read                                │',
               ' │ 388 matched, 24 new                          │',

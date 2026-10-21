@@ -7,7 +7,7 @@ import 'package:pocketterm_core/session.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-const selfHostingGuide = 'https://github.com/danyzmaj-apps/pocketterm/blob/main/docs/SELF_HOSTING.md';
+const _selfHostingGuide = 'https://github.com/danyzmaj-apps/pocketterm/blob/main/docs/SELF_HOSTING.md';
 
 /// Connects this device to a server that already exists: its setup link
 /// (pairing code and all), or its URL and publishable key.
@@ -143,7 +143,7 @@ class _ConnectServerFormState extends State<ConnectServerForm> {
               const SizedBox(height: 18),
               if (back != null) TextButton(onPressed: back.onPressed, child: Text(back.label)),
               TextButton(
-                onPressed: () => unawaited(launchUrl(Uri.parse(selfHostingGuide))),
+                onPressed: () => unawaited(launchUrl(Uri.parse(_selfHostingGuide))),
                 style: TextButton.styleFrom(foregroundColor: C.dim2),
                 child: const Text('Self-hosting guide'),
               ),

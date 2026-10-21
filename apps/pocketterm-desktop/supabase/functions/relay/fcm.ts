@@ -10,11 +10,10 @@ export type ServiceAccount = {
   client_email: string;
   private_key: string;
   private_key_id?: string;
-  token_uri?: string;
 };
 
-export const scope = "https://www.googleapis.com/auth/firebase.messaging";
-export const tokenAudience = "https://oauth2.googleapis.com/token";
+const scope = "https://www.googleapis.com/auth/firebase.messaging";
+const tokenAudience = "https://oauth2.googleapis.com/token";
 
 /** An FCM registration token. */
 export const fcmToken = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_:\-]{100,4096}$/.test(v);

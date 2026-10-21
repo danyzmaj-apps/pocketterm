@@ -182,7 +182,7 @@ class LiveOp {
       item != null ? {'s': seq, 'item': item!.toJson()} : {'s': seq, 'id': id, 'a': append};
 }
 
-String newEpoch() => List.generate(8, (_) => Random.secure().nextInt(36).toRadixString(36)).join();
+String _newEpoch() => List.generate(8, (_) => Random.secure().nextInt(36).toRadixString(36)).join();
 
 /// The Mac's copy of one session's transcript. Every change gets the next
 /// [seq]; a phone that has seen up to some seq catches up with [since].
@@ -190,7 +190,7 @@ String newEpoch() => List.generate(8, (_) => Random.secure().nextInt(36).toRadix
 /// omp, the extension reconnected), and a phone then drops what it has.
 class LiveLog {
   LiveLog(List<LiveItem> snapshot, {required this.older, this.cap = 3000, String? epoch})
-    : epoch = epoch ?? newEpoch() {
+    : epoch = epoch ?? _newEpoch() {
     snapshot.forEach(_add);
     _trim();
   }
@@ -207,9 +207,6 @@ class LiveLog {
   final _items = <String, LiveItem>{};
   int _next = 0;
   int _min = 0;
-
-  int get length => _items.length;
-  LiveItem? operator [](String id) => _items[id];
 
   /// Oldest first.
   List<LiveItem> get items => _items.values.toList()..sort((a, b) => a.order.compareTo(b.order));

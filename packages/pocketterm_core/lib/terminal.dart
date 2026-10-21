@@ -602,10 +602,10 @@ bool runsInShell(String executable) => RegExp(r'\.(cmd|bat)$', caseSensitive: fa
 /// Runs [script] with osascript on [app] (bundle id [bundle]), [args] as its
 /// `on run argv`; its output without the final newline ([AppleScript.run]).
 Future<String> runAppleScript(String app, String bundle, String script, [List<String> args = const []]) =>
-    appleScript.run(app, bundle, script, args);
+    _appleScript.run(app, bundle, script, args);
 
 /// The terminals' [AppleScript]: what macOS answered holds for all of them.
-final appleScript = AppleScript();
+final _appleScript = AppleScript();
 
 /// osascript, for apps macOS asks the person about before PocketTerm may control
 /// them (Privacy & Security → Automation). Until they answer, an Apple Event
@@ -759,11 +759,11 @@ function run(argv) {
 /// macOS refused PocketTerm's Apple Events to [app] (Privacy & Security →
 /// Automation).
 class AutomationDenied extends TerminalException {
-  AutomationDenied(this.app) : super(automationDenied(app));
+  AutomationDenied(this.app) : super(_automationDenied(app));
   final String app;
 }
 
-String automationDenied(String app) =>
+String _automationDenied(String app) =>
     'PocketTerm may not control $app. Allow it in System Settings → Privacy & Security → Automation → PocketTerm.';
 
 /// macOS is asking the person whether PocketTerm may control [app]: nothing goes

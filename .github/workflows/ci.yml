@@ -74,7 +74,7 @@ jobs:
       - run: deno check supabase/functions/*/index.ts
       # pair, push and relay in-process against a fake network (supabase/functions/_tests/harness.ts).
       - run: deno test --allow-env supabase/functions/_tests/
-      # The omp extensions the Mac installs, against omp's and Bun's types.
+      # The omp extension the desktop app installs, against omp's and Bun's types.
       - run: deno check --config integrations/omp-check.json integrations/omp/*.ts
 
   migrations:

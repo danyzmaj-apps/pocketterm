@@ -196,7 +196,7 @@ class MobileApp extends StatelessWidget {
   );
 
   static ThemeData _theme(ThemeData base) => base.copyWith(
-    scaffoldBackgroundColor: screenColor,
+    scaffoldBackgroundColor: C.win,
     // Rows show they were pressed: the iOS cell highlight, Android's ink.
     splashFactory: isIos ? NoSplash.splashFactory : InkSparkle.splashFactory,
     highlightColor: const Color(0x14FFFFFF),
@@ -341,7 +341,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     unawaited(_desktops.refresh());
   }
 
-  /// A session of one of the computers ([routedKey]: a tapped push or Live
+  /// A session of one of the computers ([routed]: a tapped push or Live
   /// Activity), over the Terminal list of that computer. One on no computer
   /// listed opens nothing.
   Future<void> _openRouted(String routed) async {
@@ -445,7 +445,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final terminal = _terminal;
     final selected = _desktops.selected;
     return Scaffold(
-      backgroundColor: screenColor,
+      backgroundColor: C.win,
       // Nothing to start a session on until a computer answers.
       floatingActionButton: terminal == null
           ? null

@@ -9,7 +9,7 @@ import 'package:pocketterm_core/terminal.dart' show homeDir;
 import 'package:pocketterm_core/ui.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
-/// Mac Settings → Reviewer access.
+/// Settings → Reviewer access.
 Future<void> showReviewerAccess(BuildContext context, Session session) => showDialog<void>(
   context: context,
   builder: (_) => ReviewerAccessSheet(session: session),
@@ -17,7 +17,7 @@ Future<void> showReviewerAccess(BuildContext context, Session session) => showDi
 
 /// Reviewer codes, for App Store and Google Play review: reusable codes
 /// (functions/pair, action reviewer) that sign a phone into a separate demo
-/// account on this server, so a reviewer gets in without the owner's Mac.
+/// account on this server, so a reviewer gets in without the owner's computer.
 /// Make one (how long, a label), hand over its QR or link, revoke it after.
 /// A code is shown only right after it's made: the server keeps a hash.
 class ReviewerAccessSheet extends StatefulWidget {

@@ -96,7 +96,7 @@ class AppController extends Session {
     return name.length <= 80 ? name : name.substring(0, 80);
   }
 
-  /// The Mac's terminals (kitty's sockets in [kittyDir]).
+  /// This computer's terminals (on a Mac, kitty's sockets are in [kittyDir]).
   late final Terminals terminals = Terminals.standard(kittyDir: kittyDir(Platform.environment));
 
   /// Where kitty's sockets are: /tmp, or the directory `POCKETTERM_KITTY_DIR`

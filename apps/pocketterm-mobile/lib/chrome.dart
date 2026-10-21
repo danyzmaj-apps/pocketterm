@@ -7,24 +7,12 @@ import 'package:pocketterm_core/ui.dart';
 /// Android Material 3 (tonal surfaces, a rounded-square + button).
 bool get isIos => defaultTargetPlatform == TargetPlatform.iOS;
 
-/// The iPhone's surfaces: the app's own dark palette, as on Android (not
-/// iOS's pure black).
-abstract final class S {
-  static const Color background = C.win;
-  static const Color cell = M.container;
-  static const Color fill = M.containerHigh;
-  static const Color separator = C.line;
-  static const Color secondaryLabel = C.dim;
-}
-
-/// Android's tonal surfaces (Material 3 surface containers, in the app's dark palette).
+/// The raised surfaces, in the app's dark palette on both platforms (not
+/// iOS's pure black): Material 3's surface containers.
 abstract final class M {
   static const container = Color(0xFF1C1E25);
   static const containerHigh = Color(0xFF23262F);
 }
-
-/// What the screens sit on.
-Color get screenColor => isIos ? S.background : C.win;
 
 /// The app's motion: things appearing, going or changing size ease out
 /// over [fast]; a section folding open or shut eases in and out ([fold]).
@@ -70,7 +58,7 @@ Future<T?> showAppSheet<T>(BuildContext context, {required WidgetBuilder builder
       context: context,
       isScrollControlled: isScrollControlled,
       useSafeArea: true,
-      backgroundColor: isIos ? S.cell : M.containerHigh,
+      backgroundColor: isIos ? M.container : M.containerHigh,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
       builder: builder,
     );
@@ -158,7 +146,7 @@ class Panel extends StatelessWidget {
       fontSize: 13,
       fontWeight: isIos ? FontWeight.w400 : FontWeight.w600,
       letterSpacing: isIos ? .2 : .1,
-      color: isIos ? S.secondaryLabel : C.accent,
+      color: isIos ? C.dim : C.accent,
     );
     final heading = title == null
         ? null
@@ -191,7 +179,7 @@ class Panel extends StatelessWidget {
             padding: EdgeInsets.fromLTRB(16, title == null ? 8 : 0, 16, 0),
             // A Material, so the rows' ink and list tiles paint on it.
             child: Material(
-              color: isIos ? S.cell : M.container,
+              color: M.container,
               clipBehavior: Clip.antiAlias,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(isIos ? 22 : 24)),
               child: AnimatedSize(
@@ -202,7 +190,7 @@ class Panel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     for (final (i, row) in children.indexed) ...[
-                      if (i > 0) Divider(height: 1, thickness: 0.5, indent: 52, color: isIos ? S.separator : C.line),
+                      if (i > 0) const Divider(height: 1, thickness: 0.5, indent: 52, color: C.line),
                       row,
                     ],
                   ],
@@ -218,10 +206,9 @@ class Panel extends StatelessWidget {
 
 /// The +: a round accent button on iPhone, Material 3's rounded-square FAB on Android.
 class AddButton extends StatelessWidget {
-  const AddButton({required this.tooltip, required this.onPressed, this.icon = Icons.add, super.key});
+  const AddButton({required this.tooltip, required this.onPressed, super.key});
   final String tooltip;
   final VoidCallback? onPressed;
-  final IconData icon;
 
   /// Room the lists leave at the bottom, clear of the +.
   static const contentInset = 96.0;
@@ -235,6 +222,6 @@ class AddButton extends StatelessWidget {
     foregroundColor: const Color(0xFF0E0F12),
     shape: isIos ? const CircleBorder() : null,
     elevation: isIos ? 2 : null,
-    child: Icon(isIos ? (icon == Icons.add ? Icons.add_rounded : icon) : icon, size: 26),
+    child: Icon(isIos ? Icons.add_rounded : Icons.add, size: 26),
   );
 }

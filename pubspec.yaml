@@ -1,5 +1,5 @@
 name: pocketterm_workspace
-description: "PocketTerm: the workspace of the Mac app, the phone app and the code they share."
+description: "PocketTerm: the workspace of the desktop app, the phone app and the code they share."
 publish_to: 'none'
 
 environment:

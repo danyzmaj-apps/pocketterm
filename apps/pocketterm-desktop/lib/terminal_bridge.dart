@@ -13,7 +13,7 @@ import 'package:pocketterm_desktop/desktop_host.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// The Mac side of Terminal from the phone (protocol: packages/pocketterm_core/lib/live.dart): the
+/// The desktop side of Terminal from the phone (protocol: packages/pocketterm_core/lib/live.dart): the
 /// coding sessions [LiveHub] knows and the terminals' windows
 /// (packages/pocketterm_core/lib/terminals.dart) go out on this computer's
 /// private topic (`terminal:<user id>:<desktop id>`); what the phone asks
@@ -45,16 +45,16 @@ class TerminalBridge {
   /// Keeps this computer awake while the bridge runs.
   final DesktopHost _host;
 
-  /// The agent a new session from the phone starts (the Mac's setting).
+  /// The agent a new session from the phone starts (this computer's setting).
   final Agent Function() _agent;
 
-  /// The terminal app it opens in: an app's id or `auto` (the Mac's setting).
+  /// The terminal app it opens in: an app's id or `auto` (this computer's setting).
   final String Function() _app;
 
-  /// The Mac's Project folders setting.
+  /// This computer's Project folders setting.
   final List<String> Function() _roots;
 
-  /// Where PocketTerm stands in each coding agent found here (the Mac's
+  /// Where PocketTerm stands in each coding agent found here (this computer's
   /// checks, which keep themselves fresh); none told if null.
   final Future<Map<Agent, AgentIntegration>> Function()? _agents;
   Map<Agent, AgentIntegration>? _agentsNow;
@@ -212,7 +212,7 @@ class TerminalBridge {
     final before = _phones[from];
     _phones[from] = (session: p['session'] as String?, window: window, seen: DateTime.now());
     if (before == null) _onPhone?.call();
-    // Every hello gets the state: it's how the phone knows the Mac is there.
+    // Every hello gets the state: it's how the phone knows the computer is there.
     _sentState = null;
     if (window != null && before?.window != window) _fullScreen.add(window);
     _tick ??= Timer.periodic(_tickEvery, (_) => unawaited(_poll()));
@@ -588,7 +588,7 @@ class TerminalBridge {
   }
 
   /// Follows on its screen an ask whose end the agent's extension can't
-  /// see: a plan review (dismissed with Esc on the Mac), or Claude Code's
+  /// see: a plan review (dismissed with Esc at the computer), or Claude Code's
   /// approval (its plugin hears only once the tool has run). A plan's
   /// options are published once it has rendered, and again when its cursor
   /// moves. An ask gone from the screen twice running goes from the hub too.
@@ -635,7 +635,7 @@ class TerminalBridge {
 
   /// Picks the plan review option [p] names, once the screen still lists it
   /// there. Claude Code's rows go by their number. omp's cursor moves from
-  /// where it is now (someone may have moved it on the Mac) down or up to
+  /// where it is now (someone may have moved it at the computer) down or up to
   /// it, and Enter goes once the screen shows the cursor there: ↓/↑ skip an
   /// option omp has disabled, which plain text doesn't show, and a cursor
   /// that won't land on the option means omp won't take it.

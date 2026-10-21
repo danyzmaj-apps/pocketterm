@@ -47,8 +47,9 @@ Each release is a notarized DMG on GitHub Releases, plus an `appcast.xml` that i
 ### Each release
 
 1. Bump `version:` in `apps/pocketterm-desktop/pubspec.yaml` (for example `0.2.0+2`), and set the same version name in `apps/pocketterm-desktop/integrations/claude/plugins/pocketterm/.claude-plugin/plugin.json`: Claude Code updates a plugin only to a new version, so installed copies would keep their old hooks (`release.sh` refuses a mismatch).
-2. Turn **Unreleased** in `CHANGELOG.md` into a `## 0.2.0` section; `release.sh` refuses to run without a `## <version>` heading and uses that section as the release notes. Say whether servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again (new migrations or function changes) and whether the relay must be redeployed.
-3. Commit and push to `main`, then (in `apps/pocketterm-desktop`):
+2. Turn `## Unreleased` in `CHANGELOG.md` into a `## 0.2.0` section; `release.sh` refuses to run without a `## <version>` heading and uses that section as the release notes. Say whether servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again (new migrations or function changes) and whether the relay must be redeployed.
+3. Point the download links in `README.md` (**Getting started**) at the new version's DMG and installer.
+4. Commit and push to `main`, then (in `apps/pocketterm-desktop`):
    ```sh
    tool/release.sh
    ```

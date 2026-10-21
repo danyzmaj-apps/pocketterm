@@ -48,7 +48,7 @@ class LocalApi {
   /// HTTP long-poll connections (/v1/live/http) by id.
   final _polls = <String, _PollLink>{};
 
-  /// How long a long poll waits for frames from the Mac.
+  /// How long a long poll waits for frames from the hub.
   static const pollHold = Duration(seconds: 25);
 
   /// Where the port and token go: `~/.config/pocketterm/cli.json`, or the file
@@ -209,7 +209,7 @@ class LocalApi {
   }
 
   /// One long poll: the extension's frames go to its connection in order,
-  /// and the answer carries the Mac's, waiting [pollHold] for some when
+  /// and the answer carries the hub's, waiting [pollHold] for some when
   /// asked to. A request without a connection opens one.
   Future<void> _poll(HttpRequest req) async {
     final res = req.response..headers.contentType = ContentType.json;

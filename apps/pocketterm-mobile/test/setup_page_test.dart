@@ -7,8 +7,8 @@ import 'package:pocketterm_mobile/mobile.dart';
 import 'package:pocketterm_mobile/setup_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// A phone with no session: [backend] it may know from before, [reason] it
-/// lost the last one for.
+/// A phone with no session: [known], the server it knows from before, if
+/// any; [reason], why it lost the last one.
 class _Phone extends MobileSession {
   _Phone(SharedPreferences prefs, {this.known, this.reason}) : super(prefs, 'iPhone');
   final Backend? known;

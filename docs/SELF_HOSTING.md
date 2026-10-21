@@ -15,7 +15,10 @@ Install PocketTerm on your Mac or Windows PC and open it. With no server yet, it
 
 Then **Connect and sign in** with GitHub. Push notifications need nothing more: each phone registers itself, and your server sends through the publisher's relay, encrypted so only that phone can read them ([Push](#push)).
 
-<p align="center"><img src="images/wizard-ready.png" width="45%" alt="Setup wizard: your server is ready"></p>
+<p align="center">
+  <img src="images/wizard-github.png" width="45%" alt="Setup wizard, step 3: the GitHub OAuth app">
+  <img src="images/wizard-ready.png" width="45%" alt="Setup wizard: your server is ready">
+</p>
 
 ### After the first sign-in
 
@@ -23,7 +26,7 @@ The first sign-in on a computer, by the wizard or by **I already have one: conne
 
 1. **Your coding agents.** PocketTerm installs itself into every coding agent it finds (omp, Claude Code), says how each went, and offers **Retry** if one failed. An agent that isn't installed is left for later: Settings offers it once it shows up. **Sessions that were already open** don't have PocketTerm's add-on yet (an agent loads add-ons when it starts), so the phone sees only their screen. They're listed, each with what to do once, with a copy button: in Claude Code type `/reload-plugins` (nothing restarts); in omp quit it and run `omp -c` (same conversation). New sessions don't need it.
 2. **Your terminals.** On a Mac, the terminals it found, with **Set up** for kitty and **Allow…** for those that need Automation permission, and a `brew install tmux` line when tmux is missing. On Windows, PocketTerm works through WezTerm: **Install WezTerm** downloads WezTerm's own installer from its GitHub release, checks it against WezTerm's published checksum and opens it for you to click through, or you type the `winget` line it shows into PowerShell. Both catch up on their own once WezTerm is installed or a permission is given.
-3. **Project folders** (optional). The usual folders found in your home folder (`Dev`, `Developer`, `Projects`, `code`, `src`, `repos`; on Windows also `source\repos` and `Documents\GitHub`), one click each, or **Choose folder…**.
+3. **Project folders** (optional). The usual folders found in your home folder (`Dev`, `Developer`, `Projects`, `code`, `src`, `repos`, `git`; on Windows also `source\repos` and `Documents\GitHub`), one click each, or **Choose folder…**.
 4. **Your phone.** The QR code from [Connect the apps](#connect-the-apps), checked off once a phone has signed in.
 
 **Done** goes to Settings and says what's still left. Settings starts with a status bar: **All set**, or how many things need attention; **Show** lists them with the button that fixes each, including a coding agent installed later, and a dot marks the tab they're on. **Open setup checklist** shows the checklist again. Below it are four tabs: **Phone** (Terminal from phone, **Add a phone…**, project folders), **Coding agents** (PocketTerm in each agent, sessions to reopen, which one is the default), **Terminals** (where new sessions open, each terminal with its fix) and **Account**.

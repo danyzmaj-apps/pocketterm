@@ -129,7 +129,7 @@ class LiveAsked extends LiveEvent {
   final LiveAsk ask;
 }
 
-/// The coding sessions on this Mac: their extensions connect to the local
+/// The coding sessions on this computer: their extensions connect to the local
 /// API (lib/local_api.dart) and keep it up to date; the terminal bridge
 /// passes them on to the phone.
 class LiveHub {
@@ -291,7 +291,7 @@ class LiveHub {
   }
 
   /// Replaces session [key]'s ask, while it's still [id] (null: while there
-  /// is none), with what the Mac read off its screen: a plan review's
+  /// is none), with what this computer read off its screen: a plan review's
   /// options, a picker a slash command opened, or null once it's gone. Not
   /// the agent asking, so no event. False when the session's ask has moved
   /// on.
@@ -305,8 +305,7 @@ class LiveHub {
 
   /// Where images for an agent that reads them from disk (Claude Code) wait
   /// for it; the ones older than a day go when more come.
-  @visibleForTesting
-  static Directory imageDir = Directory(p.join(Directory.systemTemp.path, 'pocketterm-images'));
+  static final _imageDir = Directory(p.join(Directory.systemTemp.path, 'pocketterm-images'));
 
   /// Sends [text] (and [images]) as the person's prompt. While omp works it
   /// steers the run, or waits for the run to end with [followUp]; Claude
@@ -332,7 +331,7 @@ class LiveHub {
 
   static Future<List<String>> _saveImages(List<({Uint8List bytes, String mimeType})> images) async {
     if (images.isEmpty) return const [];
-    final dir = imageDir;
+    final dir = _imageDir;
     if (!dir.existsSync()) {
       dir.createSync(recursive: true);
       // Private to this user; Windows' per-user temp folder already is.

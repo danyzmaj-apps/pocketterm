@@ -33,7 +33,7 @@ The repo is a pub workspace: `apps/pocketterm-desktop` (the desktop app for macO
   ```
 - Add a test when you change behavior that can quietly break: parsing, the terminal protocol, session routing, platform paths. Platform checks take an injectable `windows` flag, so Windows behavior is testable on a Mac too.
 - Database changes go in a **new** migration in `apps/pocketterm-desktop/supabase/migrations/`, timestamped after the latest. Never edit one that has shipped: self-hosters have already applied it.
-- Note user-visible changes under **Unreleased** in `CHANGELOG.md`, and say whether self-hosters must rerun `apps/pocketterm-desktop/tool/setup-backend.sh`.
+- Note user-visible changes under a `## Unreleased` heading at the top of `CHANGELOG.md` (add it if it isn't there), and say whether self-hosters must rerun `apps/pocketterm-desktop/tool/setup-backend.sh`.
 - Never commit `config/Local.xcconfig`, `apps/pocketterm-desktop/supabase/.env*`, `apps/pocketterm-mobile/android/key.properties`, `google-services.json`, keystores or any key.
 
 ## Style

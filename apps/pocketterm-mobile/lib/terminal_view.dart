@@ -12,6 +12,7 @@ import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/session_view.dart';
+import 'package:pocketterm_mobile/swipe_action.dart';
 
 // Line height 1.2: box-drawing characters still nearly join up.
 const _mono = TextStyle(fontFamily: 'Menlo', fontFamilyFallback: ['Courier'], fontSize: 11, height: 1.2);
@@ -111,8 +112,8 @@ Widget _badged(TermWindow? w, Widget line) => w == null
         ],
       );
 
-/// Closes [w] on the computer (callers ask first: [CloseConfirm]); true once it's
-/// closed.
+/// Closes [w] on the computer (callers ask first: [CloseConfirm], or a row's
+/// [SwipeAction]); true once it's closed.
 Future<bool> closeWindow(BuildContext context, TerminalRemote remote, TermWindow w) async {
   try {
     await remote.close(w.key);
@@ -123,8 +124,9 @@ Future<bool> closeWindow(BuildContext context, TerminalRemote remote, TermWindow
   }
 }
 
-/// Asks in place, before [window] closes: it closes on the computer, and what runs
-/// in it ends with it; [closing]: the close went, and the computer hasn't answered.
+/// Asks in place, before [window] closes: its agent's session ends (or the
+/// window closes) on the computer, and what runs in it with it. It slides in
+/// as it shows. [closing]: the close went, and the computer hasn't answered.
 class CloseConfirm extends StatelessWidget {
   const CloseConfirm({
     required this.remote,
@@ -143,54 +145,72 @@ class CloseConfirm extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final agent = window.agent;
-    final what = agent != null
-        ? 'The ${agent.label} session'
-        : (window.program.isEmpty ? 'What runs in it' : window.program);
+    final who = remote.desktopName ?? 'the computer';
     final where = window.cwd.isEmpty ? '' : ' in ${shortPath(remote, window.cwd)}';
-    return Container(
-      key: ValueKey('confirm-close-${window.key}'),
-      color: const Color(0x557F1D1D),
-      padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+    final (title, detail, action) = agent != null
+        ? ('End this ${agent.label} session on $who?', 'Its window$where closes with it.', 'End session')
+        : (
+            'Close this window on $who?',
+            '${window.program.isEmpty ? 'Whatever runs in it' : window.program}$where stops with it.',
+            'Close window',
+          );
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Motion.fast,
+      curve: Motion.ease,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(offset: Offset(0, 12 * (1 - t)), child: child),
+      ),
+      child: Container(
+        key: ValueKey('confirm-close-${window.key}'),
+        color: const Color(0x557F1D1D),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15)),
+            const SizedBox(height: 2),
+            Text(
+              detail,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, color: C.dim, height: 1.3),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                const Text(
-                  'Close this window on the computer?',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 15),
+                TextButton(
+                  key: const ValueKey('close-cancel'),
+                  onPressed: closing ? null : onCancel,
+                  child: Text('Keep', style: TextStyle(color: closing ? C.dim2 : C.text)),
                 ),
-                Text(
-                  '$what$where ends with it.',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13, color: C.dim, height: 1.3),
-                ),
+                const SizedBox(width: 8),
+                if (closing)
+                  const SizedBox(
+                    key: ValueKey('close-sent'),
+                    width: 48,
+                    height: 40,
+                    child: Center(
+                      child: SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: swipeActionText),
+                      ),
+                    ),
+                  )
+                else
+                  FilledButton(
+                    key: const ValueKey('close-confirm'),
+                    style: FilledButton.styleFrom(backgroundColor: swipeActionColor, foregroundColor: swipeActionText),
+                    onPressed: onClose,
+                    child: Text(action),
+                  ),
               ],
             ),
-          ),
-          TextButton(
-            key: const ValueKey('close-cancel'),
-            onPressed: closing ? null : onCancel,
-            child: Text('Cancel', style: TextStyle(color: closing ? C.dim2 : C.dim)),
-          ),
-          if (closing)
-            const Padding(
-              key: ValueKey('close-sent'),
-              padding: EdgeInsets.symmetric(horizontal: 22),
-              child: SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-            )
-          else
-            TextButton(
-              key: const ValueKey('close-confirm'),
-              onPressed: onClose,
-              child: const Text('Close', style: TextStyle(color: Color(0xFFFCA5A5))),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -367,10 +387,10 @@ class _TerminalListState extends State<TerminalList> {
   /// The project a new session is starting in.
   String? _launching;
 
-  /// The window whose row asks whether to close it; it stops asking after a
-  /// while.
-  String? _confirming;
-  Timer? _confirmTimer;
+  /// The window whose row is swiped open, its End session or Close window
+  /// showing; it shuts again after a while untouched.
+  String? _open;
+  Timer? _openTimer;
 
   /// The windows a close went for, until the computer answers: they can't be
   /// closed again meanwhile.
@@ -378,7 +398,7 @@ class _TerminalListState extends State<TerminalList> {
 
   @override
   void dispose() {
-    _confirmTimer?.cancel();
+    _openTimer?.cancel();
     super.dispose();
   }
 
@@ -420,47 +440,48 @@ class _TerminalListState extends State<TerminalList> {
     }
   }
 
-  void _confirm(String window) {
-    _confirmTimer?.cancel();
-    _confirmTimer = Timer(const Duration(seconds: 5), _cancel);
-    setState(() => _confirming = window);
+  /// [window]'s row opened ([open]) or shut; one row is open at a time.
+  void _setOpen(String window, bool open) {
+    if (!mounted || (!open && _open != window)) return;
+    _openTimer?.cancel();
+    if (open) _openTimer = Timer(const Duration(seconds: 5), () => _setOpen(window, false));
+    setState(() => _open = open ? window : null);
   }
 
-  void _cancel() {
-    _confirmTimer?.cancel();
-    if (mounted) setState(() => _confirming = null);
+  /// A finger started on [window]'s row: any other open one shuts, and this
+  /// one waits for it.
+  void _swiping(String window) {
+    _openTimer?.cancel();
+    if (_open != null && _open != window) setState(() => _open = null);
   }
 
   Future<void> _close(TermWindow w) async {
-    _cancel();
+    _openTimer?.cancel();
     setState(() => _closing.add(w.key));
     await closeWindow(context, remote, w);
-    if (mounted) setState(() => _closing.remove(w.key));
+    if (!mounted) return;
+    setState(() {
+      _closing.remove(w.key);
+      if (_open == w.key) _open = null;
+    });
   }
 
-  /// [child], closing [w] when swiped left: after asking, in its place.
+  /// [child], showing End session (Close window, for no agent) when swiped
+  /// left; tapped, [w] closes at once.
   Widget _swipe(String key, TermWindow? w, Widget child) {
     if (w == null || !w.can(TermCap.close)) return child;
-    if (_closing.contains(w.key)) {
-      return CloseConfirm(remote: remote, window: w, onCancel: _cancel, onClose: () {}, closing: true);
-    }
-    if (_confirming == w.key && remote.online) {
-      return CloseConfirm(remote: remote, window: w, onCancel: _cancel, onClose: () => unawaited(_close(w)));
-    }
-    return Dismissible(
+    final online = remote.online;
+    final busy = _closing.contains(w.key);
+    return SwipeAction(
       key: ValueKey('swipe-$key'),
-      direction: remote.online ? DismissDirection.endToStart : DismissDirection.none,
-      background: Container(
-        color: const Color(0xFF7F1D1D),
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 24),
-        child: const Icon(Icons.close, color: Colors.white),
-      ),
-      // The row stays: it asks in place.
-      confirmDismiss: (_) async {
-        _confirm(w.key);
-        return false;
-      },
+      actionKey: ValueKey('swipe-action-$key'),
+      open: busy || (online && _open == w.key),
+      enabled: online,
+      busy: busy,
+      label: w.agent != null ? 'End session' : 'Close window',
+      onSwipe: () => _swiping(w.key),
+      onOpen: (open) => _setOpen(w.key, open),
+      onAction: () => unawaited(_close(w)),
       child: child,
     );
   }

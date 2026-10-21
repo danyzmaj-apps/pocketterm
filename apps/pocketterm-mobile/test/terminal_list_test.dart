@@ -348,73 +348,117 @@ void main() {
     remote.flush();
   });
 
-  testWidgets('swiping a row asks in its place, not in a dialog; Cancel or waiting leaves the window open', (
+  /// Not to settle: a close going spins, and settling would outwait its
+  /// answer and an open row's 5 s.
+  Future<void> slide(WidgetTester tester) async {
+    for (var i = 0; i < 3; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  }
+
+  Finder action(String key) => find.byKey(ValueKey('swipe-action-$key'));
+
+  Finder spinning(String key) => find.descendant(of: action(key), matching: find.byType(CircularProgressIndicator));
+
+  /// Drags row [key] sideways ([dx] < 0: left), wherever it is slid to.
+  Future<void> swipe(WidgetTester tester, String key, {double dx = -300}) async {
+    await tester.drag(find.byKey(ValueKey('swipe-$key')), Offset(dx, 0));
+    await slide(tester);
+  }
+
+  testWidgets('swiping a row left shows End session behind it; one tap ends it, once, spinning until answered', (
     tester,
   ) async {
     macState();
     await pumpList(tester);
-    // Not to settle: a close going spins, and settling would outwait its
-    // answer and the question's 5 s.
-    Future<void> swipe(String key) async {
-      await tester.drag(session(key), const Offset(-600, 0));
-      for (var i = 0; i < 5; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-      }
-    }
 
-    Finder sent(String window) => find.descendant(
-      of: find.byKey(ValueKey('confirm-close-$window')),
-      matching: find.byKey(const ValueKey('close-sent')),
-    );
-
-    await swipe('kitty-1/3');
+    await swipe(tester, 'kitty-1/3');
     expect(find.byType(AlertDialog), findsNothing);
-    expect(find.text('Close this window on the computer?'), findsOneWidget);
-    expect(find.text('The omp session in ~/b ends with it.'), findsOneWidget);
-    expect(session('kitty-1/3'), findsNothing);
+    expect(session('kitty-1/3'), findsOneWidget, reason: 'the row stays, slid aside');
+    expect(find.descendant(of: action('kitty-1/3'), matching: find.text('End session')), findsOneWidget);
+    expect(runs('close'), isEmpty, reason: 'opening it ends nothing');
 
-    await tester.tap(find.byKey(const ValueKey('close-cancel')));
-    await tester.pump();
-    expect(session('kitty-1/3'), findsOneWidget);
-
-    await swipe('kitty-1/3');
-    await tester.pump(const Duration(seconds: 6));
-    expect(session('kitty-1/3'), findsOneWidget, reason: 'the question goes on its own');
-    expect(runs('close'), isEmpty);
-
-    await swipe('kitty-1/3');
-    await tester.tap(find.byKey(const ValueKey('close-confirm')));
+    await tester.tap(action('kitty-1/3'));
     await tester.pump(Duration.zero);
     final closeB = runs('close').single;
     expect(closeB, containsPair('window', 'kitty-1/3'));
-    // Until the computer answers, it shows the close going, with nothing to ask
-    // or send again; another row's close doesn't change that.
-    expect(sent('kitty-1/3'), findsOneWidget);
-    expect(find.byKey(const ValueKey('close-confirm')), findsNothing);
-    await swipe('kitty-1/2');
-    await tester.tap(find.byKey(const ValueKey('close-confirm')));
+    expect(spinning('kitty-1/3'), findsOneWidget);
+
+    // Until the computer answers, it can't go again, nor be swiped shut.
+    await tester.tap(action('kitty-1/3'));
+    await swipe(tester, 'kitty-1/3', dx: 300);
+    expect(runs('close'), hasLength(1));
+    expect(spinning('kitty-1/3'), findsOneWidget);
+
+    // Another row's close doesn't change that.
+    await swipe(tester, 'kitty-1/2');
+    await tester.tap(action('kitty-1/2'));
     await tester.pump(Duration.zero);
     final closeA = runs('close').last;
     expect(closeA, containsPair('window', 'kitty-1/2'));
-    expect(sent('kitty-1/3'), findsOneWidget);
+    expect(spinning('kitty-1/3'), findsOneWidget);
 
     remote.handle('ran', {'id': closeA['id']});
-    await tester.pump();
-    expect(session('kitty-1/2'), findsOneWidget);
-    expect(sent('kitty-1/3'), findsOneWidget, reason: "a's answer isn't b's");
-    remote.handle('ran', {'id': closeB['id']});
-    await tester.pump();
+    await slide(tester);
+    expect(action('kitty-1/2'), findsNothing, reason: 'answered, the row slides back');
+    expect(spinning('kitty-1/3'), findsOneWidget, reason: "a's answer isn't b's");
+    remote.handle('ran', {'id': closeB['id'], 'error': 'No such window.'});
+    await slide(tester);
+    expect(action('kitty-1/3'), findsNothing);
     expect(session('kitty-1/3'), findsOneWidget);
     expect(runs('close'), hasLength(2));
     remote.flush();
   });
 
-  testWidgets("with the computer out of reach, neither a new session nor a row's question can be used", (tester) async {
+  testWidgets(
+    'an open row shuts on a swipe right, a tap on it, another row opening, or 5 s untouched, ending nothing',
+    (tester) async {
+      macState();
+      await pumpList(tester);
+
+      await swipe(tester, 'kitty-1/3', dx: -20);
+      expect(action('kitty-1/3'), findsNothing, reason: 'a nudge slides back');
+
+      await swipe(tester, 'kitty-1/3');
+      await swipe(tester, 'kitty-1/3', dx: 300);
+      expect(action('kitty-1/3'), findsNothing);
+
+      await swipe(tester, 'kitty-1/3');
+      await tester.tap(session('kitty-1/3'), warnIfMissed: false);
+      await slide(tester);
+      expect(action('kitty-1/3'), findsNothing);
+      expect(find.byType(SessionPage), findsNothing, reason: 'the tap shuts it, not opens the session');
+
+      await swipe(tester, 'kitty-1/3');
+      await swipe(tester, 'kitty-1/2');
+      expect(action('kitty-1/3'), findsNothing, reason: 'one row is open at a time');
+      expect(action('kitty-1/2'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 6));
+      await slide(tester);
+      expect(action('kitty-1/2'), findsNothing);
+
+      // A fling far left only opens it.
+      await tester.fling(session('kitty-1/3'), const Offset(-800, 0), 4000);
+      await slide(tester);
+      expect(action('kitty-1/3'), findsOneWidget);
+
+      // A plain window closes; it ends no session.
+      await tester.drag(find.byKey(const ValueKey('term-kitty-1/4')), const Offset(-300, 0));
+      await slide(tester);
+      expect(find.descendant(of: action('kitty-1/4'), matching: find.text('Close window')), findsOneWidget);
+      expect(runs('close'), isEmpty);
+      remote.flush();
+    },
+  );
+
+  testWidgets("with the computer out of reach, neither a new session nor a row's End session can be used", (
+    tester,
+  ) async {
     macState();
     await pumpList(tester);
-    await tester.drag(session('kitty-1/3'), const Offset(-600, 0));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('close-confirm')), findsOneWidget);
+    await swipe(tester, 'kitty-1/3');
+    expect(action('kitty-1/3'), findsOneWidget);
 
     // Nothing heard from the computer any more, and the list looks again (the
     // app's link check does, every few seconds).
@@ -422,8 +466,11 @@ void main() {
       ..attach()
       ..detach();
     await pumpList(tester);
+    await slide(tester);
     expect(remote.online, isFalse);
-    expect(find.byKey(const ValueKey('close-confirm')), findsNothing);
+    expect(action('kitty-1/3'), findsNothing);
+    await swipe(tester, 'kitty-1/3');
+    expect(action('kitty-1/3'), findsNothing);
     expect(session('kitty-1/3'), findsOneWidget);
     await menu(tester, _b);
     expect(tester.widget<ListTile>(find.byKey(const ValueKey('project-menu-new'))).enabled, isFalse);
@@ -442,7 +489,16 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
     expect(find.byType(AlertDialog), findsNothing);
-    expect(find.text('Close this window on the computer?'), findsOneWidget);
+    expect(find.text('End this omp session on the computer?'), findsOneWidget);
+    expect(find.text('Its window in ~/b closes with it.'), findsOneWidget);
+    expect(
+      find.descendant(of: find.byKey(const ValueKey('close-cancel')), matching: find.text('Keep')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: find.byKey(const ValueKey('close-confirm')), matching: find.text('End session')),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const ValueKey('close-confirm')));
     await tester.pump(Duration.zero);
     final close = runs('close').single;
@@ -470,11 +526,13 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('close-window')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
-    expect(find.text('zsh in ~ ends with it.'), findsOneWidget);
+    expect(find.text('Close this window on the computer?'), findsOneWidget);
+    expect(find.text('zsh in ~ stops with it.'), findsOneWidget);
+    expect(find.text('Close window'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('close-cancel')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
-    expect(find.text('zsh in ~ ends with it.'), findsNothing);
+    expect(find.text('zsh in ~ stops with it.'), findsNothing);
     expect(runs('close'), isEmpty);
 
     await tester.tap(find.byKey(const ValueKey('close-window')));

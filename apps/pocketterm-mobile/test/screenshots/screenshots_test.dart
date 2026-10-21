@@ -270,6 +270,18 @@ void main() {
     r.flush();
   });
 
+  testWidgets('terminal, a row swiped open', variant: _ios, (tester) async {
+    if (skipped()) return;
+    final r = remote();
+    await app(tester, terminal: r);
+    await tester.drag(find.byKey(const ValueKey('swipe-tmux-%4')), const Offset(-200, 0));
+    // It slides back from past open to just open.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await save(tester, 'phone-swipe.png');
+    r.flush();
+  });
+
   testWidgets('session', variant: _ios, (tester) async {
     if (skipped()) return;
     final r = remote();

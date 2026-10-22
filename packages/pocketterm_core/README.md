@@ -4,7 +4,7 @@ Dart and Flutter code shared by the desktop app and the phone app:
 
 | File | What |
 | --- | --- |
-| `session.dart`, `backend.dart`, `connect.dart`, `account.dart` | The connected server and signing in, setup links, connecting to an existing server, the sign-in page and avatar |
+| `session.dart`, `backend.dart`, `connect.dart`, `account.dart` | The connected server and signing in, setup links, confirming a link to another server, the sign-in page and avatar |
 | `server_client.dart` | The PocketTerm server's API ([PROTOCOL.md](../pocketterm_server/PROTOCOL.md)) for one signed-in device |
 | `e2e.dart` | End-to-end encryption between a computer and its phones (AES-256-GCM, one channel key per computer) |
 | `desktops.dart` | The account's computers |

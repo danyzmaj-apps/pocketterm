@@ -159,6 +159,11 @@ class _SessionPageState extends State<SessionPage> {
       return termToast(context, _noCommands(_agent(remote.session(key))), above: _composerKey);
     }
     setState(() => _sending = true);
+    // A prompt of their own replaces the `continue` a restart would send.
+    if (!command && _autoContinue) {
+      _autoContinue = false;
+      remote.removeListener(_continueWhenReady);
+    }
     try {
       final queue = busy && (_followUp || !_agent(remote.session(key)).steers);
       final before = remote.session(key)?.id;
@@ -176,10 +181,12 @@ class _SessionPageState extends State<SessionPage> {
         followUp: queue,
       );
       final s = remote.session(key);
-      final window = s?.window;
-      if (command && window != null) unawaited(_menuOrScreen(window, before));
       // Followed from here on (Lock Screen, Android's notifications), as working.
       if (s != null && !command) unawaited(remote.activities?.prompted(key, title: _title(s)));
+      // Left meanwhile (back, signed out): the field and attachments are gone.
+      if (!mounted) return;
+      final window = s?.window;
+      if (command && window != null) unawaited(_menuOrScreen(window, before));
       // A prompt of their own says what comes next instead of Continue.
       if (!command) _continue = false;
       // Only what went: the field stays editable while it goes, and what was

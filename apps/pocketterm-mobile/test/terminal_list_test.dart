@@ -836,6 +836,32 @@ void main() {
       remote.flush();
     });
 
+    testWidgets('omp at work, Restart and continue: a prompt of their own first means no continue after it', (
+      tester,
+    ) async {
+      await busySheet(tester, 'kitty-1/7');
+      await restart(tester, 'kitty-1/7', 'Restart and continue', busy: true);
+      await tester.enterText(find.byKey(const ValueKey('session-input')), 'fix the tests instead');
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('session-send')));
+      await tester.pump(Duration.zero);
+      final prompt = runs('prompt').single;
+      expect(prompt, containsPair('text', 'fix the tests instead'));
+      remote.handle('ran', {'id': prompt['id']});
+      await tester.pump();
+
+      // At rest after their prompt: nothing more goes.
+      screensOnly(
+        sessions: [
+          {'key': 'kitty-1/7', 'id': 's7', 'agent': 'omp', 'window': 'kitty-1/7', 'title': 'Back', 'cwd': _a},
+        ],
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(runs('prompt'), hasLength(1));
+      remote.flush();
+    });
+
     testWidgets('omp at work, Restart and continue: when continue fails, the chip offers it', (tester) async {
       await busySheet(tester, 'kitty-1/7');
       await restart(tester, 'kitty-1/7', 'Restart and continue');

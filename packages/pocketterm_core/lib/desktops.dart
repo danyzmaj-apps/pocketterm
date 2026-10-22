@@ -58,7 +58,7 @@ class Desktops extends ChangeNotifier {
     : all = cached,
       _selectedId = saved;
 
-  final PocketTermServerClient _server;
+  final Server _server;
 
   /// The list or the selection changed.
   final void Function(List<Desktop> all, String? selected)? onChanged;

@@ -25,15 +25,19 @@ object PocketTermShared {
 
     private fun prefs(c: Context): SharedPreferences = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
-    /** The connected PocketTerm server's URL. */
+    /** The connected server's URL. */
     fun backendUrl(c: Context): String? = prefs(c).getString("backendUrl", null)
+
+    /** What kind of server it is: "supabase", or null for a PocketTerm server. */
+    fun backendKind(c: Context): String? = prefs(c).getString("backendKind", null)
 
     /** The key an app from before saved with a Supabase project, if any: its URL is no PocketTerm server. */
     fun legacyBackendKey(c: Context): String? = prefs(c).getString("backendKey", null)
 
-    fun setBackendUrl(c: Context, url: String?) {
+    fun setBackend(c: Context, url: String?, kind: String?) {
         prefs(c).edit().apply {
             if (url == null) remove("backendUrl") else putString("backendUrl", url)
+            if (url == null || kind == null) remove("backendKind") else putString("backendKind", kind)
             remove("backendKey")
         }.apply()
     }

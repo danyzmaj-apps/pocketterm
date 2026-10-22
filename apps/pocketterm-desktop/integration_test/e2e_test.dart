@@ -88,7 +88,7 @@ class _Run {
   StandInPhone? phone;
 
   /// The spare computer (_handOff), signed in until the end.
-  PocketTermServerClient? _spare;
+  Server? _spare;
 
   /// The phones on the server before this run's paired.
   Set<String> _phonesBefore = const {};
@@ -472,7 +472,7 @@ class _Run {
     // A second computer on the same server that no phone link names: the
     // phone lists it locked. It leaves the server at the end.
     final setup = c.builtIn ? app.computerSetupLink()! : Uri.parse(c.setupLink);
-    final spare = _spare = PocketTermServerClient(Backend.fromLink(setup)!, tokens: MemoryDeviceTokens());
+    final spare = _spare = Server(Backend.fromLink(setup)!, tokens: MemoryDeviceTokens());
     await spare.redeemSetup(Backend.setupToken(setup)!, label: 'Spare Mac $t', platform: 'macos');
     await spare.putDesktop('spare${t.substring(0, 3)}', name: 'Spare Mac $t', platform: 'macos');
     final windows = await app.terminals.windows();

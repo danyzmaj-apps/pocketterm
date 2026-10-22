@@ -88,7 +88,7 @@ class TerminalRemote extends ChangeNotifier {
     _load();
   }
 
-  final PocketTermServerClient _server;
+  final Server _server;
   final Directory _cacheDir;
   final TerminalSend? _transmit;
   final ImageUpload? _uploadImage;

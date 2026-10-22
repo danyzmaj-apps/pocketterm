@@ -52,7 +52,7 @@ class LiveActivities extends ChangeNotifier {
     unawaited(_load());
   }
 
-  final PocketTermServerClient _server;
+  final Server _server;
   final TerminalRemote _remote;
 
   /// Followed sessions: what each activity shows and since when. Null: one

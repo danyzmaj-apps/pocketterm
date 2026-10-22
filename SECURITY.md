@@ -10,10 +10,10 @@ What the publisher collects: the [privacy policy](https://www.danyzmaj.com/pocke
 
 - The desktop app for macOS and Windows (`apps/pocketterm-desktop`), including its local API, the omp extension and the Claude Code plugin (`integrations/`).
 - The phone app for iPhone and Android (`apps/pocketterm-mobile`) and the shared code (`packages/pocketterm_core`).
-- The PocketTerm server (`packages/pocketterm_server`, [PROTOCOL.md](packages/pocketterm_server/PROTOCOL.md)), both built into the desktop app (`apps/pocketterm-desktop/lib/hosting`) and as the Docker image with Caddy (`apps/pocketterm-server`).
+- The PocketTerm server (`packages/pocketterm_server`, [PROTOCOL.md](packages/pocketterm_server/PROTOCOL.md)), both built into the desktop app (`apps/pocketterm-desktop/lib/hosting`) and as the Docker image with Caddy (`apps/pocketterm-server`), and PocketTerm on Supabase (`apps/pocketterm-desktop/supabase`, [its README](apps/pocketterm-desktop/supabase/README.md)): the Edge Function, the migrations and the setup that deploys them.
 - The publisher's push relay (`apps/pocketterm-relay`, [its SECURITY.md](apps/pocketterm-relay/SECURITY.md)).
 
-Out of scope: Tailscale, Apple, Google, Microsoft, Docker, Caddy and Let's Encrypt themselves; the terminals and coding agents PocketTerm drives; a server whose owner gave its setup link, a pairing code or a computer's QR code to someone else; attacks that need an unlocked device the attacker already controls.
+Out of scope: Tailscale, Supabase, Apple, Google, Microsoft, Docker, Caddy and Let's Encrypt themselves; the terminals and coding agents PocketTerm drives; a server whose owner gave its setup link, a pairing code or a computer's QR code to someone else; attacks that need an unlocked device the attacker already controls.
 
 Most valuable: getting a device token without a valid setup token or pairing code, or past the redeem throttle; using the server without a device token; reading or changing anything a computer seals without its key, or planting a key on a phone; reaching the built-in server from outside the owner's tailnet, or the local API from another user or machine; getting the relay to send anything but ciphertext or a checked Live Activity state.
 
@@ -32,6 +32,7 @@ PocketTerm trusts the computer it runs on and the phones that scanned its code. 
 | **Apple (APNs) / Google (FCM)** | The push token, the ciphertext, the opaque tags, the time; an iPhone Live Activity's state; that an Android followed-session notification ended | Notification text, computer ids, session keys or names |
 | **Tailscale** (On this computer) | Your devices' names and addresses, and when they connect | Anything PocketTerm sends (WireGuard, plus PocketTerm's own encryption inside HTTPS) |
 | **VPS provider** (On my own server) | Encrypted traffic, and with access to the machine, what the server stores (above) | Anything the computer seals |
+| **Supabase** (the company, in the region you pick; Supabase option) | What the server stores (above): the device list (names, platforms, when created and last seen), computer names, push tokens, pairing codes for 10 minutes (hashed), device tokens (hashed), the timing of messages and pushes; connection IP addresses | Anything the computer seals: the function and Realtime relay ciphertext only |
 | **Cloudflare** (in front of the relay) | That your server sent an encrypted request of some size, and the status code | The push token, the tags, the kind of push |
 
 ## Keys and storage
@@ -90,6 +91,11 @@ The desktop app's API (`apps/pocketterm-desktop/lib/local_api.dart`) listens on 
 
 - **On this computer:** the built-in server listens on `127.0.0.1`. `tailscale serve` publishes it at `https://<computer>.<tailnet>.ts.net` to the owner's tailnet only; Funnel is never used. PocketTerm changes Tailscale's Serve settings only after reading them (`tailscale serve status`): it never replaces or removes what something else serves on port 443, and changes nothing while they can't be read.
 - **On my own server:** only Caddy is published (ports 80 and 443, Let's Encrypt certificate); the server's port 47900 stays on Docker's network. The server image has no shell and runs as user 65532. The compose file comes from the release tag matching the app and pins the server image of the same version.
+- **Supabase:** a project in the owner's Supabase organization, in the region they pick. One Edge Function (`pocketterm`) answers the same REST paths at `https://<ref>.supabase.co/functions/v1/pocketterm`; the database, tables and Storage bucket are reachable only through it (service-role RPCs, a private bucket). The live channel is Supabase Realtime on private topics: the function gives a signed-in device a 10-minute token, and Realtime's row level security lets it in only while that device is still signed in. Contents stay end-to-end encrypted exactly as with the other options.
+  - **Access token.** The wizard asks for a Supabase personal access token. It covers the whole Supabase organization (every project in it). PocketTerm uses it only during setup and never stores it. Use a Supabase organization of its own for PocketTerm, and delete the token at [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens) afterwards.
+  - **Signing key.** The setup imports a signing key PocketTerm made into the project as its JWT signing key; the function keeps it as a secret to sign the 10-minute live channel tokens. Anyone with access to the project (members of the organization, Supabase) could use it: the same trust as the project itself.
+  - **Revoking.** A phone or computer that is signed out is told at once over the live channel and refused at its next connection; at worst its live connection lasts until its 10-minute token runs out (messages stay sealed).
+  - **Free projects pause** after about a week without use (reliability, not security): restore it at [supabase.com/dashboard](https://supabase.com/dashboard). The free plan allows 2 active projects per account.
 
 ## Test builds
 

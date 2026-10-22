@@ -8,9 +8,11 @@ import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/session.dart';
+import 'package:pocketterm_core/supabase_server.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'own_server.dart';
+import 'supabase_server.dart';
 
 /// A computer, or with [phone] a phone, keeping its sign-in in [tokens] and
 /// the computer keys from links in [keys].
@@ -353,6 +355,30 @@ void main() {
       expect(session.linkToConfirm, isNull);
     });
   });
+
+  test(
+    "on Supabase, a computer signs in with the project's setup link and a phone with its code; both keep the kind",
+    skip: SupabaseServer.skip,
+    () async {
+      final project = await SupabaseServer.start();
+      addTearDown(project.stop);
+      final studio = _Device('Mac Studio')..computer = (desktop: 'efgh5678', key: ChannelKey.generate());
+      addTearDown(studio.disconnect);
+      await studio.connectLink(project.backend.linkWithSetup(project.setupToken));
+      expect(studio.authError, isNull);
+      expect(studio.server, isA<SupabaseServerClient>());
+      expect(await Backend.load(desktop: true), project.backend);
+
+      final phone = _Device('iPhone', phone: true);
+      addTearDown(phone.disconnect);
+      final code = await studio.pairingLink();
+      expect(Backend.fromLink(code), project.backend, reason: "the computer's code names the Supabase project");
+      await phone.connectLink(code, scanned: true);
+      expect(phone.authError, isNull);
+      expect(phone.user?.id, studio.user?.id);
+      expect(phone.keys, [studio.computer]);
+    },
+  );
 }
 
 /// A server that holds GET /v1/me until [answer] says what to answer it,

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/e2e.dart';
@@ -81,8 +80,9 @@ class ChannelSeal {
   }
 }
 
-/// A computer's [topic] (its id) on the server's WebSocket (GET /v1/ws,
-/// packages/pocketterm_server/PROTOCOL.md), kept joined while open.
+/// A computer's [topic] (its id) on the server's live channel (GET /v1/ws,
+/// packages/pocketterm_server/PROTOCOL.md; Supabase Realtime for a Supabase
+/// project, lib/supabase_server.dart), kept joined while open.
 /// Everything on it is sealed with the computer's key ([ChannelSeal]): the
 /// server only relays envelopes; handlers get the opened messages, in the
 /// order they came.
@@ -91,7 +91,7 @@ class ChannelSeal {
 /// restarted, a join nobody answers, two pings without a pong) this
 /// connects again after 1 s, 2 s, 4 s … up to [_maxWait]. A close with 4003
 /// (this device was revoked or left) ends the sign-in instead
-/// ([PocketTermServerClient.refused]).
+/// ([Server.refused]).
 class TerminalChannel {
   TerminalChannel(
     this._server,
@@ -103,7 +103,7 @@ class TerminalChannel {
     this.onUnreachable,
   }) : _seal = ChannelSeal(key, topic, name: name);
 
-  final PocketTermServerClient _server;
+  final Server _server;
 
   /// The topic joined: the computer's id.
   final String topic;
@@ -133,8 +133,8 @@ class TerminalChannel {
   /// How often to ping the server; two without a pong and the link is dead.
   static const _pingEvery = Duration(seconds: 25);
 
-  WebSocket? _ws;
-  StreamSubscription<Object?>? _sub;
+  LiveSocket? _ws;
+  StreamSubscription<String>? _sub;
   bool _open = false;
   bool _joined = false;
   Timer? _retry;
@@ -232,10 +232,10 @@ class TerminalChannel {
 
   Future<void> _connect(int gen) async {
     bool stale() => !_open || gen != _gen;
-    final WebSocket ws;
+    final LiveSocket ws;
     try {
       timing('socket connecting');
-      ws = await _server.connectSocket();
+      ws = await _server.connectLive();
     } on Object catch (e) {
       timing('socket failed');
       if (stale()) return;
@@ -244,11 +244,11 @@ class TerminalChannel {
       _setUnreachable(true);
       return _again(null, '$e');
     }
-    if (stale()) return unawaited(ws.close(1000).then((_) {}, onError: (Object _) {}));
+    if (stale()) return unawaited(ws.close().then((_) {}, onError: (Object _) {}));
     timing('socket open');
     _setUnreachable(false);
     _ws = ws;
-    _sub = ws.listen((data) => _frame(ws, data), onDone: () => _closed(ws), onError: (Object _) {});
+    _sub = ws.frames.listen((data) => _frame(ws, data), onDone: () => _closed(ws), onError: (Object _) {});
     ws.add(jsonEncode({'t': 'join', 'topic': topic}));
     _joinWait = Timer(_stuck, () => _again(ws, 'no answer to the join'));
     _unanswered = 0;
@@ -259,8 +259,8 @@ class TerminalChannel {
     });
   }
 
-  void _frame(WebSocket ws, Object? data) {
-    if (!identical(ws, _ws) || data is! String) return;
+  void _frame(LiveSocket ws, String data) {
+    if (!identical(ws, _ws)) return;
     final Object? frame;
     try {
       frame = jsonDecode(data);
@@ -285,7 +285,7 @@ class TerminalChannel {
     }
   }
 
-  void _closed(WebSocket ws) {
+  void _closed(LiveSocket ws) {
     if (!identical(ws, _ws)) return;
     if (ws.closeCode == 4003) {
       debugPrint('PocketTerm: $name: this device was signed out on the server');
@@ -306,11 +306,11 @@ class TerminalChannel {
     _ws = null;
     unawaited(_sub?.cancel());
     _sub = null;
-    if (ws != null) unawaited(ws.close(1000).then((_) {}, onError: (Object e) => debugPrint('PocketTerm: $name: $e')));
+    if (ws != null) unawaited(ws.close().then((_) {}, onError: (Object e) => debugPrint('PocketTerm: $name: $e')));
   }
 
   /// [ws] (null: none was made) is no good: a new one after a while.
-  void _again(WebSocket? ws, String why) {
+  void _again(LiveSocket? ws, String why) {
     if (!_open || _retry != null || !identical(ws, _ws)) return;
     _drop();
     final wait = _wait;

@@ -13,18 +13,26 @@ enum PocketTermShared {
   static let group = Bundle.main.object(forInfoDictionaryKey: "PocketTermAppGroup") as! String
   static let defaults = UserDefaults(suiteName: group)!
 
-  /// The connected PocketTerm server's URL.
-  static var backendUrl: String? {
-    get { defaults.string(forKey: "backendUrl") }
-    set {
-      if let newValue {
-        defaults.set(newValue, forKey: "backendUrl")
-      } else {
-        defaults.removeObject(forKey: "backendUrl")
-      }
-      // A Supabase project's key, from an app before.
-      defaults.removeObject(forKey: "backendKey")
+  /// The connected server's URL.
+  static var backendUrl: String? { defaults.string(forKey: "backendUrl") }
+
+  /// What kind of server it is: "supabase", or nil for a PocketTerm server.
+  static var backendKind: String? { defaults.string(forKey: "backendKind") }
+
+  /// Keeps the connected server (nil url: none).
+  static func setBackend(url: String?, kind: String?) {
+    if let url {
+      defaults.set(url, forKey: "backendUrl")
+    } else {
+      defaults.removeObject(forKey: "backendUrl")
     }
+    if let kind, url != nil {
+      defaults.set(kind, forKey: "backendKind")
+    } else {
+      defaults.removeObject(forKey: "backendKind")
+    }
+    // A Supabase project's key, from an app before.
+    defaults.removeObject(forKey: "backendKey")
   }
 
   /// The key an app from before saved with a Supabase project, if any: its

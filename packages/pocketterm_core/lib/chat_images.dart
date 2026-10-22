@@ -16,7 +16,7 @@ const maxChatAttachments = 10;
 
 /// The largest file a message takes: sealed, it's the most the server holds
 /// (20 MB).
-const int maxChatFileBytes = PocketTermServerClient.maxBlobBytes - sealedOverhead;
+const int maxChatFileBytes = Server.maxBlobBytes - sealedOverhead;
 
 /// The longest side an image is sent at: plenty for reading a screenshot,
 /// and it keeps uploads and the model's image tokens small.

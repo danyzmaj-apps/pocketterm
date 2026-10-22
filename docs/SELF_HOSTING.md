@@ -2,14 +2,18 @@
 
 PocketTerm has no central server. Your computers and phones meet in a **PocketTerm server** that you run: it pairs your phones, keeps the list of your computers, passes the live channel between a computer and its phones and sends pushes. Everything between a computer and a phone is end-to-end encrypted by the apps, so the server only ever passes on ciphertext ([How your data is protected](#how-your-data-is-protected)).
 
-The server runs in one of two places, and the desktop app sets up either:
+The server runs in one of three places, and the desktop app sets up each:
 
-| | **On this computer** | **On my own server** |
-| --- | --- | --- |
-| What | The server built into the PocketTerm app | A VPS you rent, running the server in Docker |
-| Cost | Free | The VPS (a small one is enough) |
-| Needs | [Tailscale](https://tailscale.com) on this computer and on your phone, signed in to the same account | A VPS with a public IP address and ports 80 and 443 open |
-| Good to know | This computer must stay awake for your phone to connect | No Tailscale, and several computers can share one server. Sessions still run on your computers, so a computer must be awake for its sessions |
+| | **On this computer** | **On my own server** | **[Supabase](#supabase)** |
+| --- | --- | --- | --- |
+| Who runs the server | This computer (built into the PocketTerm app) | You, in Docker on a VPS you rent | Supabase, in a region you pick |
+| Who holds the metadata | Only you | You and your VPS host | Supabase |
+| Reached through | [Tailscale](https://tailscale.com) on this computer and on your phone, signed in to the same account | Your domain (HTTPS); the VPS needs a public IP address and ports 80 and 443 open | supabase.co (HTTPS) |
+| Cost | Free | The VPS (a small one is enough) | Free plan (pauses after about a week unused) |
+| Needs this computer awake to connect | Yes | No | No |
+| Contents end-to-end encrypted | Yes | Yes | Yes |
+
+Sessions always run on the computer, so it stays awake for them in every option; the awake row is about reaching the server. Several computers can share one server in each option.
 
 Tailscale's Personal plan is free (up to 3 users, 100 devices). Sign in with a personal Google, Apple, GitHub or Microsoft account; a work email domain may start a paid business trial instead.
 
@@ -20,7 +24,7 @@ Servers are set up from a computer, never from a phone: the iPhone and Android a
 Install PocketTerm on your Mac or Windows PC ([Releases](https://github.com/danyzmaj-apps/pocketterm/releases/latest)) and open it. With no server yet, its window is a setup wizard that follows your choice. Every screen has **Back**, and the wizard remembers where you were if you close it and come back. **How your data is protected** on its first screen sums up who can see what; **Settings → Account** shows the same again later.
 
 <p align="center">
-  <img src="images/mac-setup.png" width="45%" alt="Setup: On this computer, or On my own server">
+  <img src="images/mac-setup.png" width="45%" alt="Setup: where the server runs">
   <img src="images/mac-setup-data.png" width="45%" alt="Setup: how your data is protected">
 </p>
 
@@ -117,6 +121,23 @@ cd ~/pocketterm && sudo docker compose exec server pocketterm-server setup-link 
 
 Everything the server keeps is in the `pocketterm-data` Docker volume; back it up to keep your devices signed in after moving machines. Other ways to run it (behind nginx, Traefik, Cloudflare or a Cloudflare Tunnel, without Docker) and its options: [apps/pocketterm-server/README.md](../apps/pocketterm-server/README.md).
 
+### Supabase
+
+PocketTerm puts its server on a free [Supabase](https://supabase.com) project in your Supabase organization, in a region you pick. Nothing runs on a machine of yours, and no Tailscale is needed. It's the same server as the other options (same sign-in, same end-to-end encryption), built from Supabase parts: a database, one Edge Function named `pocketterm`, a private Storage bucket for sealed images and files, and Supabase Realtime for the live channel. How it's built: [apps/pocketterm-desktop/supabase/README.md](../apps/pocketterm-desktop/supabase/README.md).
+
+1. **A personal access token.** Make one at [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens) and paste it in the wizard. It covers your whole Supabase organization (every project in it). PocketTerm uses it only during setup and never stores it. Best: a Supabase organization of its own for PocketTerm, and deleting the token once setup is done.
+2. **Organization and region.** Pick the organization and the region the project lives in. Supabase holds your server's metadata there. PocketTerm creates a project named PocketTerm; if the organization already has a project with PocketTerm on it, it offers **Update that project** instead. Your other projects are never offered or touched.
+3. **The setup runs.** A checklist follows each step: **Starting the project**, **Database**, **Live channel key**, **Server function**, **Signing this computer in**. Supabase may hold the live channel key step for several minutes; the wizard says so and waits. Every step can run again: the database keeps what it has, and the function is deployed anew.
+
+Then the computer is signed in, as with a pasted setup link, and **Get this computer ready** opens.
+
+Good to know:
+
+- **Free projects pause** after about a week without use. Phones and computers can't connect until you restore it at [supabase.com/dashboard](https://supabase.com/dashboard). The free plan allows 2 active projects per account.
+- **A signing key.** The setup imports a key PocketTerm made into the project as its JWT signing key, and the function keeps it as a secret to sign 10-minute live channel tokens. Anyone with access to the project (members of the organization, Supabase) could use it: the same trust as the project itself.
+- **Revoking** a phone or computer tells it at once over the live channel; at worst its live connection lasts until its 10-minute token runs out (messages stay sealed).
+- **More computers** don't need a token: on a computer already signed in, **Settings → Account → Add a computer…** shows a new setup link (the one before stops working); paste it in the other computer's wizard (**Supabase → paste a setup link from another computer**).
+
 ## After the first sign-in
 
 The first sign-in on a computer opens **Get this computer ready**, a checklist whose steps check themselves off:
@@ -141,7 +162,7 @@ The first sign-in on a computer opens **Get this computer ready**, a checklist w
 
 ## Connect the apps
 
-- **More computers**: install PocketTerm and paste the setup link in the wizard (**On my own server → Yes**): the VPS's from `setup-link`, or, for a server built into another computer, the link from that computer's **Settings → Account → Add a computer…**. Every computer you sign in on shows up in the phone's list of computers.
+- **More computers**: install PocketTerm and paste the setup link in the wizard (**On my own server → Yes**): the VPS's from `setup-link`, or, for a server built into another computer, the link from that computer's **Settings → Account → Add a computer…**. On Supabase, paste the link from **Add a computer…** under **Supabase** instead ([Supabase](#supabase)). Every computer you sign in on shows up in the phone's list of computers.
 - **iPhone and Android**: phones sign in only with a code from a computer. On the computer, **Settings → Phone → Add a phone…** shows a QR code. In the phone app, tap **Scan the code from your computer**. The code carries the server address, a one-time sign-in code and that computer's encryption key, so the phone signs in and can read that computer's sessions. The sign-in code works once and expires after 10 minutes; the key works until you **Reset key** (**Settings → Phone**). Anyone who scans the code can read that computer's sessions, so only show it to your own phone. No camera? **Paste a code instead** takes the same code as text (the whole `pocketterm://setup?…&code=…` link).
 
 One phone sign-in covers all your computers, but each computer encrypts its sessions with its own key: scan each computer's code once. A computer the phone can't read yet shows as locked with a **Scan** button (or **Scan a computer's code** in the computer picker). After **Reset key**, every phone scans that computer's code again.
@@ -151,6 +172,7 @@ One phone sign-in covers all your computers, but each computer encrypts its sess
 - **Encrypted from end to end.** Each computer makes its own 32-byte key and keeps it in the system's secure storage (the Keychain on a Mac; on Windows, a file in `%APPDATA%` encrypted for your Windows user with DPAPI). It never goes to any server: a phone gets it only by scanning that computer's QR code. Sessions, prompts, screens, images, files and notification text are sealed with it (AES-256-GCM), and every live message carries a timestamp, a random id and a sequence number so it can't be replayed.
 - **Your PocketTerm server** keeps your list of devices, your computers' names, pairing codes (10 minutes) and your phones' push tokens. Images and files wait there sealed until the computer fetches them, at most an hour. It passes everything else on without being able to read it.
 - **Tailscale** (On this computer) sees which of your devices connect and when, not what they send.
+- **Supabase** (Supabase option), the company and the region you pick, holds the metadata the server holds: the device list (names, platforms, when created and last seen), computer names, push tokens, pairing codes for 10 minutes (hashed), device tokens (hashed), and the timing of messages and pushes. It sees connection IP addresses. The function and Realtime pass on ciphertext only.
 - **Push notifications**, if you turn them on in the phone app, go from your server through PocketTerm's push relay (`push.danyzmaj.com`, run by Danijel Lovric on his server in Germany) to Apple or Google. What the relay and Apple or Google see is an encrypted message, the phone's push token and when it was sent, with no computer or session ids; the relay stores nothing ([apps/pocketterm-relay/SECURITY.md](../apps/pocketterm-relay/SECURITY.md)).
 - **Lock Screen updates (iPhone).** When you follow a session, iOS shows its state on the Lock Screen: working, needs you, or finished. Apple doesn't let apps decrypt these updates, so this state travels unencrypted. It never includes any text from your sessions, and it carries no names, folders or ids.
 - **What you trust on a VPS.** The commands run Docker's install script (`get.docker.com`) and the compose file as root. The compose file comes from the release tag matching your app (`v<version>`, not a moving branch) and runs the server image of that same version; Docker's script is Docker's own, fetched over HTTPS. Read either before you run it if you prefer, or install Docker from your distribution's packages instead. Your VPS provider sees encrypted traffic and, with access to the machine, what the server stores, but never what a computer seals.

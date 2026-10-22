@@ -9,14 +9,121 @@ import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal_channel.dart';
 
 import 'own_server.dart';
+import 'supabase_server.dart';
 
 void main() {
-  late OwnServer own;
-  late PocketTermServerClient mac;
-  late PocketTermServerClient phone;
+  // The same tests against the PocketTerm server and PocketTerm on a local Supabase.
+  for (final (name, start, skip) in <(String, Future<TestBackend> Function(), String?)>[
+    ('PocketTerm server', OwnServer.start, null),
+    ('Supabase', SupabaseServer.start, SupabaseServer.skip),
+  ]) {
+    group(name, skip: skip, () => _clientTests(start));
+  }
+
+  test(
+    "on Supabase, a computer makes another computer's setup link; the one before stops working",
+    skip: SupabaseServer.skip,
+    () async {
+      final own = await SupabaseServer.start();
+      addTearDown(own.stop);
+      final mac = await own.desktop();
+      final link = await mac.newSetupLink();
+      expect(Backend.fromLink(link), own.backend);
+      await expectLater(
+        own.desktop(label: 'Mac mini'),
+        throwsA(isA<ServerException>().having((e) => e.code, 'code', 'invalid_code')),
+        reason: 'the setup token before stops working',
+      );
+      final other = own.client();
+      await other.redeemSetup(Backend.setupToken(link)!, label: 'Mac mini', platform: 'macos');
+      expect(other.account?.id, mac.account?.id);
+      final phone = await own.phone(mac);
+      await expectLater(
+        phone.newSetupLink(),
+        throwsA(isA<ServerException>().having((e) => e.status, 'status', 403)),
+        reason: 'only computers make setup links',
+      );
+    },
+  );
+
+  test(
+    "on Supabase, the push relay gets each phone's push sealed to its key, with what the PocketTerm server sends",
+    skip: SupabaseServer.skip,
+    () async {
+      final own = await SupabaseServer.start();
+      addTearDown(own.stop);
+      final mac = await own.desktop();
+      final phone = await own.phone(mac);
+      const token = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90';
+      await phone.push('register', {'token': token, 'platform': 'ios'});
+      final key = ChannelKey.generate();
+      final enc = base64Encode(await sealBytes(key, utf8.encode('{"title":"done"}'), pushAad('abcd1234')));
+      final tag = await pushTag(key);
+      final collapse = await sessionTag(key, 'abcd1234/s1');
+      await mac.push('notify', {'tag': tag, 'enc': enc, 'collapse': collapse});
+      for (var i = 0; i < 500 && own.relayed.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(own.relayed.single['kid'], 'E75P6uryBMf');
+      expect(await SupabaseServer.open(own.relayed.single), {
+        'token': token,
+        'kind': 'terminal',
+        'enc': enc,
+        'tag': tag,
+        'collapse': collapse,
+      });
+    },
+  );
+
+  // A connection kept open from before the app went to the background can be dead without having said so: a
+  // request on it waited out its whole timeout, and the phone said it couldn't reach the server.
+  test('back at the front, requests go on new connections, not on ones that went quiet meanwhile', () async {
+    final quiet = await _GoesQuiet.start();
+    addTearDown(quiet.stop);
+    final client = PocketTermServerClient(
+      quiet.backend,
+      tokens: MemoryDeviceTokens()
+        ..value = jsonEncode({
+          'url': quiet.backend.url,
+          'token': 'token-1',
+          'server': 'srv0000000000001',
+          'device': {'id': 'dev0000000000001', 'role': 'phone', 'label': 'iPhone', 'platform': 'ios'},
+        }),
+    );
+    addTearDown(client.close);
+    await client.load();
+    expect(await client.desktops(), isEmpty);
+
+    client.freshConnections();
+    expect(await client.desktops().timeout(const Duration(seconds: 3)), isEmpty);
+    expect(quiet.connections, 2);
+  });
+
+  // A background recheck's 401 can land while the app disconnects: the sign-in is forgotten, no error escapes.
+  test('a refusal that lands after the client closed is quiet', () async {
+    final tokens = MemoryDeviceTokens()
+      ..value = jsonEncode({
+        'url': 'http://127.0.0.1:9',
+        'token': 'token-1',
+        'server': 'srv0000000000001',
+        'device': {'id': 'dev0000000000001', 'role': 'phone', 'label': 'iPhone', 'platform': 'ios'},
+      });
+    final client = PocketTermServerClient(const Backend(url: 'http://127.0.0.1:9'), tokens: tokens);
+    await client.load();
+    client.close();
+    await client.refused();
+    expect(client.account, isNull);
+    expect(tokens.value, isNull);
+  });
+}
+
+void _clientTests(Future<TestBackend> Function() start) {
+  late TestBackend own;
+  late Server mac;
+  late Server phone;
 
   setUp(() async {
-    own = await OwnServer.start();
+    own = await start();
     mac = await own.desktop();
     phone = await own.phone(mac);
   });
@@ -90,8 +197,8 @@ void main() {
 
   test('a blob goes up once at a path of its own, comes down once, and is gone after', () async {
     final path = phone.newBlobPath();
-    expect(PocketTermServerClient.isBlobPath(path), isTrue);
-    expect(PocketTermServerClient.isBlobPath('../etc/passwd'), isFalse);
+    expect(Server.isBlobPath(path), isTrue);
+    expect(Server.isBlobPath('../etc/passwd'), isFalse);
     final bytes = Uint8List.fromList(List.generate(70000, (i) => i % 251));
     await phone.putBlob(path, bytes);
     await expectLater(
@@ -110,7 +217,7 @@ void main() {
   test('an image over the limit is refused with its reason, not as a lost connection', () async {
     final path = phone.newBlobPath();
     await expectLater(
-      phone.putBlob(path, Uint8List(PocketTermServerClient.maxBlobBytes + 1)),
+      phone.putBlob(path, Uint8List(Server.maxBlobBytes + 1)),
       throwsA(isA<ServerException>().having((e) => e.status, 'status', 413)),
     );
     await expectLater(mac.getBlob(path), throwsA(isA<ServerException>().having((e) => e.status, 'status', 404)));
@@ -176,45 +283,18 @@ void main() {
     expect(await again.desktops(), isEmpty);
   });
 
-  // A connection kept open from before the app went to the background can be dead without having said so: a
-  // request on it waited out its whole timeout, and the phone said it couldn't reach the server.
-  test('back at the front, requests go on new connections, not on ones that went quiet meanwhile', () async {
-    final quiet = await _GoesQuiet.start();
-    addTearDown(quiet.stop);
-    final client = PocketTermServerClient(
-      quiet.backend,
-      tokens: MemoryDeviceTokens()
-        ..value = jsonEncode({
-          'url': quiet.backend.url,
-          'token': 'token-1',
-          'server': 'srv0000000000001',
-          'device': {'id': 'dev0000000000001', 'role': 'phone', 'label': 'iPhone', 'platform': 'ios'},
-        }),
-    );
-    addTearDown(client.close);
-    await client.load();
-    expect(await client.desktops(), isEmpty);
-
-    client.freshConnections();
-    expect(await client.desktops().timeout(const Duration(seconds: 3)), isEmpty);
-    expect(quiet.connections, 2);
-  });
-
-  // A background recheck's 401 can land while the app disconnects: the sign-in is forgotten, no error escapes.
-  test('a refusal that lands after the client closed is quiet', () async {
-    final tokens = MemoryDeviceTokens()
-      ..value = jsonEncode({
-        'url': 'http://127.0.0.1:9',
-        'token': 'token-1',
-        'server': 'srv0000000000001',
-        'device': {'id': 'dev0000000000001', 'role': 'phone', 'label': 'iPhone', 'platform': 'ios'},
-      });
-    final client = PocketTermServerClient(const Backend(url: 'http://127.0.0.1:9'), tokens: tokens);
-    await client.load();
-    client.close();
-    await client.refused();
-    expect(client.account, isNull);
-    expect(tokens.value, isNull);
+  test("a phone signed out while it's on the live channel is told, and its sign-in ends", () async {
+    final key = ChannelKey.generate();
+    await mac.putDesktop('abcd1234', name: 'MacBook Pro', platform: 'macos');
+    final ended = <void>[];
+    phone.ended.listen(ended.add);
+    final remote = TerminalChannel(phone, 'abcd1234', {}, key: key, name: 'phone');
+    addTearDown(remote.close);
+    remote.open();
+    await until(() => remote.joined);
+    await mac.revokeDevice(phone.account!.device.id);
+    await until(() => ended.isNotEmpty);
+    expect(phone.account, isNull);
   });
 }
 

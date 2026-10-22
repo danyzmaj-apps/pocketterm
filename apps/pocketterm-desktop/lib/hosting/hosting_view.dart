@@ -131,8 +131,14 @@ class HostingStatusView extends StatelessWidget {
 
 /// Settings → Account → "Add a computer…": the setup link another computer
 /// pastes (Your own server) to join this computer's server through
-/// Tailscale.
-Future<void> showAddComputer(BuildContext context, Uri link) => showDialog<void>(
+/// Tailscale. [how] says what the other computer does with it.
+Future<void> showAddComputer(
+  BuildContext context,
+  Uri link, {
+  String how =
+      'On the other computer, sign in to Tailscale with the same account, install PocketTerm, choose Your own '
+      'server and paste this link.',
+}) => showDialog<void>(
   context: context,
   builder: (dialog) => AlertDialog(
     backgroundColor: C.bar,
@@ -144,11 +150,7 @@ Future<void> showAddComputer(BuildContext context, Uri link) => showDialog<void>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         spacing: 12,
         children: [
-          const Text(
-            'On the other computer, sign in to Tailscale with the same account, install PocketTerm, choose '
-            'Your own server and paste this link.',
-            style: TextStyle(color: C.dim, height: 1.45),
-          ),
+          Text(how, style: const TextStyle(color: C.dim, height: 1.45)),
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(

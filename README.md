@@ -39,16 +39,20 @@ PocketTerm is a desktop app (macOS menu bar, Windows tray) and a phone app (iPho
 
 ## How it works
 
-The desktop app finds your coding sessions (through the omp extension and Claude Code plugin it installs) and your terminal windows (through each terminal's own API) and passes them to your phone through your PocketTerm server. The server runs in one of two places:
+The desktop app finds your coding sessions (through the omp extension and Claude Code plugin it installs) and your terminal windows (through each terminal's own API) and passes them to your phone through your PocketTerm server. The setup wizard offers three places for it:
 
-| | **On this computer** | **On my own server** |
-| --- | --- | --- |
-| Server | Built into the desktop app | Docker on a VPS you rent, with Caddy for HTTPS |
-| Phone reaches it over | [Tailscale](https://tailscale.com), same account on computer and phone | The internet, over HTTPS |
-| Cost | Free | The VPS (a small one is enough) |
-| Keep in mind | The computer must stay awake | Several computers share one server |
+| | **On this computer** | **On my own server** | **Supabase** |
+| --- | --- | --- | --- |
+| Who runs the server | This computer (built into the desktop app) | You, in Docker on a VPS you rent, with Caddy for HTTPS | Supabase, in a region you pick (a free project the wizard sets up) |
+| Who holds the metadata | Only you | You and your VPS host | Supabase |
+| Phone reaches it over | [Tailscale](https://tailscale.com), same account on computer and phone | Your domain, over HTTPS | supabase.co, over HTTPS |
+| Cost | Free | The VPS (a small one is enough) | Free plan (pauses after about a week unused) |
+| Needs this computer awake to connect | Yes | No | No |
+| Contents end-to-end encrypted | Yes | Yes | Yes |
 
-Interactive diagrams of both setups and of pairing: [docs/how-it-works.html](docs/how-it-works.html).
+Sessions always run on the computer, so it stays awake for them in every option; the awake row is about reaching the server. Several computers can share one server in each option.
+
+Interactive diagrams of the setups and of pairing: [docs/how-it-works.html](docs/how-it-works.html).
 
 The computer has to be awake, with PocketTerm running and **Terminal from phone** on. While that switch is on, PocketTerm keeps the computer from idle sleep. Pushes go out only when nobody has touched the computer for 60 seconds.
 
@@ -56,6 +60,7 @@ The computer has to be awake, with PocketTerm running and **Terminal from phone*
 
 - **End-to-end encryption.** Each computer makes its own 256-bit key. It reaches a phone only inside that computer's QR code, scanned with the in-app scanner, and never goes to any server. Sessions, screens, keystrokes, prompts, images, files and notification text are sealed with it (AES-256-GCM). Every live message carries a timestamp, a random id and a sequence number, so a recorded message can't be replayed.
 - **Your server.** Every owner runs their own; nothing is shared between owners. It stores your device list (a SHA-256 of each device token), your computers' names, pairing codes for 10 minutes and your phones' push tokens. Images and files wait there sealed until the computer fetches them, at most an hour. Everything else passes through as ciphertext and isn't kept.
+- **Supabase** (the Supabase option) holds that same metadata in the region you pick, and sees connection IP addresses. Contents stay end-to-end encrypted. The personal access token the wizard asks for covers your whole Supabase organization; PocketTerm uses it only during setup and never stores it.
 - **Push relay (opt-in).** Notifications go through PocketTerm's relay at `push.danyzmaj.com`, run by Danijel Lovric in Germany, to Apple or Google. They see an encrypted message, a push token and a time; no computer or session ids. The relay stores nothing.
 - **iPhone Lock Screen.** Apple delivers Live Activity updates unencrypted, so a followed session's state (working, needs you, finished) is visible to Apple, the relay and your server. It never carries text, names, folders or ids.
 - **Tailscale** (On this computer) sees device metadata: which of your devices connect and when, not what they send.
@@ -99,7 +104,7 @@ Full model: [SECURITY.md](SECURITY.md). What the publisher collects: the [privac
 
    Without an invitation, [build the phone app from source](docs/BUILDING.md).
 
-2. **Set up the server.** Open PocketTerm on the computer. The wizard asks where the server runs and walks you through it: installing and signing in to Tailscale, or the four commands for a VPS. It shows every command before it runs anything.
+2. **Set up the server.** Open PocketTerm on the computer. The wizard asks where the server runs and walks you through it: installing and signing in to Tailscale, the four commands for a VPS, or a Supabase access token for a project it sets up itself. It shows every command before it runs anything.
 3. **Get the computer ready.** The checklist installs PocketTerm into omp and Claude Code, fixes up your terminals and offers your project folders.
 4. **Scan the code.** In the phone app, tap **Scan the code from your computer** and scan the QR code the checklist shows (later: **Settings → Phone → Add a phone…**). The code is single-use for sign-in, expires in 10 minutes and carries the computer's key: show it only to your own phone. With several computers, scan each one's code once.
 
@@ -112,7 +117,7 @@ On first launch the phone offers a short tour of what you can tap. Problems: [Tr
 
 ## Self-hosting
 
-Both setups are self-hosted. [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) covers the wizard step by step, the VPS commands, adding computers and phones, updating, running your own push relay and removing everything. For the server on its own: [what the PocketTerm server needs](apps/pocketterm-server/README.md#what-it-needs).
+The first two setups are self-hosted; the third runs on your own Supabase project. [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) covers the wizard step by step, the VPS commands, [Supabase](docs/SELF_HOSTING.md#supabase), adding computers and phones, updating, running your own push relay and removing everything. For the server on its own: [what the PocketTerm server needs](apps/pocketterm-server/README.md#what-it-needs).
 
 ## Development
 

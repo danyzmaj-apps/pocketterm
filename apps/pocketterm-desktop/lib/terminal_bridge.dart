@@ -36,7 +36,7 @@ class TerminalBridge {
     this._onPhone,
   });
 
-  final PocketTermServerClient _server;
+  final Server _server;
 
   /// This computer, among the user's (lib/controller.dart).
   final String _desktopId;
@@ -697,7 +697,7 @@ class TerminalBridge {
       return;
     }
     for (final path in blobs) {
-      if (!PocketTermServerClient.isBlobPath(path)) throw const LiveException('Bad image or file path.');
+      if (!Server.isBlobPath(path)) throw const LiveException('Bad image or file path.');
     }
     try {
       final images = [for (final path in paths) await image(await openBlob(_key, path, await _server.getBlob(path)))];

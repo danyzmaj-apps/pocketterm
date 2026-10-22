@@ -73,7 +73,7 @@ void main() {
         backend = {'url': 'https://abcd.supabase.co', 'key': 'sb_publishable_x'};
         final p = await prefs();
         await MobileSession(p, 'iPhone').forgetOldApp();
-        expect(calls.firstWhere((c) => c.method == 'setBackend').arguments, {'url': null});
+        expect(calls.firstWhere((c) => c.method == 'setBackend').arguments, {'url': null, 'kind': null});
         expect(calls.firstWhere((c) => c.method == 'setDeviceToken').arguments, {'value': null});
         expect(native('removeAllChannelKeys'), hasLength(1));
         expect(calls.where((c) => c.method == 'endActivity').map((c) => (c.arguments as Map)['key']), [

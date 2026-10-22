@@ -329,3 +329,14 @@ Limits and keepalive:
 
 Close codes from the server: 1001 the server is stopping, 1009 frame too large, 4003 the device was revoked or
 left (don't reconnect with that token).
+
+## PocketTerm on Supabase
+
+The same protocol is also served by PocketTerm on Supabase (`apps/pocketterm-desktop/supabase`, [its README](../../apps/pocketterm-desktop/supabase/README.md)), an Edge Function at `https://<ref>.supabase.co/functions/v1/pocketterm`: the REST paths above sit under that base (`…/functions/v1/pocketterm/v1/health`, and so on). `GET /v1/health` adds `"backend": "supabase"`. Setup links carry `kind=supabase` and the project URL as `url`.
+
+Two endpoints the PocketTerm server doesn't have:
+
+- `POST /v1/setup/new` (desktop): a new setup token, `{"setup": "<token>"}`. The one before stops working; nobody is signed out. (The PocketTerm server prints its own with `setup-link --new`.)
+- `POST /v1/live/token`: `{"token", "expires", "apikey"}`, a 10-minute Realtime token for this device (ES256, signed with the key the setup imported as the project's JWT signing key) and the project's publishable key. Ask for a new one before it runs out.
+
+There is no `GET /v1/ws`: the live channel is Supabase Realtime broadcast on private topics (each computer's id). A device joins `realtime:<topic>` at `/realtime/v1/websocket` with its live token; row level security on `realtime.messages` lets it in only while that device is still signed in. Messages are the same ChannelSeal envelopes. When a device is signed out, `pt.left` is broadcast on the topics: clients then check they are still signed in. A signed-out device's live connection lasts at most until its token runs out.

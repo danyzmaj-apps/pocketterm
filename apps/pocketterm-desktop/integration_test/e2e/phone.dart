@@ -19,13 +19,13 @@ class StandInPhone {
     final backend = Backend.fromLink(link)!;
     final code = Backend.pairingCode(link)!;
     final computer = Backend.computerKey(link)!;
-    final server = PocketTermServerClient(backend, tokens: MemoryDeviceTokens());
+    final server = Server(backend, tokens: MemoryDeviceTokens());
     await server.redeemCode(code, label: 'E2E stand-in phone', platform: 'ios');
     final remote = TerminalRemote(server, support, desktopId: computer.desktop, key: computer.key)..attach();
     return StandInPhone._(server, remote, computer);
   }
 
-  final PocketTermServerClient server;
+  final Server server;
   final TerminalRemote remote;
   final ComputerKey computer;
 

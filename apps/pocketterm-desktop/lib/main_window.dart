@@ -8,7 +8,8 @@ import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/connect.dart' show ConfirmLink;
 import 'package:pocketterm_core/ghostty_config.dart';
-import 'package:pocketterm_core/server_client.dart' show Device, DeviceRole;
+import 'package:pocketterm_core/server_client.dart' show Device, DeviceRole, ServerException;
+import 'package:pocketterm_core/supabase_server.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_desktop/controller.dart';
@@ -904,7 +905,11 @@ class _SettingsPageState extends State<SettingsPage> {
         _card(
           leading: Avatar(name: app.userName, size: 32),
           title: app.userName,
-          sub: hosting == null ? 'Signed in to this server' : 'This computer runs your server',
+          sub: hosting != null
+              ? 'This computer runs your server'
+              : app.backend?.isSupabase ?? false
+              ? 'Signed in to your Supabase project'
+              : 'Signed in to this server',
           body: [
             _button('Sign out', () => unawaited(_signOut()), danger: true, key: const ValueKey('settings-sign-out')),
           ],
@@ -916,7 +921,10 @@ class _SettingsPageState extends State<SettingsPage> {
           title: 'Your server',
           sub: [
             // A computer running the server says where in its status below.
-            if (hosting == null) app.backend?.host ?? '',
+            if (hosting == null && (app.backend?.isSupabase ?? false))
+              'Supabase, ${app.backend!.host}'
+            else if (hosting == null)
+              app.backend?.host ?? '',
             if (_devices case final d?) _devicesLine(d),
           ].join(' · '),
           body: [
@@ -931,6 +939,12 @@ class _SettingsPageState extends State<SettingsPage> {
                   key: const ValueKey('settings-add-computer'),
                 ),
             ],
+            if (app.server case final SupabaseServerClient supabase)
+              _button(
+                'Add a computer…',
+                () => unawaited(_addSupabaseComputer(supabase)),
+                key: const ValueKey('settings-add-computer'),
+              ),
           ],
         ),
       ),
@@ -1000,6 +1014,26 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ),
     ];
+  }
+
+  /// A new setup link from the Supabase project; the one before stops
+  /// working.
+  Future<void> _addSupabaseComputer(SupabaseServerClient server) async {
+    final Uri link;
+    try {
+      link = await server.newSetupLink();
+    } on Object catch (e) {
+      if (mounted) Toaster.of(context).show('No link: ${e is ServerException ? e.message : '$e'}');
+      return;
+    }
+    if (!mounted) return;
+    await showAddComputer(
+      context,
+      link,
+      how:
+          'On the other computer, open PocketTerm, choose Supabase, then Paste a setup link, and paste this link. '
+          'A link you made before this one stops working.',
+    );
   }
 
   /// "2 computers, 1 phone".

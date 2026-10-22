@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -12,6 +13,10 @@ import 'package:pocketterm_desktop/hosting/tailscale.dart';
 import 'package:pocketterm_desktop/hosting/vps.dart';
 import 'package:pocketterm_desktop/onboarding/commands_view.dart';
 import 'package:pocketterm_desktop/onboarding/data_protection.dart';
+import 'package:pocketterm_desktop/onboarding/supabase_admin.dart';
+import 'package:pocketterm_desktop/onboarding/supabase_setup.dart';
+
+part 'onboarding/supabase_view.dart';
 
 final Uri _selfHostingGuide = Uri.parse(
   'https://github.com/danyzmaj-apps/pocketterm/blob/main/docs/SELF_HOSTING.md#on-my-own-server',
@@ -24,7 +29,7 @@ final Uri _serverNeeds = Uri.parse(
 /// The first-run setup's screens. Where it was left is kept
 /// ([AppController.setupStep]) and it opens there again.
 enum SetupStep {
-  /// On this computer, or on my own server.
+  /// On this computer, on my own server, or Supabase.
   choose,
 
   /// The Tailscale checklist, then Start.
@@ -38,6 +43,10 @@ enum SetupStep {
 
   /// Not yet: its address, the commands for it, live checks, its setup link.
   newServer,
+
+  /// A Supabase project: set one up with an access token, or paste the
+  /// setup link of a computer already on one.
+  supabase,
 }
 
 /// First run: where this computer's PocketTerm server runs. **On this
@@ -45,13 +54,15 @@ enum SetupStep {
 /// (lib/hosting/), after a checklist that follows Tailscale as the person
 /// sets it up. **On my own server**: a VPS, by its setup link, or, without
 /// one yet, the commands that set one up, checked live (lib/hosting/vps.dart).
-/// Either way, the setup checklist follows sign-in
-/// (lib/onboarding/get_ready.dart).
+/// **Supabase**: a free Supabase project the setup makes with the person's
+/// access token (lib/onboarding/supabase_view.dart). Either way, the setup
+/// checklist follows sign-in (lib/onboarding/get_ready.dart).
 class SetupPage extends StatefulWidget {
   const SetupPage({
     required this.app,
     this.poll = const Duration(seconds: 3),
     this.checks = const ServerChecks(),
+    this.supabase = const SupabaseTools(),
     super.key,
   });
   final AppController app;
@@ -61,6 +72,9 @@ class SetupPage extends StatefulWidget {
 
   /// What the VPS checks ask the network.
   final ServerChecks checks;
+
+  /// What the Supabase branch talks to.
+  final SupabaseTools supabase;
 
   @override
   State<SetupPage> createState() => _SetupPageState();
@@ -109,6 +123,12 @@ class _SetupPageState extends State<SetupPage> {
             checks: widget.checks,
             onBack: () => _go(SetupStep.ownServer),
           ),
+          SetupStep.supabase => SupabaseSetupView(
+            app: widget.app,
+            checks: widget.checks,
+            tools: widget.supabase,
+            onBack: () => _go(SetupStep.choose),
+          ),
         },
       ),
     ),
@@ -151,6 +171,16 @@ class _SetupPageState extends State<SetupPage> {
             'so this computer stays awake for them too.',
         onTap: () => _go(SetupStep.ownServer),
       ),
+      const SizedBox(height: 12),
+      _option(
+        key: const ValueKey('setup-supabase'),
+        icon: Icons.cloud_outlined,
+        title: 'Supabase',
+        text:
+            'A free Supabase project PocketTerm sets up for you. No Tailscale, no server to run. Supabase holds your '
+            'device list.',
+        onTap: () => _go(SetupStep.supabase),
+      ),
       const SizedBox(height: 18),
       const Explainer(
         key: ValueKey('why-server'),
@@ -161,6 +191,7 @@ class _SetupPageState extends State<SetupPage> {
           'pass through it only encrypted, so it can’t read them.',
         ),
       ),
+      const Explainer(key: ValueKey('why-compare'), title: 'How the three options compare', child: OptionsTable()),
       const Explainer(key: ValueKey('why-data'), title: 'How your data is protected', child: DataProtection()),
     ],
   );
@@ -653,17 +684,34 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
 }
 
 /// What's wrong with [text] as a computer's setup link, for the person;
-/// null when it is one (`pocketterm://setup?url=<https url>&setup=<token>`).
+/// null when it is one (`pocketterm://setup?url=<https url>&setup=<token>`,
+/// with `kind=supabase` for a Supabase project).
 String? setupLinkProblem(String text) {
   final link = Uri.tryParse(text.trim());
   if (link == null || link.scheme != 'pocketterm' || link.host != 'setup' || link.queryParameters['url'] == null) {
     return 'That isn’t a setup link. It starts with pocketterm://setup?url= : copy the whole line setup-link '
         'printed.';
   }
-  if (Backend.parse(link.queryParameters['url']!).error case final error?) {
-    return 'The server address in that link doesn’t work. $error';
+  final kind = link.queryParameters['kind'] ?? '';
+  final supabase = kind == BackendKind.supabase.name;
+  if (Backend.fromLink(link) == null) {
+    if (kind.isNotEmpty && kind != BackendKind.pocketterm.name && !supabase) {
+      return 'That link is for a newer PocketTerm. Update PocketTerm, then paste it again.';
+    }
+    final parsed = Backend.parse(
+      link.queryParameters['url']!,
+      kind: supabase ? BackendKind.supabase : BackendKind.pocketterm,
+    );
+    if (parsed.error case final error?) return 'The server address in that link doesn’t work. $error';
   }
   if (Backend.setupToken(link) != null) return null;
+  if (supabase) {
+    return Backend.pairingCode(link) != null
+        ? 'That link signs in a phone, not a computer. On a computer already signed in, open Settings, Account, '
+              'Add a computer… and paste the link it shows.'
+        : 'That link has no setup token. On a computer already signed in, open Settings, Account, Add a '
+              'computer… and copy the whole link.';
+  }
   if (Backend.pairingCode(link) != null) {
     return 'That link signs in a phone, not a computer. Use the server’s setup link: on the server, run '
         'sudo docker compose exec server pocketterm-server setup-link.';
@@ -775,9 +823,11 @@ class _SetupLinkFormState extends State<SetupLinkForm> {
                   : const Icon(Icons.check, size: 14, color: C.ok),
             ),
             const SizedBox(width: 8),
-            Text(
-              _health!.isEmpty ? 'Asking the server…' : _health!,
-              style: const TextStyle(fontSize: 12, color: C.dim),
+            Flexible(
+              child: Text(
+                _health!.isEmpty ? 'Asking the server…' : _health!,
+                style: const TextStyle(fontSize: 12, color: C.dim),
+              ),
             ),
           ],
         ),

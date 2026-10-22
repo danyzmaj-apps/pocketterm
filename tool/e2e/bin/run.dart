@@ -5,7 +5,7 @@
 // in build/e2e/<stamp>/.
 //
 //   dart run tool/e2e/bin/run.dart [--terminal kitty|ghostty|wezterm|all]
-//       [--server local|builtin|<https url> (--setup-link <link> |
+//       [--server local|builtin|supabase|<https url> (--setup-link <link> |
 //        --setup-link-file <file>) [--server-stop-cmd <sh> --server-start-cmd <sh>]
 //        [--server-ca <pem>]]
 //       [--no-phone] [--platform ios|android [--avd <name>]]
@@ -25,6 +25,9 @@
 // --server-start-cmd (sh -c) stop and start it for the server restart,
 // e.g. `ssh host docker stop <container>`. --server-ca: a root the desktop
 // trusts for it (a test server with its own CA, e.g. Caddy's `tls internal`).
+// --server supabase: PocketTerm on the local Supabase in Docker
+// (tool/supabase-local.sh, started when it isn't, emptied for each terminal);
+// the server restart stops and starts its function and Realtime.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -144,7 +147,7 @@ Map<String, String> _parse(List<String> args) {
     stderr.writeln('--terminal: one of ${terminalIds.join(', ')} or all');
     exit(64);
   }
-  if (o['server'] != 'local' && o['server'] != 'builtin' && o['setup-link'] == null) {
+  if (!{'local', 'builtin', 'supabase'}.contains(o['server']) && o['setup-link'] == null) {
     stderr.writeln('--server <url> needs --setup-link-file <file> (or --setup-link <link>)');
     exit(64);
   }
@@ -306,6 +309,54 @@ class _Server {
   }
 }
 
+/// PocketTerm on the local Supabase in Docker (tool/supabase-local.sh): started if it isn't, emptied for each
+/// terminal's run ([prepare]), its function and Realtime stopped and started for the server restart.
+class _Supabase {
+  _Supabase(this.repo, this.logPath);
+  final String repo;
+  final String logPath;
+  static const url = 'http://127.0.0.1:55421';
+  static const _containers = ['supabase_edge_runtime_pocketterm-local', 'supabase_realtime_pocketterm-local'];
+
+  String get _script => p.join(repo, 'tool', 'supabase-local.sh');
+  Map<String, String> get _env => {
+    'DOCKER_HOST': Platform.environment['DOCKER_HOST'] ?? 'unix://${Platform.environment['HOME']}/.colima/default/docker.sock',
+  };
+
+  Future<String> _run(String what, String exe, List<String> args) async {
+    final r = await Process.run(exe, args, environment: _env);
+    File(logPath).writeAsStringSync('--- $what ${DateTime.now()}\n${r.stdout}${r.stderr}', mode: FileMode.append);
+    if (r.exitCode != 0) throw StateError('$what: exit ${r.exitCode} ${r.stderr}'.trim());
+    return '${r.stdout}'.trim();
+  }
+
+  Future<bool> _answers() async {
+    try {
+      final c = HttpClient();
+      final r = await (await c.getUrl(Uri.parse('$url/functions/v1/pocketterm/v1/health'))).close();
+      c.close(force: true);
+      return r.statusCode == 200;
+    } on Object {
+      return false;
+    }
+  }
+
+  /// Empty, with a new setup token; the computer's setup link.
+  Future<String> prepare() async {
+    if (!await _answers()) await _run('supabase start', _script, ['start']);
+    await _run('supabase reset', _script, ['reset']);
+    await until('PocketTerm on Supabase answering', _answers);
+    return await _run('setup link', _script, ['link']);
+  }
+
+  Future<void> stop() => _run('stop function and Realtime', 'docker', ['stop', ..._containers]);
+
+  Future<void> start() async {
+    await _run('start function and Realtime', 'docker', ['start', ..._containers]);
+    await until('PocketTerm on Supabase answering', _answers);
+  }
+}
+
 /// One terminal's run; scenario → `pass`, `fail: why` or `skip: why`.
 Future<Map<String, String>> _runTerminal(
   String terminal, {
@@ -324,6 +375,7 @@ Future<Map<String, String>> _runTerminal(
   final results = <String, String>{};
   final phone = opts['phone'] != 'no';
   _Server? server;
+  _Supabase? supabase;
   Process? desktop;
   stdout.writeln('\n== $terminal ==');
   try {
@@ -338,6 +390,10 @@ Future<Map<String, String>> _runTerminal(
       // The desktop starts it ("On this computer") and makes its links.
       setupLink = '';
       serverUrl = 'builtin';
+    } else if (opts['server'] == 'supabase') {
+      supabase = _Supabase(repo, p.join(artifacts, 'supabase.log'));
+      setupLink = await supabase.prepare();
+      serverUrl = _Supabase.url;
     } else {
       setupLink = opts['setup-link']!;
       serverUrl = opts['server']!;
@@ -406,11 +462,17 @@ Future<Map<String, String>> _runTerminal(
       }
       for (final f in Directory(c.rpcDir).listSync().whereType<File>()) {
         final name = p.basename(f.path);
-        if (!name.endsWith('.req') || !handled.add(name)) continue;
+        if (!name.endsWith('.req')) continue;
         final what = name.substring(0, name.length - 4);
+        // The rest (approve-on-computer, terminal-on …) the desktop test answers itself.
+        if (what != 'server-stop' && what != 'server-start') continue;
+        if (!handled.add(name)) continue;
         var answer = 'ok';
         try {
           switch (what) {
+            case 'server-stop' || 'server-start' when supabase != null:
+              stdout.writeln('  server: ${what == 'server-stop' ? 'stopping' : 'starting'} Supabase function and Realtime');
+              await (what == 'server-stop' ? supabase.stop() : supabase.start());
             case 'server-stop' || 'server-start' when server == null:
               final cmd = opts[what == 'server-stop' ? 'server-stop-cmd' : 'server-start-cmd'];
               if (cmd == null) {
@@ -426,8 +488,6 @@ Future<Map<String, String>> _runTerminal(
             case 'server-start':
               stdout.writeln('  server: starting');
               await server?.start();
-            default:
-              answer = 'unknown request';
           }
         } on Object catch (e) {
           answer = 'failed: $e';
@@ -470,6 +530,8 @@ Future<Map<String, String>> _runTerminal(
     final stopped = await Owned.stopAll(p.join(artifacts, 'owned.jsonl'));
     if (stopped.isNotEmpty) stdout.writeln('  stopped: ${stopped.join(', ')}');
     await server?.stop();
+    // A Supabase stopped for the restart and not started again (the run ended between).
+    if (supabase != null) await supabase.start().then((_) {}, onError: (Object _) {});
     _keepLogs(work, artifacts);
     // Another server's setup link stays out of the artifacts.
     final config = File(p.join(artifacts, 'config.json'));

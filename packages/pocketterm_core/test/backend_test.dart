@@ -87,6 +87,34 @@ void main() {
     expect(Backend.computerKey(link.replace(queryParameters: {...good, 'd': '../etc'})), isNull);
   });
 
+  test("a Supabase project's links say so, and every link made from it keeps saying so", () {
+    const b = Backend(url: 'https://abcdefghijklmnop.supabase.co', kind: BackendKind.supabase);
+    expect(b.api, 'https://abcdefghijklmnop.supabase.co/functions/v1/pocketterm');
+    final key = ChannelKey.generate();
+    for (final link in [
+      b.link,
+      b.linkWithSetup('abc'),
+      b.linkWithCode('K7QM', computer: (desktop: 'abcd1234', key: key)),
+    ]) {
+      expect(Backend.fromLink(link), b, reason: '$link');
+    }
+    expect(Backend.setupToken(b.linkWithSetup('abc')), 'abc');
+    // The same URL as a PocketTerm server is another server.
+    expect(Backend.fromLink(Uri.parse('pocketterm://setup?url=https://abcdefghijklmnop.supabase.co')), isNot(b));
+    // The function's own URL, pasted, is the project.
+    expect(
+      Backend.parse(
+        'https://abcdefghijklmnop.supabase.co/functions/v1/pocketterm/v1',
+        kind: BackendKind.supabase,
+      ).backend,
+      b,
+    );
+    // A kind this app doesn't know is no link it can use.
+    final unknown = Uri.parse('pocketterm://setup?kind=firebase&url=https://x.example.com&setup=abc');
+    expect(Backend.fromLink(unknown), isNull);
+    expect(Backend.setupToken(unknown), isNull);
+  });
+
   group('check', () {
     test('a PocketTerm server passes; anything else answering is named', () async {
       final own = await OwnServer.start();
@@ -192,6 +220,7 @@ void main() {
 
   group('where the backend is kept', () {
     const backend = Backend(url: 'https://pt.example.com');
+    const supabase = Backend(url: 'https://abcdefghijklmnop.supabase.co', kind: BackendKind.supabase);
 
     test("a computer's is in its shared preferences; one saved for a Supabase project isn't a server", () async {
       TestWidgetsFlutterBinding.ensureInitialized();
@@ -199,6 +228,10 @@ void main() {
       expect(await Backend.load(desktop: true), isNull);
       await backend.save(desktop: true);
       expect(await Backend.load(desktop: true), backend);
+      await supabase.save(desktop: true);
+      expect(await Backend.load(desktop: true), supabase);
+      await backend.save(desktop: true);
+      expect(await Backend.load(desktop: true), backend, reason: 'a server after a Supabase project is no project');
       await Backend.clear(desktop: true);
       expect(await Backend.load(desktop: true), isNull);
 
@@ -219,9 +252,12 @@ void main() {
         },
       );
       await backend.save(desktop: false);
-      expect(native, {'url': backend.url});
+      expect(native, {'url': backend.url, 'kind': null});
       expect(await Backend.load(desktop: true), isNull);
       expect(await Backend.load(desktop: false), backend);
+      await supabase.save(desktop: false);
+      expect(native, {'url': supabase.url, 'kind': 'supabase'});
+      expect(await Backend.load(desktop: false), supabase);
       native = {'url': 'https://abc.supabase.co', 'key': 'sb_x'};
       expect(await Backend.load(desktop: false), isNull, reason: 'a Supabase project from an app before');
       await Backend.clear(desktop: false);

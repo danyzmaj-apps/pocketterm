@@ -103,11 +103,15 @@ class MainActivity : FlutterActivity() {
             )
             "getBackend" -> result.success(
                 PocketTermShared.backendUrl(this)?.let { url ->
-                    listOfNotNull("url" to url, PocketTermShared.legacyBackendKey(this)?.let { "key" to it }).toMap()
+                    listOfNotNull(
+                        "url" to url,
+                        PocketTermShared.backendKind(this)?.let { "kind" to it },
+                        PocketTermShared.legacyBackendKey(this)?.let { "key" to it },
+                    ).toMap()
                 },
             )
             "setBackend" -> {
-                PocketTermShared.setBackendUrl(this, args["url"] as? String)
+                PocketTermShared.setBackend(this, args["url"] as? String, args["kind"] as? String)
                 result.success(null)
             }
             "deviceToken" -> result.success(PocketTermShared.deviceToken(this))

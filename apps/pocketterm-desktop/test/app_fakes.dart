@@ -168,6 +168,19 @@ class FakeApp extends AppController {
   @override
   Account? get user => real ? super.user : fakeUser;
 
+  /// The server this computer talks to, when a test gives one.
+  Server? fakeServer;
+
+  @override
+  Server? get server => fakeServer ?? super.server;
+
+  /// When set, setup links go here instead of signing in.
+  Future<void> Function(Uri link)? onConnectLink;
+
+  @override
+  Future<void> connectLink(Uri uri, {bool scanned = false}) =>
+      onConnectLink?.call(uri) ?? super.connectLink(uri, scanned: scanned);
+
   /// Unless given: no terminal here, no kitty sockets, no tmux, no apps to script.
   @override
   Terminals get terminals => _givenTerminals ?? _terminals;

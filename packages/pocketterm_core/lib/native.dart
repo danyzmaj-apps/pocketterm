@@ -124,17 +124,19 @@ class Native {
   ];
 
   /// The server (lib/backend.dart) kept where the native side reads it too
-  /// (apps/pocketterm-mobile/ios/Shared/PocketTermShared.swift, android/…/PocketTermShared.kt).
+  /// (apps/pocketterm-mobile/ios/Shared/PocketTermShared.swift, android/…/PocketTermShared.kt):
+  /// its URL and kind (`supabase`, or null for a PocketTerm server).
   /// [legacy]: an app from before saved a Supabase project there (it came
   /// with a key).
-  static Future<({String url, bool legacy})?> getBackend() async {
+  static Future<({String url, String? kind, bool legacy})?> getBackend() async {
     final m = await _channel.invokeMapMethod<String, String>('getBackend');
     final url = m?['url'];
-    return url == null ? null : (url: url, legacy: (m?['key'] ?? '').isNotEmpty);
+    return url == null ? null : (url: url, kind: m?['kind'], legacy: (m?['key'] ?? '').isNotEmpty);
   }
 
-  /// Null forgets it.
-  static Future<void> setBackend({String? url}) => _channel.invokeMethod('setBackend', {'url': url});
+  /// Null [url] forgets it.
+  static Future<void> setBackend({String? url, String? kind}) =>
+      _channel.invokeMethod('setBackend', {'url': url, 'kind': kind});
 
   /// This phone's sign-in on its server (lib/server_client.dart): the device
   /// token and what came with it, one opaque string kept in the Keychain

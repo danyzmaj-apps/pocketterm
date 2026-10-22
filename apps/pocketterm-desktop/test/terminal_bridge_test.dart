@@ -181,7 +181,7 @@ void main() {
     );
 
     final path = (runs.single['images'] as List).single as String;
-    expect(PocketTermServerClient.isBlobPath(path), isTrue);
+    expect(Server.isBlobPath(path), isTrue);
     final sealed = stored[path]!;
     expect(sealed, isNot(containsAllInOrder(png)), reason: 'Storage never holds the image itself');
     expect(await TerminalBridge.openBlob(key, path, sealed), png);
@@ -196,7 +196,7 @@ void main() {
     expect(file['name'], 'Q3 report.pdf');
     expect(file['mime'], 'application/pdf');
     final filePath = file['path'] as String;
-    expect(PocketTermServerClient.isBlobPath(filePath), isTrue);
+    expect(Server.isBlobPath(filePath), isTrue);
     expect(filePath, isNot(path));
     final sealedFile = stored[filePath]!;
     expect(sealedFile, isNot(containsAllInOrder(pdf)), reason: 'Storage never holds the file itself');

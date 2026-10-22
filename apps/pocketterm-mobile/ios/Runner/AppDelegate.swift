@@ -64,11 +64,12 @@ import UserNotifications
       case "getBackend":
         result(
           PocketTermShared.backendUrl.map { url in
-            ["url": url, "key": PocketTermShared.legacyBackendKey].compactMapValues { $0 }
+            ["url": url, "kind": PocketTermShared.backendKind, "key": PocketTermShared.legacyBackendKey]
+              .compactMapValues { $0 }
           }
         )
       case "setBackend":
-        PocketTermShared.backendUrl = args["url"] as? String
+        PocketTermShared.setBackend(url: args["url"] as? String, kind: args["kind"] as? String)
         result(nil)
       case "deviceToken":
         result(PocketTermShared.deviceToken())

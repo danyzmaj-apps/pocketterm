@@ -2,6 +2,11 @@
 
 What each PocketTerm release brings.
 
+## Unreleased (build 15)
+
+- **A third setup choice: Supabase.** The wizard now offers **On this computer** (Tailscale), **On my own server** (VPS) and **Supabase**. With a Supabase personal access token it creates a free project named PocketTerm in the organization and region you pick (or updates the one that has PocketTerm on it), sets up its database, live channel and server function, and signs the computer in. Other computers join with a setup link from **Settings → Account → Add a computer…**, no token needed. Phones scan the computer's code as before.
+- **Same encryption.** Sessions, images, files and notification text stay end-to-end encrypted: the function and Supabase Realtime pass on ciphertext only. Supabase (the company, in the region you pick) holds the server's metadata (device list, computer names, push tokens, timing) and sees connection IP addresses. The access token covers the whole Supabase organization; PocketTerm uses it only during setup and never stores it. Free projects pause after about a week unused. Who sees what, side by side: [SECURITY.md](SECURITY.md), [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md#supabase).
+
 ## 0.1.0
 
 The first release of PocketTerm: the omp and Claude Code sessions on your computer, on your phone, end-to-end encrypted, through a PocketTerm server you run yourself.

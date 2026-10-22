@@ -12,7 +12,7 @@ import 'package:pocketterm_core/timing.dart';
 /// The connected server ([Backend]) and signing in to it (the server's
 /// setup link on a computer, a computer's code on a phone): what the
 /// desktop and the phone apps share. Signed in is holding a device token
-/// ([PocketTermServerClient.account]), kept in [deviceTokens].
+/// ([Server.account]), kept in [deviceTokens].
 abstract class Session extends ChangeNotifier {
   Session(this.device);
 
@@ -36,8 +36,8 @@ abstract class Session extends ChangeNotifier {
   Backend? _backend;
 
   /// Only while [backend] is set.
-  PocketTermServerClient? get server => _server;
-  PocketTermServerClient? _server;
+  Server? get server => _server;
+  Server? _server;
 
   /// This machine's name: its label on the server and of its push
   /// registration.
@@ -262,8 +262,7 @@ abstract class Session extends ChangeNotifier {
   }
 
   /// A client for [backend] keeping its sign-in in [tokens].
-  PocketTermServerClient _client(Backend backend, DeviceTokens tokens) =>
-      PocketTermServerClient(backend, tokens: tokens);
+  Server _client(Backend backend, DeviceTokens tokens) => Server(backend, tokens: tokens);
 
   /// A computer's key from a scanned setup link: the phone keeps it, over
   /// any it held for that computer.

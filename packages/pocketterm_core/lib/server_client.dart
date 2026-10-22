@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/backend.dart';
+import 'package:pocketterm_core/supabase_server.dart';
 import 'package:uuid/uuid.dart';
 
 /// What a device is to its server.
@@ -95,14 +96,113 @@ class ServerException implements Exception {
   String toString() => message;
 }
 
+/// The live channel's connection, in the frames of PROTOCOL.md's WebSocket
+/// (`join`, `send`, `leave`, `ping` out; `joined`, `msg`, `pong`, `error`
+/// in), whatever carries them: the PocketTerm server's own WebSocket, or
+/// Supabase Realtime (lib/supabase_server.dart). [closeCode] 4003 once
+/// closed: this device was signed out.
+abstract interface class LiveSocket {
+  /// Each frame as it comes; done when the connection is.
+  Stream<String> get frames;
+  void add(String frame);
+  int? get closeCode;
+  Future<void> close([int code = 1000]);
+}
+
+/// Where this device is signed in (packages/pocketterm_server/PROTOCOL.md):
+/// signing in, pairing, the computers list, images and push, and the live
+/// channel ([connectLive]). [Server.new] picks the implementation for the
+/// backend's kind: [PocketTermServerClient] or [SupabaseServerClient].
+abstract interface class Server {
+  factory Server(Backend backend, {required DeviceTokens tokens}) => switch (backend.kind) {
+    BackendKind.pocketterm => PocketTermServerClient(backend, tokens: tokens),
+    BackendKind.supabase => SupabaseServerClient(backend, tokens: tokens),
+  };
+
+  /// [path] can be one of [newBlobPath]'s.
+  static bool isBlobPath(String path) => RegExp(r'^[A-Za-z0-9-]{1,64}$').hasMatch(path);
+
+  /// The most a blob may hold (the server's limit, 20 MiB).
+  static const int maxBlobBytes = 20 * 1024 * 1024;
+
+  Backend get backend;
+
+  /// This device, signed in; null while signed out.
+  Account? get account;
+
+  /// The server refused this device's token: it's signed out here now.
+  Stream<void> get ended;
+
+  /// Back at the front: the next requests go on new connections.
+  void freshConnections();
+
+  /// Reads the sign-in this device kept for this server, without asking it.
+  Future<void> load();
+
+  /// Asks the server whether the sign-in still holds; a refusal ends it.
+  Future<void> recheck();
+
+  /// Signs this computer in with the server's setup token (its setup link).
+  Future<Account> redeemSetup(String setup, {required String label, required String platform});
+
+  /// Signs this phone in with a computer's pairing code (its QR).
+  Future<Account> redeemCode(String code, {required String label, required String platform});
+
+  /// Leaves the server: the token stops working there and is forgotten here.
+  Future<void> leave();
+
+  /// Computer only: wipes everything on the server, this device's sign-in
+  /// too. Its setup link and id stay.
+  Future<void> erase();
+
+  /// The server refused the token: forgotten here, [ended] says so.
+  Future<void> refused();
+
+  /// Computer only: a pairing code for a phone, good once for 10 minutes.
+  Future<String> createPairingCode();
+
+  /// Every computer and phone signed in to the server, oldest first.
+  Future<List<Device>> devices();
+
+  /// Computer only: signs device [id] out.
+  Future<void> revokeDevice(String id);
+
+  /// The computers phones list, most recently seen first.
+  Future<List<Map<String, dynamic>>> desktops();
+
+  /// Computer only: lists computer [id] (also stamps it seen now).
+  Future<void> putDesktop(String id, {required String name, required String platform});
+
+  Future<void> deleteDesktop(String id);
+
+  /// A new path for an image or file: the phone seals it for this path first.
+  String newBlobPath();
+
+  Future<void> putBlob(String path, Uint8List bytes);
+
+  /// The blob at [path]; the server deletes it once sent.
+  Future<Uint8List> getBlob(String path);
+
+  Future<void> deleteBlob(String path);
+
+  /// Push [action] with its [body]; the server's answer.
+  Future<Map<String, dynamic>> push(String action, Map<String, Object?> body);
+
+  /// The live channel, signed in as this device.
+  Future<LiveSocket> connectLive();
+
+  void close();
+}
+
 /// The PocketTerm server (packages/pocketterm_server/PROTOCOL.md) through
 /// this device's token: signing in, pairing, the computers list, images and
 /// push. Signed in is having a token ([account]); once the server refuses it
 /// (the device was revoked or left, the server was erased) it is forgotten
 /// and [ended] says so. The live channel is lib/terminal_channel.dart.
-class PocketTermServerClient {
+class PocketTermServerClient implements Server {
   PocketTermServerClient(this.backend, {required this.tokens});
 
+  @override
   final Backend backend;
 
   /// Where this device's sign-in is kept.
@@ -115,6 +215,7 @@ class PocketTermServerClient {
   /// stops an app's network in the background, the phone changed networks),
   /// and a request on one would wait out its whole timeout. Requests under
   /// way finish where they are.
+  @override
   void freshConnections() {
     final old = _http;
     _http = _newHttp();
@@ -124,6 +225,7 @@ class PocketTermServerClient {
   static const _timeout = Duration(seconds: 20);
 
   /// This device, signed in; null while signed out.
+  @override
   Account? get account => _account;
   Account? _account;
   String? _token;
@@ -132,12 +234,14 @@ class PocketTermServerClient {
   String? _kept;
 
   /// The server refused this device's token: it's signed out here now.
+  @override
   Stream<void> get ended => _ended.stream;
   final _ended = StreamController<void>.broadcast();
 
   /// Reads the sign-in this device kept for this server: [account] at once,
   /// without asking the server ([recheck] does), so a launch shows what it
   /// had before the network answers.
+  @override
   Future<void> load() async {
     try {
       final raw = await tokens.read();
@@ -162,6 +266,7 @@ class PocketTermServerClient {
   /// Asks the server whether the sign-in still holds, and keeps what it says
   /// of this device. A refusal ends it ([ended]); no answer (offline), or
   /// one this app doesn't read (a captive portal's page), keeps it.
+  @override
   Future<void> recheck() async {
     final token = _token;
     if (token == null) return;
@@ -177,10 +282,12 @@ class PocketTermServerClient {
   }
 
   /// Signs this computer in with the server's setup token (its setup link).
+  @override
   Future<Account> redeemSetup(String setup, {required String label, required String platform}) =>
       _redeem('/v1/setup/redeem', {'setup': setup, 'label': label, 'platform': platform});
 
   /// Signs this phone in with a computer's pairing code (its QR).
+  @override
   Future<Account> redeemCode(String code, {required String label, required String platform}) =>
       _redeem('/v1/pair/redeem', {'code': code, 'label': label, 'platform': platform});
 
@@ -214,6 +321,7 @@ class PocketTermServerClient {
   /// Leaves the server: the token stops working there (DELETE
   /// /v1/devices/me) and is forgotten here, also when the server can't be
   /// reached.
+  @override
   Future<void> leave() async {
     try {
       if (_token != null) await _json('DELETE', '/v1/devices/me');
@@ -225,6 +333,7 @@ class PocketTermServerClient {
   /// Computer only: wipes everything on the server (every device, this one
   /// too, the computers list, codes, push tokens, images). Its setup link
   /// and id stay.
+  @override
   Future<void> erase() async {
     await _json('POST', '/v1/erase');
     await _forget();
@@ -239,6 +348,7 @@ class PocketTermServerClient {
 
   /// The server refused the token (an answer 401, the live channel closed
   /// with 4003): forgotten here, [ended] says so (unless [close]d by then).
+  @override
   Future<void> refused() async {
     if (_token == null) return;
     await _forget();
@@ -246,6 +356,7 @@ class PocketTermServerClient {
   }
 
   /// Computer only: a pairing code for a phone, good once for 10 minutes.
+  @override
   Future<String> createPairingCode() async {
     final answer = await _json('POST', '/v1/pair');
     if (answer case {'code': final String code}) return code;
@@ -253,68 +364,82 @@ class PocketTermServerClient {
   }
 
   /// Every computer and phone signed in to the server, oldest first.
+  @override
   Future<List<Device>> devices() async => [
     for (final d in ((await _json('GET', '/v1/devices'))! as List).cast<Map<String, dynamic>>()) Device.fromJson(d),
   ];
 
   /// Computer only: signs device [id] out (a lost phone); it's told so the
   /// next time it asks.
+  @override
   Future<void> revokeDevice(String id) => _json('DELETE', '/v1/devices/$id');
 
   /// The computers phones list, most recently seen first.
+  @override
   Future<List<Map<String, dynamic>>> desktops() async =>
       ((await _json('GET', '/v1/desktops'))! as List).cast<Map<String, dynamic>>();
 
   /// Computer only: lists computer [id] (also stamps it seen now).
+  @override
   Future<void> putDesktop(String id, {required String name, required String platform}) =>
       _json('PUT', '/v1/desktops/$id', body: {'name': name, 'platform': platform});
 
+  @override
   Future<void> deleteDesktop(String id) => _json('DELETE', '/v1/desktops/$id');
 
   /// A new path for an image or file: the phone seals it for this path first.
+  @override
   String newBlobPath() => const Uuid().v4();
 
-  /// [path] can be one of [newBlobPath]'s.
-  static bool isBlobPath(String path) => RegExp(r'^[A-Za-z0-9-]{1,64}$').hasMatch(path);
-
-  /// The most a blob may hold (the server's limit, 20 MiB).
-  static const int maxBlobBytes = 20 * 1024 * 1024;
-
-  /// Uploads [bytes] to [path]. One over [maxBlobBytes] fails here, with the
-  /// reason: sent, the server would cut it off and the reason would be lost.
+  /// Uploads [bytes] to [path]. One over [Server.maxBlobBytes] fails here,
+  /// with the reason: sent, the server would cut it off and the reason
+  /// would be lost.
+  @override
   Future<void> putBlob(String path, Uint8List bytes) async {
-    if (bytes.length > maxBlobBytes) {
+    if (bytes.length > Server.maxBlobBytes) {
       throw const ServerException(413, 'too_large', 'That file is too large: the most is 20 MB.');
     }
     await _json('PUT', '/v1/blobs/$path', bytes: bytes);
   }
 
   /// The blob at [path]; the server deletes it once sent.
+  @override
   Future<Uint8List> getBlob(String path) async => (await _send('GET', '/v1/blobs/$path')).bytes;
 
+  @override
   Future<void> deleteBlob(String path) => _json('DELETE', '/v1/blobs/$path');
 
   /// Push [action] (register, unregister, notify, activity_register,
   /// activity_end, activity) with its [body]; the server's answer
   /// (`{sent}` for notify and activity).
+  @override
   Future<Map<String, dynamic>> push(String action, Map<String, Object?> body) async =>
       ((await _json('POST', '/v1/push/$action', body: body))! as Map).cast<String, dynamic>();
 
-  /// The live channel's WebSocket, signed in as this device.
-  Future<WebSocket> connectSocket() {
+  /// The server's WebSocket (GET /v1/ws), signed in as this device.
+  @override
+  Future<LiveSocket> connectLive() async {
     final token = _token;
     if (token == null) throw const ServerException(401, 'unauthorized', 'Not signed in.');
-    final url = Uri.parse(backend.url);
-    return WebSocket.connect(
-      url.replace(scheme: url.scheme == 'https' ? 'wss' : 'ws', path: '/v1/ws').toString(),
+    final url = Uri.parse(backend.api);
+    final ws = await WebSocket.connect(
+      url.replace(scheme: url.scheme == 'https' ? 'wss' : 'ws', path: '${url.path}/v1/ws').toString(),
       headers: {'authorization': 'Bearer $token'},
     ).timeout(_timeout);
+    return _WebSocketLive(ws);
   }
 
+  @override
   void close() {
     _http.close(force: true);
     unawaited(_ended.close());
   }
+
+  /// A JSON request to [path] as this device, for what a subclass adds
+  /// (lib/supabase_server.dart); a 401 ends the sign-in as any other.
+  @protected
+  Future<Object?> request(String method, String path, {Map<String, Object?>? body}) =>
+      _json(method, path, body: body);
 
   Future<Object?> _json(
     String method,
@@ -340,7 +465,7 @@ class PocketTermServerClient {
     if (auth && bearer == null) throw const ServerException(401, 'unauthorized', 'Not signed in.');
     final ({int status, Uint8List bytes}) res;
     try {
-      final req = await _http.openUrl(method, Uri.parse('${backend.url}$path')).timeout(_timeout);
+      final req = await _http.openUrl(method, Uri.parse('${backend.api}$path')).timeout(_timeout);
       if (auth) req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
       if (bytes != null) {
         req
@@ -374,4 +499,22 @@ class PocketTermServerClient {
     if (res.status == 401 && auth && token == null) await refused();
     throw ServerException(res.status, code, message);
   }
+}
+
+/// The PocketTerm server's WebSocket as a [LiveSocket]: its frames as they are.
+class _WebSocketLive implements LiveSocket {
+  _WebSocketLive(this._ws);
+  final WebSocket _ws;
+
+  @override
+  Stream<String> get frames => _ws.where((f) => f is String).cast<String>();
+
+  @override
+  void add(String frame) => _ws.add(frame);
+
+  @override
+  int? get closeCode => _ws.closeCode;
+
+  @override
+  Future<void> close([int code = 1000]) => _ws.close(code);
 }

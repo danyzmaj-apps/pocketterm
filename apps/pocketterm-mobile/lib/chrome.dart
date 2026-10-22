@@ -136,15 +136,19 @@ class PageTitle extends StatelessWidget {
                       child: InkWell(
                         onTap: onTap,
                         borderRadius: BorderRadius.circular(Panel.headingRadius),
-                        child: Padding(
-                          padding: inset,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(child: text),
-                              const SizedBox(width: 4),
-                              const Icon(Icons.keyboard_arrow_down_rounded, color: C.dim, size: 28),
-                            ],
+                        // At least 48 tall: a tap target both platforms' guidelines accept.
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 48),
+                          child: Padding(
+                            padding: inset,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(child: text),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.keyboard_arrow_down_rounded, color: C.dim, size: 28),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -206,22 +210,26 @@ class Panel extends StatelessWidget {
         onTap: onTitleTap,
         onLongPress: onTitleLongPress,
         borderRadius: BorderRadius.circular(headingRadius),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 7, 8, 7),
-          child: Row(
-            children: [
-              // A long title (a project folder's name) gives way to what
-              // trails it.
-              Expanded(
-                child: Text(title!, maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
-              ),
-              ?titleTrailing,
-            ],
+        // As tall as the platform's smallest tap target; the room above it shrinks to match.
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: isIos ? 44 : 48),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 7, 8, 7),
+            child: Row(
+              children: [
+                // A long title (a project folder's name) gives way to what
+                // trails it.
+                Expanded(
+                  child: Text(title!, maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
+                ),
+                ?titleTrailing,
+              ],
+            ),
           ),
         ),
       );
       if (titleTip case final tip?) heading = CoachTarget(tip: tip, radius: headingRadius, padding: 0, child: heading);
-      heading = Padding(padding: const EdgeInsets.fromLTRB(16, 11, 16, 0), child: heading);
+      heading = Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 0), child: heading);
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

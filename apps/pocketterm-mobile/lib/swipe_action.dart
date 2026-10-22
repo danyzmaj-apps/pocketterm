@@ -97,16 +97,19 @@ class _SwipeActionState extends State<SwipeAction> with SingleTickerProviderStat
 
   void _update(DragUpdateDetails d) {
     if (!_dragging) return;
-    // Left is positive: more of the action.
-    final delta = -d.primaryDelta! / SwipeAction.width;
+    // Toward the row's start (left; right when right to left) is positive: more of the action.
+    final delta = -d.primaryDelta! * _ltr / SwipeAction.width;
     final v = _shown.value;
     _shown.value = (v + (delta > 0 && v >= 1 ? delta / 3 : delta)).clamp(0, _stretch);
   }
 
+  /// 1 left to right, -1 right to left: the action sits at the row's end either way.
+  double get _ltr => Directionality.of(context) == TextDirection.rtl ? -1 : 1;
+
   void _end(DragEndDetails d) {
     if (!_dragging) return;
     _dragging = false;
-    final velocity = d.primaryVelocity ?? 0;
+    final velocity = (d.primaryVelocity ?? 0) * _ltr;
     // A fling, however far, only opens it: the action is still a tap away.
     final open = velocity < -_fling || (velocity <= _fling && _shown.value >= _snap);
     _settle(open);
@@ -141,9 +144,9 @@ class _SwipeActionState extends State<SwipeAction> with SingleTickerProviderStat
           final shown = _shown.value * SwipeAction.width;
           return Stack(
             children: [
-              if (shown > 0) Positioned(top: 0, bottom: 0, right: 0, width: shown, child: _action()),
+              if (shown > 0) PositionedDirectional(top: 0, bottom: 0, end: 0, width: shown, child: _action()),
               Transform.translate(
-                offset: Offset(-shown, 0),
+                offset: Offset(-shown * _ltr, 0),
                 child: Stack(
                   children: [
                     row!,
@@ -170,7 +173,7 @@ class _SwipeActionState extends State<SwipeAction> with SingleTickerProviderStat
       child: ClipRect(
         // As wide as open from the row's edge, whatever shows of it.
         child: OverflowBox(
-          alignment: Alignment.centerLeft,
+          alignment: AlignmentDirectional.centerStart,
           minWidth: SwipeAction.width,
           maxWidth: SwipeAction.width,
           child: Opacity(

@@ -98,7 +98,13 @@ class TermBadge extends StatelessWidget {
       borderRadius: BorderRadius.circular(5),
       border: Border.all(color: C.line2),
     ),
-    child: Text(text, style: const TextStyle(fontSize: 11, color: C.dim, height: 1.3)),
+    child: Text(
+      text,
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(fontSize: 11, color: C.dim, height: 1.3),
+    ),
   );
 }
 
@@ -106,16 +112,27 @@ class TermBadge extends StatelessWidget {
 /// session claims, badged so.
 Widget _badged(TermWindow? w, Widget line, {bool screenOnly = false}) => w == null
     ? line
-    : Row(
-        children: [
-          TermBadge(termBadge(w)),
-          const SizedBox(width: 6),
-          if (screenOnly) ...[
-            TermBadge('Screen only', key: ValueKey('screen-only-${w.key}')),
+    : LayoutBuilder(
+        // Narrow (a split screen, large text): the badges give way instead of running past the row.
+        builder: (context, box) => Row(
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: box.maxWidth * .7),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(child: TermBadge(termBadge(w))),
+                  if (screenOnly) ...[
+                    const SizedBox(width: 6),
+                    Flexible(child: TermBadge('Screen only', key: ValueKey('screen-only-${w.key}'))),
+                  ],
+                ],
+              ),
+            ),
             const SizedBox(width: 6),
+            Expanded(child: line),
           ],
-          Expanded(child: line),
-        ],
+        ),
       );
 
 /// Closes [w] on the computer (callers ask first: [CloseConfirm], or a row's
@@ -1059,26 +1076,34 @@ class _TerminalPageState extends State<TerminalPage> {
     void press() => unawaited(_press(key));
     return Expanded(
       child: TextFieldTapRegion(
-        // A 34pt cap in a 44pt tap target: the gap around it presses it too,
-        // and the press shows on the cap alone.
-        child: GestureDetector(
-          key: ValueKey('key-$key'),
-          behavior: HitTestBehavior.opaque,
+        // One button to a screen reader, named by its cap, as big as the tap target.
+        child: Semantics(
+          button: true,
+          label: label,
           onTap: press,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 5),
-            child: Material(
-              color: const Color(0xFF262833),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(7),
-                side: const BorderSide(color: C.line2),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: press,
-                child: SizedBox(
-                  height: 34,
-                  child: Center(child: Text(label, style: const TextStyle(fontSize: 13))),
+          excludeSemantics: true,
+          // A 34pt cap in a 44pt tap target (48dp on Android): the gap around it presses it too,
+          // and the press shows on the cap alone.
+          child: GestureDetector(
+            key: ValueKey('key-$key'),
+            behavior: HitTestBehavior.opaque,
+            excludeFromSemantics: true,
+            onTap: press,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 3, vertical: isIos ? 5 : 7),
+              child: Material(
+                color: const Color(0xFF262833),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(7),
+                  side: const BorderSide(color: C.line2),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: press,
+                  child: SizedBox(
+                    height: 34,
+                    child: Center(child: Text(label, style: const TextStyle(fontSize: 13))),
+                  ),
                 ),
               ),
             ),
@@ -1307,40 +1332,57 @@ class _TerminalPageState extends State<TerminalPage> {
               ),
           ],
         ),
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Reveal(visible: note != null, child: note ?? const SizedBox.shrink()),
-            SwitchBanner(remote: remote, window: widget.window),
-            Expanded(
-              child: gone
-                  ? const Center(
-                      child: Text('This window has closed.', style: TextStyle(color: C.dim)),
-                    )
-                  : !readable
-                  ? _unreadable(w!)
-                  : screen == null
-                  ? Center(
-                      child: online
-                          ? const CircularProgressIndicator(strokeWidth: 2)
-                          : const Text('No screen yet.', style: TextStyle(color: C.dim)),
-                    )
-                  : _screen(screen, palette),
-            ),
-            Reveal(
-              visible: _closing && w != null && online && !gone,
-              child: w == null
-                  ? const SizedBox.shrink()
-                  : CloseConfirm(
-                      remote: remote,
-                      window: w,
-                      onCancel: () => setState(() => _closing = false),
-                      onClose: () => unawaited(_close(w)),
-                      closing: _closeSent,
-                    ),
-            ),
-            if (keys || compose) _bar(enabled: online && !gone, keys: keys, compose: compose, canSend: canSend),
-          ],
+        // Small room (keyboard up on a small phone, landscape, large text): what's under the screen takes at most
+        // four fifths of it and scrolls, the composer last, instead of running off the screen.
+        body: LayoutBuilder(
+          builder: (context, box) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Reveal(visible: note != null, child: note ?? const SizedBox.shrink()),
+              SwitchBanner(remote: remote, window: widget.window),
+              Expanded(
+                child: gone
+                    ? const Center(
+                        child: Text('This window has closed.', style: TextStyle(color: C.dim)),
+                      )
+                    : !readable
+                    ? _unreadable(w!)
+                    : screen == null
+                    ? Center(
+                        child: online
+                            ? const CircularProgressIndicator(strokeWidth: 2)
+                            : const Text('No screen yet.', style: TextStyle(color: C.dim)),
+                      )
+                    : _screen(screen, palette),
+              ),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: box.maxHeight * .8),
+                child: SingleChildScrollView(
+                  reverse: true,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Reveal(
+                        visible: _closing && w != null && online && !gone,
+                        child: w == null
+                            ? const SizedBox.shrink()
+                            : CloseConfirm(
+                                remote: remote,
+                                window: w,
+                                onCancel: () => setState(() => _closing = false),
+                                onClose: () => unawaited(_close(w)),
+                                closing: _closeSent,
+                              ),
+                      ),
+                      if (keys || compose)
+                        _bar(enabled: online && !gone, keys: keys, compose: compose, canSend: canSend),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     },

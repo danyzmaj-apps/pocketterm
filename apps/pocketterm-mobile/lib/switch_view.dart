@@ -164,13 +164,19 @@ class _SwitchBannerState extends State<SwitchBanner> {
     key: key,
     color: C.bar,
     padding: const EdgeInsets.fromLTRB(16, 4, 4, 4),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(text, style: const TextStyle(fontSize: 14, color: C.dim)),
-        ),
-        action,
-      ],
+    // Narrow (a split screen, large text): the action takes at most about half and wraps, the text the rest.
+    child: LayoutBuilder(
+      builder: (context, box) => Row(
+        children: [
+          Expanded(
+            child: Text(text, style: const TextStyle(fontSize: 14, color: C.dim)),
+          ),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: box.maxWidth * .55),
+            child: action,
+          ),
+        ],
+      ),
     ),
   );
 }
@@ -217,7 +223,8 @@ class _SwitchSheetState extends State<SwitchSheet> {
     final omp = widget.agent == Agent.omp;
     final busy = _busy;
     return SafeArea(
-      child: Padding(
+      // Landscape or large text: the sheet scrolls rather than running off the screen.
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -261,8 +268,9 @@ class _SwitchSheetState extends State<SwitchSheet> {
             else if (busy)
               ..._busyChoices()
             else
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+              Wrap(
+                alignment: WrapAlignment.end,
+                runSpacing: 4,
                 children: [
                   _notNow(),
                   const SizedBox(width: 8),

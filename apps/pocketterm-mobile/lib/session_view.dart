@@ -397,7 +397,8 @@ class _SessionPageState extends State<SessionPage> {
           : 'Not on this phone yet.';
       final window = starting && _can(_windowKey(s), TermCap.read) ? _windowKey(s) : null;
       return Center(
-        child: Padding(
+        // Scrolls when the room is short (keyboard up, landscape, large text).
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -754,55 +755,71 @@ class _SessionPageState extends State<SessionPage> {
               ),
           ],
         ),
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Reveal(visible: note != null, child: note ?? const SizedBox.shrink()),
-            Expanded(child: _transcript(v, s, ended: ended)),
-            Reveal(
-              visible: _closing && window != null && online && !ended,
-              child: window == null
-                  ? const SizedBox.shrink()
-                  : CloseConfirm(
-                      remote: remote,
-                      window: window,
-                      onCancel: () => setState(() => _closing = false),
-                      onClose: () => unawaited(_close(window)),
-                      closing: _closeSent,
-                    ),
-            ),
-            if (ended)
-              _banner(
-                'This session has ended.',
-                actions: [if (readable) TextButton(onPressed: screen, child: const Text('Screen'))],
-              )
-            else ...[
-              Reveal(
-                visible: ask != null,
-                child: ask == null
-                    ? const SizedBox.shrink()
-                    : ask.isMenu
-                    ? _MenuCard(
-                        key: ValueKey('ask-${ask.id}'),
-                        remote: remote,
-                        session: key,
-                        window: _can(windowKey, TermCap.keys) ? windowKey : null,
-                        ask: ask,
-                        onScreen: readable ? screen : null,
-                        toastAbove: _composerKey,
-                      )
-                    : _AskCard(
-                        key: ValueKey('ask-${ask.id}'),
-                        remote: remote,
-                        session: key,
-                        ask: ask,
-                        onScreen: readable ? screen : null,
-                        toastAbove: _composerKey,
+        // Small room (keyboard up on a small phone, landscape, large text): what's under the transcript takes at
+        // most four fifths of it and scrolls, the composer last, instead of running off the screen.
+        body: LayoutBuilder(
+          builder: (context, box) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Reveal(visible: note != null, child: note ?? const SizedBox.shrink()),
+              Expanded(child: _transcript(v, s, ended: ended)),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: box.maxHeight * .8),
+                child: SingleChildScrollView(
+                  reverse: true,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Reveal(
+                        visible: _closing && window != null && online && !ended,
+                        child: window == null
+                            ? const SizedBox.shrink()
+                            : CloseConfirm(
+                                remote: remote,
+                                window: window,
+                                onCancel: () => setState(() => _closing = false),
+                                onClose: () => unawaited(_close(window)),
+                                closing: _closeSent,
+                              ),
                       ),
+                      if (ended)
+                        _banner(
+                          'This session has ended.',
+                          actions: [if (readable) TextButton(onPressed: screen, child: const Text('Screen'))],
+                        )
+                      else ...[
+                        Reveal(
+                          visible: ask != null,
+                          child: ask == null
+                              ? const SizedBox.shrink()
+                              : ask.isMenu
+                              ? _MenuCard(
+                                  key: ValueKey('ask-${ask.id}'),
+                                  remote: remote,
+                                  session: key,
+                                  window: _can(windowKey, TermCap.keys) ? windowKey : null,
+                                  ask: ask,
+                                  onScreen: readable ? screen : null,
+                                  toastAbove: _composerKey,
+                                )
+                              : _AskCard(
+                                  key: ValueKey('ask-${ask.id}'),
+                                  remote: remote,
+                                  session: key,
+                                  ask: ask,
+                                  onScreen: readable ? screen : null,
+                                  toastAbove: _composerKey,
+                                ),
+                        ),
+                        _composer(s, online: online && (s != null || !widget.starting)),
+                      ],
+                    ],
+                  ),
+                ),
               ),
-              _composer(s, online: online && (s != null || !widget.starting)),
             ],
-          ],
+          ),
         ),
       );
     },
@@ -1254,7 +1271,8 @@ class _AskCardState extends State<_AskCard> {
             ),
             body,
             const SizedBox(height: 10),
-            Row(mainAxisAlignment: MainAxisAlignment.end, children: buttons),
+            // Large text: the buttons go on two lines rather than past the edge.
+            Wrap(alignment: WrapAlignment.end, runSpacing: 8, children: buttons),
           ],
         ),
       ),

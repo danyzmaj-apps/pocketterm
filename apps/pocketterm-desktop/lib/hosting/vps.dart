@@ -65,17 +65,18 @@ class ServerAddress {
 /// One command to run on the VPS, and what it does.
 typedef VpsCommand = ({String title, String command});
 
-/// The compose file the commands fetch: the repository's, on main.
-const composeUrl =
-    'https://raw.githubusercontent.com/danyzmaj-apps/pocketterm/main/apps/pocketterm-server/docker-compose.yml';
+/// The compose file the commands fetch: the repository's at release tag v[version], this app's version, so the
+/// VPS runs what this release shipped (the file pins the image to the same version).
+String composeUrl(String version) =>
+    'https://raw.githubusercontent.com/danyzmaj-apps/pocketterm/v$version/apps/pocketterm-server/docker-compose.yml';
 
-/// What to run on a fresh VPS for a server at [domain], in order: Docker,
+/// What to run on a fresh VPS for a server at [domain], with this app's [version], in order: Docker,
 /// the compose file, start it, its setup link. Each one stands alone (it
 /// changes to ~/pocketterm itself), so a new SSH session can pick up where
 /// the last one left off. docs/SELF_HOSTING.md shows the same commands.
-List<VpsCommand> vpsCommands(String domain) => [
+List<VpsCommand> vpsCommands(String domain, String version) => [
   (title: 'Install Docker', command: 'curl -fsSL https://get.docker.com | sudo sh'),
-  (title: 'Get the server', command: 'mkdir -p ~/pocketterm && cd ~/pocketterm && curl -fsSLO $composeUrl'),
+  (title: 'Get the server', command: 'mkdir -p ~/pocketterm && cd ~/pocketterm && curl -fsSLO ${composeUrl(version)}'),
   (title: 'Start it', command: 'cd ~/pocketterm && echo "DOMAIN=$domain" > .env && sudo docker compose up -d'),
   (
     title: 'Print its setup link',

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/logo.dart';
 import 'package:pocketterm_core/ui.dart';
@@ -744,9 +745,13 @@ class _NewServerSetupState extends State<NewServerSetup> {
   String? _healthProblem;
   bool _looking = false;
 
+  /// This app's version: the commands fetch the compose file of its release.
+  String? _version;
+
   @override
   void initState() {
     super.initState();
+    unawaited(PackageInfo.fromPlatform().then((p) => mounted ? setState(() => _version = p.version) : null));
     unawaited(_look());
     if (widget.poll > Duration.zero) _timer = Timer.periodic(widget.poll, (_) => unawaited(_look()));
   }
@@ -863,7 +868,7 @@ class _NewServerSetupState extends State<NewServerSetup> {
             icon: Icons.shield_outlined,
           ),
           const SizedBox(height: 16),
-          for (final (i, c) in vpsCommands(domain).indexed) ...[
+          for (final (i, c) in (_version == null ? const <VpsCommand>[] : vpsCommands(domain, _version!)).indexed) ...[
             Text('${i + 1}. ${c.title}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
             const SizedBox(height: 6),
             CopyCommand(c.command, key: ValueKey('setup-command-$i')),

@@ -106,7 +106,7 @@ class Harness {
   bool _running = false;
 
   /// Stops the server if it runs and starts a new one on the same data directory.
-  Future<void> restart() async {
+  Future<void> restart({bool trustLoopbackProxy = false}) async {
     if (_running) await server.stop();
     server = await PocketTermServer.start(
       dataDir: dir,
@@ -116,6 +116,7 @@ class Harness {
       relay: relay.url,
       relayKey: await relay.publicKey,
       clock: () => now,
+      trustLoopbackProxy: trustLoopbackProxy,
     );
     _running = true;
   }

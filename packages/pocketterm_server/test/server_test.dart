@@ -135,9 +135,44 @@ void main() {
       final code = (await h.call('POST', '/v1/pair', token: mac.token)).map['code'] as String;
       expect((await h.call('POST', '/v1/pair/redeem', body: {'code': code, 'platform': 'ios'})).status, 200);
     });
+
+    test(
+      'behind a loopback proxy each forwarded caller has its own throttle; otherwise the header is ignored',
+      () async {
+        Future<int> redeem(String from) async => (await h.call(
+          'POST',
+          '/v1/pair/redeem',
+          body: {'code': 'AAAA-0000', 'platform': 'ios'},
+          headers: {'x-forwarded-for': from},
+        )).status;
+        for (var i = 0; i < 10; i++) {
+          await redeem('100.64.0.$i');
+        }
+        expect(await redeem('100.64.0.99'), 429, reason: 'without the option every caller is 127.0.0.1');
+
+        await h.restart(trustLoopbackProxy: true);
+        for (var i = 0; i < 10; i++) {
+          expect(await redeem('100.64.0.1'), 400);
+        }
+        expect(await redeem('100.64.0.1'), 429);
+        expect(await redeem('100.64.0.2'), 400);
+      },
+    );
   });
 
   group('desktops and devices', () {
+    test('only the computer that added a computer can remove it; never a phone', () async {
+      final mac = await h.desktop();
+      final other = await h.desktop();
+      final phone = await h.phone(mac.token, 'iPhone');
+      await h.call('PUT', '/v1/desktops/aaaa1111', token: mac.token, body: {'name': 'Mac', 'platform': 'macos'});
+      expect((await h.call('DELETE', '/v1/desktops/aaaa1111', token: phone.token)).status, 403);
+      expect((await h.call('DELETE', '/v1/desktops/aaaa1111', token: other.token)).status, 403);
+      expect((await h.call('GET', '/v1/desktops', token: mac.token)).list, hasLength(1));
+      expect((await h.call('DELETE', '/v1/desktops/aaaa1111', token: mac.token)).status, 200);
+      expect((await h.call('GET', '/v1/desktops', token: mac.token)).list, isEmpty);
+    });
+
     test('computers are listed newest first and go offline when they stop checking in', () async {
       final mac = await h.desktop();
       await h.call('PUT', '/v1/desktops/aaaa1111', token: mac.token, body: {'name': 'Old', 'platform': 'macos'});
@@ -559,7 +594,7 @@ void main() {
       await follow(phone.token, 'aaaa1111/s1', 'c1' * 80);
       await follow(phone.token, 'bbbb2222/s1', 'c2' * 80);
 
-      expect((await h.call('DELETE', '/v1/desktops/aaaa1111', token: phone.token)).status, 200);
+      expect((await h.call('DELETE', '/v1/desktops/aaaa1111', token: mac.token)).status, 200);
       expect([for (final b in h.relay.received) (b['token'], b['event'])], [('c1' * 80, 'end')]);
 
       h.relay.received.clear();

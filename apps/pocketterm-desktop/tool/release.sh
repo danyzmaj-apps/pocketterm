@@ -32,6 +32,10 @@ VERSION=$(sed -n 's/^version: *\([0-9.]*\)+\{0,1\}.*/\1/p' pubspec.yaml)
 PLUGIN_VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' integrations/claude/plugins/pocketterm/.claude-plugin/plugin.json)
 [[ "$PLUGIN_VERSION" == "$VERSION" ]] ||
   die "integrations/claude/plugins/pocketterm/.claude-plugin/plugin.json is at $PLUGIN_VERSION; set its version to $VERSION"
+# The VPS setup fetches docker-compose.yml from tag v$VERSION; its image must be this release's too.
+COMPOSE_VERSION=$(sed -n 's/.*POCKETTERM_VERSION:-\([^}]*\)}.*/\1/p' ../pocketterm-server/docker-compose.yml)
+[[ "$COMPOSE_VERSION" == "$VERSION" ]] ||
+  die "apps/pocketterm-server/docker-compose.yml pins the server image at $COMPOSE_VERSION; set POCKETTERM_VERSION's default to $VERSION"
 TEAM=""
 [[ -f $ROOT/config/Local.xcconfig ]] && TEAM=$(sed -n 's/^POCKETTERM_TEAM *= *//p' $ROOT/config/Local.xcconfig | tail -1)
 [[ -n "$TEAM" ]] || TEAM=$(sed -n 's/^POCKETTERM_TEAM *= *//p' $ROOT/config/PocketTerm.xcconfig | tail -1)

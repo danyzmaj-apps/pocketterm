@@ -116,6 +116,9 @@ class BuiltInServer extends ChangeNotifier {
           publicUrl: Uri.parse('http://127.0.0.1:$p'),
           relay: relay,
           relayKey: relayKey,
+          // tailscale serve forwards from 127.0.0.1 with the tailnet caller in X-Forwarded-For: each gets its
+          // own redeem throttle instead of one shared by everyone.
+          trustLoopbackProxy: true,
           log: (m) => debugPrint('PocketTerm server: $m'),
         );
         break;

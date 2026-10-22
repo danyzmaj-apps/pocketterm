@@ -61,13 +61,23 @@ _Fail _bad(String message) => _Fail(400, 'bad_request', message);
 /// PocketTerm's own server for one owner: devices, pairing, desktops, blobs, push forwarding and the live
 /// channel over WebSocket. Everything it keeps lives in one data directory. See PROTOCOL.md.
 class PocketTermServer {
-  PocketTermServer._(this._dir, this._http, this._store, this._relay, this.publicUrl, this._now, this._trustProxy);
+  PocketTermServer._(
+    this._dir,
+    this._http,
+    this._store,
+    this._relay,
+    this.publicUrl,
+    this._now,
+    this._trustProxy,
+    this._trustLoopbackProxy,
+  );
 
   /// Starts serving on [address]:[port] (0 picks a free port; see [port]). [publicUrl] is the address phones
   /// and computers reach it at, put in setup links. [relay] is the push relay and [relayKey] its X25519 public
   /// key, which every push is sealed to (default: the publisher's relay and key).
   /// With [trustProxy], the caller's address for rate limits is the last one in X-Forwarded-For (set it only
-  /// behind a reverse proxy). [clock] stands in for the time in tests.
+  /// behind a reverse proxy). With [trustLoopbackProxy], it is trusted only from a loopback peer: for a server on
+  /// 127.0.0.1 that `tailscale serve` publishes, so each tailnet caller gets its own throttle. [clock] stands in for the time in tests.
   static Future<PocketTermServer> start({
     required Directory dataDir,
     required InternetAddress address,
@@ -76,6 +86,7 @@ class PocketTermServer {
     Uri? relay,
     List<int>? relayKey,
     bool trustProxy = false,
+    bool trustLoopbackProxy = false,
     void Function(String message)? log,
     DateTime Function()? clock,
   }) async {
@@ -91,6 +102,7 @@ class PocketTermServer {
       publicUrl,
       clock ?? DateTime.now,
       trustProxy,
+      trustLoopbackProxy,
     ).._log = log;
     server._sweeper = Timer.periodic(const Duration(minutes: 1), (_) => unawaited(server.sweep()));
     unawaited(server.sweep());
@@ -117,6 +129,7 @@ class PocketTermServer {
   final Hub _hub = Hub();
   final DateTime Function() _now;
   final bool _trustProxy;
+  final bool _trustLoopbackProxy;
   final Map<String, List<DateTime>> _failures = {};
   void Function(String)? _log;
   Timer? _sweeper;
@@ -296,13 +309,14 @@ class PocketTermServer {
   }
 
   /// Who sent [req], for the redeem throttle: the TCP peer, or behind a trusted proxy the address it put last
-  /// in X-Forwarded-For.
+  /// in X-Forwarded-For (with trustLoopbackProxy, only when the TCP peer is loopback).
   String _caller(HttpRequest req) {
-    if (_trustProxy) {
+    final peer = req.connectionInfo?.remoteAddress;
+    if (_trustProxy || (_trustLoopbackProxy && peer != null && peer.isLoopback)) {
       final forwarded = req.headers['x-forwarded-for']?.join(',').split(',').last.trim() ?? '';
       if (forwarded.isNotEmpty) return forwarded;
     }
-    return req.connectionInfo?.remoteAddress.address ?? '';
+    return peer?.address ?? '';
   }
 
   /// Runs [redeem] under the throttle: an address with [maxRedeemFailures] failures in [redeemWindow] waits,
@@ -441,6 +455,12 @@ class PocketTermServer {
           ..save();
         return await _json(req, 200, desktop.toApi(_now()));
       case 'DELETE':
+        // Only a computer, and only the one that registered it (any computer for rows from before that was kept).
+        _desktopOnly(me);
+        final owner = _store.desktops[id]?.device;
+        if (owner != null && owner != me.id) {
+          throw _Fail(403, 'forbidden', 'Only the computer that added it can remove it.');
+        }
         if (_store.desktops.remove(id) != null) _store.save();
         await _endActivities(id);
         return await _json(req, 200, {'ok': true});

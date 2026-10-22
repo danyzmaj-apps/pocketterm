@@ -136,10 +136,10 @@ minutes without it, the server ends the Live Activities of that computer's sessi
 
 200 `<Desktop>`. 400 for a bad id, name or platform. 403 for a phone.
 
-### `DELETE /v1/desktops/:id`
+### `DELETE /v1/desktops/:id` (desktop)
 
-Removes the computer from the list (sign out on that computer, or a phone forgetting it) and ends the Live
-Activities of its sessions. 200 `{"ok": true}`, also when it wasn't there.
+Removes the computer from the list (sign out on that computer) and ends the Live Activities of its sessions. Only
+the computer that added it may (any computer for one kept without that), else 403 `forbidden`. 200 `{"ok": true}`, also when it wasn't there.
 
 ### `GET /v1/devices`
 

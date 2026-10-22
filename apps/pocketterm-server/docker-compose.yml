@@ -5,11 +5,12 @@
 #
 # Ports 80 and 443 must be open to the internet (Let's Encrypt checks port 80). Then print the setup link:
 #   docker compose exec server pocketterm-server setup-link
+# The server image is this release's (POCKETTERM_VERSION, bumped with each release); set it in .env to change.
 name: pocketterm
 
 services:
   server:
-    image: ${POCKETTERM_IMAGE:-ghcr.io/danyzmaj-apps/pocketterm-server:latest}
+    image: ${POCKETTERM_IMAGE:-ghcr.io/danyzmaj-apps/pocketterm-server:${POCKETTERM_VERSION:-0.1.0}}
     restart: unless-stopped
     environment:
       POCKETTERM_PUBLIC_URL: https://${DOMAIN:?Set DOMAIN to this server's name, see the top of docker-compose.yml}

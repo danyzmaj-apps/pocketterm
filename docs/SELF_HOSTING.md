@@ -75,10 +75,10 @@ Rent a small Linux VPS (1 GB of memory is plenty), open **ports 80 and 443** to 
    curl -fsSL https://get.docker.com | sudo sh
    ```
 
-2. Get the server:
+2. Get the server (the compose file of the release your app is, here 0.1.0; the wizard fills in yours):
 
    ```sh
-   mkdir -p ~/pocketterm && cd ~/pocketterm && curl -fsSLO https://raw.githubusercontent.com/danyzmaj-apps/pocketterm/main/apps/pocketterm-server/docker-compose.yml
+   mkdir -p ~/pocketterm && cd ~/pocketterm && curl -fsSLO https://raw.githubusercontent.com/danyzmaj-apps/pocketterm/v0.1.0/apps/pocketterm-server/docker-compose.yml
    ```
 
 3. Start it, with your server's name (here the sslip.io name of `203.0.113.7`):
@@ -145,6 +145,7 @@ One phone sign-in covers all your computers, but each computer encrypts its sess
 - **Your PocketTerm server** keeps your list of devices, your computers' names, pairing codes (10 minutes) and your phones' push tokens, and passes everything else on without being able to read it.
 - **Tailscale** (On this computer) sees which of your devices connect and when, not what they send.
 - **Push notifications**, if you turn them on in the phone app, go from your server through PocketTerm's push relay (`push.danyzmaj.com`, run by Danijel Lovric on his server in Germany) to Apple or Google. They get encrypted text, the phone's push token and which computer it's from; the relay stores nothing ([apps/pocketterm-relay/SECURITY.md](../apps/pocketterm-relay/SECURITY.md)).
+- **What you trust on a VPS.** The commands run Docker's install script (`get.docker.com`) and the compose file as root. The compose file comes from the release tag matching your app (`v<version>`, not a moving branch) and runs the server image of that same version; Docker's script is Docker's own, fetched over HTTPS. Read either before you run it if you prefer, or install Docker from your distribution's packages instead.
 - **One exception: Live Activities.** On iPhone, a followed session on the Lock Screen (and its ongoing notification on Android) shows its state (working, needs you, finished), since when, and whether it waits on a question, an approval or a plan. Apple delivers those to the system directly, so they can't be encrypted. They never carry any text.
 
 The full model: [SECURITY.md](../SECURITY.md).
@@ -165,10 +166,10 @@ PUSH_RELAY_KEY=<the relay's public key, base64; the relay logs it at start>
 ## Updating
 
 - **On this computer**: the server is part of the app and updates with it. The Mac app updates itself; on Windows, Settings links to a new version when one is out.
-- **On my own server**: on the VPS, run
+- **On my own server**: the compose file runs the server version it came with. To move to another one (here 0.2.0), on the VPS run
 
   ```sh
-  cd ~/pocketterm && sudo docker compose pull && sudo docker compose up -d
+  cd ~/pocketterm && echo "POCKETTERM_VERSION=0.2.0" >> .env && sudo docker compose pull && sudo docker compose up -d
   ```
 
 [CHANGELOG.md](../CHANGELOG.md) says when a new app version needs a server update.

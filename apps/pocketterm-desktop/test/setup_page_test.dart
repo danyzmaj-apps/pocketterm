@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_desktop/commands.dart';
@@ -50,6 +51,13 @@ void main() {
   late FakeChecks checks;
 
   setUp(() async {
+    PackageInfo.setMockInitialValues(
+      appName: 'PocketTerm',
+      packageName: 'com.danyzmaj.pocketterm',
+      version: '0.3.0',
+      buildNumber: '1',
+      buildSignature: '',
+    );
     // The real servers on 127.0.0.1 some of these sign in to.
     HttpOverrides.global = null;
     dir = Directory.systemTemp.createTempSync('pocketterm-setup');
@@ -346,6 +354,10 @@ void main() {
         tester.widget<CopyCommand>(find.byKey(const ValueKey('setup-command-2'))).command,
         'cd ~/pocketterm && echo "DOMAIN=203-0-113-7.sslip.io" > .env && sudo docker compose up -d',
       );
+      expect(
+        tester.widget<CopyCommand>(find.byKey(const ValueKey('setup-command-1'))).command,
+        endsWith(composeUrl('0.3.0')),
+      );
       expect(check(tester, 'check-dns'), CheckState.now);
       expect(check(tester, 'check-https'), CheckState.later);
       expect(find.byKey(const ValueKey('setup-link')), findsNothing);
@@ -399,16 +411,16 @@ void main() {
       }
     });
 
-    test('the commands install Docker, fetch the compose file from main, start it under the name, print the link', () {
-      expect(vpsCommands('pt.example.com').map((c) => c.command), [
+    test('the commands install Docker, fetch the compose file of this release, start it, print the link', () {
+      expect(vpsCommands('pt.example.com', '0.3.0').map((c) => c.command), [
         'curl -fsSL https://get.docker.com | sudo sh',
-        'mkdir -p ~/pocketterm && cd ~/pocketterm && curl -fsSLO $composeUrl',
+        'mkdir -p ~/pocketterm && cd ~/pocketterm && curl -fsSLO ${composeUrl('0.3.0')}',
         'cd ~/pocketterm && echo "DOMAIN=pt.example.com" > .env && sudo docker compose up -d',
         'cd ~/pocketterm && sudo docker compose exec server pocketterm-server setup-link',
       ]);
-      final compose = Uri.parse(composeUrl);
+      final compose = Uri.parse(composeUrl('0.3.0'));
       expect(compose.host, 'raw.githubusercontent.com');
-      expect(compose.path, '/danyzmaj-apps/pocketterm/main/apps/pocketterm-server/docker-compose.yml');
+      expect(compose.path, '/danyzmaj-apps/pocketterm/v0.3.0/apps/pocketterm-server/docker-compose.yml');
     });
   });
 }

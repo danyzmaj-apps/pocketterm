@@ -14,8 +14,10 @@ import org.json.JSONObject
  *   computer's key, if it doesn't open, or if it is old or came before
  *   (PocketTermShared.isFreshPush), a generic "PocketTerm" alert shows, as on
  *   the iPhone.
- * - kind activity {enc, d}: a followed session's {session, state, since, kind?},
- *   sealed the same way with AAD "pocketterm/v1|activity|<d>".
+ * - kind activity {enc, d}: a followed session's {session, state, since, kind?, ts, id},
+ *   sealed the same way with AAD "pocketterm/v1|activity|<d>". It is dropped unless fresh
+ *   (isFreshPush), its session is one of computer d's ("<d>/…") and its since is no
+ *   older than the last one applied for that session: a replay can't roll it back.
  * - kind activity {session, state: ended}: the server ends a followed session
  *   (it ended, or its computer went quiet or left); it carries nothing else.
  */
@@ -58,14 +60,25 @@ class PushService : FirebaseMessagingService() {
             if (data["state"] == "ended") SessionActivities.pushed(this, session, "ended", null, null)
             return
         }
-        val m = opened(data["enc"], data["d"], "activity") ?: return
-        SessionActivities.pushed(
-            this,
-            m.optString("session").ifEmpty { return },
-            m.optString("state"),
-            if (m.has("since")) m.optLong("since") else null,
-            m.optString("kind").ifEmpty { null },
-        )
+        val desktop = data["d"] ?: return
+        val m = opened(data["enc"], desktop, "activity") ?: return
+        if (!PocketTermShared.isFreshPush(this, if (m.has("ts")) m.optLong("ts") else null, m.optString("id"))) return
+        val session = m.optString("session")
+        if (!session.startsWith("$desktop/") || session.length == desktop.length + 1) return
+        val since = if (m.has("since")) m.optLong("since") else null
+        if (!newest(session, since)) return
+        SessionActivities.pushed(this, session, m.optString("state"), since, m.optString("kind").ifEmpty { null })
+    }
+
+    /** Whether [since] is no older than the last update applied for [session]; records it if so. */
+    @Synchronized
+    private fun newest(session: String, since: Long?): Boolean {
+        val prefs = getSharedPreferences("pocketterm.activitySince", MODE_PRIVATE)
+        val last = prefs.getLong(session, Long.MIN_VALUE)
+        if (since == null) return last == Long.MIN_VALUE
+        if (since < last) return false
+        prefs.edit().putLong(session, since).apply()
+        return true
     }
 
     /** What computer [desktop] sealed for [what] (push, activity), opened with its key; null if anything is off. */

@@ -17,7 +17,6 @@ void main() {
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({
-      'pocketterm_push_token': 'push-token',
       'pocketterm_push_on_srv00000000001': true,
       'pocketterm_terminal_sort': 'recent',
     });
@@ -45,7 +44,6 @@ void main() {
     await phone.signedOutByServer();
 
     expect(calls.where((c) => c.method == 'endActivity').map((c) => (c.arguments as Map)['key']), ['kitty-1/2']);
-    expect(prefs.getString('pocketterm_push_token'), isNull, reason: 'the next account registers for push afresh');
     expect(
       calls.where((c) => c.method == 'removeAllChannelKeys'),
       hasLength(1),

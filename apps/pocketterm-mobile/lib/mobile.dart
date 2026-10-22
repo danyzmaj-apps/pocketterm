@@ -119,7 +119,8 @@ class MobileSession extends Session {
       (k) =>
           k.startsWith('sb-') ||
           k.startsWith('supabase') ||
-          k == _pushTokenKey ||
+          // Written by older versions, never read.
+          k == 'pocketterm_push_token' ||
           k == _desktopKey ||
           k == _desktopsKey,
     )) {
@@ -255,7 +256,10 @@ class MobileSession extends Session {
     notifyListeners();
   }
 
-  static const _pushTokenKey = 'pocketterm_push_token';
+  /// How long the phone may take to hand over its push token before
+  /// [setPushEnabled] gives up (no network, APNs never answering).
+  static const pushTokenWait = Duration(seconds: 15);
+
   static const _pushChoiceKey = 'pocketterm_push_on';
 
   /// The person's push choice on the signed-in server (kept per server id):
@@ -274,8 +278,11 @@ class MobileSession extends Session {
     final u = user;
     if (u == null) return false;
     final key = '${_pushChoiceKey}_${u.id}';
+    // A later choice (Not now while Turn on still waits) wins.
+    final choice = ++_pushChoice;
     if (!on) {
       final was = pushEnabled ?? false;
+      _pushUnsent = false;
       await _prefs.setBool(key, false);
       notifyListeners();
       // Not now, the first time: nothing was registered.
@@ -283,32 +290,51 @@ class MobileSession extends Session {
       return true;
     }
     final registered = await _registerPush(u.device.id);
+    if (choice != _pushChoice) return true;
     await _prefs.setBool(key, registered);
     await checkNotifications();
     notifyListeners();
     return registered;
   }
 
+  int _pushChoice = 0;
+
+  /// Push is on, but the server missed this phone's token (offline): it is
+  /// sent again when the app comes back ([retryPush]).
+  bool get pushUnsent => _pushUnsent;
+  bool _pushUnsent = false;
+
+  /// Coming back to the app: a token the server missed goes again.
+  Future<void> retryPush() async {
+    final user = this.user;
+    if (_pushUnsent && user != null && (pushEnabled ?? false)) await _registerPush(user.device.id);
+  }
+
   /// Hands this phone's push token (APNs on iOS, FCM on Android) to the
   /// server, which from then on relays the computer's terminal news
   /// (POST /v1/push/notify), sealed by each computer with its key. False:
-  /// not allowed, or no token. A server that missed it (offline) gets it at
-  /// the next launch.
+  /// not allowed, no token, or none within [pushTokenWait]. A server that
+  /// missed it (offline) leaves [pushUnsent] for [retryPush].
   Future<bool> _registerPush(String deviceId) async {
     final String? token;
     try {
-      token = await Native.registerPush();
+      token = await Native.registerPush().timeout(pushTokenWait);
     } on Object catch (e) {
       debugPrint('PocketTerm: no push token: $e');
       return false;
     }
     if (token == null) return false;
     if (user?.device.id != deviceId) return true;
+    var unsent = false;
     try {
       await server!.push('register', {'token': token, 'label': device, 'platform': pushPlatform});
-      await _prefs.setString(_pushTokenKey, token);
     } on Object catch (e) {
       debugPrint('PocketTerm: push registration failed: $e');
+      unsent = true;
+    }
+    if (unsent != _pushUnsent) {
+      _pushUnsent = unsent;
+      notifyListeners();
     }
     return true;
   }
@@ -316,7 +342,6 @@ class MobileSession extends Session {
   /// Push off: followed sessions end here, and the server forgets every
   /// token of this phone (its push token and its followed sessions').
   Future<void> _pushOff() async {
-    await _prefs.remove(_pushTokenKey);
     await _endActivities();
     await _tryServer('push unregister', () => server!.push('unregister', {}));
   }
@@ -350,7 +375,7 @@ class MobileSession extends Session {
   /// computer's), and the followed sessions, ended at once.
   Future<void> _forgetHere() async {
     _openedSession = null;
-    await _prefs.remove(_pushTokenKey);
+    _pushUnsent = false;
     // Every server's: the sign-in may already be gone, and with it its id.
     for (final k in _prefs.getKeys().where((k) => k.startsWith('${_pushChoiceKey}_'))) {
       await _prefs.remove(k);
@@ -803,7 +828,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _refreshIfInFront();
         unawaited(_openTappedSession());
         // Notifications may have been turned off or on in Settings meanwhile.
-        if (!_demo) unawaited(widget.session.checkNotifications());
+        if (!_demo) {
+          unawaited(widget.session.checkNotifications());
+          // A push token the server missed while it was unreachable.
+          unawaited(widget.session.retryPush());
+        }
       case AppLifecycleState.hidden || AppLifecycleState.paused:
         if (state == AppLifecycleState.paused) timing('paused');
         _attachTerminal(attach: false);
@@ -1055,6 +1084,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 final on = widget.session.pushEnabled ?? false;
                 // On here, off in the phone's Settings (changed there after saying yes): nothing shows.
                 final blocked = on && widget.session.notificationsAllowed == false;
+                final unsent = on && !blocked && widget.session.pushUnsent;
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -1065,12 +1095,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       subtitle: Text(
                         blocked
                             ? pushBlocked
+                            : unsent
+                            ? pushNotSent
                             : on
                             ? 'Encrypted, through the push relay at push.danyzmaj.com.'
                             : isIos
                             ? 'Off: no notifications and no Lock Screen sessions.'
                             : 'Off: no notifications and no followed sessions.',
-                        style: TextStyle(color: blocked ? C.warn : C.dim, height: 1.4),
+                        style: TextStyle(color: blocked || unsent ? C.warn : C.dim, height: 1.4),
                       ),
                       value: on,
                       onChanged: (on) async {

@@ -81,7 +81,8 @@ class _PushConsentPageState extends State<PushConsentPage> {
                     const SizedBox(height: 6),
                     TextButton(
                       key: const ValueKey('push-not-now'),
-                      onPressed: _busy ? null : () => unawaited(_choose(on: false)),
+                      // Never waits on anything: the way out while Turn on still waits on the phone.
+                      onPressed: () => unawaited(_choose(on: false)),
                       child: const Text('Not now'),
                     ),
                   ],
@@ -108,6 +109,10 @@ SnackBar pushNotAllowedSnackBar() => SnackBar(
 /// On here, but turned off since in the phone's Settings: nothing shows.
 const pushBlocked =
     'On, but notifications are off for PocketTerm in this phone’s Settings, so none show. Allow them there.';
+
+/// On here, but the server couldn't be reached to take this phone's token.
+const pushNotSent =
+    'On, but the server could not be reached to register this phone. PocketTerm tries again when you come back to it.';
 
 /// Where notifications go and what each one on the way can see.
 class PushExplainer extends StatelessWidget {

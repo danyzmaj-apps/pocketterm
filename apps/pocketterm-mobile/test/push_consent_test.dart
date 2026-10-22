@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -17,15 +18,21 @@ void main() {
   /// What the phone answers registerPush: its token, or null (not allowed).
   late String? pushToken;
 
+  /// The phone never answers registerPush (no network, APNs silent).
+  late bool pushHangs;
+
   setUp(() {
     dir = Directory.systemTemp.createTempSync('pocketterm_push');
     calls = [];
     pushToken = 'apns-token';
+    pushHangs = false;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       ..setMockMethodCallHandler(const MethodChannel('pocketterm/native'), (call) async {
         calls.add(call);
         return switch (call.method) {
+          'registerPush' when pushHangs => Completer<Object?>().future,
           'registerPush' => pushToken == null ? null : {'token': pushToken},
+          'notificationsAllowed' => true,
           'liveActivities' => [
             {'key': 'mac00001/kitty-1/1', 'token': 'activity-token'},
           ],
@@ -147,6 +154,52 @@ void main() {
     await toggleInAccount(tester);
     expect(session.pushEnabled, isTrue);
     expect(session.server.pushes.map((p) => p.$1), contains('register'));
+    remote.flush();
+  });
+
+  testWidgets('a phone that never hands over its token neither traps the consent page nor waits forever', (
+    tester,
+  ) async {
+    pushHangs = true;
+    final (session, remote) = await pumpApp(tester);
+    await tester.tap(find.byKey(const ValueKey('push-accept')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('push-not-now')));
+    await tester.pumpAndSettle();
+    expect(find.byType(PushConsentPage), findsNothing, reason: 'Not now gets out while Turn on still waits');
+    expect(session.pushEnabled, isFalse);
+
+    await tester.pump(MobileSession.pushTokenWait);
+    await tester.pumpAndSettle();
+    expect(session.pushEnabled, isFalse, reason: 'the late Turn on does not override Not now');
+    expect(session.server.pushes, isEmpty);
+
+    await toggleInAccount(tester);
+    expect(session.pushEnabled, isFalse, reason: 'still waiting on the phone');
+    await tester.pump(MobileSession.pushTokenWait);
+    await tester.pumpAndSettle();
+    expect(session.pushEnabled, isFalse, reason: 'no token within the wait: off, and the switch is free again');
+    remote.flush();
+  });
+
+  testWidgets('a server that misses the token says so, and gets it when the app comes back', (tester) async {
+    final (session, remote) = await pumpApp(tester);
+    session.server.offline = true;
+    await tester.tap(find.byKey(const ValueKey('push-accept')));
+    await tester.pumpAndSettle();
+    expect(session.pushEnabled, isTrue);
+    expect(session.pushUnsent, isTrue);
+    await tester.tap(find.byTooltip('Account'));
+    await tester.pumpAndSettle();
+    expect(find.text(pushNotSent), findsOneWidget);
+
+    session.server.offline = false;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(session.server.pushes.map((p) => p.$1), ['register']);
+    expect(session.pushUnsent, isFalse);
+    expect(find.text(pushNotSent), findsNothing);
     remote.flush();
   });
 }

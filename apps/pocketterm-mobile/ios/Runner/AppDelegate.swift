@@ -10,6 +10,8 @@ import UserNotifications
 
   /// Waiting for APNs to hand over this iPhone's device token (registerPush).
   private var pushWaiter: FlutterResult?
+  /// Which registerPush [pushWaiter] belongs to, for its time limit.
+  private var pushAsk = 0
 
   override func application(
     _ application: UIApplication,
@@ -102,7 +104,15 @@ import UserNotifications
             guard granted, let self else { return result(nil) }
             self.pushWaiter?(nil)
             self.pushWaiter = result
+            self.pushAsk += 1
+            let ask = self.pushAsk
             UIApplication.shared.registerForRemoteNotifications()
+            // APNs may never answer (no network): no token then, rather than a call that never ends.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+              guard let self, self.pushAsk == ask else { return }
+              self.pushWaiter?(nil)
+              self.pushWaiter = nil
+            }
           }
         }
       case "notificationsAllowed":

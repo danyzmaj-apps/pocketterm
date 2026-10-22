@@ -14,14 +14,16 @@ PocketTermServerClient offlineServer() =>
     PocketTermServerClient(const Backend(url: 'http://localhost:1'), tokens: MemoryDeviceTokens());
 
 /// A server that takes push calls (`POST /v1/push/<action>`) without a network,
-/// keeping them in [pushes].
+/// keeping them in [pushes]; while [offline], each one fails as unreachable.
 class PushRecorder extends PocketTermServerClient {
   PushRecorder() : super(const Backend(url: 'http://localhost:1'), tokens: MemoryDeviceTokens());
 
   final pushes = <(String, Map<String, Object?>)>[];
+  bool offline = false;
 
   @override
   Future<Map<String, dynamic>> push(String action, Map<String, Object?> body) async {
+    if (offline) throw const ServerException(0, 'offline', 'The server could not be reached.');
     pushes.add((action, body));
     return {};
   }

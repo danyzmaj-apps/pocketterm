@@ -48,4 +48,4 @@ appId: com.danyzmaj.pocketterm
     text: ".*fake reply: ${PROMPT_RE}.*"
     index: 1
 - takeScreenshot: new-once
-- tapOn: "Back"
+- runFlow: sub/back.yaml

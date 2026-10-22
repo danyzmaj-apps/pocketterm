@@ -24,7 +24,7 @@ appId: com.danyzmaj.pocketterm
     notVisible: ".*e2e-real.*"
     timeout: 60000
 - takeScreenshot: after
-- tapOn: "Back"
+- runFlow: sub/back.yaml
 - extendedWaitUntil:
     visible: "${SESSION}\n.*"
     timeout: 20000

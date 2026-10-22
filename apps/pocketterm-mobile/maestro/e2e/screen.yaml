@@ -33,4 +33,4 @@ appId: com.danyzmaj.pocketterm
           visible: ".*e2e-42.*"
           timeout: 20000
 - takeScreenshot: typed
-- tapOn: "Back"
+- runFlow: sub/back.yaml

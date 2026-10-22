@@ -23,7 +23,7 @@ appId: com.danyzmaj.pocketterm
     notVisible: ".*fake reply: .*"
     timeout: 30000
 - takeScreenshot: fresh-session
-- tapOn: "Back"
+- runFlow: sub/back.yaml
 - extendedWaitUntil:
     visible: "${SESSION}\n.*"
     timeout: 10000

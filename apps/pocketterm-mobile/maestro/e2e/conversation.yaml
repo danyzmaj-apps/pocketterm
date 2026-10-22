@@ -22,4 +22,4 @@ appId: com.danyzmaj.pocketterm
     visible: ".*fake reply: ${PROMPT_RE}.*"
     timeout: 30000
 - takeScreenshot: replied
-- tapOn: "Back"
+- runFlow: sub/back.yaml

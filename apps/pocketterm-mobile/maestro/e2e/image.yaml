@@ -51,4 +51,4 @@ appId: com.danyzmaj.pocketterm
     visible: ".*fake image: .*"
     timeout: 30000
 - takeScreenshot: received
-- tapOn: "Back"
+- runFlow: sub/back.yaml

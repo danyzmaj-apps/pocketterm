@@ -1,0 +1,11 @@
+# The page's Back. While typing on Android, the keyboard's own back (in the
+# navigation bar) reads "Back" too: the keyboard goes first.
+appId: com.danyzmaj.pocketterm
+---
+- runFlow:
+    when:
+      visible:
+        id: "android:id/input_method_nav_back"
+    commands:
+      - hideKeyboard
+- tapOn: "Back"

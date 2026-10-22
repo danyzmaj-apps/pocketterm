@@ -64,6 +64,9 @@ class BuiltInServer extends ChangeNotifier {
   final List<int>? relayKey;
 
   PocketTermServer? _server;
+
+  /// The port this app's server had last time ([start]).
+  int? _earlier;
   Timer? _timer;
 
   /// Running (between [start] and [stop]).
@@ -145,9 +148,12 @@ class BuiltInServer extends ChangeNotifier {
   }
 
   /// Starts listening on 127.0.0.1:[port], or the next free port above it
-  /// (up to 20 more), then has Tailscale publish it.
-  Future<void> start({int port = 47900}) async {
+  /// (up to 20 more), then has Tailscale publish it. [earlier]: the port
+  /// this app's server listened on last time, whose Serve entry is this
+  /// app's to move; null on a first start (an entry there is someone else's).
+  Future<void> start({int port = 47900, int? earlier}) async {
     if (_server != null) return;
+    _earlier = earlier;
     SocketException? last;
     for (var p = port; p < port + 20; p++) {
       try {
@@ -194,14 +200,14 @@ class BuiltInServer extends ChangeNotifier {
       _error = null;
       _taken = false;
     } else if (_served != url) {
-      final result = await tailscale.serve(port);
+      final result = await tailscale.serve(port, earlier: _earlier);
       if (_server == null) return;
       _served = result.ok ? url : null;
       _enableHttps = result.enableLink;
       _error = result.error;
       _taken = result.taken != null;
       if (result.ok) _servedAt(url);
-    } else if (await tailscale.taken(port) case final what?) {
+    } else if (await tailscale.taken({port, ?_earlier}) case final what?) {
       // Something else took port 443 since: it stays, and phones can't reach this one.
       if (_server == null) return;
       _served = null;

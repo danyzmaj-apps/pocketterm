@@ -114,8 +114,8 @@ void main() {
     });
 
     test('what else Serve publishes on 443 is told apart from the built-in server', () {
-      String? at(Map<String, Object?> config, {int port = 47900}) =>
-          Tailscale.servedElsewhere(jsonEncode(config), port);
+      String? at(Map<String, Object?> config, {Set<int> ours = const {47900}}) =>
+          Tailscale.servedElsewhere(jsonEncode(config), ours);
       Map<String, Object?> web(Map<String, Object?> handlers) => {
         'TCP': {
           '443': {'HTTPS': true},
@@ -125,8 +125,8 @@ void main() {
         },
       };
       expect(at({}), isNull);
-      expect(Tailscale.servedElsewhere('not json', 47900), isNull);
-      // This app's, from this run or one whose port moved.
+      expect(Tailscale.servedElsewhere('not json', const {47900}), isNull);
+      // This app's, from this run or the one before, whose port moved.
       expect(
         at(
           web({
@@ -138,10 +138,30 @@ void main() {
       expect(
         at(
           web({
-            '/': {'Proxy': 'http://127.0.0.1:47903'},
+            '/': {'Proxy': 'http://127.0.0.1:47900'},
           }),
+          ours: const {47901, 47900},
         ),
         isNull,
+      );
+      // Another PocketTerm's on this Mac (another user, another copy), though on a port of the same range.
+      expect(
+        at(
+          web({
+            '/': {'Proxy': 'http://127.0.0.1:47900'},
+          }),
+          ours: const {47901},
+        ),
+        'http://127.0.0.1:47900',
+      );
+      expect(
+        at(
+          web({
+            '/': {'Proxy': 'http://127.0.0.1:47900'},
+          }),
+          ours: const {},
+        ),
+        'http://127.0.0.1:47900',
       );
       expect(
         at(
@@ -309,6 +329,27 @@ void main() {
       expect(server.publicUrl, isNull);
       await server.stop();
       expect(fake.serveConfig, isNotEmpty);
+    });
+
+    test("another PocketTerm's entry (another user, another copy) is taken on a first start, and stays", () async {
+      final fake = FakeTailscale(installed: true)..serving('http://127.0.0.1:47900');
+      final server = await host(fake);
+      expect(server.state, HostState.taken);
+      expect(server.error, contains('http://127.0.0.1:47900'));
+      expect(fake.calls.where((c) => c.startsWith('serve --')), isEmpty);
+      await server.stop();
+      expect(fake.calls, isNot(contains('serve --https=443 off')));
+      expect(jsonEncode(fake.serveConfig), contains('http://127.0.0.1:47900'));
+    });
+
+    test('its own entry from last time moves to the port it has now', () async {
+      final fake = FakeTailscale(installed: true)..serving('http://127.0.0.1:47950');
+      final server = BuiltInServer(dataDir: dir, tailscale: fake.tailscale, recheck: Duration.zero);
+      addTearDown(server.stop);
+      await server.start(port: 0, earlier: 47950);
+      await server.refresh();
+      expect(server.state, HostState.ready);
+      expect(fake.calls.last, 'serve --bg --https=443 http://127.0.0.1:${server.port}');
     });
 
     test('Tailscale stopping later takes it off; back on, it serves again', () async {

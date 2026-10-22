@@ -185,11 +185,12 @@ class Tailscale {
   /// lasts until [unserve]. A tailnet with HTTPS off answers with the page
   /// that turns it on: the CLI prints it and waits, so it's stopped there.
   /// Something else already served on 443 ([servedElsewhere]) stays: it's
-  /// never replaced.
-  Future<ServeResult> serve(int port) async {
+  /// never replaced. [earlier]: the port this app's server had before (its
+  /// entry is this app's to move).
+  Future<ServeResult> serve(int port, {int? earlier}) async {
     final cli = _locate();
     if (cli == null) return const ServeResult.failed('Tailscale isn’t installed.');
-    if (await taken(port) case final what?) return ServeResult.taken(what);
+    if (await taken({port, ?earlier}) case final what?) return ServeResult.taken(what);
     final ({int? code, String out}) run;
     try {
       run = await _run(
@@ -218,35 +219,35 @@ class Tailscale {
     return said.isEmpty ? 'tailscale serve failed.' : said;
   }
 
-  /// What already serves on port 443 that isn't the built-in server at
-  /// [port] (`tailscale serve status --json`); null when nothing does, or
-  /// when the CLI can't say.
-  Future<String?> taken(int port) async {
+  /// What already serves on port 443 that isn't this app's built-in server
+  /// at one of [ours] (`tailscale serve status --json`); null when nothing
+  /// does, or when the CLI can't say.
+  Future<String?> taken(Set<int> ours) async {
     final cli = _locate();
     if (cli == null) return null;
     try {
       final run = await _run(cli, ['serve', 'status', '--json'], timeout: const Duration(seconds: 10));
-      return run.code == 0 ? servedElsewhere(run.out, port) : null;
+      return run.code == 0 ? servedElsewhere(run.out, ours) : null;
     } on Object catch (e) {
       debugPrint('PocketTerm: tailscale serve status: $e');
       return null;
     }
   }
 
-  /// The ports a PocketTerm built-in server takes (47900 and the next
-  /// ones, should it be taken): a proxy to one of these on 127.0.0.1 is
-  /// this app's, from this run or an earlier one.
-  static bool _ours(String proxy, int port) {
+  /// A proxy to 127.0.0.1 at one of [ours]: the ports this app's own
+  /// built-in server has had. Only those: another PocketTerm on this Mac (a
+  /// second user, a second copy) serves on a port of the same range, and
+  /// its entry isn't this one's to replace.
+  static bool _ours(String proxy, Set<int> ours) {
     final m = RegExp(r'^(?:https?://)?(?:(?:127\.0\.0\.1|localhost):)?(\d+)/?$').firstMatch(proxy.trim());
-    final p = m == null ? null : int.parse(m.group(1)!);
-    return p != null && (p == port || (p >= 47900 && p < 48000));
+    return m != null && ours.contains(int.parse(m.group(1)!));
   }
 
   /// [json] (`tailscale serve status --json`, a ServeConfig) read for port
-  /// 443: what serves there that isn't the built-in server at [port], in
-  /// words; null when nothing else does.
+  /// 443: what serves there that isn't the built-in server at one of
+  /// [ours], in words; null when nothing else does.
   @visibleForTesting
-  static String? servedElsewhere(String json, int port) {
+  static String? servedElsewhere(String json, Set<int> ours) {
     final Object? config;
     try {
       config = jsonDecode(json.substring(json.indexOf('{').clamp(0, json.length)));
@@ -266,7 +267,7 @@ class Tailscale {
           if (handlers is! Map) continue;
           for (final MapEntry(key: mount, value: h) in handlers.entries) {
             final proxy = h is Map ? h['Proxy'] : null;
-            if (mount == '/' && proxy is String && _ours(proxy, port)) continue;
+            if (mount == '/' && proxy is String && _ours(proxy, ours)) continue;
             final what = switch (h) {
               {'Proxy': final String to} => to,
               {'Path': final String path} => path,
@@ -312,7 +313,7 @@ class Tailscale {
   Future<void> unserve(int port) async {
     final cli = _locate();
     if (cli == null) return;
-    if (await taken(port) != null) return;
+    if (await taken({port}) != null) return;
     try {
       await _run(cli, ['serve', '--https=443', 'off'], timeout: const Duration(seconds: 5));
     } on Object catch (e) {

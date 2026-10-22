@@ -447,6 +447,10 @@ class AppController extends Session {
   @override
   bool get hostsServer => _hosting?.running ?? false;
 
+  /// The ports this app's built-in server listens on now and listened on
+  /// last: a Serve entry to one of these is this app's own.
+  Set<int> get ownServerPorts => {if (_hosting case final h? when h.running) h.port, ?_prefs.getInt(_hostingPortKey)};
+
   /// "This computer": starts the built-in server, from now on at every
   /// launch, and signs this computer in to it. Throws what went wrong.
   Future<void> startHosting() async {
@@ -459,7 +463,8 @@ class AppController extends Session {
     if (_hosting != null) return;
     final h = BuiltInServer(dataDir: await _serverDir(), tailscale: tailscale);
     try {
-      await h.start(port: _prefs.getInt(_hostingPortKey) ?? 47900);
+      final last = _prefs.getInt(_hostingPortKey);
+      await h.start(port: last ?? 47900, earlier: last);
     } on Object {
       h.dispose();
       rethrow;

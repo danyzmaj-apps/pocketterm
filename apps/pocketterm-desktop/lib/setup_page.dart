@@ -464,7 +464,7 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
     final ts = widget.app.tailscale;
     final status = await ts.status();
     final ready = status.state == TailscaleState.running && status.https && status.dnsName != null;
-    final taken = ready ? await ts.taken(47900) : null;
+    final taken = ready ? await ts.taken(widget.app.ownServerPorts) : null;
     if (mounted) {
       setState(() {
         _status = status;

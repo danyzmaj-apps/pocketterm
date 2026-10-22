@@ -43,10 +43,10 @@ TermWindow _w(String key, {String tty = '', String app = 'x'}) =>
 
 void main() {
   group('tmux', () {
-    test('list-panes: a pane per line, its program from the tty, the window name for a host-name title', () {
+    test('list-panes: a pane per record, its program from the tty, the window name for a host-name title', () {
       const out =
-          '%0\t/dev/ttys008\tzsh\t/private/tmp/dzt/cap-tmux\tcap-tmux\tzsh\tpt-mv82o7z3\t1\t1\t1\n'
-          '%3\t/dev/ttys012\tnode\t/Users/me/Dev/x\t\teditor\twork\t1\t0\t0\n';
+          '%0\x1f/dev/ttys008\x1fzsh\x1f/private/tmp/dzt/cap-tmux\x1fcap-tmux\x1fzsh\x1fpt-mv82o7z3\x1f1\x1f1\x1f1\x1e\n'
+          '%3\x1f/dev/ttys012\x1fnode\x1f/Users/me/Dev/x\x1f\x1feditor\x1fwork\x1f1\x1f0\x1f0\x1e\n';
       final procs = Procs(parsePs(' 97892 97891 97892 97892 ttys008  Ss+  -zsh\n'));
       final panes = parseTmuxPanes('default', out, procs);
       expect(panes.map((w) => w.key), ['tmux:default/0', 'tmux:default/3']);
@@ -58,6 +58,15 @@ void main() {
       expect(first.caps, allCaps);
       // No ps entry: tmux's own idea of the command; an inactive window isn't focused.
       expect((panes[1].title, panes[1].program, panes[1].focused), ('editor', 'node', false));
+    });
+
+    test('a folder whose name holds a tab or a line break keeps its pane, and the panes after it', () {
+      // As tmux 3.8 prints them: the folder's bytes as they are.
+      const out =
+          '%1\x1f/dev/ttys014\x1fbash\x1f/tmp/ptx/tab\tdir\nnl\x1f\x1fbash\x1fs\x1f1\x1f1\x1f0\x1e\n'
+          '%2\x1f/dev/ttys015\x1fzsh\x1f/tmp\x1ft\x1fzsh\x1fs\x1f1\x1f0\x1f0\x1e\n';
+      final panes = parseTmuxPanes('edge', out);
+      expect(panes.map((w) => (w.key, w.cwd)), [('tmux:edge/1', '/tmp/ptx/tab\tdir\nnl'), ('tmux:edge/2', '/tmp')]);
     });
 
     test('list-clients: client tty → the pane it shows', () {
@@ -89,7 +98,8 @@ void main() {
 
   test("Ghostty list: id, title and folder; no tty, and its windows can't be read", () {
     const out =
-        'CB2035E7-67BF-48C7-8D0A-83F3FA5B8074\tcap-ghostty\t/tmp/dzt/cap-ghostty\tcap-ghostty\ttrue\nfront\tfalse\n';
+        'CB2035E7-67BF-48C7-8D0A-83F3FA5B8074\x1fcap-ghostty\x1f/tmp/dzt/cap-ghostty\x1fcap-ghostty\x1ftrue\x1e\n'
+        'front\x1ffalse';
     final w = parseGhosttyList(out).single;
     expect(
       (w.key, w.title, w.cwd, w.tty, w.focused),
@@ -97,6 +107,15 @@ void main() {
     );
     expect(w.can(TermCap.read), isFalse);
     expect(w.can(TermCap.keys), isTrue);
+  });
+
+  test('Ghostty list: a title or folder with a tab or line break stays one window; the title reads as one line', () {
+    const out =
+        'CB2035E7-67BF-48C7-8D0A-83F3FA5B8074\x1fa\tb\nc\x1f/tmp/x\ty\x1ftab\x1ftrue\x1e\r'
+        'DB2035E7-67BF-48C7-8D0A-83F3FA5B8074\x1fsecond\x1f/tmp\x1ftab\x1ffalse\x1e\n'
+        'front\x1ftrue\n';
+    final ws = parseGhosttyList(out);
+    expect(ws.map((w) => (w.title, w.cwd, w.focused)), [('a b c', '/tmp/x\ty', true), ('second', '/tmp', false)]);
   });
 
   test("ghosttyText escapes what a Zig string literal can't hold", () {

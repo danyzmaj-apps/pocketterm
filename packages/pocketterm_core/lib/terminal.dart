@@ -244,10 +244,11 @@ abstract class TerminalHost {
   Future<void> pressKeys(String key, List<String> names) =>
       throw TerminalException("$label can't press keys in its windows.");
 
-  /// Types [text], a line break as Shift+Enter (a new line in an agent's
-  /// editor; a shell runs the line), then Enter if [enter].
+  /// Types [text], a line break (`\n`, `\r\n` or `\r`: a lone CR typed would
+  /// be Enter, running a half-written line) as Shift+Enter (a new line in an
+  /// agent's editor; a shell runs the line), then Enter if [enter].
   Future<void> send(String key, String text, {required bool enter}) async {
-    for (final (i, line) in text.split('\n').indexed) {
+    for (final (i, line) in text.split(RegExp(r'\r\n?|\n')).indexed) {
       if (i > 0) await pressKeys(key, const ['shift+enter']);
       if (line.isNotEmpty) await type(key, line);
     }
@@ -319,6 +320,55 @@ List<String> keyRuns(List<String> names) {
 /// Keys the phone may press itself (the screen page's key row).
 const phoneKeys = {'esc', 'tab', 'up', 'down', 'enter', 'ctrl+c'};
 
+/// [text] in pieces of at most [maxBytes] UTF-8 bytes each, in order, cut
+/// between characters only: a terminal's scripting takes a bounded amount
+/// in one command (tmux refuses one over 16 KB, kitty a message over about
+/// 128 KB; a command line is at most 1 MB on a Mac, 32K characters on
+/// Windows).
+List<String> textChunks(String text, int maxBytes) {
+  final out = <String>[];
+  var start = 0;
+  var bytes = 0;
+  var i = 0;
+  while (i < text.length) {
+    final c = text.codeUnitAt(i);
+    final pair = c & 0xFC00 == 0xD800 && i + 1 < text.length && text.codeUnitAt(i + 1) & 0xFC00 == 0xDC00;
+    final n = pair
+        ? 4
+        : c < 0x80
+        ? 1
+        : c < 0x800
+        ? 2
+        : 3;
+    if (bytes + n > maxBytes && i > start) {
+      out.add(text.substring(start, i));
+      start = i;
+      bytes = 0;
+    }
+    bytes += n;
+    i += pair ? 2 : 1;
+  }
+  if (start < text.length) out.add(text.substring(start));
+  return out;
+}
+
+/// The most characters of a window's or tab's title the phone gets.
+const titleRunes = 200;
+
+/// A window's or tab's [title] as the phone shows it: escape sequences and
+/// control characters dropped (kitty and WezTerm let some through), a tab
+/// or line break as a space, bidi overrides dropped (they would turn the
+/// text after the title around), and at most [titleRunes] characters (a
+/// program may set a title of any length).
+String cleanTitle(String title) {
+  final t = title
+      .replaceAll(RegExp(r'\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b[ -/]*[0-~]?'), '')
+      .replaceAll(RegExp(r'[\t\n\r]+'), ' ')
+      .replaceAll(RegExp('[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]'), '');
+  final runes = t.runes;
+  return runes.length <= titleRunes ? t : '${String.fromCharCodes(runes.take(titleRunes - 1))}\u2026';
+}
+
 // ------------------------------------------------------------ screens
 
 /// A sealed message grows by a third and the server closes a socket on a
@@ -329,7 +379,8 @@ const historyBytes = 60000;
 /// A terminal's [text] as the phone's lines: charset choices (ESC ( B,
 /// which WezTerm puts before its SGR resets) dropped, plain spaces among a
 /// line's closing escapes dropped (padding), trailing blank lines dropped,
-/// and only the newest lines within [historyBytes].
+/// and only the newest lines within [historyBytes]; a newest line longer
+/// than that (kitty joins a wrapped line's rows) as its end.
 List<String> screenLines(String text) {
   final charset = RegExp(r'\x1b[ -/]+[0-~]');
   final pad = RegExp(r'(?: |\x1b\[[0-9;:]*m)+$');
@@ -341,10 +392,40 @@ List<String> screenLines(String text) {
     final line = raw[i].replaceFirstMapped(pad, (m) => sgr.allMatches(m[0]!).map((e) => e[0]).join());
     if (kept.isEmpty && line.replaceAll(sgr, '').isEmpty) continue;
     bytes += utf8.encode(line).length + 1;
-    if (bytes > historyBytes) break;
+    if (bytes > historyBytes) {
+      if (kept.isEmpty) kept.add(_tail(line, historyBytes - 1));
+      break;
+    }
     kept.add(line);
   }
   return kept.reversed.toList();
+}
+
+/// The end of [line] within [maxBytes] UTF-8 bytes, cut between characters
+/// and not inside an escape sequence.
+String _tail(String line, int maxBytes) {
+  var at = line.length;
+  var bytes = 0;
+  while (at > 0) {
+    final c = line.codeUnitAt(at - 1);
+    final pair = c & 0xFC00 == 0xDC00 && at > 1 && line.codeUnitAt(at - 2) & 0xFC00 == 0xD800;
+    final n = pair
+        ? 4
+        : c < 0x80
+        ? 1
+        : c < 0x800
+        ? 2
+        : 3;
+    if (bytes + n > maxBytes) break;
+    bytes += n;
+    at -= pair ? 2 : 1;
+  }
+  for (final m in RegExp(r'\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)').allMatches(line)) {
+    if (m.end <= at) continue;
+    if (m.start < at) at = m.end;
+    break;
+  }
+  return line.substring(at);
 }
 
 // ------------------------------------------------------------ where an agent runs

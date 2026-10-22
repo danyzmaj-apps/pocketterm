@@ -104,32 +104,54 @@ class WezTerm extends TerminalHost {
     return out;
   }
 
+  /// What a WezTerm too old for a command PocketTerm sends says.
+  static const tooOld = 'WezTerm is too old: update it.';
+
+  /// The most UTF-8 bytes of text one `send-text` carries: it goes on the
+  /// command line, at most 32K characters on Windows.
+  static const typeBytes = 8000;
+
+  /// `wezterm cli` with [args] on the GUI behind [socket]; killed when it
+  /// hasn't answered in five seconds.
   Future<String> _cli(String socket, List<String> args) async {
     final exe = _exe;
     if (exe == null) throw const TerminalException('WezTerm is not installed.');
-    final ProcessResult r;
+    final Process p;
     try {
-      r = await Process.run(
-        exe,
-        ['cli', '--no-auto-start', ...args],
-        environment: {'WEZTERM_UNIX_SOCKET': socket},
-        // wezterm writes UTF-8; the default is the ANSI code page on Windows.
-        stdoutEncoding: utf8,
-        stderrEncoding: utf8,
-      ).timeout(const Duration(seconds: 5));
-    } on TimeoutException {
+      p = await Process.start(exe, ['cli', '--no-auto-start', ...args], environment: {'WEZTERM_UNIX_SOCKET': socket});
+    } on ProcessException catch (e) {
+      throw TerminalException('WezTerm: ${e.message}');
+    }
+    unawaited(p.stdin.close().then((_) {}, onError: (Object _) {}));
+    // wezterm writes UTF-8 (the default is the ANSI code page on Windows);
+    // anything malformed reads as U+FFFD rather than failing the answer.
+    final out = p.stdout.transform(const Utf8Decoder(allowMalformed: true)).join();
+    final err = p.stderr.transform(const Utf8Decoder(allowMalformed: true)).join();
+    final code = await p.exitCode.then<int?>((c) => c).timeout(const Duration(seconds: 5), onTimeout: () => null);
+    if (code == null) {
+      p.kill(ProcessSignal.sigkill);
       if (_windows) _dead[socket] = _now();
       throw const TerminalException('WezTerm did not answer.');
     }
-    if (r.exitCode != 0) {
-      final err = '${r.stderr}'.trim();
-      if (err.contains('is not valid') || err.contains('pane') && err.contains('not found')) {
+    if (code != 0) {
+      final e = (await err).trim();
+      if (e.contains('no such pane') || e.contains('is not valid') || e.contains('pane') && e.contains('not found')) {
         throw const TerminalException('That window is gone.');
       }
+      // A command or flag this WezTerm doesn't have: the GUI is fine.
+      if (e.contains('unrecognized subcommand') || e.contains('unexpected argument')) {
+        throw const TerminalException(tooOld);
+      }
       if (_windows) _dead[socket] = _now();
-      throw TerminalException('WezTerm: ${err.split('\n').last}');
+      // Its GUI quit and left the socket behind.
+      if (e.contains('failed to connect')) throw const TerminalException("WezTerm isn't running.");
+      // Its last line, without the log's time and level, or the reason the
+      // GUI gave.
+      final last = e.split('\n').last.replaceFirst(RegExp(r'^[\d:.]+\s+ERROR\s+\S+\s+>\s*'), '');
+      final reason = RegExp(r'reason: "(?:Error: )?((?:[^"\\]|\\.)*)"').firstMatch(last)?[1];
+      throw TerminalException('WezTerm: ${reason ?? last}');
     }
-    return r.stdout as String;
+    return await out;
   }
 
   (String socket, String pane) _parse(String key) {
@@ -258,8 +280,13 @@ class WezTerm extends TerminalHost {
     await _cli(socket, ['send-text', '--pane-id', pane, '--no-paste', '--', bytes]);
   }
 
+  /// In pieces of [typeBytes], a command each.
   @override
-  Future<void> type(String key, String text) => _write(key, text);
+  Future<void> type(String key, String text) async {
+    for (final chunk in textChunks(text, typeBytes)) {
+      await _write(key, chunk);
+    }
+  }
 
   @override
   Future<void> pressKeys(String key, List<String> names) async {
@@ -335,13 +362,14 @@ List<TermWindow> parseWezTermList(String pid, String json, {Procs? procs, bool w
     () {
       final pane = p as Map;
       final tty = (pane['tty_name'] as String? ?? '').replaceFirst('/dev/', '');
-      final title = pane['title'] as String? ?? '';
+      final title = cleanTitle(pane['title'] as String? ?? '');
       final fg = procs?.foreground(tty);
-      final cwd = Uri.tryParse(pane['cwd'] as String? ?? '');
+      // A `%` the shell didn't escape (a folder named `100%`) as itself.
+      final cwd = Uri.tryParse((pane['cwd'] as String? ?? '').replaceAll(RegExp('%(?![0-9A-Fa-f]{2})'), '%25'));
       return TermWindow(
         key: 'wezterm:$pid/${pane['pane_id']}',
         title: title,
-        tab: pane['tab_title'] as String? ?? '',
+        tab: cleanTitle(pane['tab_title'] as String? ?? ''),
         cwd: cwd != null && cwd.scheme == 'file' ? cwdOfUri(cwd, windows: windows, localHost: localHost) : '',
         program: fg?.program ?? (tty.isEmpty ? programOfTitle(title) : ''),
         focused: pane['is_active'] == true,
@@ -366,8 +394,17 @@ String cwdOfUri(Uri u, {bool windows = false, String? localHost}) {
   if (windows && host.isNotEmpty && host != 'localhost' && host != here && u.path.length > 1) {
     return trim('\\\\$host${Uri(path: u.path).toFilePath(windows: true)}', 2);
   }
-  return u.path;
+  return _decodePercent(u.path);
 }
+
+/// [path] with its `%XX` escapes as the UTF-8 they stand for; bytes that
+/// aren't UTF-8 as U+FFFD rather than an error.
+String _decodePercent(String path) => path.replaceAllMapped(
+  RegExp('(?:%[0-9A-Fa-f]{2})+'),
+  (m) => utf8.decode([
+    for (var i = 0; i < m[0]!.length; i += 3) int.parse(m[0]!.substring(i + 1, i + 3), radix: 16),
+  ], allowMalformed: true),
+);
 
 /// The release date `wezterm --version` tells (`wezterm 20240203-110809-5046fc22`
 /// → 20240203); null for a build that tells none.

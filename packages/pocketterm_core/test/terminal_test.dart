@@ -1,6 +1,7 @@
 @Tags(['posix'])
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -82,6 +83,20 @@ void main() {
       expect(keyRuns(['esc']), ['\x1b']);
       expect(keyRuns([]), isEmpty);
     });
+
+    test('textChunks cuts long text between characters, within the byte limit, keeping every byte in order', () {
+      final text = 'ab漢👍🏽e\u0301${'x' * 20}';
+      final chunks = textChunks(text, 5);
+      expect(chunks.join(), text);
+      for (final c in chunks) {
+        expect(c.runes.isNotEmpty, isTrue);
+        expect(utf8.encode(c).length, lessThanOrEqualTo(5), reason: c);
+      }
+      // A surrogate pair (an emoji) is never split.
+      expect(chunks, contains('👍'));
+      expect(textChunks('', 5), isEmpty);
+      expect(textChunks('short', 100), ['short']);
+    });
   });
 
   group('screens', () {
@@ -89,6 +104,33 @@ void main() {
       // `wezterm cli get-text --escapes` of a prompt in an otherwise empty pane.
       const text = '\x1b(B\x1b[0;1m\x1b[32m➜  \x1b[36mwezterm\r\n\x1b(B\x1b[0m\r\n';
       expect(screenLines(text), ['\x1b[0;1m\x1b[32m➜  \x1b[36mwezterm']);
+    });
+
+    test('a newest line longer than the history budget comes as its end, not as nothing', () {
+      // kitty's history joins a wrapped line's rows: `cat` of a minified file.
+      final long = '\x1b[38:2:1:2:3m${'é' * historyBytes}';
+      final lines = screenLines('older\n$long\n\n');
+      expect(lines, hasLength(1));
+      expect(utf8.encode(lines.single).length, lessThan(historyBytes));
+      expect(lines.single, endsWith('é' * 100));
+      // A cut inside an escape starts after it, so none of its bytes show.
+      final colored = List.filled(historyBytes ~/ 4, '\x1b[31mx').join();
+      expect(screenLines(colored).single, matches(RegExp('^(\x1b\\[31m)?x(\x1b\\[31mx)*\$')));
+    });
+  });
+
+  group('titles', () {
+    test('control characters, escapes and bidi overrides go; tab and newline read as spaces', () {
+      expect(cleanTitle('x\ty\nz\x1b[31m red\x07\x01'), 'x y z red');
+      expect(cleanTitle('\x1b]0;inner\x07omp \u202eevil'), 'omp evil');
+      expect(cleanTitle('漢字 👍🏽 é שלום zero\u200bwidth'), '漢字 👍🏽 é שלום zero\u200bwidth');
+    });
+
+    test('a very long title is cut to titleRunes characters, never inside an emoji', () {
+      final t = cleanTitle('👍' * 1000);
+      expect(t.runes, hasLength(titleRunes));
+      expect(t, endsWith('👍\u2026'));
+      expect(cleanTitle('t' * titleRunes), 't' * titleRunes);
     });
   });
 

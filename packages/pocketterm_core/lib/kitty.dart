@@ -63,6 +63,13 @@ class Kitty extends TerminalHost {
   /// The lines Settings' one click appends to kitty.conf.
   static const configLines = ['allow_remote_control socket-only', 'listen_on unix:/tmp/kitty'];
 
+  /// What acting on a window of a kitty that quit says.
+  static const quit = 'kitty has quit.';
+
+  /// The most UTF-8 bytes of text one `send-text` carries: kitty ignores a
+  /// message over about 128 KB, and JSON writes a control character in six.
+  static const typeBytes = 10000;
+
   /// The protocol version we claim; kitty refuses clients newer than itself.
   static const _version = [0, 20, 0];
   static const _prefix = '\x1bP@kitty-cmd';
@@ -166,9 +173,14 @@ class Kitty extends TerminalHost {
     final Socket s;
     try {
       s = await Socket.connect(address, 0, timeout: timeout);
-    } on SocketException {
+    } on SocketException catch (e) {
+      // Nobody listens on it: a socket left behind by a kitty that quit.
+      if (e.osError?.errorCode case 2 || 61 || 111) throw const TerminalException(quit);
       throw const TerminalException('kitty did not answer.');
     }
+    // A write kitty hung up on (a message it refused) fails here too, and
+    // would otherwise be an error nobody handles.
+    unawaited(s.done.then((_) {}, onError: (Object _) {}));
     final String reply;
     try {
       s.add(utf8.encode('$_prefix${jsonEncode({'cmd': cmd, 'version': _version, 'payload': ?payload})}$_end'));
@@ -275,11 +287,13 @@ class Kitty extends TerminalHost {
   }
 
   /// Not as a paste: omp answers a paste by also attaching whatever image is
-  /// on the Mac's clipboard.
+  /// on the Mac's clipboard. In pieces of [typeBytes], a command each.
   @override
   Future<void> type(String key, String text) async {
     final (socket, match) = _parse(key);
-    await _rc(socket, 'send-text', {'match': match, 'data': 'text:$text', 'bracketed_paste': 'disable'});
+    for (final chunk in textChunks(text, typeBytes)) {
+      await _rc(socket, 'send-text', {'match': match, 'data': 'text:$chunk', 'bracketed_paste': 'disable'});
+    }
   }
 
   /// In one command, as kitty names them (`shift+tab`, `a`).
@@ -393,8 +407,8 @@ List<TermWindow> parseKittyLs(String socket, String json, [Procs? procs]) => [
           final cmd = (proc?['cmdline'] as List?)?.cast<String>() ?? (win['cmdline'] as List).cast<String>();
           return TermWindow(
             key: '$socket/${win['id']}',
-            title: win['title'] as String? ?? '',
-            tab: tab['title'] as String? ?? '',
+            title: cleanTitle(win['title'] as String? ?? ''),
+            tab: cleanTitle(tab['title'] as String? ?? ''),
             cwd: proc?['cwd'] as String? ?? win['cwd'] as String? ?? '',
             program: cmd.isEmpty ? '' : cmd.first.split('/').last.replaceFirst(RegExp('^-'), ''),
             focused: win['is_focused'] == true,

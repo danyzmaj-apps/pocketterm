@@ -74,9 +74,13 @@ class _Pen {
 }
 
 final _escape = RegExp(
-  // SGR, other CSI, OSC (to BEL or ESC \), and any other escape: two bytes,
-  // or more with intermediates (a charset choice, ESC ( B, as WezTerm sends).
-  r'\x1b\[([0-9;:]*)m|\x1b\[[0-9;:?<=>]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[ -/]*[0-~]',
+  // SGR, other CSI (or one cut off at the end), OSC (to BEL or ESC \, or cut
+  // off), DCS, APC, PM and SOS strings (kitty's graphics, tmux passthrough;
+  // to ESC \ or cut off), and any other escape: two bytes, or more with
+  // intermediates (a charset choice, ESC ( B, as WezTerm sends), or a lone
+  // ESC at the end.
+  r'\x1b\[([0-9;:]*)m|\x1b\[[0-9;:?<=>]*[ -/]*(?:[@-~]|$)|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|'
+  r'\x1b[P_^X][^\x1b]*(?:\x1b\\)?|\x1b[ -/]*[0-~]?',
 );
 
 /// Terminal text with ANSI escapes as styled spans: SGR colors (16, 256 and

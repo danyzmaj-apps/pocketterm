@@ -204,6 +204,9 @@ void main() {
       final s = g.any();
       screenLines(s);
       ansiSpans(s, colors);
+      cleanTitle(s);
+      // An Error, not an expect: the property takes an Exception as a refusal.
+      if (textChunks(s, 4 + g.r.nextInt(60)).join() != s) throw StateError('textChunks lost or reordered text');
       parseMenu(s);
       for (final agent in Agent.values) {
         parsePlanReview(s, agent: agent);

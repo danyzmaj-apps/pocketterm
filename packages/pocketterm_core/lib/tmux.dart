@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:pocketterm_core/terminal.dart';
@@ -8,13 +9,18 @@ import 'package:pocketterm_core/terminal.dart';
 /// `/private/tmp/tmux-<uid>`), through its command line. Window keys:
 /// `tmux:<socket name>/<pane number>` (the pane `%n`).
 class Tmux extends TerminalHost {
-  Tmux({String? executable, List<String>? socketDirs, this.env}) : _fixedExe = executable, _fixedDirs = socketDirs;
+  Tmux({String? executable, List<String>? socketDirs, this.env, this.timeout = const Duration(seconds: 5)})
+    : _fixedExe = executable,
+      _fixedDirs = socketDirs;
 
   final String? _fixedExe;
   final List<String>? _fixedDirs;
 
   /// The environment to look tmux up in; this process's when null.
   final Map<String, String>? env;
+
+  /// How long one tmux command may take.
+  final Duration timeout;
 
   /// Looked up until found, not once at start: tmux installed while the app
   /// runs shows up without a restart.
@@ -87,8 +93,12 @@ class Tmux extends TerminalHost {
     if (tmuxSocketName(name)) _known[name] = socketPath;
   }
 
-  /// Socket name → path, for every live-looking socket we may open.
+  /// Socket name → path, for every live-looking socket we may open (a
+  /// learnt one only while it's there: its server may have gone).
   Map<String, String> _sockets() {
+    _known.removeWhere(
+      (_, path) => FileSystemEntity.typeSync(path, followLinks: false) != FileSystemEntityType.unixDomainSock,
+    );
     final out = <String, String>{..._known};
     for (final dir in _dirs) {
       final d = Directory(dir);
@@ -108,23 +118,43 @@ class Tmux extends TerminalHost {
     return out;
   }
 
+  /// What tmux says when it isn't installed.
+  static const notInstalled =
+      'tmux is not installed. Install it with Homebrew (brew install tmux) or MacPorts (sudo port install tmux).';
+
+  /// The most UTF-8 bytes of text one `send-keys` takes: tmux refuses a
+  /// command over 16 KB ("command too long").
+  static const typeBytes = 8000;
+
+  /// tmux with [args] on server [socket]; killed when it hasn't answered
+  /// within [timeout] (a server that hangs leaves no client behind each look).
   Future<String> _run(String socket, List<String> args) async {
     final exe = _exe;
-    if (exe == null) throw const TerminalException('tmux is not installed. Install it with: brew install tmux');
-    final ProcessResult r;
+    if (exe == null) throw const TerminalException(notInstalled);
+    final Process p;
     try {
-      r = await Process.run(exe, ['-S', socket, ...args]).timeout(const Duration(seconds: 5));
-    } on TimeoutException {
+      p = await Process.start(exe, ['-S', socket, ...args]);
+    } on ProcessException catch (e) {
+      throw TerminalException('tmux: ${e.message}');
+    }
+    unawaited(p.stdin.close().then((_) {}, onError: (Object _) {}));
+    // Malformed UTF-8 reads as U+FFFD rather than failing the whole answer.
+    final out = p.stdout.transform(const Utf8Decoder(allowMalformed: true)).join();
+    final err = p.stderr.transform(const Utf8Decoder(allowMalformed: true)).join();
+    final code = await p.exitCode.then<int?>((c) => c).timeout(timeout, onTimeout: () => null);
+    if (code == null) {
+      p.kill(ProcessSignal.sigkill);
       throw const TerminalException('tmux did not answer.');
     }
-    if (r.exitCode != 0) {
-      final err = '${r.stderr}'.trim();
-      if (err.contains("can't find pane") || err.contains('no server running')) {
+    if (code != 0) {
+      final e = (await err).trim();
+      // A pane closed, a server killed, a socket deleted.
+      if (e.contains("can't find pane") || e.contains('no server running') || e.contains('error connecting to')) {
         throw const TerminalException('That window is gone.');
       }
-      throw TerminalException('tmux: $err');
+      throw TerminalException('tmux: $e');
     }
-    return r.stdout as String;
+    return await out;
   }
 
   (String socket, String pane) _parse(String key) {
@@ -134,9 +164,11 @@ class Tmux extends TerminalHost {
     return (path, '%${m![2]}');
   }
 
+  /// A pane a record, ended by RS and a newline, its fields apart by US: a
+  /// folder's name may hold a tab or a line break, which tmux prints as is.
   static const _format =
-      '#{pane_id}\t#{pane_tty}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_title}\t'
-      '#{window_name}\t#{session_name}\t#{pane_active}\t#{window_active}\t#{session_attached}';
+      '#{pane_id}\x1f#{pane_tty}\x1f#{pane_current_command}\x1f#{pane_current_path}\x1f#{pane_title}\x1f'
+      '#{window_name}\x1f#{session_name}\x1f#{pane_active}\x1f#{window_active}\x1f#{session_attached}\x1e';
 
   @override
   Future<TermStatus> status(Procs procs) async {
@@ -145,7 +177,7 @@ class Tmux extends TerminalHost {
         id,
         label,
         TermState.missing,
-        note: 'Install tmux for full control anywhere: brew install tmux',
+        note: 'Install tmux for full control (Homebrew: brew install tmux, or MacPorts: sudo port install tmux)',
       );
     }
     final n = (await windows(procs)).length;
@@ -197,10 +229,13 @@ class Tmux extends TerminalHost {
     return (await _run(socket, ['capture-pane', '-p', '-t', pane])).trimRight();
   }
 
+  /// In pieces of [typeBytes], one `send-keys` each.
   @override
   Future<void> type(String key, String text) async {
     final (socket, pane) = _parse(key);
-    await _run(socket, ['send-keys', '-t', pane, '-l', '--', text]);
+    for (final chunk in textChunks(text, typeBytes)) {
+      await _run(socket, ['send-keys', '-t', pane, '-l', '--', chunk]);
+    }
   }
 
   @override
@@ -230,7 +265,7 @@ class Tmux extends TerminalHost {
   Future<String> launch(String cwd, {List<String>? command}) async {
     if (!Directory(cwd).existsSync()) throw TerminalException('No such folder: $cwd');
     final exe = _exe;
-    if (exe == null) throw const TerminalException('tmux is not installed. Install it with: brew install tmux');
+    if (exe == null) throw const TerminalException(notInstalled);
     final session = 'pt-${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}';
     final r = await Process.run(exe, [
       'new-session',
@@ -260,8 +295,8 @@ class Tmux extends TerminalHost {
 
 /// tmux's `list-panes -a -F Tmux._format` output (server [socket]) as windows.
 List<TermWindow> parseTmuxPanes(String socket, String out, [Procs? procs]) => [
-  for (final line in out.split('\n'))
-    if (line.split('\t') case [
+  for (final record in out.split('\x1e\n'))
+    if (record.split('\x1f') case [
       final id,
       final tty,
       final command,
@@ -279,8 +314,8 @@ List<TermWindow> parseTmuxPanes(String socket, String out, [Procs? procs]) => [
         return TermWindow(
           key: 'tmux:$socket/${id.replaceFirst('%', '')}',
           // A pane's default title is the host name: its window's name says more.
-          title: title.isEmpty || title == Platform.localHostname ? window : title,
-          tab: '$session:$window',
+          title: cleanTitle(title.isEmpty || title == Platform.localHostname ? window : title),
+          tab: cleanTitle('$session:$window'),
           cwd: path,
           program: program,
           focused: paneActive == '1' && windowActive == '1' && attached != '0',

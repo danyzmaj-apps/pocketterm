@@ -39,11 +39,12 @@ class FakeKitty {
       Kitty(socketDir: dir.path, timeout: timeout, restoreFront: false);
 
   void _serve(Socket s) {
-    final buf = StringBuffer();
+    final buf = <int>[];
     s.listen((bytes) async {
-      buf.write(utf8.decode(bytes));
-      final text = buf.toString();
-      if (!text.endsWith('\x1b\\')) return;
+      buf.addAll(bytes);
+      // Bytes until the end: a character may span two reads.
+      if (buf.length < 2 || buf[buf.length - 2] != 0x1b || buf.last != 0x5c) return;
+      final text = utf8.decode(buf);
       expect(text, startsWith('\x1bP@kitty-cmd'));
       final request = jsonDecode(text.substring('\x1bP@kitty-cmd'.length, text.length - 2)) as Map<String, dynamic>;
       requests.add(request);
@@ -112,6 +113,15 @@ void main() {
       expect(r.payload['match'], 'id:3');
       if (r.cmd == 'send-text') expect(r.payload['bracketed_paste'], 'disable');
     }
+  });
+
+  test("Windows' and old Macs' line breaks (CRLF, CR) are line breaks too, never a bare Enter mid-text", () async {
+    await fake.kitty().send('kitty-test/3', 'rm -rf build\r\necho done\rls', enter: false);
+    final sent = [
+      for (final r in fake.requests)
+        if (r['payload'] case {'keys': final List<dynamic> keys}) keys.join() else '${(r['payload'] as Map)['data']}',
+    ];
+    expect(sent, ['text:rm -rf build', 'shift+enter', 'text:echo done', 'shift+enter', 'text:ls']);
   });
 
   test('pressKeys sends all names in one command; press refuses keys the phone may not press', () async {
@@ -231,6 +241,56 @@ void main() {
       throwsA(isA<TerminalException>()),
     );
     expect(watch.elapsed, lessThan(const Duration(seconds: 2)));
+  });
+
+  test('long text goes in pieces kitty takes, in order, none of it as a paste', () async {
+    // kitty ignores a message over about 128 KB and hangs up.
+    final text = List.generate(9000, (i) => 'é漢"\\\x1b$i').join();
+    await fake.kitty().type('kitty-test/1', text);
+    final payloads = [for (final r in fake.requests) r['payload'] as Map<String, dynamic>];
+    expect(payloads.length, greaterThan(1));
+    for (final p in payloads) {
+      expect(utf8.encode(jsonEncode(p)).length, lessThan(100000));
+      expect(p['bracketed_paste'], 'disable');
+    }
+    expect(payloads.map((p) => (p['data'] as String).substring('text:'.length)).join(), text);
+  });
+
+  test('a kitty that hangs up on what it was sent is an answer, not an error nobody handles', () async {
+    final hup = await ServerSocket.bind(
+      InternetAddress('${fake.dir.path}/kitty-hup', type: InternetAddressType.unix),
+      0,
+    );
+    addTearDown(hup.close);
+    hup.listen((s) => s.destroy());
+    for (final size in [10, 9000]) {
+      await expectLater(fake.kitty().type('kitty-hup/1', 'x' * size), throwsA(isA<TerminalException>()));
+    }
+    // An unhandled socket error would fail this test from its zone.
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  });
+
+  test('a socket left behind by a kitty that was killed reads as kitty having quit', () async {
+    // nc listens on it and is killed: the socket stays with nobody behind it.
+    final path = '${fake.dir.path}/kitty-stale';
+    final nc = await Process.start('/usr/bin/nc', ['-lU', path]);
+    for (
+      var i = 0;
+      i < 50 && FileSystemEntity.typeSync(path, followLinks: false) == FileSystemEntityType.notFound;
+      i++
+    ) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    nc.kill(ProcessSignal.sigkill);
+    await nc.exitCode;
+    expect(FileSystemEntity.typeSync(path, followLinks: false), FileSystemEntityType.unixDomainSock);
+    await expectLater(
+      fake.kitty().type('kitty-stale/1', 'x'),
+      throwsA(isA<TerminalException>().having((e) => e.message, 'message', Kitty.quit)),
+    );
+    // The live one still lists; the stale one is passed over.
+    fake.answer = (_) => [FakeKitty.ok('[]')];
+    expect(await fake.kitty().windows(), isEmpty);
   });
 
   test('lines() strips padding, drops trailing blanks, and keeps the newest lines within historyBytes', () async {

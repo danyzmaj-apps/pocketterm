@@ -15,9 +15,11 @@ import 'package:pocketterm_core/terminal.dart';
 /// the phone's sessions there run in tmux when it's installed. Window keys:
 /// `ghostty:<terminal UUID>`.
 class Ghostty extends TerminalHost {
-  Ghostty({this.appPath = '/Applications/Ghostty.app'});
+  /// [appleScript]: the osascript runner; the terminals' shared one if null.
+  Ghostty({this.appPath = '/Applications/Ghostty.app', this._appleScript});
 
   final String appPath;
+  final AppleScript? _appleScript;
 
   @override
   String get id => 'ghostty';
@@ -43,7 +45,9 @@ class Ghostty extends TerminalHost {
   bool get installed => Directory(appPath).existsSync();
   bool _running(Procs procs) => procs.running('$appPath/Contents/MacOS/');
 
-  Future<String> _osa(String script, [List<String> args = const []]) => runAppleScript(label, bundleId!, script, args);
+  Future<String> _osa(String script, [List<String> args = const []]) => _appleScript != null
+      ? _appleScript.run(label, bundleId!, script, args)
+      : runAppleScript(label, bundleId!, script, args);
 
   String _terminal(String key) {
     final id = RegExp(r'^ghostty:([0-9A-Fa-f-]{36})$').firstMatch(key)?[1];
@@ -51,11 +55,14 @@ class Ghostty extends TerminalHost {
     return id;
   }
 
+  /// Runs [body] on the terminal of [key], with `t` set to it. A Ghostty
+  /// that has quit isn't started again for a window it no longer has.
   Future<String> _on(String key, String body, [List<String> args = const []]) async {
     try {
       return await _osa(
         '''
 on run argv
+  if application id "com.mitchellh.ghostty" is not running then error "Ghostty isn't running." number -600
   tell application "Ghostty"
     set t to first terminal whose id is (item 1 of argv)
 $body
@@ -67,15 +74,18 @@ end run''',
     } on AutomationDenied {
       rethrow;
     } on TerminalException catch (e) {
-      if (e.message.contains('-1719') || e.message.contains('-1728')) {
+      if (e.message.contains('-1719') || e.message.contains('-1728') || e.message == "$label isn't running.") {
         throw const TerminalException('That window is gone.');
       }
       rethrow;
     }
   }
 
+  /// A terminal a record, ended by RS and a newline, its fields apart by US:
+  /// a title or a folder's name may hold a tab or a line break.
   static const _list = '''
-set sep to ASCII character 9
+set sep to ASCII character 31
+set eol to (ASCII character 30) & linefeed
 set out to ""
 tell application "Ghostty"
   set focusedId to ""
@@ -85,7 +95,7 @@ tell application "Ghostty"
   repeat with w in windows
     repeat with b in tabs of w
       repeat with t in terminals of b
-        set out to out & (id of t) & sep & (name of t) & sep & (working directory of t) & sep & (name of b) & sep & ((id of t) is focusedId) & linefeed
+        set out to out & (id of t) & sep & (name of t) & sep & (working directory of t) & sep & (name of b) & sep & ((id of t) is focusedId) & eol
       end repeat
     end repeat
   end repeat
@@ -141,8 +151,18 @@ return out''';
   Future<void> _write(String key, String bytes) =>
       _on(key, '    perform action (item 2 of argv) on t', ['text:${ghosttyText(bytes)}']);
 
+  /// The most UTF-8 bytes of text one script types: its argument, four
+  /// bytes per control character once escaped, stays well within a
+  /// command line's 1 MB.
+  static const typeBytes = 32000;
+
+  /// In pieces of [typeBytes], a script each.
   @override
-  Future<void> type(String key, String text) => _write(key, text);
+  Future<void> type(String key, String text) async {
+    for (final chunk in textChunks(text, typeBytes)) {
+      await _write(key, chunk);
+    }
+  }
 
   @override
   Future<void> pressKeys(String key, List<String> names) async {
@@ -158,7 +178,6 @@ return out''';
 
   /// The ttys of Ghostty's terminals now ([ghosttySurfaceTtys]).
   Set<String> _surfaceTtys(Procs procs) => ghosttySurfaceTtys(procs, procs.pidOf('$appPath/Contents/MacOS/'));
-
 
   /// [key]'s tty is [tty] (an agent there said so).
   void learn(String key, String tty) => _ttys[key] = tty.replaceFirst('/dev/', '');
@@ -249,10 +268,12 @@ end run''',
   }
 
   /// The terminal in folder [cwd] an [agent] on [tty] runs in, when its tty
-  /// isn't one known: the one terminal there; else, of those not [claimed]
-  /// by other sessions and not known to be on another tty, the one left, or
-  /// the one whose title is the session's (what [agent] sets: its [title],
-  /// or the folder's name while it has none). More than one: null.
+  /// isn't one known: the one terminal there (the same folder by another
+  /// path, through a symlink, counts: a shell tells the path it was given,
+  /// an agent the real one); else, of those not [claimed] by other sessions
+  /// and not known to be on another tty, the one left, or the one whose
+  /// title is the session's (what [agent] sets: its [title], or the folder's
+  /// name while it has none). More than one: null.
   Future<String?> byFolder(
     String cwd,
     Procs procs, {
@@ -269,9 +290,12 @@ end run''',
       return null;
     }
     final t = tty.replaceFirst('/dev/', '');
+    final real = _realFolder(cwd);
     final here = [
       for (final w in all)
-        if ((w.cwd == cwd || w.cwd == '/private$cwd') && (w.tty.isEmpty || t.isEmpty || w.tty == t)) w,
+        if ((w.cwd == cwd || w.cwd == '/private$cwd' || w.cwd.isNotEmpty && _realFolder(w.cwd) == real) &&
+            (w.tty.isEmpty || t.isEmpty || w.tty == t))
+          w,
     ];
     if (here.length == 1) return here.single.key;
     final open = here.where((w) => !claimed.contains(w.key)).toList();
@@ -279,6 +303,15 @@ end run''',
     final name = title.trim().isNotEmpty ? title.trim() : p.basename(cwd);
     final named = open.where((w) => agent.sessionOfTitle(w.title) == name).toList();
     return named.length == 1 ? named.single.key : null;
+  }
+
+  /// [path] with its symlinks resolved; as is when it can't be.
+  static String _realFolder(String path) {
+    try {
+      return Directory(path).resolveSymbolicLinksSync();
+    } on FileSystemException {
+      return path;
+    }
   }
 }
 
@@ -300,18 +333,19 @@ Set<String> ghosttySurfaceTtys(Procs procs, int? ghostty) {
   };
 }
 
-/// The listing script's output: a line per terminal (id, title, folder,
-/// tab title, focused), then `front<TAB>true|false`.
+/// The listing script's output: a record per terminal (id, title, folder,
+/// tab title, focused; apart by US, each ended by RS and a line break),
+/// then `front<US>true|false`.
 List<TermWindow> parseGhosttyList(String out) {
-  final lines = out.split(RegExp(r'\r?\n|\r'));
-  final front = lines.any((l) => l == 'front\ttrue');
+  final records = [for (final r in out.split('\x1e')) r.replaceFirst(RegExp(r'^(\r\n|\n|\r)'), '').trimRight()];
+  final front = records.any((r) => r == 'front\x1ftrue');
   return [
-    for (final l in lines)
-      if (l.split('\t') case [final id, final title, final cwd, final tab, final focused] when id != 'front')
+    for (final r in records)
+      if (r.split('\x1f') case [final id, final title, final cwd, final tab, final focused] when id != 'front')
         TermWindow(
           key: 'ghostty:$id',
-          title: title,
-          tab: tab,
+          title: cleanTitle(title),
+          tab: cleanTitle(tab),
           cwd: cwd,
           program: '',
           focused: front && focused == 'true',

@@ -251,9 +251,10 @@ void main() {
     });
 
     test('omp: Esc, Ctrl+C, Ctrl+D, then omp -c once omp has quit', () async {
-      foreground = ['omp', 'omp', 'zsh'];
+      foreground = ['omp', 'omp', 'omp', 'zsh'];
       await run(terms(), Agent.omp);
       expect(log, [
+        'ps omp',
         'keys esc',
         'keys ctrl+c',
         'keys ctrl+d',
@@ -263,6 +264,17 @@ void main() {
         'type omp -c',
         'keys enter',
       ]);
+    });
+
+    test('an agent that quit since the phone looked gets no keys: Ctrl+D would end the shell', () async {
+      foreground = ['zsh'];
+      for (final agent in Agent.values) {
+        await expectLater(
+          run(terms(), agent),
+          throwsA(isA<TerminalException>().having((e) => e.message, 'message', contains("isn't running"))),
+        );
+      }
+      expect(log.where((l) => !l.startsWith('ps')), isEmpty);
     });
 
     test('omp in a terminal that tells no tty: omp -c after a wait', () async {
@@ -279,8 +291,9 @@ void main() {
     });
 
     test('Claude Code: /reload-plugins and Enter, nothing restarts', () async {
+      foreground = ['claude'];
       await run(terms(), Agent.claude);
-      expect(log, ['type /reload-plugins', 'keys enter']);
+      expect(log, ['ps claude', 'type /reload-plugins', 'keys enter']);
     });
 
     test("a terminal that can't press keys is refused", () async {

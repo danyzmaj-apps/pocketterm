@@ -621,8 +621,10 @@ class TerminalBridge {
           final at = p['window'] as String;
           final agent = Agent.values.asNameMap()[p['agent']];
           if (agent == null) throw const TerminalException('Unknown coding agent.');
-          final tty = _windows.where((w) => w.key == at).firstOrNull?.tty ?? '';
-          await switchToConversation(_terms, at, agent, tty: tty);
+          // As the windows are now: it may have closed since the phone's list.
+          final shown = (await _terms.windows()).where((w) => w.key == at).firstOrNull;
+          if (shown == null) throw const TerminalException('That window has closed.');
+          await switchToConversation(_terms, at, agent, tty: shown.tty);
         case 'launch':
           // An older phone says `omp` for "start the coding agent".
           final start = p['agent'] == true || p['omp'] == true;
@@ -1046,6 +1048,8 @@ Future<bool> screenChanges(Terminals terms, String window, {Duration gap = const
 /// omp quits and starts again on the same conversation: Esc stops a run, Ctrl+C empties its editor (Ctrl+U clears
 /// one line only), Ctrl+D on an empty editor quits; once the foreground program on [tty] isn't omp anymore (or
 /// after [noTty], where the terminal tells no tty) the shell gets `omp -c`. Claude Code reloads its plugins in place.
+/// Where [tty] tells, nothing is pressed unless [agent] still runs there: the agent may have quit since the phone
+/// last looked, and Ctrl+D would end the shell (and close the window) instead.
 Future<void> switchToConversation(
   Terminals terms,
   String window,
@@ -1061,6 +1065,10 @@ Future<void> switchToConversation(
       "${terms.hostOf(window)?.label ?? 'This terminal'} can't press keys and type here, so switch it on the computer.",
     );
   }
+  Future<bool> runs() async => Agent.ofProgram((await terms.snapshot()).foreground(tty)?.program ?? '') == agent;
+  if (tty.isNotEmpty && !await runs()) {
+    throw TerminalException("${agent.label} isn't running in that window anymore.");
+  }
   switch (agent) {
     case Agent.claude:
       await terms.send(window, '/reload-plugins', enter: true);
@@ -1074,7 +1082,7 @@ Future<void> switchToConversation(
         await Future<void>.delayed(noTty);
       } else {
         final until = DateTime.now().add(quitFor);
-        while (Agent.ofProgram((await terms.snapshot()).foreground(tty)?.program ?? '') == Agent.omp) {
+        while (await runs()) {
           if (DateTime.now().isAfter(until)) {
             throw TerminalException("omp didn't quit. Quit it on the computer, then run ${agent.command} -c there.");
           }

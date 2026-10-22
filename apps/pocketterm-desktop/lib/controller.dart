@@ -562,6 +562,7 @@ class AppController extends Session {
   void dispose() {
     updates?.dispose();
     mainShown.dispose();
+    mainHidden.dispose();
     super.dispose();
   }
 
@@ -614,12 +615,14 @@ class AppController extends Session {
   Future<void> Function()? onQuit;
 
   /// What the host says: the menu-bar or tray item, the Dock icon, quitting.
-  /// A closed window (mainClosed) is only hidden: nothing changes here.
+  /// A closed window (mainClosed) is only hidden: [mainHidden] says so.
   FutureOr<void> _onHost(String event) {
     switch (event) {
       // Settings is the window while signed in.
       case 'openMain' || 'openSettings':
         unawaited(openMain());
+      case 'mainClosed':
+        mainHidden.value = true;
       case 'quitting':
         return Future.wait([?onQuit?.call(), if (_hosting case final h?) h.stop()]).then((_) {});
     }
@@ -629,9 +632,13 @@ class AppController extends Session {
   /// so Settings checks the terminals and the agent's integration afresh.
   final mainShown = ValueNotifier<int>(0);
 
+  /// The main window was closed (hidden) and not shown since.
+  final mainHidden = ValueNotifier<bool>(false);
+
   /// Shows the main window.
   Future<void> openMain() {
     mainShown.value++;
+    mainHidden.value = false;
     return host.showMain();
   }
 

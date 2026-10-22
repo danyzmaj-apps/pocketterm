@@ -193,6 +193,40 @@ void main() {
     expect(find.textContaining('A phone is signed in'), findsOneWidget);
   });
 
+  testWidgets('looking goes on while the window shows, however long it has been', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      (app) => GetReadyPage(app: app, poll: const Duration(milliseconds: 100), lookHidden: Duration.zero),
+    );
+    await tester.runAsync(app.start);
+    await tester.pump(const Duration(seconds: 1));
+    app.phoneUsedCode = true;
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump();
+    expect(find.textContaining('A phone is signed in'), findsOneWidget, reason: 'still looking while shown');
+  });
+
+  testWidgets('hidden, it stops looking; shown again, it looks', (tester) async {
+    await pump(
+      tester,
+      (app) => GetReadyPage(app: app, poll: const Duration(milliseconds: 100), lookHidden: Duration.zero),
+    );
+    await tester.runAsync(app.start);
+    await app.host.onEvent!('mainClosed');
+    await tester.pump(const Duration(milliseconds: 10));
+    app.phoneUsedCode = true;
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump();
+    expect(find.textContaining('A phone is signed in'), findsNothing);
+
+    await app.host.onEvent!('openMain');
+    await tester.pump();
+    await tester.pump();
+    expect(find.textContaining('A phone is signed in'), findsOneWidget);
+  });
+
   testWidgets('through Tailscale, the phone step says the phone needs Tailscale too; on a VPS it doesn’t', (
     tester,
   ) async {

@@ -29,11 +29,20 @@ import 'package:pocketterm_desktop/wezterm_setup.dart';
 /// 3. Project folders (optional): the usual ones found in the home folder.
 /// 4. Your phone: the pairing QR, until a phone has signed in.
 class GetReadyPage extends StatefulWidget {
-  const GetReadyPage({required this.app, this.poll = const Duration(seconds: 3), super.key});
+  const GetReadyPage({
+    required this.app,
+    this.poll = const Duration(seconds: 3),
+    this.lookHidden = const Duration(minutes: 10),
+    super.key,
+  });
   final AppController app;
 
   /// How often the terminals' windows and the phone are looked at.
   final Duration poll;
+
+  /// How long looking goes on once the window is hidden; while it shows,
+  /// it keeps looking.
+  final Duration lookHidden;
 
   @override
   State<GetReadyPage> createState() => _GetReadyPageState();
@@ -73,10 +82,8 @@ class _GetReadyPageState extends State<GetReadyPage> {
   Timer? _timer;
   StreamSubscription<void>? _live;
 
-  /// Looking stops this long after the window was last shown, should it
-  /// sit hidden.
-  static const _lookFor = Duration(minutes: 10);
-  late DateTime _lookUntil = DateTime.now().add(_lookFor);
+  /// When looking stops, the window being hidden; null while it shows.
+  DateTime? _lookUntil;
 
   @override
   void initState() {
@@ -86,6 +93,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
     _timer = Timer.periodic(widget.poll, (_) => unawaited(_look()));
     _live = app.live.changes.listen((_) => unawaited(_lookAtWindows()));
     app.mainShown.addListener(_shown);
+    app.mainHidden.addListener(_hidden);
     _wezterm?.addListener(_changed);
   }
 
@@ -94,6 +102,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
     _timer?.cancel();
     unawaited(_live?.cancel());
     app.mainShown.removeListener(_shown);
+    app.mainHidden.removeListener(_hidden);
     _wezterm?.dispose();
     super.dispose();
   }
@@ -103,9 +112,13 @@ class _GetReadyPageState extends State<GetReadyPage> {
   }
 
   void _shown() {
-    _lookUntil = DateTime.now().add(_lookFor);
+    _lookUntil = null;
     unawaited(app.checkAgents());
     unawaited(_look());
+  }
+
+  void _hidden() {
+    if (app.mainHidden.value) _lookUntil ??= DateTime.now().add(widget.lookHidden);
   }
 
   /// PocketTerm into every agent found that lacks it or has an old copy.
@@ -138,7 +151,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
   }
 
   Future<void> _look() async {
-    if (DateTime.now().isAfter(_lookUntil)) return;
+    if (_lookUntil case final until? when DateTime.now().isAfter(until)) return;
     await _lookAtWindows();
     if (!(app.phoneSignedIn ?? false)) await app.checkPhone();
   }

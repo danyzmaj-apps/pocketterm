@@ -25,7 +25,7 @@ onFlowComplete:
     visible: "\n?Back"
     timeout: 30000
 - extendedWaitUntil:
-    visible: "${SESSION}"
+    visible: "${SESSION}(\n.*)?"
     timeout: 30000
 - extendedWaitUntil:
     visible: ".*${REPLY}.*"

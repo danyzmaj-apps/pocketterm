@@ -148,6 +148,11 @@ if [ "$PHASE" = main ] && [ $BUILD = 1 ]; then
   fi
   SRC_APP="$PHONE_SRC/${APP#"$REPO"/}"
   echo "phone build: $HEAD_SHA in $PHONE_SRC" | tee -a "$SUMMARY"
+  # Flutter regenerates the Dart plugin registrant only when the workspace's
+  # package_config.json changes; a plugin the desktop app already pulled in
+  # (file_selector) leaves it as it was, and the phone gets the plugin's
+  # native side without its Dart side (MissingPluginException). Built anew.
+  rm -f "$SRC_APP/.dart_tool/flutter_build/dart_plugin_registrant.dart"
   if [ "$PLATFORM" = ios ]; then
     (cd "$SRC_APP" && fvm flutter build ios --simulator --debug --dart-define=POCKETTERM_E2E=true) >"$OUT/build.log" 2>&1 ||
       { echo "build failed: $OUT/build.log" >&2; exit 1; }

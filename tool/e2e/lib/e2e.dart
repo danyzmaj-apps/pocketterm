@@ -200,7 +200,12 @@ export HISTFILE="\$HOME/.zsh_history"
 export E2E_TYPED="${c.typedLogs}"
 PROMPT='%1~ \$ '
 unsetopt PROMPT_SP
-precmd() { print -Pn "\\e]2;shell %1~\\a" }
+# The folder, as Ghostty's own shell integration tells it (off here: it
+# would wrap this shell); Ghostty knows a window's folder only this way.
+precmd() {
+  [[ \$TERM_PROGRAM == ghostty ]] && print -n "\\e]7;file://\$HOST\$PWD\\a"
+  print -Pn "\\e]2;shell %1~\\a"
+}
 preexec() { print -r -- "cmd:\$1" >> "\$E2E_TYPED/\${PWD:t}.log" }
 e2e-key() { print -r -- "key:\$1" >> "\$E2E_TYPED/\${PWD:t}.log" }
 e2e-up() { e2e-key up; zle up-line-or-history }

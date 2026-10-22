@@ -48,6 +48,9 @@ class LocalApi {
   /// HTTP long-poll connections (/v1/live/http) by id.
   final _polls = <String, _PollLink>{};
 
+  /// The live sessions' WebSockets (/v1/live), open now.
+  final _sockets = <WebSocket>{};
+
   /// How long a long poll waits for frames from the hub.
   static const pollHold = Duration(seconds: 25);
 
@@ -97,11 +100,17 @@ class LocalApi {
     _watch = Timer.periodic(_watchEvery, (_) => unawaited(_reclaim()));
   }
 
-  /// Stops listening and takes [file] back out, unless another PocketTerm has it
-  /// now. Runs when PocketTerm quits (AppController.onQuit).
+  /// Stops listening, ends the live sessions' connections (an HTTP server's
+  /// close leaves upgraded WebSockets open) and takes [file] back out,
+  /// unless another PocketTerm has it now. Runs when PocketTerm quits
+  /// (AppController.onQuit).
   Future<void> stop() async {
     _watch?.cancel();
     await _server?.close(force: true);
+    for (final ws in _sockets.toList()) {
+      // Not waiting for the agent's side of the close: quitting can't.
+      unawaited(ws.close(WebSocketStatus.goingAway));
+    }
     for (final p in _polls.values.toList()) {
       await p.close();
     }
@@ -205,7 +214,12 @@ class LocalApi {
       return;
     }
     final ws = await WebSocketTransformer.upgrade(req);
-    await _live.accept(ws.where((f) => f is String).cast<String>(), SocketLink(ws));
+    _sockets.add(ws);
+    try {
+      await _live.accept(ws.where((f) => f is String).cast<String>(), SocketLink(ws));
+    } finally {
+      _sockets.remove(ws);
+    }
   }
 
   /// One long poll: the extension's frames go to its connection in order,

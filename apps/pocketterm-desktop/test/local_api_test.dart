@@ -81,6 +81,42 @@ void main() {
       expect(file.readAsStringSync(), contains('"other"'));
     });
 
+    test(
+      'stopping ends the live sessions on WebSockets too: the agents connect again to the next PocketTerm',
+      () async {
+        final dir = Directory.systemTemp.createTempSync('pocketterm-cli');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final hub = LiveHub();
+        final api = LocalApi(hub, file: File('${dir.path}/cli.json'));
+        await api.start();
+        final token = (jsonDecode(api.file.readAsStringSync()) as Map)['token'] as String;
+        final ws = await WebSocket.connect(
+          'ws://127.0.0.1:${api.port}/v1/live',
+          headers: {'authorization': 'Bearer $token'},
+        );
+        final closed = ws.drain<void>();
+        ws.add(
+          jsonEncode({
+            't': 'hello',
+            'v': 1,
+            'agent': 'omp',
+            'session': {'id': 's1', 'cwd': '/tmp'},
+            'pid': 7,
+          }),
+        );
+        while (hub.sessions.isEmpty) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+        await api.stop();
+        await closed.timeout(const Duration(seconds: 5));
+        expect(ws.closeCode, WebSocketStatus.goingAway);
+        while (hub.sessions.isNotEmpty) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      },
+      timeout: const Timeout(Duration(seconds: 20)),
+    );
+
     test('a folder POCKETTERM_CLI_JSON names keeps its mode; only the file is private', () async {
       final dir = Directory.systemTemp.createTempSync('pocketterm-cli');
       addTearDown(() => dir.deleteSync(recursive: true));

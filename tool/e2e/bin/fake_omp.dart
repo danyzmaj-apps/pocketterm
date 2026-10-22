@@ -115,6 +115,9 @@ class FakeOmp {
     for (final s in [ProcessSignal.sighup, ProcessSignal.sigterm]) {
       s.watch().listen((_) => _quit('signal $s'));
     }
+    // The terminal still turns Ctrl+C into SIGINT (only canonical mode is
+    // off); omp takes it as a key, so this does too.
+    ProcessSignal.sigint.watch().listen((_) => _key('ctrl+c'));
     stdin.listen(_onBytes, onDone: () => _quit('stdin closed'));
     if (_startBusy) _setBusy(true);
     if (_startAsk) _raiseAsk();

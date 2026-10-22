@@ -106,6 +106,11 @@ class _Run {
 
     await report.step('restart: server', _serverRestart);
     await report.step('restart: desktop app', _desktopRestart);
+    if (File(_omp).existsSync()) {
+      await report.step('real omp: /new from the phone starts a fresh session in place', _realOmp);
+    } else {
+      report.skip('real omp: /new from the phone starts a fresh session in place', 'omp is not installed');
+    }
     await report.step('revoke: phone removed on the server', _revoke);
     if (t == 'ghostty') await report.step('ghostty: Start new windows in tmux', _ghosttyTmux);
   }
@@ -386,6 +391,7 @@ class _Run {
         'switchRestart': name('switchstop'),
         'newSessionProject': name('newsess'),
         'endSession': name('endme'),
+        'realOmp': {'title': name('realomp'), 'project': name('realomp')},
         'prompt': 'hello from phone $t',
       }),
     );
@@ -630,6 +636,57 @@ class _Run {
       () => fakeOmpLog(dir('chat')).any((e) => e['event'] == 'prompt' && e['text'] == prompt),
     );
     await Future<void>.delayed(const Duration(seconds: 3));
+  }
+
+  static const _omp = '/opt/homebrew/bin/omp';
+
+  /// The real omp, once: with the owner's own omp set-up (its home) but
+  /// only the extension this run installed, sessions kept in the run's
+  /// folder, no title generation (nothing here calls a model). A `!` shell
+  /// command typed at the computer gives it a transcript; the phone's `/new`
+  /// then starts a fresh session in the same window.
+  Future<void> _realOmp() async {
+    final ext = p.join(c.home, '.omp', 'agent', 'extensions', 'pocketterm-live.ts');
+    final real = Platform.environment['HOME']!;
+    final sessions = p.join(c.work, 'omp-sessions');
+    String q(String s) => "'${s.replaceAll("'", r"'\''")}'";
+    await _open(
+      'realomp',
+      autorun:
+          'env HOME=${q(real)} $_omp --no-extensions -e ${q(ext)} --session-dir ${q(sessions)} '
+          '--no-title --no-lsp --no-skills --no-rules',
+    );
+    final s = await until(
+      'real omp reports',
+      () => app.live.sessions.where((s) => s.cwd == dir('realomp') && s.window != null).firstOrNull,
+      timeout: const Duration(seconds: 60),
+    );
+    expect(ours(s.window!), isTrue, reason: 'real omp placed in ${s.window}');
+    await Future<void>.delayed(const Duration(seconds: 2));
+    await app.terminals.send(s.window!, '!echo e2e-real', enter: true);
+    final before = await until('the shell command in its transcript', () {
+      final now = app.live[s.key];
+      return now != null && now.log.items.any((i) => '${i.args}${i.output}${i.text}'.contains('e2e-real'))
+          ? now.id
+          : null;
+    }, timeout: const Duration(seconds: 30));
+    if (c.phone) {
+      final code = await handOff(c.phaseDir, 'real-omp', out: 'ready', timeout: const Duration(minutes: 15));
+      expect(code, '0', reason: 'phone phase real-omp');
+    } else {
+      final r = phone!.remote;
+      final key = await until(
+        'the phone lists real omp',
+        () => r.sessions.where((x) => x.cwd == dir('realomp')).firstOrNull?.key,
+      );
+      await r.prompt(key, '/new');
+    }
+    final after = await until('real omp on a new session', () {
+      final now = app.live.sessions.where((x) => x.cwd == dir('realomp')).toList();
+      return now.length == 1 && now.single.id != before ? now.single : null;
+    }, timeout: const Duration(seconds: 30));
+    expect(after.key, s.key, reason: 'the same window, the same session key');
+    expect(after.log.items.any((i) => '${i.args}${i.output}${i.text}'.contains('e2e-real')), isFalse);
   }
 
   Future<void> _revoke() async {

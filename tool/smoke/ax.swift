@@ -16,10 +16,14 @@ import CoreGraphics
 import Foundation
 
 let args = CommandLine.arguments
-guard args.count >= 3, let pid = pid_t(args[1]) else {
-  FileHandle.standardError.write("usage: ax <pid> dump|texts|has|press|set|window …\n".data(using: .utf8)!)
+func usage() -> Never {
+  FileHandle.standardError.write("usage: ax <pid> dump|texts|has <label>|press <label>|set <label> <text>|window\n".data(using: .utf8)!)
   exit(2)
 }
+guard args.count >= 3, let pid = pid_t(args[1]) else { usage() }
+/// What each command needs after `ax <pid> <command>`.
+let operands = ["dump": 0, "texts": 0, "has": 1, "press": 1, "set": 2, "window": 0]
+if let n = operands[args[2]], args.count < 3 + n { usage() }
 let app = AXUIElementCreateApplication(pid)
 
 func attr(_ e: AXUIElement, _ a: String) -> AnyObject? {

@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/server_client.dart';
@@ -15,25 +14,25 @@ abstract interface class SecretStore {
 /// The system's: the login Keychain on a Mac (no keychain entitlement
 /// needed, so any signing works); on Windows one file in the app's
 /// %APPDATA% folder, encrypted for this Windows user (DPAPI), so no size
-/// limit as in Credential Manager. Uninstalling leaves it.
+/// limit as in Credential Manager. Uninstalling leaves it. A throwaway
+/// `POCKETTERM_PROFILE` (tool/smoke: an installed copy tried out) keeps
+/// them in memory instead and never reaches the Keychain.
 class SystemSecrets implements SecretStore {
-  /// [storage]: the system's if null; tests pass their own.
-  SystemSecrets([FlutterSecureStorage? storage]) : _storage = storage ?? _system;
+  /// [storage]: the system's if null; tests pass their own. [env]: this
+  /// process's environment if null.
+  SystemSecrets([FlutterSecureStorage? storage, Map<String, String>? env])
+    : _storage = storage ?? _system,
+      _memory = (env ?? Platform.environment)['POCKETTERM_PROFILE']?.isNotEmpty ?? false ? _profile : null;
 
-  static final _system = FlutterSecureStorage(
-    mOptions: MacOsOptions(accountName: keychainService(Platform.environment), usesDataProtectionKeychain: false),
+  static const _system = FlutterSecureStorage(
+    mOptions: MacOsOptions(accountName: 'PocketTerm', usesDataProtectionKeychain: false),
   );
 
-  /// The Keychain items' service: `PocketTerm`, or `PocketTerm.<profile>`
-  /// for a throwaway `POCKETTERM_PROFILE` (tool/smoke: an installed copy
-  /// tried out without touching the person's sign-in).
-  @visibleForTesting
-  static String keychainService(Map<String, String> env) => switch (env['POCKETTERM_PROFILE']) {
-    final profile? when profile.isNotEmpty => 'PocketTerm.$profile',
-    _ => 'PocketTerm',
-  };
+  /// A throwaway profile's secrets, for as long as the process runs.
+  static final _profile = <String, String>{};
 
   final FlutterSecureStorage _storage;
+  final Map<String, String>? _memory;
 
   /// One operation at a time, across every SystemSecrets: on Windows each
   /// write reads the whole file, changes it and writes it back, so two
@@ -48,13 +47,16 @@ class SystemSecrets implements SecretStore {
   }
 
   @override
-  Future<String?> read(String name) => _serial(() => _storage.read(key: name));
+  Future<String?> read(String name) async =>
+      _memory != null ? _memory[name] : await _serial(() => _storage.read(key: name));
 
   @override
-  Future<void> write(String name, String value) => _serial(() => _storage.write(key: name, value: value));
+  Future<void> write(String name, String value) async =>
+      _memory != null ? _memory[name] = value : await _serial(() => _storage.write(key: name, value: value));
 
   @override
-  Future<void> delete(String name) => _serial(() => _storage.delete(key: name));
+  Future<void> delete(String name) async =>
+      _memory != null ? _memory.remove(name) : await _serial(() => _storage.delete(key: name));
 }
 
 /// This computer's sign-in on its server (the device token and what came

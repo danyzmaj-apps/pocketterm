@@ -159,7 +159,10 @@ class Owned {
         }
       } else if (e['pid'] case final int pid) {
         if (_alive(pid)) {
-          Process.killPid(pid);
+          // A killed Ghostty is reopened by macOS with its windows (and the
+          // default config): it's asked to quit first, as Quit would.
+          if (e['what'] == 'ghostty') await _quitApp(pid);
+          if (_alive(pid)) Process.killPid(pid);
           pids.add(pid);
           stopped.add('${e['what']} ($pid)');
         }
@@ -176,6 +179,20 @@ class Owned {
 }
 
 bool _alive(int pid) => Process.runSync('/bin/kill', ['-0', '$pid']).exitCode == 0;
+
+/// Asks the app with [pid] (and no other instance) to quit, and waits up to
+/// 5 s for it to go.
+Future<void> _quitApp(int pid) async {
+  await Process.run('/usr/bin/osascript', [
+    '-l',
+    'JavaScript',
+    '-e',
+    "ObjC.import('AppKit'); \$.NSRunningApplication.runningApplicationWithProcessIdentifier($pid).terminate",
+  ]);
+  for (var i = 0; i < 50 && _alive(pid); i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
+}
 
 // ---------------------------------------------------------------- the home
 
@@ -473,6 +490,7 @@ class GhosttyThrowaway extends Throwaway {
       for (final k in ['HOME', 'TMUX_TMPDIR', 'ZDOTDIR', 'LANG', 'PATH']) ...['--env', '$k=${env[k]}'],
       '--args',
       '--config-default-files=false',
+      '--window-save-state=never',
       '--config-file=${p.join(c.home, '.config', 'ghostty', 'config')}',
       '--working-directory=$cwd',
     ], environment: cleanEnv());

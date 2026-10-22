@@ -397,11 +397,12 @@ class MobileApp extends StatelessWidget {
             ),
           );
         }
-        if (session.pushEnabled == null)
+        if (session.pushEnabled == null) {
           return _HomeSwitch(
             id: 'consent',
             child: PushConsentPage(session: session),
           );
+        }
         return _HomeSwitch(
           id: user.id,
           child: HomePage(

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -55,7 +54,7 @@ void main() {
   Iterable<String> native(String method) => calls.where((c) => c.method == method).map((c) => c.method);
 
   group('updating from PocketTerm 0.1 (Supabase)', () {
-    Future<SharedPreferences> prefs() async {
+    Future<SharedPreferences> prefs() {
       SharedPreferences.setMockInitialValues({
         'sb-abcd-auth-token': '{"access_token":"x"}',
         'pocketterm_desktops': '[]',

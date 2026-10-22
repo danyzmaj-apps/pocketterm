@@ -12,15 +12,17 @@ class DataProtection extends StatelessWidget {
     (
       Icons.lock_outline,
       'Encrypted from end to end',
-      'Each computer makes its own key and keeps it in its Keychain (on Windows, a file in %APPDATA% encrypted for your Windows account). A phone gets it '
-          'only by scanning that computer’s QR code. Your sessions, prompts, screens, images and notification text '
-          'travel sealed with it (AES-256-GCM), so nothing in between can read them.',
+      'Each computer makes its own key and keeps it in its Keychain (on Windows, a file in %APPDATA% encrypted for '
+          'your Windows account). A phone gets it only by scanning that computer’s QR code. Your sessions, prompts, '
+          'screens, images, files and notification text travel sealed with it (AES-256-GCM), so nothing in between '
+          'can read them.',
     ),
     (
       Icons.dns_outlined,
       'Your PocketTerm server',
       'Keeps your list of devices, your computers’ names, pairing codes for 10 minutes and your phones’ push tokens. '
-          'It passes everything else on without being able to read it.',
+          'Images and files you send wait there sealed until the computer fetches them, at most an hour. It passes '
+          'everything else on without being able to read it.',
     ),
     (
       Icons.hub_outlined,
@@ -33,7 +35,8 @@ class DataProtection extends StatelessWidget {
       'Notifications, if you turn them on',
       'They go from your server through PocketTerm’s push relay (push.danyzmaj.com, run by Danijel Lovric on his '
           'server in Germany) to Apple or Google, then your phone. The relay, Apple and Google see an encrypted message, '
-          'your phone’s push token and when it was sent. The relay stores nothing.',
+          'your phone’s push token and when it was sent, never which computer or session it is about. The relay stores '
+          'nothing.',
     ),
     (
       Icons.info_outline,

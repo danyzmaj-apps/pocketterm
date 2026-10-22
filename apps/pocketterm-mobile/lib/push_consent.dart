@@ -129,13 +129,14 @@ class PushExplainer extends StatelessWidget {
           const _Point(
             Icons.dns_outlined,
             'Notifications go through PocketTerm’s push relay, run by Danijel Lovric on his server in Germany '
-            '(push.danyzmaj.com). It passes encrypted notifications to Apple or Google. It can’t read them, keeps '
-            'nothing and logs no device ids.',
+            '(push.danyzmaj.com). It passes encrypted notifications to Apple or Google. It can’t read them and '
+            'keeps nothing.',
           ),
           _Point(
             Icons.lock_outline,
-            'The relay and $store see an encrypted message, this phone’s push token and when it was sent. Your '
-            'computer encrypts each notification with the key from its code, and only this phone opens it.',
+            'The relay and $store see an encrypted message, this phone’s push token and when it was sent, never '
+            'which computer or session it is about. Your computer encrypts each notification with the key from its '
+            'code, and only your phones open it.',
           ),
           _Point(
             isIos ? Icons.lock_clock_outlined : Icons.notifications_outlined,

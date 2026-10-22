@@ -1,7 +1,8 @@
 # Push relay: who can see what
 
-The relay runs on the publisher's own server (danyzmaj-server, OVHcloud), behind a Cloudflare tunnel, at
-https://push.danyzmaj.com. A push goes:
+The relay is run by Danijel Lovric (the publisher) on his own server in Germany (danyzmaj-server, OVHcloud), behind a
+Cloudflare tunnel, at https://push.danyzmaj.com. It is used only if you turn notifications on in the phone app. A push
+goes:
 
 ```
 your computer → your PocketTerm server → Cloudflare → the relay → Apple (APNs) or Google (FCM) → your phone

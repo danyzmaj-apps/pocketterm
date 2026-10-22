@@ -1,0 +1,420 @@
+// The end-to-end run (tool/e2e/run.sh): for each terminal, a fresh local
+// PocketTerm server, the real desktop app under integration_test with a
+// throwaway home and terminals, and the phone's Maestro flows in the
+// Simulator, phase by phase. Prints a pass/fail table; everything it saw is
+// in build/e2e/<stamp>/.
+//
+//   dart run tool/e2e/bin/run.dart [--terminal kitty|ghostty|wezterm|all]
+//       [--server local|<https url> --setup-link <link>] [--no-phone]
+//       [--platform ios|android]
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
+import 'package:pocketterm_e2e/e2e.dart';
+
+Future<void> main(List<String> args) async {
+  final opts = _parse(args);
+  final repo = p.normalize(p.join(p.dirname(Platform.script.toFilePath()), '..', '..', '..'));
+  final stamp = _stamp();
+  final root = p.join(repo, 'build', 'e2e', stamp);
+  Directory(root).createSync(recursive: true);
+  final terminals = opts['terminal'] == 'all' ? terminalIds : [opts['terminal']!];
+  stdout.writeln('PocketTerm e2e $stamp: ${terminals.join(', ')} → $root');
+
+  final interrupted = Completer<void>();
+  final sigint = ProcessSignal.sigint.watch().listen((_) {
+    if (!interrupted.isCompleted) interrupted.complete();
+  });
+
+  final bin = p.join(root, 'bin');
+  Directory(bin).createSync(recursive: true);
+  await _must('compile fake omp', 'fvm', [
+    'dart',
+    'compile',
+    'exe',
+    'tool/e2e/bin/fake_omp.dart',
+    '-o',
+    p.join(bin, 'omp'),
+  ], repo);
+  final serverExe = p.join(bin, 'pocketterm-server');
+  if (opts['server'] == 'local') {
+    await _must('compile server', 'fvm', [
+      'dart',
+      'compile',
+      'exe',
+      'apps/pocketterm-server/bin/pocketterm_server.dart',
+      '-o',
+      serverExe,
+    ], repo);
+  }
+
+  final table = <String, Map<String, String>>{};
+  var allOk = true;
+  for (final t in terminals) {
+    if (interrupted.isCompleted) break;
+    final r = await _runTerminal(
+      t,
+      repo: repo,
+      root: root,
+      stamp: stamp,
+      bin: bin,
+      serverExe: serverExe,
+      opts: opts,
+      interrupted: interrupted,
+    );
+    for (final MapEntry(:key, :value) in r.entries) {
+      (table[key] ??= {})[t] = value;
+      if (!value.startsWith('pass') && !value.startsWith('skip')) allOk = false;
+    }
+  }
+  await sigint.cancel();
+
+  final out = StringBuffer()..writeln();
+  final width = [10, ...table.keys.map((k) => k.length)].reduce((a, b) => a > b ? a : b);
+  out.writeln('${'scenario'.padRight(width)}  ${terminals.map((t) => t.padRight(9)).join('  ')}');
+  out.writeln('${'-' * width}  ${terminals.map((_) => '-' * 9).join('  ')}');
+  for (final MapEntry(key: scenario, value: row) in table.entries) {
+    out.writeln(
+      '${scenario.padRight(width)}  ${terminals.map((t) => (row[t]?.split(':').first ?? '-').padRight(9)).join('  ')}',
+    );
+  }
+  out.writeln();
+  for (final MapEntry(key: scenario, value: row) in table.entries) {
+    for (final MapEntry(key: t, value: v) in row.entries) {
+      if (!v.startsWith('pass') && !v.startsWith('skip'))
+        out.writeln('FAIL $t/$scenario: ${v.split(':').skip(1).join(':').trim()}');
+    }
+  }
+  out.writeln(allOk ? 'ALL PASSED' : 'FAILED (artifacts: $root)');
+  stdout.write(out);
+  File(p.join(root, 'summary.txt')).writeAsStringSync('$out');
+  File(p.join(root, 'summary.json')).writeAsStringSync(const JsonEncoder.withIndent('  ').convert(table));
+  _junit(p.join(root, 'junit.xml'), table);
+  exit(allOk ? 0 : 1);
+}
+
+Map<String, String> _parse(List<String> args) {
+  final o = <String, String>{'terminal': 'all', 'server': 'local', 'platform': 'ios'};
+  for (var i = 0; i < args.length; i++) {
+    switch (args[i]) {
+      case '--terminal' || '--server' || '--setup-link' || '--platform':
+        o[args[i].substring(2)] = args[++i];
+      case '--no-phone':
+        o['phone'] = 'no';
+      default:
+        stderr.writeln('Unknown argument: ${args[i]}');
+        exit(64);
+    }
+  }
+  if (o['terminal'] != 'all' && !terminalIds.contains(o['terminal'])) {
+    stderr.writeln('--terminal: one of ${terminalIds.join(', ')} or all');
+    exit(64);
+  }
+  if (o['server'] != 'local' && o['setup-link'] == null) {
+    stderr.writeln('--server <url> needs --setup-link <the server’s setup link>');
+    exit(64);
+  }
+  return o;
+}
+
+String _stamp() {
+  final n = DateTime.now();
+  String two(int v) => '$v'.padLeft(2, '0');
+  return '${n.year}${two(n.month)}${two(n.day)}-${two(n.hour)}${two(n.minute)}${two(n.second)}';
+}
+
+Future<void> _must(String what, String exe, List<String> args, String cwd) async {
+  final r = await Process.run(exe, args, workingDirectory: cwd);
+  if (r.exitCode != 0) {
+    stderr.writeln('$what failed:\n${r.stdout}\n${r.stderr}');
+    exit(1);
+  }
+}
+
+Future<int> _freePort() async {
+  final s = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+  final port = s.port;
+  await s.close();
+  return port;
+}
+
+/// The local server for one terminal's run, restartable on the same port
+/// and data.
+class _Server {
+  _Server(this.exe, this.data, this.port, this.logPath);
+  final String exe;
+  final String data;
+  final int port;
+  final String logPath;
+  Process? _proc;
+  String? setupLink;
+
+  String get url => 'http://127.0.0.1:$port';
+
+  Future<void> start() async {
+    final log = File(logPath).openWrite(mode: FileMode.append)..writeln('--- start ${DateTime.now()}');
+    final proc = await Process.start(exe, [
+      'serve',
+      '--data',
+      data,
+      '--public-url',
+      url,
+      '--port',
+      '$port',
+      '--address',
+      '127.0.0.1',
+      '--relay',
+      'http://127.0.0.1:9',
+    ], environment: cleanEnv());
+    _proc = proc;
+    final link = Completer<String?>();
+    proc.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((l) {
+      log.writeln(l);
+      if (l.startsWith('pocketterm://') || l.contains('/setup?') || l.contains('setup=')) {
+        if (!link.isCompleted) link.complete(l.trim());
+      }
+    });
+    proc.stderr.transform(utf8.decoder).listen(log.write);
+    unawaited(proc.exitCode.then((c) => log.writeln('--- exit $c ${DateTime.now()}')));
+    await until('server answering on $url', () async {
+      try {
+        final c = HttpClient();
+        final r = await (await c.get('127.0.0.1', port, '/v1/health')).close();
+        c.close(force: true);
+        return r.statusCode < 500;
+      } on Object {
+        return false;
+      }
+    });
+    setupLink ??= await link.future.timeout(const Duration(seconds: 2), onTimeout: () => null);
+    if (setupLink == null) {
+      final r = await Process.run(exe, ['setup-link', '--data', data, '--public-url', url]);
+      setupLink = '${r.stdout}'.trim();
+    }
+  }
+
+  Future<void> stop() async {
+    final proc = _proc;
+    _proc = null;
+    if (proc == null) return;
+    proc.kill();
+    await proc.exitCode.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        proc.kill(ProcessSignal.sigkill);
+        return -1;
+      },
+    );
+  }
+}
+
+/// One terminal's run; scenario → `pass`, `fail: why` or `skip: why`.
+Future<Map<String, String>> _runTerminal(
+  String terminal, {
+  required String repo,
+  required String root,
+  required String stamp,
+  required String bin,
+  required String serverExe,
+  required Map<String, String> opts,
+  required Completer<void> interrupted,
+}) async {
+  final artifacts = p.join(root, terminal);
+  final work = '/private/tmp/pte2e-${stamp.substring(9)}-${terminal.substring(0, 1)}';
+  Directory(artifacts).createSync(recursive: true);
+  if (Directory(work).existsSync()) Directory(work).deleteSync(recursive: true);
+  final results = <String, String>{};
+  final phone = opts['phone'] != 'no';
+  _Server? server;
+  Process? desktop;
+  stdout.writeln('\n== $terminal ==');
+  try {
+    String setupLink;
+    String serverUrl;
+    if (opts['server'] == 'local') {
+      server = _Server(serverExe, p.join(artifacts, 'server-data'), await _freePort(), p.join(artifacts, 'server.log'));
+      await server.start();
+      setupLink = server.setupLink!;
+      serverUrl = server.url;
+    } else {
+      setupLink = opts['setup-link']!;
+      serverUrl = opts['server']!;
+    }
+    final c = E2eConfig(
+      terminal: terminal,
+      artifacts: artifacts,
+      work: work,
+      serverUrl: serverUrl,
+      setupLink: setupLink,
+      phone: phone,
+    );
+    writeHome(c);
+    File(p.join(bin, 'omp')).copySync(p.join(c.bin, 'omp'));
+    Process.runSync('/bin/chmod', ['755', p.join(c.bin, 'omp')]);
+    final configPath = p.join(artifacts, 'config.json');
+    File(configPath).writeAsStringSync(const JsonEncoder.withIndent('  ').convert(c.toJson()));
+    stdout.writeln('server $serverUrl, work $work');
+
+    final desktopLog = File(p.join(artifacts, 'desktop.log')).openWrite();
+    desktop = await Process.start(
+      'fvm',
+      ['flutter', 'test', 'integration_test/e2e_test.dart', '-d', 'macos', '--dart-define=E2E_CONFIG=$configPath'],
+      workingDirectory: p.join(repo, 'apps', 'pocketterm-desktop'),
+      environment: {...cleanEnv(), 'TMUX_TMPDIR': c.tmuxTmp, 'POCKETTERM_CLI_JSON': c.cliJson},
+      includeParentEnvironment: false,
+    );
+    desktop.stdout.transform(utf8.decoder).listen((s) {
+      desktopLog.write(s);
+      for (final l in const LineSplitter().convert(s)) {
+        if (l.contains('E2E ')) stdout.writeln('  $l'.replaceFirst(RegExp(r'^\s*(flutter: )?'), '  '));
+      }
+    });
+    desktop.stderr.transform(utf8.decoder).listen(desktopLog.write);
+    var ended = false;
+    final exit = desktop.exitCode.then((code) {
+      ended = true;
+      return code;
+    });
+
+    final handled = <String>{};
+    while (!ended) {
+      final stop = await Future.any([
+        exit.then((_) => true),
+        interrupted.future.then((_) => true),
+        Future<bool>.delayed(const Duration(milliseconds: 500), () => false),
+      ]);
+      if (stop) {
+        break;
+      }
+      for (final f in Directory(c.rpcDir).listSync().whereType<File>()) {
+        final name = p.basename(f.path);
+        if (!name.endsWith('.req') || !handled.add(name)) continue;
+        final what = name.substring(0, name.length - 4);
+        var answer = 'ok';
+        try {
+          switch (what) {
+            case 'server-stop':
+              stdout.writeln('  server: stopping');
+              await server?.stop();
+            case 'server-start':
+              stdout.writeln('  server: starting');
+              await server?.start();
+            default:
+              answer = 'unknown request';
+          }
+        } on Object catch (e) {
+          answer = 'failed: $e';
+        }
+        File(p.join(c.rpcDir, '$what.done')).writeAsStringSync(answer);
+      }
+      for (final f in Directory(c.phaseDir).listSync().whereType<File>()) {
+        final name = p.basename(f.path);
+        if (!name.endsWith('.ready') || !handled.add(name)) continue;
+        final phase = name.substring(0, name.length - 6);
+        final code = phone ? await _phonePhase(repo, artifacts, phase, opts['platform']!) : 'skipped';
+        results['phone: $phase'] = code == '0'
+            ? 'pass'
+            : (code == 'skipped' ? 'skip: --no-phone' : 'fail: phone flow exit $code (see phone/)');
+        File(p.join(c.phaseDir, '$phase.done')).writeAsStringSync(code);
+      }
+    }
+    if (interrupted.isCompleted && !ended) {
+      desktop.kill();
+      results['run'] = 'fail: interrupted';
+    }
+    final code = await exit.timeout(const Duration(seconds: 30), onTimeout: () => -1);
+    await desktopLog.flush();
+    await desktopLog.close();
+    final resultsFile = File(c.results);
+    if (resultsFile.existsSync()) {
+      for (final l in resultsFile.readAsLinesSync().where((l) => l.trim().isNotEmpty)) {
+        final j = jsonDecode(l) as Map<String, dynamic>;
+        results[j['scenario'] as String] = j['ok'] == true
+            ? 'pass'
+            : (j['skip'] == true ? 'skip: ${j['detail']}' : 'fail: ${j['detail']}');
+      }
+    }
+    results['desktop test'] = code == 0 ? 'pass' : 'fail: flutter test exit $code (see desktop.log)';
+  } on Object catch (e, st) {
+    results['run'] = 'fail: $e';
+    File(p.join(artifacts, 'run-error.txt')).writeAsStringSync('$e\n$st');
+  } finally {
+    desktop?.kill();
+    final stopped = await Owned.stopAll(p.join(artifacts, 'owned.jsonl'));
+    if (stopped.isNotEmpty) stdout.writeln('  stopped: ${stopped.join(', ')}');
+    await server?.stop();
+    _keepLogs(work, artifacts);
+  }
+  return results;
+}
+
+Future<String> _phonePhase(String repo, String artifacts, String phase, String platform) async {
+  final script = p.join(repo, 'apps', 'pocketterm-mobile', 'maestro', 'e2e', 'run.sh');
+  if (!File(script).existsSync()) return 'missing';
+  stdout.writeln('  phone: $phase');
+  final log = File(p.join(artifacts, 'phone-$phase.log')).openWrite();
+  final proc = await Process.start(
+    script,
+    ['--run-dir', artifacts, '--phase', phase, '--platform', platform],
+    workingDirectory: repo,
+    environment: cleanEnv(),
+    includeParentEnvironment: false,
+  );
+  proc.stdout.listen(log.add);
+  proc.stderr.listen(log.add);
+  final code = await proc.exitCode;
+  await log.close();
+  stdout.writeln('  phone: $phase → ${code == 0 ? 'pass' : 'exit $code'}');
+  return '$code';
+}
+
+/// The fake omp's logs, the shells' typed logs and the throwaway configs go
+/// to the artifacts; the throwaway folder goes.
+void _keepLogs(String work, String artifacts) {
+  final w = Directory(work);
+  if (!w.existsSync()) return;
+  final keep = p.join(artifacts, 'work');
+  for (final e in w.listSync(recursive: true, followLinks: false)) {
+    if (e is! File) continue;
+    final rel = p.relative(e.path, from: work);
+    final wanted =
+        rel.contains('.fake_omp${p.separator}') ||
+        rel.startsWith('typed') ||
+        rel.startsWith('home${p.separator}.config') ||
+        rel.endsWith('.zshrc');
+    if (!wanted || rel.contains('${p.separator}images${p.separator}')) continue;
+    final to = File(p.join(keep, rel))..parent.createSync(recursive: true);
+    e.copySync(to.path);
+  }
+  w.deleteSync(recursive: true);
+}
+
+void _junit(String path, Map<String, Map<String, String>> table) {
+  String esc(String s) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
+  final b = StringBuffer('<?xml version="1.0" encoding="UTF-8"?>\n<testsuites name="pocketterm-e2e">\n');
+  final byTerminal = <String, Map<String, String>>{};
+  for (final MapEntry(key: s, value: row) in table.entries) {
+    for (final MapEntry(key: t, value: v) in row.entries) {
+      (byTerminal[t] ??= {})[s] = v;
+    }
+  }
+  for (final MapEntry(key: t, value: cases) in byTerminal.entries) {
+    final failures = cases.values.where((v) => v.startsWith('fail')).length;
+    b.writeln('  <testsuite name="$t" tests="${cases.length}" failures="$failures">');
+    for (final MapEntry(key: s, value: v) in cases.entries) {
+      b.write('    <testcase classname="$t" name="${esc(s)}"');
+      if (v.startsWith('fail')) {
+        b.writeln('><failure message="${esc(v)}"/></testcase>');
+      } else if (v.startsWith('skip')) {
+        b.writeln('><skipped message="${esc(v)}"/></testcase>');
+      } else {
+        b.writeln('/>');
+      }
+    }
+    b.writeln('  </testsuite>');
+  }
+  b.writeln('</testsuites>');
+  File(path).writeAsStringSync('$b');
+}

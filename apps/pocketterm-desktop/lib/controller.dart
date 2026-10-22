@@ -527,6 +527,22 @@ class AppController extends Session {
     await _signInToOwnServer();
   }
 
+  /// Stops what a quit ends with the process: the terminal bridge, the beat
+  /// that lists this computer, the server connection. For a test that starts
+  /// the app again in the same process (integration_test/e2e_test.dart).
+  @visibleForTesting
+  Future<void> shutDown() async {
+    _seenTimer?.cancel();
+    _seenTimer = null;
+    await _seenOut;
+    final bridge = _bridge;
+    _bridge = null;
+    _bridgeUser = null;
+    await bridge?.stop();
+    await _hosting?.stop();
+    server?.close();
+  }
+
   @override
   void dispose() {
     updates?.dispose();

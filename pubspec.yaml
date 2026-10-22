@@ -11,6 +11,7 @@ workspace:
   - apps/pocketterm-mobile
   - packages/pocketterm_server
   - apps/pocketterm-server
+  - tool/e2e
 
 # The shared analysis_options.yaml includes very_good_analysis.
 dev_dependencies:

@@ -377,9 +377,11 @@ class AppController extends Session {
   Future<void> _onLive(LiveEvent e) async {
     final s = e.session;
     if (_bridge?.watching(s.key) ?? false) return;
+    final project = live.projectName(s);
+    final where = project.isEmpty ? '' : ' · $project';
     final (title, body, state) = switch (e) {
-      LiveFinished(:final summary) => ('${s.agent.label} finished · ${s.project}', summary, 'done'),
-      LiveAsked(:final ask) => ('${s.agent.label} needs you · ${s.project}', ask.text, 'needs'),
+      LiveFinished(:final summary) => ('${s.agent.label} finished$where', summary, 'done'),
+      LiveAsked(:final ask) => ('${s.agent.label} needs you$where', ask.text, 'needs'),
     };
     await notifyPhone(title, body, session: s.key, activity: state);
   }

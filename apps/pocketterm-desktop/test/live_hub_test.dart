@@ -85,7 +85,29 @@ void main() {
     final s = hub['kitty-1/7']!;
     expect(s.log.items.map((i) => i.id), ['u', 'a']);
     expect(s.summary.preview, 'Done. All tests pass');
-    expect(s.project, 'pocketterm');
+    expect(hub.projectName(s), 'pocketterm');
+  });
+
+  test('two projects with the same folder name are told apart by the folder above; odd paths still name one', () async {
+    Future<LiveSession> at(int n, String cwd) async {
+      (await connect()).send({
+        't': 'hello',
+        'session': {'id': 's$n', 'cwd': cwd},
+        'window': 'kitty-1/$n',
+      });
+      await until(() => hub['kitty-1/$n'] != null);
+      return hub['kitty-1/$n']!;
+    }
+
+    final work = await at(1, '/Users/me/work/api');
+    expect(hub.projectName(work), 'api', reason: 'alone, the folder name is enough');
+    final mine = await at(2, '/Users/me/My Projects/api/');
+    final windows = await at(3, r'C:\Users\me\Ünïcode Dev\web');
+    final unknown = await at(4, '');
+    expect(hub.projectName(work), 'work/api');
+    expect(hub.projectName(mine), 'My Projects/api');
+    expect(hub.projectName(windows), 'web');
+    expect(hub.projectName(unknown), '');
   });
 
   test("frames an older or newer extension sends that the hub can't read are skipped; the session goes on", () async {

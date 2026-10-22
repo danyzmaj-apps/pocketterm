@@ -72,9 +72,6 @@ class LiveSession {
   int _req = 0;
   final _pending = <int, Completer<Map<String, dynamic>>>{};
 
-  /// The folder's name, for notifications.
-  String get project => cwd.split(RegExp(r'[\\/]')).lastWhere((s) => s.isNotEmpty, orElse: () => cwd);
-
   LiveSummary get summary => LiveSummary(
     key: key,
     id: id,
@@ -176,6 +173,17 @@ class LiveHub {
 
   Iterable<LiveSession> get sessions => _byKey.values;
   LiveSession? operator [](String key) => _byKey[key];
+
+  /// What notifications call [s]'s project: its folder's name, with the one
+  /// above it when another session's folder has the same name (two
+  /// checkouts called `api`); empty when its folder isn't known.
+  String projectName(LiveSession s) {
+    List<String> parts(String cwd) => cwd.split(RegExp(r'[\\/]')).where((p) => p.isNotEmpty).toList();
+    final mine = parts(s.cwd);
+    if (mine.isEmpty) return s.cwd == '/' ? '/' : '';
+    final clash = _byKey.values.any((o) => !identical(o, s) && o.cwd != s.cwd && parts(o.cwd).lastOrNull == mine.last);
+    return clash && mine.length > 1 ? '${mine[mine.length - 2]}/${mine.last}' : mine.last;
+  }
 
   /// Serves one extension, whose JSON [frames] come in order over [link],
   /// until they end. A frame this side can't read (an extension older or

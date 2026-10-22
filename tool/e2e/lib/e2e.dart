@@ -161,6 +161,7 @@ class Owned {
     if (!f.existsSync()) return const [];
     final stopped = <String>[];
     final pids = <int>[];
+    var ghosttyKilled = false;
     for (final line in f.readAsLinesSync().where((l) => l.trim().isNotEmpty)) {
       final e = jsonDecode(line) as Map<String, dynamic>;
       if (e['tmux'] case final String socket) {
@@ -173,7 +174,10 @@ class Owned {
           // A killed Ghostty is reopened by macOS with its windows (and the
           // default config): it's asked to quit first, as Quit would.
           if (e['what'] == 'ghostty') await _quitApp(pid);
-          if (_alive(pid)) Process.killPid(pid);
+          if (_alive(pid)) {
+            Process.killPid(pid);
+            if (e['what'] == 'ghostty') ghosttyKilled = true;
+          }
           pids.add(pid);
           stopped.add('${e['what']} ($pid)');
         }
@@ -184,6 +188,21 @@ class Owned {
     }
     for (final pid in pids.where(_alive)) {
       Process.killPid(pid, ProcessSignal.sigkill);
+    }
+    // One that didn't quit (hung) and was killed: macOS starts it again at
+    // once, restoring its windows in the default config. That one quits too.
+    if (ghosttyKilled) {
+      for (var i = 0; i < 50; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        final r = await Process.run('/usr/bin/pgrep', ['-f', '${GhosttyThrowaway.app}/Contents/MacOS/ghostty']);
+        final again = '${r.stdout}'.split('\n').map(int.tryParse).whereType<int>().where((p) => !pids.contains(p));
+        if (again.isEmpty) continue;
+        for (final p in again) {
+          await _quitApp(p);
+          stopped.add('ghostty reopened by macOS ($p)');
+        }
+        break;
+      }
     }
     return stopped;
   }

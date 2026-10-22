@@ -10,7 +10,11 @@ appId: com.danyzmaj.pocketterm
     timeout: 10000
 - assertVisible: "Start omp\n.*"
 - takeScreenshot: sheet
-# The run's projects aren't under its home, so the sheet lists their full paths.
+# The run's projects aren't under its home, so the sheet lists their full
+# paths; open windows' folders come first, so it may be further down.
+- scrollUntilVisible:
+    element: ".*/${PROJECT}"
+    timeout: 20000
 - tapOn: ".*/${PROJECT}"
 - extendedWaitUntil:
     visible: "Prompt omp…"

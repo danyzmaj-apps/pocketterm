@@ -285,6 +285,14 @@ class _Run {
     await _frames();
   }
 
+  /// Types [text] into field [f] as a person would: clicked first. A button
+  /// clicked before took the focus, and text entered without it is lost.
+  Future<void> _type(Finder f, String text) async {
+    await _tap(f);
+    await tester.enterText(f, text);
+    await _frames();
+  }
+
   Finder _key(String k) => find.byKey(ValueKey(k));
 
   /// [windows] as a failure reason can show them.
@@ -464,7 +472,7 @@ class _Run {
     ]) {
       final why = setupLinkProblem(text);
       expect(why, isNotNull, reason: '$text is no setup link');
-      await tester.enterText(_key('setup-link'), text);
+      await _type(_key('setup-link'), text);
       // The error of the link pasted before may still show for a frame.
       await until('the error for $text', () async {
         await _frames(1);
@@ -477,7 +485,7 @@ class _Run {
     }
     final down = link({'url': 'https://127.0.0.1:9', 'setup': 'e2e-not-a-token'});
     expect(setupLinkProblem(down), isNull, reason: 'a setup link as such');
-    await tester.enterText(_key('setup-link'), down);
+    await _type(_key('setup-link'), down);
     final said = await until('the server not answering said', () async {
       await _frames(1);
       return error();
@@ -485,7 +493,7 @@ class _Run {
     expect(said, contains('127.0.0.1'));
     expect(find.textContaining('answers'), findsNothing);
     await report.shot('setup-link-problem');
-    await tester.enterText(_key('setup-link'), '');
+    await _type(_key('setup-link'), '');
     await _toChoose();
   }
 

@@ -24,6 +24,7 @@ import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/local_api.dart';
 import 'package:pocketterm_desktop/main_window.dart';
 import 'package:pocketterm_e2e/e2e.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'e2e/app.dart';
@@ -297,7 +298,7 @@ class _Run {
       await until('project folder added', () => app.projectRoots.contains(c.projects));
     });
     await report.step('get ready: phone code', () async {
-      await _see(find.descendant(of: _key('get-ready-phone'), matching: find.byType(RepaintBoundary)));
+      await _see(find.descendant(of: _key('get-ready-phone'), matching: find.byType(QrImageView)));
       await until('a pairing link made', () => app.pairingLinks.isNotEmpty);
       await report.shot('get-ready');
     });
@@ -409,44 +410,67 @@ class _Run {
     );
     String sessionOf(String w) => r.sessions.firstWhere((s) => s.cwd == dir(w)).key;
     TermWindow windowOf(String w) => r.windows.firstWhere((x) => x.cwd == dir(w));
+    final chat = sessionOf('chat');
+    final stopWatching = r.watchSession(chat);
+    var failed = 0;
+    // Each as the phone's flow would do it; one failing doesn't stop the
+    // others (what each did is checked on the computer next).
+    Future<void> act(String what, Future<void> Function() body) async {
+      try {
+        await body();
+      } on Object catch (e) {
+        failed++;
+        report.log('stand-in phone: $what failed: $e');
+      }
+    }
 
-    expect(r.sessions.where((s) => s.cwd == dir('chat')).length, 1);
-    final shell = windowOf('shell');
-    await r.prompt(sessionOf('chat'), 'hello from phone $t');
-    await until('reply on the phone', () {
-      r.watchSession(sessionOf('chat'));
-      return r.view(sessionOf('chat'))?.items.any((i) => i.text.contains('fake reply: hello from phone')) ?? false;
+    await act('list', () async => expect(r.sessions.where((s) => s.cwd == dir('chat')).length, 1));
+    await act('prompt', () async {
+      await r.prompt(chat, 'hello from phone $t');
+      await until(
+        'reply on the phone',
+        () => r.view(chat)?.items.any((i) => i.text.contains('fake reply: hello from phone')) ?? false,
+      );
     });
-
-    final approve = sessionOf('approve');
-    final ask = await until('the approval on the phone', () => r.session(approve)?.ask);
-    await r.answer(approve, ask, approve: true);
-
-    await r.send(shell.key, 'echo e2e-typed');
-    await r.press(shell.key, 'esc');
-    await r.press(shell.key, 'up');
-    await r.press(shell.key, 'down');
-
-    await r.prompt(sessionOf('chat'), 'look at this', images: [_png]);
-
-    final launched = await r.launch(dir('newsess'), startAgent: true);
-    report.log('phone launched $launched');
-
-    final go = windowOf('switchgo');
-    expect(await r.probe(go.key), isTrue, reason: 'omp at work in ${go.key}');
-    await r.switchToConversation(go.key, Agent.omp);
-    final resumed = await until(
-      'switchgo reports at rest',
-      () => r.sessions.where((s) => s.cwd == dir('switchgo') && !s.busy).firstOrNull,
-      timeout: const Duration(seconds: 40),
-    );
-    await r.prompt(resumed.key, 'continue');
-    await r.switchToConversation(windowOf('switchstop').key, Agent.omp);
-
-    await until('chat at rest', () => r.session(sessionOf('chat'))?.busy == false);
-    await r.prompt(sessionOf('chat'), '/new');
-
-    await r.close(r.sessions.firstWhere((s) => s.cwd == dir('endme')).window!);
+    await act('approval', () async {
+      final approve = sessionOf('approve');
+      final ask = await until('the approval on the phone', () => r.session(approve)?.ask);
+      await r.answer(approve, ask, approve: true);
+    });
+    await act('keys', () async {
+      final shell = windowOf('shell');
+      await r.send(shell.key, 'echo e2e-typed');
+      await r.press(shell.key, 'esc');
+      await r.press(shell.key, 'up');
+      await r.press(shell.key, 'down');
+    });
+    await act('image', () async {
+      await until('chat at rest', () => r.session(chat)?.busy == false);
+      await r.prompt(chat, 'what is in this image $t', images: [_png]);
+    });
+    await act('new session', () async {
+      final launched = await r.launch(dir('newsess'), startAgent: true);
+      report.log('phone launched $launched');
+    });
+    await act('restart and continue', () async {
+      final go = windowOf('switchgo');
+      expect(await r.probe(go.key), isTrue, reason: 'omp at work in ${go.key}');
+      await r.switchToConversation(go.key, Agent.omp);
+      final resumed = await until(
+        'switchgo reports at rest',
+        () => r.sessions.where((s) => s.cwd == dir('switchgo') && !s.busy).firstOrNull,
+        timeout: const Duration(seconds: 40),
+      );
+      await r.prompt(resumed.key, 'continue');
+    });
+    await act('just restart', () => r.switchToConversation(windowOf('switchstop').key, Agent.omp));
+    await act('/new', () async {
+      await until('chat at rest', () => r.session(chat)?.busy == false);
+      await r.prompt(chat, '/new');
+    });
+    await act('close', () => r.close(r.sessions.firstWhere((s) => s.cwd == dir('endme')).window!));
+    stopWatching();
+    expect(failed, 0, reason: 'stand-in phone actions failed; see the log');
   }
 
   /// What every phone scenario should have done on the computer, from the

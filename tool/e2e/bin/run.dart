@@ -6,7 +6,11 @@
 //
 //   dart run tool/e2e/bin/run.dart [--terminal kitty|ghostty|wezterm|all]
 //       [--server local|<https url> --setup-link <link>] [--no-phone]
-//       [--platform ios|android]
+//       [--platform ios|android] [--from-head] [--artifacts <dir>]
+//
+// --from-head runs what's committed: a detached worktree of HEAD in /tmp
+// (others' uncommitted edits stay out), artifacts still in this checkout's
+// build/e2e. --artifacts: where the stamped run folders go.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -17,8 +21,9 @@ import 'package:pocketterm_e2e/e2e.dart';
 Future<void> main(List<String> args) async {
   final opts = _parse(args);
   final repo = p.normalize(p.join(p.dirname(Platform.script.toFilePath()), '..', '..', '..'));
+  if (opts['from-head'] != null) exit(await _fromHead(repo, args));
   final stamp = _stamp();
-  final root = p.join(repo, 'build', 'e2e', stamp);
+  final root = p.join(opts['artifacts'] ?? p.join(repo, 'build', 'e2e'), stamp);
   Directory(root).createSync(recursive: true);
   final terminals = opts['terminal'] == 'all' ? terminalIds : [opts['terminal']!];
   stdout.writeln('PocketTerm e2e $stamp: ${terminals.join(', ')} → $root');
@@ -71,10 +76,11 @@ Future<void> main(List<String> args) async {
   }
   await sigint.cancel();
 
-  final out = StringBuffer()..writeln();
   final width = [10, ...table.keys.map((k) => k.length)].reduce((a, b) => a > b ? a : b);
-  out.writeln('${'scenario'.padRight(width)}  ${terminals.map((t) => t.padRight(9)).join('  ')}');
-  out.writeln('${'-' * width}  ${terminals.map((_) => '-' * 9).join('  ')}');
+  final out = StringBuffer()
+    ..writeln()
+    ..writeln('${'scenario'.padRight(width)}  ${terminals.map((t) => t.padRight(9)).join('  ')}')
+    ..writeln('${'-' * width}  ${terminals.map((_) => '-' * 9).join('  ')}');
   for (final MapEntry(key: scenario, value: row) in table.entries) {
     out.writeln(
       '${scenario.padRight(width)}  ${terminals.map((t) => (row[t]?.split(':').first ?? '-').padRight(9)).join('  ')}',
@@ -83,8 +89,9 @@ Future<void> main(List<String> args) async {
   out.writeln();
   for (final MapEntry(key: scenario, value: row) in table.entries) {
     for (final MapEntry(key: t, value: v) in row.entries) {
-      if (!v.startsWith('pass') && !v.startsWith('skip'))
+      if (!v.startsWith('pass') && !v.startsWith('skip')) {
         out.writeln('FAIL $t/$scenario: ${v.split(':').skip(1).join(':').trim()}');
+      }
     }
   }
   out.writeln(allOk ? 'ALL PASSED' : 'FAILED (artifacts: $root)');
@@ -99,10 +106,12 @@ Map<String, String> _parse(List<String> args) {
   final o = <String, String>{'terminal': 'all', 'server': 'local', 'platform': 'ios'};
   for (var i = 0; i < args.length; i++) {
     switch (args[i]) {
-      case '--terminal' || '--server' || '--setup-link' || '--platform':
+      case '--terminal' || '--server' || '--setup-link' || '--platform' || '--artifacts':
         o[args[i].substring(2)] = args[++i];
       case '--no-phone':
         o['phone'] = 'no';
+      case '--from-head':
+        o['from-head'] = 'yes';
       default:
         stderr.writeln('Unknown argument: ${args[i]}');
         exit(64);
@@ -117,6 +126,38 @@ Map<String, String> _parse(List<String> args) {
     exit(64);
   }
   return o;
+}
+
+/// The same run from a detached worktree of HEAD (in /tmp, removed after),
+/// so uncommitted edits in this checkout don't go into the build; its
+/// artifacts land in this checkout's build/e2e.
+Future<int> _fromHead(String repo, List<String> args) async {
+  final head = '${(await Process.run('git', ['rev-parse', '--short', 'HEAD'], workingDirectory: repo)).stdout}'.trim();
+  final src = '/private/tmp/pte2e-src-$head-${DateTime.now().millisecondsSinceEpoch}';
+  await _must('git worktree add', 'git', ['worktree', 'add', '--detach', src, 'HEAD'], repo);
+  stdout.writeln('Running HEAD $head from $src');
+  try {
+    await _must('pub get', 'fvm', ['flutter', 'pub', 'get'], src);
+    final run = await Process.start(
+      'fvm',
+      [
+        'dart',
+        'run',
+        'tool/e2e/bin/run.dart',
+        ...args.where((a) => a != '--from-head'),
+        if (!args.contains('--artifacts')) ...['--artifacts', p.join(repo, 'build', 'e2e')],
+      ],
+      workingDirectory: src,
+      mode: ProcessStartMode.inheritStdio,
+    );
+    // Ctrl+C reaches the run too (same process group); this side waits for it.
+    final sigint = ProcessSignal.sigint.watch().listen((_) {});
+    final code = await run.exitCode;
+    await sigint.cancel();
+    return code;
+  } finally {
+    await Process.run('git', ['worktree', 'remove', '--force', src], workingDirectory: repo);
+  }
 }
 
 String _stamp() {

@@ -40,14 +40,14 @@ class E2eConfig {
     phone: j['phone'] as bool,
   );
 
-  static E2eConfig read(String path) =>
+  factory E2eConfig.read(String path) =>
       E2eConfig.fromJson(jsonDecode(File(path).readAsStringSync()) as Map<String, dynamic>);
 
   /// kitty, ghostty or wezterm.
   final String terminal;
 
   /// Where logs, screenshots, results and the phone's hand-off files go
-  /// (build/e2e/<stamp>/<terminal>).
+  /// (`build/e2e/<stamp>/<terminal>`).
   final String artifacts;
 
   /// The throwaway folder under /private/tmp (unix socket paths must stay

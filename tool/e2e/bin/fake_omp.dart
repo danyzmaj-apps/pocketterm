@@ -63,8 +63,8 @@ class FakeOmp {
   final bool _startBusy;
   final bool _startAsk;
 
-  final _env = Platform.environment;
-  final _cwd = Directory.current.path;
+  final Map<String, String> _env = Platform.environment;
+  final String _cwd = Directory.current.path;
   late final _dir = Directory(p.join(_cwd, '.fake_omp'))..createSync(recursive: true);
   late final _log = File(p.join(_dir.path, 'log.jsonl'));
   late final _conversation = File(p.join(_dir.path, 'conversation.json'));
@@ -396,9 +396,7 @@ class FakeOmp {
       }
     }
     final room = max(1, rows - 10);
-    for (final l in lines.skip(max(0, lines.length - room))) {
-      out.writeln(l);
-    }
+    lines.skip(max(0, lines.length - room)).forEach(out.writeln);
     out.writeln('─' * 40);
     if (_ask case final ask?) {
       out

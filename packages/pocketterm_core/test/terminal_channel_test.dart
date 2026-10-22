@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/server_client.dart';
+import 'package:pocketterm_core/terminal.dart' show TerminalException;
 import 'package:pocketterm_core/terminal_channel.dart';
 
 const _topic = 'abcd1234';
@@ -191,6 +192,22 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 1500));
     expect(server.joinCount, 1);
     expect(channel.joined, isFalse);
+  });
+
+  test('a message too big for the server is refused before it goes; the connection and later messages stay', () async {
+    await setUpServer();
+    channel.open();
+    await until(() => channel.joined);
+
+    await expectLater(
+      channel.send('run', {'text': 'x' * (200 * 1024)}),
+      throwsA(isA<TerminalException>()),
+      reason: 'sealed and in base64 it would be over 256 KiB, which closes the socket',
+    );
+    await channel.send('run', {'text': 'small'});
+    await until(() => server.sent.isNotEmpty);
+    expect(await computer.open('run', server.sent.single.payload), {'text': 'small'});
+    expect(states, [true], reason: 'never dropped');
   });
 
   test('a close for a revoked device ends the sign-in, and nothing joins again', () async {

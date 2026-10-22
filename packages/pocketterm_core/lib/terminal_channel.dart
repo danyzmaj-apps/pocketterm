@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/server_client.dart';
+import 'package:pocketterm_core/terminal.dart' show TerminalException;
 
 /// Receives one message, opened: its fields as the sender gave them.
 typedef TopicHandler = void Function(Map<String, dynamic> payload);
@@ -144,14 +145,26 @@ class TerminalChannel {
   }
 
   /// Drops [event] if the channel isn't joined: whoever waits on an answer
-  /// times out, and the other side catches up after the next join.
+  /// times out, and the other side catches up after the next join. A
+  /// message too big for the server fails with a [TerminalException] and
+  /// goes nowhere; the connection stays.
   Future<void> send(String event, Map<String, dynamic> payload) {
     if (_ws == null || !_joined) return Future.value();
     final out = _outbox.then((_) async {
       final sealed = await _seal.seal(event, payload);
       final ws = _ws;
+  /// The largest frame the server takes (packages/pocketterm_server/PROTOCOL.md); a larger one would close the
+  /// socket, and every message after it would be lost until the next join.
+  static const maxFrameBytes = 256 * 1024;
+
       if (ws == null || !_joined) return;
-      ws.add(jsonEncode({'t': 'send', 'topic': topic, 'event': event, 'payload': sealed}));
+      // Sealed, it's all ASCII: its length is its size in bytes.
+      final frame = jsonEncode({'t': 'send', 'topic': topic, 'event': event, 'payload': sealed});
+      if (frame.length > maxFrameBytes) {
+        debugPrint('PocketTerm: $name: $event not sent: ${frame.length} bytes, over $maxFrameBytes');
+        throw const TerminalException('That is too big to send in one go. Send it in smaller parts.');
+      }
+      ws.add(frame);
     });
     _outbox = out.then((_) {}, onError: (Object _) {});
     return out;

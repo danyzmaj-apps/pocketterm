@@ -7,48 +7,101 @@ import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_desktop/controller.dart';
 import 'package:pocketterm_desktop/hosting/hosting_view.dart';
 import 'package:pocketterm_desktop/hosting/tailscale.dart';
+import 'package:pocketterm_desktop/hosting/vps.dart';
+import 'package:pocketterm_desktop/onboarding/commands_view.dart';
+import 'package:pocketterm_desktop/onboarding/data_protection.dart';
 
-final Uri _selfHostingGuide = Uri.parse('https://github.com/danyzmaj-apps/pocketterm/blob/main/docs/SELF_HOSTING.md');
+final Uri _selfHostingGuide = Uri.parse(
+  'https://github.com/danyzmaj-apps/pocketterm/blob/main/docs/SELF_HOSTING.md#on-my-own-server',
+);
 
-/// Where the server runs, as the first-run setup offers it.
-enum SetupChoice { thisComputer, ownServer }
+/// The first-run setup's screens. Where it was left is kept
+/// ([AppController.setupStep]) and it opens there again.
+enum SetupStep {
+  /// On this computer, or on my own server.
+  choose,
 
-/// First run: where this computer's PocketTerm server runs. **This
+  /// The Tailscale checklist, then Start.
+  thisComputer,
+
+  /// Do you already have a PocketTerm server?
+  ownServer,
+
+  /// Yes: its setup link.
+  haveServer,
+
+  /// Not yet: its address, the commands for it, live checks, its setup link.
+  newServer,
+}
+
+/// First run: where this computer's PocketTerm server runs. **On this
 /// computer**: the server built into the app, reached through Tailscale
-/// (lib/hosting/). **Your own server**: one on a VPS, or another computer
-/// that runs it, by its setup link. Either way, the setup checklist follows
-/// sign-in (lib/onboarding/get_ready.dart).
+/// (lib/hosting/), after a checklist that follows Tailscale as the person
+/// sets it up. **On my own server**: a VPS, by its setup link, or, without
+/// one yet, the commands that set one up, checked live (lib/hosting/vps.dart).
+/// Either way, the setup checklist follows sign-in
+/// (lib/onboarding/get_ready.dart).
 class SetupPage extends StatefulWidget {
-  const SetupPage({required this.app, this.choice, this.poll = const Duration(seconds: 3), super.key});
+  const SetupPage({
+    required this.app,
+    this.poll = const Duration(seconds: 3),
+    this.checks = const ServerChecks(),
+    super.key,
+  });
   final AppController app;
 
-  /// The screen to open on; the two choices if null.
-  final SetupChoice? choice;
-
-  /// How often This computer looks at Tailscale again.
+  /// How often the live checks look again; [Duration.zero]: only once.
   final Duration poll;
+
+  /// What the VPS checks ask the network.
+  final ServerChecks checks;
 
   @override
   State<SetupPage> createState() => _SetupPageState();
 }
 
 class _SetupPageState extends State<SetupPage> {
-  late SetupChoice? _choice = widget.choice;
+  late SetupStep _step = SetupStep.values.asNameMap()[widget.app.setupStep] ?? SetupStep.choose;
+
+  void _go(SetupStep step) {
+    setState(() => _step = step);
+    unawaited(widget.app.setSetupStep(step == SetupStep.choose ? null : step.name));
+  }
 
   @override
   Widget build(BuildContext context) => Center(
     child: SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
+      padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
       child: SizedBox(
-        width: 440,
-        child: switch (_choice) {
-          null => _choose(),
-          SetupChoice.thisComputer => ThisComputerSetup(
+        width: 460,
+        child: switch (_step) {
+          SetupStep.choose => _choose(),
+          SetupStep.thisComputer => ThisComputerSetup(
             app: widget.app,
             poll: widget.poll,
-            onBack: () => setState(() => _choice = null),
+            onBack: () => _go(SetupStep.choose),
           ),
-          SetupChoice.ownServer => OwnServerSetup(app: widget.app, onBack: () => setState(() => _choice = null)),
+          SetupStep.ownServer => _ownServer(),
+          SetupStep.haveServer => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _header(
+                'Paste your server’s setup link',
+                'On the server, in ~/pocketterm, run: sudo docker compose exec server pocketterm-server setup-link. '
+                    'A computer of yours that runs PocketTerm’s server has one too, in Settings → Account → Add a '
+                    'computer…',
+                () => _go(SetupStep.ownServer),
+              ),
+              SetupLinkForm(app: widget.app, checks: widget.checks),
+            ],
+          ),
+          SetupStep.newServer => NewServerSetup(
+            app: widget.app,
+            poll: widget.poll,
+            checks: widget.checks,
+            onBack: () => _go(SetupStep.ownServer),
+          ),
         },
       ),
     ),
@@ -75,21 +128,55 @@ class _SetupPageState extends State<SetupPage> {
       _option(
         key: const ValueKey('setup-this-computer'),
         icon: Icons.laptop_mac,
-        title: 'This computer',
+        title: 'On this computer',
         text:
-            'PocketTerm runs the server here. Your phone reaches it from anywhere through Tailscale (free). '
-            'This computer has to be on for your phone to connect.',
-        onTap: () => setState(() => _choice = SetupChoice.thisComputer),
+            'Free, set up in a few clicks. Uses Tailscale, on this computer and your phone. This computer must stay '
+            'awake.',
+        onTap: () => _go(SetupStep.thisComputer),
       ),
       const SizedBox(height: 12),
       _option(
         key: const ValueKey('setup-own-server'),
         icon: Icons.dns_outlined,
-        title: 'Your own server',
+        title: 'On my own server',
         text:
-            'A PocketTerm server on a VPS or another always-on machine, or a computer of yours that already '
-            'runs one. Paste its setup link.',
-        onTap: () => setState(() => _choice = SetupChoice.ownServer),
+            'A VPS you rent. No Tailscale, and several computers share one server. Your sessions still run here, '
+            'so this computer stays awake for them too.',
+        onTap: () => _go(SetupStep.ownServer),
+      ),
+      const SizedBox(height: 18),
+      const Explainer(
+        key: ValueKey('why-server'),
+        title: 'What is a PocketTerm server?',
+        child: Text(
+          'It introduces your phone to your computers and passes their messages along. It keeps your list of '
+          'devices, your computers’ names, pairing codes for 10 minutes and your phones’ push tokens. Your sessions '
+          'pass through it only encrypted, so it can’t read them.',
+        ),
+      ),
+      const Explainer(key: ValueKey('why-data'), title: 'How your data is protected', child: DataProtection()),
+    ],
+  );
+
+  Widget _ownServer() => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _header('On my own server', 'Do you already have a PocketTerm server?', () => _go(SetupStep.choose)),
+      _option(
+        key: const ValueKey('setup-have-server'),
+        icon: Icons.link,
+        title: 'Yes',
+        text: 'Paste its setup link. A link from another computer of yours that runs PocketTerm’s server works too.',
+        onTap: () => _go(SetupStep.haveServer),
+      ),
+      const SizedBox(height: 12),
+      _option(
+        key: const ValueKey('setup-new-server'),
+        icon: Icons.add_circle_outline,
+        title: 'Not yet',
+        text: 'Set one up on a VPS: you get the commands to copy, and each step is checked as you go.',
+        onTap: () => _go(SetupStep.newServer),
       ),
     ],
   );
@@ -142,6 +229,7 @@ Widget _header(String title, String text, VoidCallback onBack) => Column(
     Align(
       alignment: Alignment.centerLeft,
       child: TextButton.icon(
+        key: const ValueKey('setup-back'),
         onPressed: onBack,
         icon: const Icon(Icons.arrow_back, size: 16),
         label: const Text('Back'),
@@ -152,15 +240,157 @@ Widget _header(String title, String text, VoidCallback onBack) => Column(
     Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
     const SizedBox(height: 8),
     Text(text, style: const TextStyle(color: C.dim, height: 1.45)),
-    const SizedBox(height: 20),
+    const SizedBox(height: 18),
   ],
 );
 
 const _errorColor = Color(0xFFFCA5A5);
 
-/// This computer: what Tailscale needs (installed, running and signed in,
-/// HTTPS on for the tailnet), then one button that starts the built-in
-/// server and signs this computer in to it.
+/// Where one step of a live checklist stands.
+enum CheckState {
+  /// Not known yet: the first look is on its way.
+  looking,
+
+  /// Done: one line, nothing to do.
+  done,
+
+  /// The step to do now: what and how, with its buttons.
+  now,
+
+  /// Waits for an earlier one.
+  later,
+}
+
+/// One step of a live checklist: done ones collapse to a line, the one to
+/// do now shows its [note] and [actions], later ones only their title.
+class SetupCheck extends StatelessWidget {
+  const SetupCheck({required this.state, required this.title, this.note, this.actions = const [], super.key});
+  final CheckState state;
+  final String title;
+  final String? note;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = state == CheckState.now;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: SizedBox.square(
+              dimension: 18,
+              child: switch (state) {
+                CheckState.looking => const Padding(
+                  padding: EdgeInsets.all(3),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                CheckState.done => const Icon(Icons.check_circle, size: 18, color: C.ok),
+                CheckState.now => const Icon(Icons.arrow_forward, size: 18, color: C.warn),
+                CheckState.later => const Icon(Icons.radio_button_unchecked, size: 18, color: C.dim2),
+              },
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 6,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: now ? FontWeight.w600 : FontWeight.normal,
+                    color: switch (state) {
+                      CheckState.done || CheckState.now => C.text,
+                      CheckState.looking || CheckState.later => C.dim2,
+                    },
+                  ),
+                ),
+                if (now && note != null)
+                  Text(note!, style: const TextStyle(fontSize: 12.5, color: C.dim, height: 1.45)),
+                if (now && actions.isNotEmpty) Wrap(spacing: 8, runSpacing: 8, children: actions),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A question with its answer folded away ("What is Tailscale?"): one tap
+/// shows [child].
+class Explainer extends StatefulWidget {
+  const Explainer({required this.title, required this.child, super.key});
+  final String title;
+  final Widget child;
+
+  @override
+  State<Explainer> createState() => _ExplainerState();
+}
+
+class _ExplainerState extends State<Explainer> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: () => setState(() => _open = !_open),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              Icon(_open ? Icons.expand_more : Icons.chevron_right, size: 18, color: C.accent),
+              const SizedBox(width: 6),
+              Text(widget.title, style: const TextStyle(fontSize: 13, color: C.accent)),
+            ],
+          ),
+        ),
+      ),
+      if (_open)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 4, 0, 10),
+          child: DefaultTextStyle.merge(
+            style: const TextStyle(fontSize: 12.5, color: C.dim, height: 1.45),
+            child: widget.child,
+          ),
+        ),
+    ],
+  );
+}
+
+/// A note in a box: what the person must not miss.
+Widget _notice(String text, {IconData icon = Icons.info_outline, Key? key}) => Container(
+  key: key,
+  padding: const EdgeInsets.all(12),
+  decoration: BoxDecoration(
+    color: C.field,
+    borderRadius: BorderRadius.circular(10),
+    border: Border.all(color: C.line2),
+  ),
+  child: Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Icon(icon, size: 16, color: C.accent),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Text(text, style: const TextStyle(fontSize: 12.5, color: C.dim, height: 1.45)),
+      ),
+    ],
+  ),
+);
+
+/// On this computer: a checklist that follows Tailscale as it's set up,
+/// looking again every [poll]: installed, running, signed in, HTTPS
+/// certificates on. Each step shows only its own action; then Start runs
+/// the built-in server and signs this computer in to it.
 class ThisComputerSetup extends StatefulWidget {
   const ThisComputerSetup({required this.app, required this.onBack, this.poll = const Duration(seconds: 3), super.key});
   final AppController app;
@@ -175,6 +405,7 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
   TailscaleStatus? _status;
   Timer? _timer;
   bool _busy = false;
+  bool _askingHttps = false;
   String? _error;
 
   @override
@@ -193,6 +424,13 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
   Future<void> _look() async {
     final status = await widget.app.tailscale.status();
     if (mounted) setState(() => _status = status);
+  }
+
+  Future<void> _turnOnHttps() async {
+    setState(() => _askingHttps = true);
+    final link = await widget.app.tailscale.enableHttpsLink();
+    openLink(link);
+    if (mounted) setState(() => _askingHttps = false);
   }
 
   Future<void> _start() async {
@@ -215,59 +453,110 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
   @override
   Widget build(BuildContext context) {
     final s = _status;
-    final installed = s != null && s.state != TailscaleState.missing;
-    final running = s?.state == TailscaleState.running;
     final ts = widget.app.tailscale;
+    final done = s == null
+        ? null
+        : [
+            s.state != TailscaleState.missing,
+            s.state == TailscaleState.loggedOut || s.state == TailscaleState.running,
+            s.state == TailscaleState.running,
+            s.state == TailscaleState.running && s.https && s.dnsName != null,
+          ];
+    final current = done?.indexOf(false) ?? -1;
+    final allDone = done != null && current == -1;
+    CheckState state(int i) => switch (done) {
+      null => i == 0 ? CheckState.looking : CheckState.later,
+      final d when d[i] && (current == -1 || i < current) => CheckState.done,
+      _ when i == current => CheckState.now,
+      _ => CheckState.later,
+    };
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _header(
-          'This computer',
-          'PocketTerm runs your server on this computer. Tailscale gives it a private HTTPS address that only '
-              'your own devices reach, at home or away.',
+          'On this computer',
+          'PocketTerm runs your server here. Tailscale gives it a private HTTPS address that only your own devices '
+              'reach, at home or away. This list checks itself as you go.',
           widget.onBack,
         ),
-        _check(
-          s == null ? null : installed,
-          'Tailscale is installed',
-          action: s != null && !installed ? smallButton('Install Tailscale', () => openLink(Tailscale.download)) : null,
+        const Explainer(
+          key: ValueKey('why-tailscale'),
+          title: 'What is Tailscale, and why?',
+          child: Text(
+            'Tailscale makes a private network between your own devices, wherever they are. Your phone reaches this '
+            'computer through it, and nothing on the internet can. Tailscale sees which of your devices connect and '
+            'when; PocketTerm’s messages are encrypted, so not what they say.',
+          ),
         ),
-        _check(s == null ? null : running, switch (s?.state) {
-          TailscaleState.loggedOut => 'Tailscale is signed out: sign in',
-          TailscaleState.stopped => 'Tailscale is off: switch it on',
-          _ => 'Tailscale is on and signed in',
-        }, action: installed && !running ? smallButton('Open Tailscale', () => unawaited(ts.open())) : null),
-        _check(
-          running ? s!.https && s.dnsName != null : (s == null ? null : false),
-          'HTTPS is on for your tailnet',
-          action: running && !(s!.https && s.dnsName != null)
-              ? smallButton('Turn on HTTPS…', () => openLink(Tailscale.adminDns))
-              : null,
-          note: running && !(s!.https && s.dnsName != null)
-              ? 'In the Tailscale admin console under DNS: MagicDNS and HTTPS Certificates.'
-              : null,
+        const SizedBox(height: 8),
+        SetupCheck(
+          key: const ValueKey('check-installed'),
+          state: state(0),
+          title: state(0) == CheckState.done ? 'Tailscale is installed' : 'Install Tailscale',
+          note: 'Free for personal use.',
+          actions: [
+            if (widget.app.commands.brew != null) ...[
+              ConfirmedCommand(
+                commands: widget.app.commands,
+                label: 'Install Tailscale',
+                argv: const ['brew', 'install', '--cask', 'tailscale-app'],
+                what: 'Homebrew downloads Tailscale’s app from Tailscale and installs it. Then open it from here.',
+                password: 'Homebrew is installing Tailscale for PocketTerm. Enter your Mac password to allow it.',
+                onDone: () => unawaited(_look()),
+              ),
+              smallButton('Download instead', () => openLink(Tailscale.download)),
+            ] else
+              smallButton('Install Tailscale', () => openLink(Tailscale.download)),
+          ],
         ),
-        const SizedBox(height: 10),
-        const Text(
-          'Install Tailscale on your phone too, signed in to the same account.',
-          style: TextStyle(fontSize: 12, color: C.dim2, height: 1.4),
+        SetupCheck(
+          key: const ValueKey('check-running'),
+          state: state(1),
+          title: state(1) == CheckState.done ? 'Tailscale is running' : 'Start Tailscale',
+          note: 'Open Tailscale and switch it on.',
+          actions: [smallButton('Open Tailscale', () => unawaited(ts.open()))],
         ),
+        SetupCheck(
+          key: const ValueKey('check-signed-in'),
+          state: state(2),
+          title: state(2) == CheckState.done ? 'Signed in to Tailscale' : 'Sign in to Tailscale',
+          note: 'Any account works: Google, GitHub, Microsoft or Apple. Use the same one on your phone.',
+          actions: [smallButton('Open Tailscale to sign in', () => unawaited(ts.open()))],
+        ),
+        SetupCheck(
+          key: const ValueKey('check-https'),
+          state: state(3),
+          title: state(3) == CheckState.done ? 'HTTPS certificates are on' : 'Turn on HTTPS certificates',
+          note:
+              'On the Tailscale page that opens, turn on HTTPS (and MagicDNS, if it asks). Your phone then gets a '
+              'secure address for this computer.',
+          actions: [
+            smallButton(
+              _askingHttps ? 'Opening…' : 'Turn on HTTPS…',
+              _askingHttps ? null : () => unawaited(_turnOnHttps()),
+              key: const ValueKey('setup-turn-on-https'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        _notice(phoneTailscaleNote, icon: Icons.phone_iphone, key: const ValueKey('setup-phone-tailscale')),
         const SizedBox(height: 18),
         FilledButton(
           key: const ValueKey('setup-start-server'),
-          onPressed: running && !_busy ? () => unawaited(_start()) : null,
+          onPressed: allDone && !_busy ? () => unawaited(_start()) : null,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 10),
             child: _busy
                 ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Start the server'),
+                : const Text('Start'),
           ),
         ),
         if (_error != null) ...[
           const SizedBox(height: 12),
           Text(
             _error!,
+            key: const ValueKey('setup-error'),
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 12, color: _errorColor),
           ),
@@ -275,57 +564,48 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
       ],
     );
   }
-
-  /// A check: [ok] null while looking.
-  Widget _check(bool? ok, String text, {Widget? action, String? note}) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: SizedBox.square(
-            dimension: 16,
-            child: switch (ok) {
-              null => const Padding(padding: EdgeInsets.all(2), child: CircularProgressIndicator(strokeWidth: 2)),
-              true => const Icon(Icons.check, size: 16, color: C.ok),
-              false => const Icon(Icons.radio_button_unchecked, size: 16, color: C.warn),
-            },
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            spacing: 2,
-            children: [
-              Text(text, style: TextStyle(fontSize: 13, color: ok ?? false ? C.text : C.dim)),
-              if (note != null) Text(note, style: const TextStyle(fontSize: 11.5, color: C.dim2, height: 1.4)),
-            ],
-          ),
-        ),
-        if (action != null) ...[const SizedBox(width: 10), action],
-      ],
-    ),
-  );
 }
 
-/// Your own server: its setup link, from `pocketterm-server setup-link` on
-/// a VPS, or from a computer that runs the built-in server (Settings → Add a
-/// computer…).
-class OwnServerSetup extends StatefulWidget {
-  const OwnServerSetup({required this.app, required this.onBack, super.key});
+/// What's wrong with [text] as a computer's setup link, for the person;
+/// null when it is one (`pocketterm://setup?url=<https url>&setup=<token>`).
+String? setupLinkProblem(String text) {
+  final link = Uri.tryParse(text.trim());
+  if (link == null || link.scheme != 'pocketterm' || link.host != 'setup' || link.queryParameters['url'] == null) {
+    return 'That isn’t a setup link. It starts with pocketterm://setup?url= : copy the whole line setup-link '
+        'printed.';
+  }
+  if (Backend.parse(link.queryParameters['url']!).error case final error?) {
+    return 'The server address in that link doesn’t work. $error';
+  }
+  if (Backend.setupToken(link) != null) return null;
+  if (Backend.pairingCode(link) != null) {
+    return 'That link signs in a phone, not a computer. Use the server’s setup link: on the server, run '
+        'sudo docker compose exec server pocketterm-server setup-link.';
+  }
+  return 'That link has no setup token: copy the whole line setup-link printed.';
+}
+
+/// A setup link, checked as it's pasted (a link at all, a computer's, its
+/// server answering), then redeemed by Connect.
+class SetupLinkForm extends StatefulWidget {
+  const SetupLinkForm({required this.app, this.checks = const ServerChecks(), super.key});
   final AppController app;
-  final VoidCallback onBack;
+
+  /// What asks the pasted link's server for its health.
+  final ServerChecks checks;
 
   @override
-  State<OwnServerSetup> createState() => _OwnServerSetupState();
+  State<SetupLinkForm> createState() => _SetupLinkFormState();
 }
 
-class _OwnServerSetupState extends State<OwnServerSetup> {
+class _SetupLinkFormState extends State<SetupLinkForm> {
   final _link = TextEditingController();
   bool _busy = false;
   String? _error;
+
+  /// The pasted link's server: null while not asked, `''` while asking.
+  String? _health;
+  int _asked = 0;
 
   @override
   void dispose() {
@@ -333,24 +613,36 @@ class _OwnServerSetupState extends State<OwnServerSetup> {
     super.dispose();
   }
 
+  void _changed(String text) {
+    final asked = ++_asked;
+    final problem = text.trim().isEmpty ? null : setupLinkProblem(text);
+    setState(() {
+      _error = problem;
+      _health = null;
+    });
+    if (text.trim().isEmpty || problem != null) return;
+    final backend = Backend.fromLink(Uri.parse(text.trim()))!;
+    setState(() => _health = '');
+    unawaited(
+      widget.checks.answers(backend).then((problem) {
+        if (!mounted || asked != _asked) return;
+        setState(() {
+          _health = problem == null ? '${backend.host} answers' : null;
+          _error = problem;
+        });
+      }),
+    );
+  }
+
   Future<void> _connect() async {
-    final link = Uri.tryParse(_link.text.trim());
-    if (link == null || Backend.fromLink(link) == null) {
-      return setState(() => _error = 'Paste the whole setup link: it starts with pocketterm://setup?url=');
-    }
-    if (Backend.setupToken(link) == null) {
-      return setState(
-        () => _error =
-            'That link signs in a phone, not a computer. Use the server’s setup link: run pocketterm-server '
-            'setup-link on the server to see it.',
-      );
-    }
+    if (setupLinkProblem(_link.text) case final problem?) return setState(() => _error = problem);
+    _asked++;
     setState(() {
       _busy = true;
       _error = null;
     });
     final app = widget.app;
-    await app.connectLink(link);
+    await app.connectLink(Uri.parse(_link.text.trim()));
     // A link that didn't sign in leaves nothing behind: the form says why.
     if (app.user == null) {
       final why = app.authError ?? 'That setup link didn’t sign this computer in.';
@@ -365,12 +657,6 @@ class _OwnServerSetupState extends State<OwnServerSetup> {
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      _header(
-        'Your own server',
-        'Paste your server’s setup link. To see it, run pocketterm-server setup-link on the server. A computer of '
-            'yours that runs the server has one in Settings → Account → Add a computer…',
-        widget.onBack,
-      ),
       TextField(
         key: const ValueKey('setup-link'),
         controller: _link,
@@ -378,9 +664,29 @@ class _OwnServerSetupState extends State<OwnServerSetup> {
         autocorrect: false,
         keyboardType: TextInputType.url,
         decoration: setupField('pocketterm://setup?url=…&setup=…'),
+        onChanged: _changed,
         onSubmitted: (_) => unawaited(_connect()),
       ),
-      const SizedBox(height: 16),
+      if (_health != null && _error == null) ...[
+        const SizedBox(height: 8),
+        Row(
+          key: const ValueKey('setup-link-health'),
+          children: [
+            SizedBox.square(
+              dimension: 14,
+              child: _health!.isEmpty
+                  ? const Padding(padding: EdgeInsets.all(2), child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.check, size: 14, color: C.ok),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _health!.isEmpty ? 'Asking the server…' : _health!,
+              style: const TextStyle(fontSize: 12, color: C.dim),
+            ),
+          ],
+        ),
+      ],
+      const SizedBox(height: 14),
       FilledButton(
         key: const ValueKey('setup-connect'),
         onPressed: _busy ? null : () => unawaited(_connect()),
@@ -397,15 +703,228 @@ class _OwnServerSetupState extends State<OwnServerSetup> {
           _error!,
           key: const ValueKey('setup-error'),
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 12, color: _errorColor),
+          style: const TextStyle(fontSize: 12, color: _errorColor, height: 1.4),
         ),
       ],
-      const SizedBox(height: 18),
-      TextButton(
-        onPressed: () => openLink(_selfHostingGuide),
-        style: TextButton.styleFrom(foregroundColor: C.dim2),
-        child: const Text('How to run your own server (Docker)'),
-      ),
     ],
   );
+}
+
+/// Not yet: the VPS's address, the commands that set the server up there
+/// (lib/hosting/vps.dart), and checks that follow it live (the name
+/// resolves, HTTPS answers, the server is healthy); once it is, its setup
+/// link.
+class NewServerSetup extends StatefulWidget {
+  const NewServerSetup({
+    required this.app,
+    required this.onBack,
+    this.poll = const Duration(seconds: 3),
+    this.checks = const ServerChecks(),
+    super.key,
+  });
+  final AppController app;
+  final VoidCallback onBack;
+  final Duration poll;
+  final ServerChecks checks;
+
+  @override
+  State<NewServerSetup> createState() => _NewServerSetupState();
+}
+
+class _NewServerSetupState extends State<NewServerSetup> {
+  late final _address = TextEditingController(text: widget.app.setupAddress);
+  late ServerAddress _parsed = ServerAddress.parse(_address.text);
+  Timer? _timer;
+
+  /// What the checks found for [_checked]: null until known.
+  String? _checked;
+  bool? _resolves;
+  bool? _https;
+  bool? _healthy;
+  String? _healthProblem;
+  bool _looking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_look());
+    if (widget.poll > Duration.zero) _timer = Timer.periodic(widget.poll, (_) => unawaited(_look()));
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _address.dispose();
+    super.dispose();
+  }
+
+  void _changed(String text) {
+    unawaited(widget.app.setSetupAddress(text));
+    final parsed = ServerAddress.parse(text);
+    setState(() => _parsed = parsed);
+    if (parsed.domain != _checked) unawaited(_look());
+  }
+
+  /// One round of checks on the address as it is now, each only once the
+  /// one before passed. A healthy server isn't looked at again.
+  Future<void> _look() async {
+    final domain = _parsed.domain;
+    if (domain != _checked) {
+      setState(() {
+        _checked = domain;
+        _resolves = _https = _healthy = null;
+        _healthProblem = null;
+      });
+    }
+    if (domain == null || (_healthy ?? false) || _looking) return;
+    _looking = true;
+    try {
+      final checks = widget.checks;
+      final resolves = await checks.resolves(domain);
+      final https = resolves && await checks.https(domain);
+      final problem = https ? await checks.health(domain) : null;
+      if (!mounted || _checked != domain) return;
+      setState(() {
+        _resolves = resolves;
+        _https = resolves ? https : null;
+        _healthy = https ? problem == null : null;
+        _healthProblem = problem;
+      });
+    } finally {
+      _looking = false;
+    }
+    // The address changed while this round ran: look at the new one.
+    if (mounted && _checked != _parsed.domain) unawaited(_look());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final domain = _parsed.domain;
+    final typed = _address.text.trim().isNotEmpty;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _header(
+          'Set up a server on a VPS',
+          'Rent a small Linux VPS from any provider (1 GB of memory is plenty) and open a terminal on it with SSH. '
+              'What’s its address?',
+          widget.onBack,
+        ),
+        const Explainer(
+          key: ValueKey('why-docker'),
+          title: 'What do Docker and Caddy do?',
+          child: Text(
+            'Docker runs the PocketTerm server in a container, so nothing else on the VPS changes. Caddy runs next to '
+            'it: it answers on ports 80 and 443 and gets a free HTTPS certificate from Let’s Encrypt, renewing it on '
+            'its own. The server keeps your device list, computer names, pairing codes and push tokens, and passes '
+            'your encrypted messages along.',
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const ValueKey('setup-address'),
+          controller: _address,
+          autocorrect: false,
+          keyboardType: TextInputType.url,
+          decoration: setupField('203.0.113.7 or pocketterm.example.com'),
+          onChanged: _changed,
+        ),
+        const SizedBox(height: 8),
+        if (typed && _parsed.error != null)
+          Text(
+            _parsed.error!,
+            key: const ValueKey('setup-address-error'),
+            style: const TextStyle(fontSize: 12, color: _errorColor, height: 1.4),
+          ),
+        if (domain != null) ...[
+          Text.rich(
+            key: const ValueKey('setup-domain'),
+            TextSpan(
+              children: [
+                const TextSpan(text: 'Your server’s name: '),
+                TextSpan(
+                  text: domain,
+                  style: const TextStyle(color: C.text, fontWeight: FontWeight.w600),
+                ),
+                TextSpan(
+                  text: domain.endsWith('.sslip.io')
+                      ? ' (sslip.io turns the IP address into a name, so the server gets an HTTPS certificate).'
+                      : '. Point its DNS A record at the server first.',
+                ),
+              ],
+            ),
+            style: const TextStyle(fontSize: 12, color: C.dim, height: 1.45),
+          ),
+          const SizedBox(height: 16),
+          _notice(
+            'Ports 80 and 443 must be open to the internet: check your provider’s firewall. The server gets its '
+            'certificate from Let’s Encrypt, which checks port 80.',
+            icon: Icons.shield_outlined,
+          ),
+          const SizedBox(height: 16),
+          for (final (i, c) in vpsCommands(domain).indexed) ...[
+            Text('${i + 1}. ${c.title}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            CopyCommand(c.command, key: ValueKey('setup-command-$i')),
+            const SizedBox(height: 12),
+          ],
+          const Text('Signed in as root? You can leave out sudo.', style: TextStyle(fontSize: 11.5, color: C.dim2)),
+          const SizedBox(height: 16),
+          Text('Checking $domain', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          ..._checks(domain),
+          if (_healthy ?? false) ...[
+            const SizedBox(height: 14),
+            const Text(
+              'Your server is up. Paste the setup link step 4 printed:',
+              style: TextStyle(fontSize: 13, color: C.dim, height: 1.45),
+            ),
+            const SizedBox(height: 10),
+            SetupLinkForm(app: widget.app, checks: widget.checks),
+          ],
+        ],
+        const SizedBox(height: 14),
+        TextButton(
+          onPressed: () => openLink(_selfHostingGuide),
+          style: TextButton.styleFrom(foregroundColor: C.dim2),
+          child: const Text('The full guide, with other ways to run it'),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _checks(String domain) {
+    CheckState state({required bool? ok, required bool reached}) => switch (ok) {
+      true => CheckState.done,
+      false => CheckState.now,
+      null when !reached => CheckState.later,
+      null => CheckState.looking,
+    };
+    final sslip = domain.endsWith('.sslip.io');
+    return [
+      SetupCheck(
+        key: const ValueKey('check-dns'),
+        state: state(ok: _resolves, reached: true),
+        title: '$domain resolves',
+        note: sslip
+            ? 'sslip.io doesn’t answer. Check this computer’s internet connection.'
+            : 'Not yet. Add an A record for $domain with your server’s IP address; it can take a few minutes.',
+      ),
+      SetupCheck(
+        key: const ValueKey('check-https'),
+        state: state(ok: _https, reached: _resolves ?? false),
+        title: 'HTTPS answers',
+        note:
+            'Not yet. Run steps 1 to 3. Getting the certificate takes a minute after the server starts; if it stays '
+            'here, open ports 80 and 443.',
+      ),
+      SetupCheck(
+        key: const ValueKey('check-health'),
+        state: state(ok: _healthy, reached: _https ?? false),
+        title: 'The PocketTerm server answers',
+        note: _healthProblem ?? 'Not yet.',
+      ),
+    ];
+  }
 }

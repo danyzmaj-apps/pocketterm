@@ -9,6 +9,12 @@ import 'package:url_launcher/url_launcher.dart';
 
 void openLink(Uri url) => unawaited(launchUrl(url, mode: LaunchMode.externalApplication));
 
+/// The phone needs Tailscale too, on the same account; this setup and the
+/// phone's QR (lib/onboarding/get_ready.dart) both say so.
+const phoneTailscaleNote =
+    'Your phone needs the Tailscale app too, signed in to the same Tailscale account. Get it from the App Store or '
+    'Google Play.';
+
 /// A small outlined button, as the setup screens use them.
 Widget smallButton(String label, VoidCallback? onPressed, {Key? key}) => OutlinedButton(
   key: key,

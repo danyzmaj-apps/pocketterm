@@ -58,6 +58,12 @@ void main() {
     expect(find.text('pt.example.com · 1 computer, 2 phones'), findsOneWidget);
     expect(find.textContaining('Erase'), findsNothing);
     expect(find.byKey(const ValueKey('settings-add-computer')), findsNothing);
+
+    // How your data is protected, again, as the first-run setup showed it.
+    await tester.tap(find.byKey(const ValueKey('settings-data-protection')));
+    await tester.pumpAndSettle();
+    expect(find.text('Encrypted from end to end'), findsOneWidget);
+    expect(find.text('One exception: Live Activities'), findsOneWidget);
   });
 
   testWidgets('a computer that runs the server: HTTPS to turn on, then Add a computer, Erase, and Sign out stops it', (

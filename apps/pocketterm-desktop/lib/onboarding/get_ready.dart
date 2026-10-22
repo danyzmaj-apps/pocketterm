@@ -369,6 +369,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
     if (_wezterm case final w?) return WezTermCard(setup: w);
     return MacTerminalsCard(
       terminals: app.terminals,
+      commands: app.commands,
       onStatuses: (s) {
         if (mounted) setState(() => _terminals = s);
       },
@@ -468,9 +469,19 @@ class _GetReadyPageState extends State<GetReadyPage> {
     }
     // A computer running the server: the phone's code needs Tailscale's address.
     if (app.hosting case final h? when h.state != HostState.ready) return HostingStatusView(server: h);
+    // Through Tailscale (this computer's server, or another computer's): the phone needs it too.
+    final tailscale = app.hosting != null || (app.backend?.host.endsWith('.ts.net') ?? false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (tailscale) ...[
+          const Text(
+            phoneTailscaleNote,
+            key: ValueKey('get-ready-phone-tailscale'),
+            style: TextStyle(color: C.dim, height: 1.45, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+        ],
         PairingQr(session: app),
         const SizedBox(height: 10),
         const Text(

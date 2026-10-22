@@ -1,13 +1,21 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/ghostty.dart';
+import 'package:pocketterm_core/ghostty_config.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
+import 'package:pocketterm_core/tmux.dart';
+import 'package:pocketterm_desktop/commands.dart';
 import 'package:pocketterm_desktop/onboarding/terminals_card.dart';
+
+import 'app_fakes.dart';
 
 /// A Mac whose terminals say [now].
 class _Mac extends Terminals {
-  _Mac(this.now)
-    : super(home: '/nonexistent-pocketterm', recency: () async => const [], snapshot: () async => Procs(const []));
+  _Mac(this.now, {super.home = '/nonexistent-pocketterm', super.tmux, super.ghostty})
+    : super(recency: () async => const [], snapshot: () async => Procs(const []));
   List<TermStatus> now;
 
   @override
@@ -15,11 +23,21 @@ class _Mac extends Terminals {
 }
 
 void main() {
-  Future<void> pump(WidgetTester tester, Terminals t) async {
+  /// [t]'s card; it looks again every [poll] (an hour: only when a fix or an install asks it to).
+  Future<void> pump(
+    WidgetTester tester,
+    Terminals t, {
+    Commands? commands,
+    Duration poll = const Duration(milliseconds: 100),
+  }) async {
+    tester.view
+      ..physicalSize = const Size(800, 1400)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: MacTerminalsCard(terminals: t, poll: const Duration(milliseconds: 100)),
+          body: MacTerminalsCard(terminals: t, commands: commands, poll: poll),
         ),
       ),
     );
@@ -77,5 +95,78 @@ void main() {
     await tester.pump();
     expect(find.textContaining('kitty.conf'), findsNothing);
     expect(find.text('Restart kitty'), findsOneWidget);
+  });
+
+  testWidgets('with Homebrew, tmux installs from the card: the command shown first, run only on Run', (tester) async {
+    final brew = FakeCommands(brew: '/opt/homebrew/bin/brew')..result = (code: 1, output: 'Error: no network\n');
+    final mac = _Mac([
+      const TermStatus('ghostty', 'Ghostty', TermState.limited, note: 'no screen'),
+      const TermStatus('tmux', 'tmux', TermState.missing),
+    ]);
+    await pump(tester, mac, commands: brew.commands, poll: const Duration(hours: 1));
+    expect(find.textContaining('Ghostty doesn’t let other apps'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('command-tmux')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<SelectableText>(find.byKey(const ValueKey('command-shown'))).data, 'brew install tmux');
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(brew.calls, isEmpty);
+
+    // Run: it fails, and says what the command said.
+    await tester.tap(find.byKey(const ValueKey('command-tmux')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('command-run')));
+    await tester.pumpAndSettle();
+    expect(brew.calls, ['/opt/homebrew/bin/brew install tmux']);
+    expect(brew.envs.single['PATH'], startsWith('/opt/homebrew/bin:'));
+    expect(find.textContaining('Error: no network'), findsOneWidget);
+
+    // Try again: it works, and the card looks again and finds tmux.
+    brew.result = (code: 0, output: '');
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+    mac.now = [
+      const TermStatus('ghostty', 'Ghostty', TermState.limited, note: 'no screen'),
+      const TermStatus('tmux', 'tmux', TermState.ready),
+    ];
+    await tester.tap(find.byKey(const ValueKey('command-run')));
+    await tester.pumpAndSettle();
+    expect(brew.calls, hasLength(2));
+    expect(find.byKey(const ValueKey('terminal-tmux')), findsOneWidget);
+  });
+
+  testWidgets('without Homebrew, tmux is a line to copy, no button', (tester) async {
+    await pump(
+      tester,
+      _Mac([const TermStatus('tmux', 'tmux', TermState.missing)]),
+      commands: FakeCommands().commands,
+      poll: const Duration(hours: 1),
+    );
+    expect(find.byKey(const ValueKey('command-tmux')), findsNothing);
+    expect(find.text('brew install tmux'), findsOneWidget);
+  });
+
+  testWidgets('Ghostty with tmux: new windows in tmux in one click, said first, done after', (tester) async {
+    final home = Directory.systemTemp.createTempSync('pocketterm-ghostty').path;
+    addTearDown(() => Directory(home).deleteSync(recursive: true));
+    final mac = _Mac(
+      [
+        const TermStatus('ghostty', 'Ghostty', TermState.limited, note: 'no screen'),
+        const TermStatus('tmux', 'tmux', TermState.ready),
+      ],
+      home: home,
+      tmux: Tmux(executable: '/opt/homebrew/bin/tmux', socketDirs: const []),
+      ghostty: Ghostty(appPath: '$home/Ghostty.app'),
+    );
+    await pump(tester, mac, poll: const Duration(hours: 1));
+    expect(find.textContaining('adds two lines to Ghostty’s config'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('ghostty-tmux')));
+    await tester.pump();
+    await tester.pump();
+    expect(GhosttyConfig.standard(home: home).read().state, GhosttyCommandState.ours);
+    expect(find.byKey(const ValueKey('ghostty-tmux-on')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ghostty-tmux')), findsNothing);
   });
 }

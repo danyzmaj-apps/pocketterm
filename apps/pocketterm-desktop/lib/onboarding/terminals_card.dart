@@ -1,22 +1,34 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:pocketterm_core/ghostty_config.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/ui.dart';
+import 'package:pocketterm_desktop/commands.dart';
+import 'package:pocketterm_desktop/onboarding/commands_view.dart';
 import 'package:pocketterm_desktop/terminal_fixes.dart';
 import 'package:pocketterm_desktop/wezterm_setup.dart';
 
 /// The setup checklist's terminals on a Mac (lib/onboarding/get_ready.dart):
 /// the terminals found on it, each with its one-click fix where it needs one
-/// (kitty's config, Automation), and tmux's install line when it's missing.
-/// Nothing to pick: new sessions open in the terminal used last, as
-/// Settings' Auto does. Looks again every few seconds, so a permission given
-/// in System Settings shows; [onStatuses] hears each look.
+/// (kitty's config, Automation), tmux when it's missing (installed with
+/// Homebrew once the person confirms, or its line to type), and Ghostty's
+/// new windows in tmux. Nothing to pick: new sessions open in the terminal
+/// used last, as Settings' Auto does. Looks again every few seconds, so a
+/// permission given in System Settings shows; [onStatuses] hears each look.
 class MacTerminalsCard extends StatefulWidget {
-  const MacTerminalsCard({required this.terminals, this.poll = const Duration(seconds: 3), this.onStatuses, super.key});
+  const MacTerminalsCard({
+    required this.terminals,
+    this.commands,
+    this.poll = const Duration(seconds: 3),
+    this.onStatuses,
+    super.key,
+  });
   final Terminals terminals;
+
+  /// What installs tmux with Homebrew; without it, only its line to type.
+  final Commands? commands;
   final Duration poll;
   final ValueChanged<List<TermStatus>>? onStatuses;
 
@@ -33,7 +45,19 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
   final _fixed = <String, (TermFix?, String)>{};
   Timer? _timer;
 
+  /// Ghostty's config (new windows in tmux), where Ghostty can be.
+  late final GhosttyConfig? _ghosttyConfig = widget.terminals.ghostty == null
+      ? null
+      : GhosttyConfig.standard(home: widget.terminals.home);
+  GhosttyCommand? _ghosttyCommand;
+  String? _ghosttyError;
+
   static const tmuxCommand = 'brew install tmux';
+
+  /// What tmux is and why Ghostty needs it.
+  static const tmuxWhy =
+      'tmux runs terminal sessions inside a window and lets other apps read and type into them. Ghostty doesn’t '
+      'let other apps do that, so sessions in Ghostty run in tmux to give your phone full control.';
 
   @override
   void initState() {
@@ -53,11 +77,25 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
     if (!mounted) return;
     setState(() {
       _statuses = s;
+      _ghosttyCommand = _ghosttyConfig?.read();
       for (final t in s) {
         if (_fixed[t.id] case (final fix, _) when fix != t.fix) _fixed.remove(t.id);
       }
     });
     widget.onStatuses?.call(s);
+  }
+
+  /// New Ghostty windows open in tmux from now on.
+  Future<void> _ghosttyTmux() async {
+    final tmux = widget.terminals.tmux?.executable;
+    if (tmux == null) return;
+    try {
+      _ghosttyConfig!.add(tmux);
+      _ghosttyError = null;
+    } on Object catch (e) {
+      _ghosttyError = e is TerminalException ? e.message : '$e';
+    }
+    await _look();
   }
 
   Future<void> _fix(TermStatus s) async {
@@ -92,17 +130,75 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
           ),
         for (final s in found) _row(s),
         if (tmux != null && tmux.state == TermState.missing) ...[
-          const SizedBox(height: 12),
-          const Text(
-            'Recommended: tmux. With it, sessions in Ghostty get full control from your phone.',
-            style: TextStyle(color: C.dim, height: 1.45, fontSize: 12.5),
-          ),
+          const SizedBox(height: 14),
+          const Text('Recommended: tmux', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          const Text(tmuxWhy, style: TextStyle(color: C.dim, height: 1.45, fontSize: 12.5)),
           const SizedBox(height: 8),
-          const CopyLine(tmuxCommand),
+          if (widget.commands case final c? when c.brew != null) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ConfirmedCommand(
+                commands: c,
+                label: 'Install tmux',
+                argv: const ['brew', 'install', 'tmux'],
+                what: 'Homebrew downloads and installs tmux, a free terminal tool. It takes a minute or two.',
+                onDone: () => unawaited(_look()),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text('Or type it in a terminal:', style: TextStyle(fontSize: 11.5, color: C.dim)),
+            const SizedBox(height: 6),
+          ],
+          const CopyCommand(tmuxCommand),
         ] else if (tmux != null)
           _row(tmux),
+        ..._ghosttyInTmux(found, tmux),
       ],
     );
+  }
+
+  /// Ghostty with tmux here: its new windows in tmux, one click, saying
+  /// first what it changes.
+  List<Widget> _ghosttyInTmux(List<TermStatus> found, TermStatus? tmux) {
+    final command = _ghosttyCommand;
+    if (command == null || tmux == null || tmux.state == TermState.missing) return const [];
+    if (!found.any((s) => s.id == 'ghostty')) return const [];
+    Widget note(String text) => Text(text, style: const TextStyle(color: C.dim, height: 1.45, fontSize: 12.5));
+    return [
+      const SizedBox(height: 14),
+      switch (command.state) {
+        GhosttyCommandState.ours => const Row(
+          key: ValueKey('ghostty-tmux-on'),
+          children: [
+            Icon(Icons.check_circle, size: 18, color: C.ok),
+            SizedBox(width: 10),
+            Expanded(child: Text('New Ghostty windows open in tmux')),
+          ],
+        ),
+        GhosttyCommandState.theirs => note(
+          'Your Ghostty config already sets command = ${command.command}, so PocketTerm leaves it alone. Add tmux '
+          'to that command yourself for full control.',
+        ),
+        GhosttyCommandState.none => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 8,
+          children: [
+            note(
+              'Ghostty doesn’t let other apps read or type into its windows; in tmux, your phone gets full '
+              'control. PocketTerm adds two lines to Ghostty’s config, so each new Ghostty window opens in tmux. '
+              'Settings → Terminals takes them out again.',
+            ),
+            OutlinedButton(
+              key: const ValueKey('ghostty-tmux'),
+              onPressed: () => unawaited(_ghosttyTmux()),
+              child: const Text('Start new windows in tmux'),
+            ),
+            if (_ghosttyError case final e?) Text(e, style: const TextStyle(fontSize: 12, color: Color(0xFFFCA5A5))),
+          ],
+        ),
+      },
+    ];
   }
 
   Widget _row(TermStatus s) {
@@ -200,39 +296,8 @@ class WezTermCard extends StatelessWidget {
               const SizedBox(height: 12),
               const Text('Or type this in PowerShell', style: TextStyle(fontSize: 11.5, color: C.dim)),
               const SizedBox(height: 6),
-              const CopyLine(WezTermSetup.wingetCommand),
+              const CopyCommand(WezTermSetup.wingetCommand),
             ],
           ),
-  );
-}
-
-/// A command to type, with a copy button.
-class CopyLine extends StatelessWidget {
-  const CopyLine(this.value, {super.key});
-  final String value;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
-    decoration: BoxDecoration(
-      color: C.win,
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: C.line2),
-    ),
-    child: Row(
-      children: [
-        Expanded(child: SelectableText(value, style: const TextStyle(fontSize: 13))),
-        IconButton(
-          tooltip: 'Copy',
-          iconSize: 16,
-          color: C.dim,
-          icon: const Icon(Icons.copy_outlined),
-          onPressed: () {
-            unawaited(Clipboard.setData(ClipboardData(text: value)));
-            ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('Copied')));
-          },
-        ),
-      ],
-    ),
   );
 }

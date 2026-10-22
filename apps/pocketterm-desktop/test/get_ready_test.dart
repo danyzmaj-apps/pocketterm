@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/agent.dart';
+import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_desktop/integrations.dart';
@@ -190,6 +191,22 @@ void main() {
     await tester.pump(const Duration(milliseconds: 150));
     await tester.pump();
     expect(find.textContaining('A phone is signed in'), findsOneWidget);
+  });
+
+  testWidgets('through Tailscale, the phone step says the phone needs Tailscale too; on a VPS it doesn’t', (
+    tester,
+  ) async {
+    final note = find.byKey(const ValueKey('get-ready-phone-tailscale'));
+    await pump(tester, (app) => GetReadyPage(app: app, poll: const Duration(hours: 1)));
+    await tester.pump();
+    expect(note, findsNothing);
+
+    await pump(tester, (app) {
+      app.fakeBackend = const Backend(url: 'https://ana-mac.tail4b2c.ts.net');
+      return GetReadyPage(app: app, poll: const Duration(hours: 1));
+    });
+    await tester.pump();
+    expect(note, findsOneWidget);
   });
 
   testWidgets('Settings counts what needs attention, and its buttons fix it', (tester) async {

@@ -171,6 +171,16 @@ class Tailscale {
     return m == null ? null : Uri.tryParse(m.group(0)!);
   }
 
+  /// The page that turns HTTPS on for this tailnet, as `tailscale serve`
+  /// names it (it asks for it on a tailnet with HTTPS off); the admin
+  /// console's DNS page when it names none. A serve that went through
+  /// (HTTPS was on after all) is taken back at once.
+  Future<Uri> enableHttpsLink({int port = 47900}) async {
+    final result = await serve(port);
+    if (result.ok) await unserve();
+    return result.enableLink ?? adminDns;
+  }
+
   /// Stops publishing the built-in server (`tailscale serve --https=443 off`).
   Future<void> unserve() async {
     final cli = _locate();

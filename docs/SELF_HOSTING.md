@@ -1,156 +1,204 @@
 # Self-hosting
 
-PocketTerm has no central server. Your computers and phones meet in a Supabase project that you own: it signs you in, pairs your phones, carries the terminal channel and sends pushes. Setting it up takes a few minutes, once. The free Supabase plan is more than enough for one person.
+PocketTerm has no central server. Your computers and phones meet in a **PocketTerm server** that you run: it pairs your phones, keeps the list of your computers, passes the live channel between a computer and its phones and sends pushes. Everything between a computer and a phone is end-to-end encrypted by the apps, so the server only ever passes on ciphertext ([How your data is protected](#how-your-data-is-protected)).
 
-A PocketTerm server is its own thing: give PocketTerm a Supabase project of its own, not one another app uses.
+The server runs in one of two places, and the desktop app sets up either:
 
-## The easy way: the desktop app
+| | **On this computer** | **On my own server** |
+| --- | --- | --- |
+| What | The server built into the PocketTerm app | A VPS you rent, running the server in Docker |
+| Cost | Free | The VPS (a small one is enough) |
+| Needs | [Tailscale](https://tailscale.com) on this computer and on your phone, signed in to the same account | A VPS with a public IP address and ports 80 and 443 open |
+| Good to know | This computer must stay awake for your phone to connect | No Tailscale, and several computers can share one server. Sessions still run on your computers, so a computer must be awake for its sessions |
 
-Install PocketTerm on your Mac or Windows PC and open it. With no server yet, its window is a setup wizard; it sets up the server only, and a checklist after sign-in takes care of the computer and your phone ([After the first sign-in](#after-the-first-sign-in)):
+Servers are set up from a computer, never from a phone: the iPhone and Android apps only pair with a server that exists.
 
-1. **Supabase access token.** Create one at [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens) (`sbp_…`) and paste it. It's used for this setup only and never saved.
-2. **Project.** **Create a new project** (region guessed from your time zone), or **Use an existing project**. A project of its own is best: PocketTerm makes sign-in private to your account, so it won't go on a project that already has accounts or tables of the same names, and it says which of the project's settings it would replace. The free plan allows two active projects; pause one you don't use if it's full.
-3. **GitHub sign-in.** **Open GitHub: new OAuth app** opens GitHub's form; copy in the application name and callback URL the wizard shows, then paste back the client ID and secret.
-4. **Setup.** PocketTerm creates the tables and security rules (**Database**), turns on GitHub sign-in, turns email sign-up off (GitHub is the only way in), makes sign-up private and allows the `pocketterm://` redirect (**GitHub sign-in**), deploys the `pair` and `push` functions (**Server functions**) and fetches the publishable key (**Connection key**). If a step fails, **Retry** resumes from it, and redoes any step whose values you changed after going back.
+## The setup wizard
 
-Then **Connect and sign in** with GitHub. Push notifications need nothing more: each phone registers itself, and your server sends through the publisher's relay, encrypted so only that phone can read them ([Push](#push)).
+Install PocketTerm on your Mac or Windows PC ([Releases](https://github.com/danyzmaj-apps/pocketterm/releases/latest)) and open it. With no server yet, its window is a setup wizard that follows your choice. Every screen has **Back**, and the wizard remembers where you were if you close it and come back. **How your data is protected** on its first screen sums up who can see what; **Settings → Account** shows the same again later.
 
 <p align="center">
-  <img src="images/wizard-github.png" width="45%" alt="Setup wizard, step 3: the GitHub OAuth app">
-  <img src="images/wizard-ready.png" width="45%" alt="Setup wizard: your server is ready">
+  <img src="images/mac-setup.png" width="45%" alt="Setup: On this computer, or On my own server">
+  <img src="images/mac-setup-data.png" width="45%" alt="Setup: how your data is protected">
 </p>
 
-### After the first sign-in
+PocketTerm never runs anything on your computer without asking first. Where it can install something for you (Tailscale or tmux with Homebrew), the button shows the exact command and runs it only after you press **Run**; anything else is a line to copy.
 
-The first sign-in on a computer, by the wizard or by **I already have one: connect it**, opens **Get this computer ready**, a checklist whose steps check themselves off:
+### On this computer
+
+The server runs inside the PocketTerm app, listening on this computer only. [Tailscale](https://tailscale.com) makes a private network between your own devices and gives this computer an HTTPS address that only they reach (`https://<this computer>.<tailnet>.ts.net`, through `tailscale serve`). Tailscale sees which of your devices connect and when, not what PocketTerm sends.
+
+The wizard shows a checklist that looks again every few seconds and moves on by itself. Each step shows only its own button; finished steps fold to one line:
+
+1. **Install Tailscale.** With Homebrew on a Mac, **Install Tailscale** runs `brew install --cask tailscale-app` once you confirm (macOS asks for your password: Tailscale's installer needs it). **Download instead** opens [tailscale.com/download](https://tailscale.com/download).
+2. **Start Tailscale.** **Open Tailscale** and switch it on.
+3. **Sign in to Tailscale.** **Open Tailscale to sign in**, with any account (Google, GitHub, Microsoft, Apple). Use the same one on your phone.
+4. **Turn on HTTPS certificates.** **Turn on HTTPS…** opens the page Tailscale names for your tailnet (or the admin console's [DNS page](https://login.tailscale.com/admin/dns)): turn on HTTPS, and MagicDNS if it asks.
+5. **Start** runs the server and signs this computer in to it.
+
+Your phone needs the Tailscale app too, from the App Store or Google Play, signed in to the same Tailscale account. The wizard and the phone step of the checklist both say so.
+
+<p align="center">
+  <img src="images/mac-setup-tailscale-install.png" width="32%" alt="Install Tailscale, with what Tailscale is">
+  <img src="images/mac-setup-tailscale-sign-in.png" width="32%" alt="Sign in to Tailscale">
+  <img src="images/mac-setup-https-off.png" width="32%" alt="Turn on HTTPS certificates">
+</p>
+<p align="center">
+  <img src="images/mac-setup-this-computer.png" width="45%" alt="Everything ready: Start">
+  <img src="images/mac-setup-confirm.png" width="45%" alt="Install Tailscale asks first and shows the command">
+</p>
+
+From now on the server starts with the app. **Settings → Account** shows how Tailscale stands. Another computer of yours can use this computer's server too: on this one, **Settings → Account → Add a computer…** shows a setup link; on the other one (signed in to Tailscale with the same account), choose **On my own server → Yes** and paste it.
+
+### On my own server
+
+The wizard first asks: **Do you already have a PocketTerm server?**
+
+<p align="center">
+  <img src="images/mac-setup-own-server.png" width="45%" alt="Do you already have a PocketTerm server?">
+  <img src="images/mac-setup-have-server.png" width="45%" alt="A pasted setup link, its server answering">
+</p>
+
+**Yes:** paste its setup link (`pocketterm://setup?url=…&setup=…`). The wizard checks it as you paste: that it's a setup link at all, that it's a computer's link and not a phone's, and that its server answers. **Connect** signs this computer in. To see the link again, run on the server:
+
+```sh
+cd ~/pocketterm && sudo docker compose exec server pocketterm-server setup-link
+```
+
+**Not yet:** the wizard asks for the server's address, an IPv4 address (`203.0.113.7`) or a domain (`pocketterm.example.com`), and shows the commands for it, each with a copy button. A domain is used as it is (point its DNS A record at the server first). An IP address becomes its [sslip.io](https://sslip.io) name, `203-0-113-7.sslip.io`, a name that resolves to that address, so the server can get an HTTPS certificate without a domain of your own. IPv6 addresses aren't accepted: use the server's IPv4 address or a domain.
+
+Rent a small Linux VPS (1 GB of memory is plenty), open **ports 80 and 443** to the internet in your provider's firewall, and open a terminal on it with SSH. Then run, in order (signed in as root, you can leave out `sudo`):
+
+1. Install Docker:
+
+   ```sh
+   curl -fsSL https://get.docker.com | sudo sh
+   ```
+
+2. Get the server:
+
+   ```sh
+   mkdir -p ~/pocketterm && cd ~/pocketterm && curl -fsSLO https://raw.githubusercontent.com/danyzmaj-apps/pocketterm/main/apps/pocketterm-server/docker-compose.yml
+   ```
+
+3. Start it, with your server's name (here the sslip.io name of `203.0.113.7`):
+
+   ```sh
+   cd ~/pocketterm && echo "DOMAIN=203-0-113-7.sslip.io" > .env && sudo docker compose up -d
+   ```
+
+4. Print its setup link:
+
+   ```sh
+   cd ~/pocketterm && sudo docker compose exec server pocketterm-server setup-link
+   ```
+
+Docker runs the PocketTerm server in a container, so nothing else on the VPS changes. [Caddy](https://caddyserver.com) runs next to it: it answers on ports 80 and 443 and gets a free HTTPS certificate from Let's Encrypt (which checks port 80), renewing it on its own.
+
+While you work, the wizard checks the address and turns each line green: **the name resolves**, **HTTPS answers** (Caddy has its certificate, usually a minute after step 3), **the PocketTerm server answers** (`/v1/health`). Then it shows the box for the setup link step 4 printed.
+
+<p align="center">
+  <img src="images/mac-setup-vps.png" width="45%" alt="The commands for 203.0.113.7, HTTPS not answering yet">
+  <img src="images/mac-setup-vps-ready.png" width="45%" alt="Every check green, and the box for the setup link">
+</p>
+
+The setup link signs a computer in to your server: keep it private. If it leaks, replace it (computers already signed in stay signed in):
+
+```sh
+cd ~/pocketterm && sudo docker compose exec server pocketterm-server setup-link --new
+```
+
+Everything the server keeps is in the `pocketterm-data` Docker volume; back it up to keep your devices signed in after moving machines. Other ways to run it (behind another reverse proxy or a Cloudflare Tunnel, without Docker) and its options: [apps/pocketterm-server/README.md](../apps/pocketterm-server/README.md).
+
+## After the first sign-in
+
+The first sign-in on a computer opens **Get this computer ready**, a checklist whose steps check themselves off:
 
 1. **Your coding agents.** PocketTerm installs itself into every coding agent it finds (omp, Claude Code), says how each went, and offers **Retry** if one failed. An agent that isn't installed is left for later: Settings offers it once it shows up. **Sessions that were already open** don't have PocketTerm's add-on yet (an agent loads add-ons when it starts), so the phone sees only their screen. They're listed, each with what to do once, with a copy button: in Claude Code type `/reload-plugins` (nothing restarts); in omp quit it and run `omp -c` (same conversation). New sessions don't need it.
-2. **Your terminals.** On a Mac, the terminals it found, with **Set up** for kitty and **Allow…** for those that need Automation permission, and a `brew install tmux` line when tmux is missing. On Windows, PocketTerm works through WezTerm: **Install WezTerm** downloads WezTerm's own installer from its GitHub release, checks it against WezTerm's published checksum and opens it for you to click through, or you type the `winget` line it shows into PowerShell. Both catch up on their own once WezTerm is installed or a permission is given.
+2. **Your terminals.** On a Mac, the terminals it found (kitty, Ghostty, WezTerm), with **Set up** for kitty (it turns on kitty's remote control in `kitty.conf`; restart kitty after) and **Allow…** for one that needs Automation permission. Ghostty doesn't let other apps read or type into its windows, so PocketTerm runs Ghostty sessions in tmux: when tmux is missing, **Install tmux** runs `brew install tmux` once you confirm (or copy the line), and **Start new windows in tmux** adds two lines to Ghostty's config so each new Ghostty window opens in tmux (**Settings → Terminals → Remove** takes them out). On Windows, PocketTerm works through WezTerm: **Install WezTerm** downloads WezTerm's own installer from its GitHub release, checks it against WezTerm's published checksum and opens it for you to click through, or you type the `winget` line it shows into PowerShell.
 3. **Project folders** (optional). The usual folders found in your home folder (`Dev`, `Developer`, `Projects`, `code`, `src`, `repos`, `git`; on Windows also `source\repos` and `Documents\GitHub`), one click each, or **Choose folder…**.
-4. **Your phone.** The QR code from [Connect the apps](#connect-the-apps), checked off once a phone has signed in.
+4. **Your phone.** The QR code from [Connect the apps](#connect-the-apps), checked off once a phone has signed in. Through Tailscale, it reminds you that the phone needs the Tailscale app, signed in to the same account.
 
-**Done** goes to Settings and says what's still left. Settings starts with a status bar: **All set**, or how many things need attention; **Show** lists them with the button that fixes each, including a coding agent installed later, and a dot marks the tab they're on. **Open setup checklist** shows the checklist again. On Windows, a bar under it links to a new version when one is out. Below it are four tabs: **Phone** (Terminal from phone, **Add a phone…**, project folders), **Coding agents** (PocketTerm in each agent with **Install** or **Update**, sessions to reopen, **Make default**), **Terminals** (where new sessions open, each terminal with its fix) and **Account** (you, your server, Launch at login, **Delete account**, the version and **Quit PocketTerm**).
+<p align="center">
+  <img src="images/get-ready.png" width="45%" alt="Get this computer ready: agents, terminals, project folders, your phone">
+</p>
+
+**Done** goes to Settings and says what's still left. Settings starts with a status bar: **All set**, or how many things need attention; **Show** lists them with the button that fixes each, including a coding agent installed later, and a dot marks the tab they're on. **Open setup checklist** shows the checklist again. On Windows, a bar under it links to a new version when one is out. Below it are four tabs: **Phone** (Terminal from phone, **Add a phone…**, **Reset key**, project folders), **Coding agents** (PocketTerm in each agent with **Install** or **Update**, sessions to reopen, **Make default**), **Terminals** (where new sessions open, each terminal with its fix) and **Account** (your server, Tailscale when this computer runs it, **Add a computer…**, Launch at login, **How your data is protected**, the version and **Quit PocketTerm**).
 
 <p align="center">
   <img src="images/mac-settings-phone.png" width="49%" alt="Settings, Phone: Terminal from phone, your phones, project folders">
   <img src="images/mac-settings-agents.png" width="49%" alt="Settings, Coding agents: omp with two sessions to reopen, Claude Code out of date">
   <img src="images/mac-settings-terminals.png" width="49%" alt="Settings, Terminals: where new sessions open, each terminal and how it stands">
-  <img src="images/mac-settings-account.png" width="49%" alt="Settings, Account: you, your server, Launch at login, Delete account">
+  <img src="images/mac-settings-account.png" width="49%" alt="Settings, Account: your server, Launch at login, how your data is protected">
 </p>
-
-Servers are set up from a computer (or the script below), never from a phone: the iPhone and Android apps only pair with a server that exists.
-
-## The script
-
-Same result from a terminal, on macOS or Linux. You need:
-
-- a [Supabase](https://supabase.com) account,
-- a GitHub account (PocketTerm signs in with GitHub),
-- the [Supabase CLI](https://supabase.com/docs/guides/cli): `brew install supabase/tap/supabase`, then `supabase login`,
-- `jq` (part of macOS 15 and later; otherwise `brew install jq`, or your Linux package manager's `jq`),
-- this repository: `git clone https://github.com/danyzmaj-apps/pocketterm && cd pocketterm`.
-
-### 1. Create a Supabase project
-
-At [supabase.com/dashboard](https://supabase.com/dashboard), choose **New project**. Pick a region near you and keep the database password somewhere safe; PocketTerm itself never needs it. Note the project ref: it's the `abcdefghijklmnopqrst` in `https://abcdefghijklmnopqrst.supabase.co`.
-
-### 2. Run the setup script
-
-```sh
-# in the repo root
-apps/pocketterm-desktop/tool/setup-backend.sh <project-ref>
-```
-
-Without a ref it lists your projects and asks for one. Then it walks you through the rest:
-
-1. It links the repo to your project.
-2. It asks you to **create a GitHub OAuth app** at [github.com/settings/applications/new](https://github.com/settings/applications/new) (name `PocketTerm`, homepage `https://github.com/danyzmaj-apps/pocketterm`, callback URL `https://<project-ref>.supabase.co/auth/v1/callback`) and to paste its client ID and secret. They are stored in `apps/pocketterm-desktop/supabase/.env` (mode 600), which git ignores. A rerun reuses them.
-3. It creates the tables, security rules and storage (`supabase db push`).
-4. It turns on GitHub sign-in, the `pocketterm://` redirect and private sign-up, and turns email sign-up off (`supabase config push`).
-5. It deploys the edge functions `pair` and `push`.
-
-At the end it checks that GitHub sign-in is on and prints a **setup link**: `pocketterm://setup?url=…&key=…`. It holds only your project URL and its publishable key, both of which are safe in an app; row-level security protects the rest. It's for a computer: phones need the computer's code, which adds a sign-in code to the same link.
 
 ## Connect the apps
 
-- **Mac or Windows PC**: install PocketTerm from [Releases](https://github.com/danyzmaj-apps/pocketterm/releases/latest) (the phone app's first screen links there too: **Get PocketTerm for Mac or Windows**), then open the setup link (on a Mac the script offers to) or paste it into the wizard's **I already have one: connect it**. Sign in with GitHub. Every computer you sign in on shows up in the phone's list of computers.
-- **iPhone and Android**: phones sign in only with a code from a computer, never with GitHub. On the computer, **Settings → Add a phone…** shows a QR code. In the phone app, tap **Scan the code from your computer**. The code carries the server address, its publishable key, a one-time sign-in code and that computer's encryption key, so the phone signs in as you and can read that computer's sessions. The sign-in works once and expires after 10 minutes; the key works until you **Reset key** (Settings → Phone). Anyone who scans the code gets into your account and can read that computer's sessions, so only show it to your own phone. No camera? **Paste a code instead** takes the same code as text (the whole `pocketterm://setup?…&code=…` link). A phone that signs out, or whose sign-in ends, is back on that screen and needs a new code.
+- **More computers**: install PocketTerm and paste the setup link in the wizard (**On my own server → Yes**): the VPS's from `setup-link`, or, for a server built into another computer, the link from that computer's **Settings → Account → Add a computer…**. Every computer you sign in on shows up in the phone's list of computers.
+- **iPhone and Android**: phones sign in only with a code from a computer. On the computer, **Settings → Add a phone…** shows a QR code. In the phone app, tap **Scan the code from your computer**. The code carries the server address, a one-time sign-in code and that computer's encryption key, so the phone signs in and can read that computer's sessions. The sign-in code works once and expires after 10 minutes; the key works until you **Reset key** (**Settings → Phone**). Anyone who scans the code can read that computer's sessions, so only show it to your own phone. No camera? **Paste a code instead** takes the same code as text (the whole `pocketterm://setup?…&code=…` link).
 
-The first account that signs in **owns the server**. One phone sign-in covers all your computers (they share the account), but each computer encrypts its sessions with its own key: scan each computer's code once. A computer the phone can't read yet shows as locked with a **Scan** button (or **Scan a computer's code** in the computer picker). After **Reset key**, every phone scans that computer's code again.
+One phone sign-in covers all your computers, but each computer encrypts its sessions with its own key: scan each computer's code once. A computer the phone can't read yet shows as locked with a **Scan** button (or **Scan a computer's code** in the computer picker). After **Reset key**, every phone scans that computer's code again.
 
-## Reviewer codes
+## How your data is protected
 
-For someone who must try a phone build without getting into your account (for example TestFlight's Beta App Review, if you ever invite external testers). Internal TestFlight and Play internal testing need none. In Settings, press ⌥ Option (Alt on Windows) to show **Reviewer access**; its **Codes…** makes a **reviewer code**: it signs a phone into a separate demo account on your server (`reviewer@<project-ref>.pocketterm.invalid`, made the first time), works as often as needed for 7, 30 or 90 days, and can be revoked there at any time. Give the reviewer its link (**Copy**) or its QR (**Save QR as PNG**); in the phone app it goes into **Paste a code instead**, or the camera reads the QR. The code is shown only when it's made: your server keeps a hash of it.
+- **Encrypted from end to end.** Each computer makes its own 32-byte key and keeps it in the system's secure storage (the Keychain on a Mac, Credential Manager on Windows). It never goes to any server: a phone gets it only by scanning that computer's QR code. Sessions, prompts, screens, images and notification text are sealed with it (AES-256-GCM).
+- **Your PocketTerm server** keeps your list of devices, your computers' names, pairing codes (10 minutes) and your phones' push tokens, and passes everything else on without being able to read it.
+- **Tailscale** (On this computer) sees which of your devices connect and when, not what they send.
+- **Push notifications**, if you turn them on in the phone app, go from your server through PocketTerm's push relay (`push.danyzmaj.com`, run by Danijel Lovric on his server in Germany) to Apple or Google. They get encrypted text, the phone's push token and which computer it's from; the relay stores nothing ([apps/pocketterm-relay/SECURITY.md](../apps/pocketterm-relay/SECURITY.md)).
+- **One exception: Live Activities.** On iPhone, a followed session on the Lock Screen (and its ongoing notification on Android) shows its state (working, needs you, finished), since when, and whether it waits on a question, an approval or a plan. Apple delivers those to the system directly, so they can't be encrypted. They never carry any text.
 
-The demo account sees none of your computers or sessions. Once no code of it works, it is shut out: revoking the last working code signs every phone on it out within 30 seconds, and a code running out does the same within 10 minutes. If a reviewer taps **Delete account**, the demo account is emptied (its phones, followed sessions and computers) but stays, with your reviewer codes, so a code you gave a reviewer keeps working. No email is ever sent to the demo address, and it isn't let in through `allowed_signups`: the `pair` function makes it with the service role.
-
-## Sharing
-
-A PocketTerm server is private. The first account to sign up owns it, and anyone else's sign-in is refused with "This PocketTerm server is private". To let someone in, add their GitHub email in the dashboard's SQL editor:
-
-```sql
-insert into public.allowed_signups (email) values ('friend@example.com');
-```
-
-Each person sees only their own computers and sessions, but they share your Supabase quota.
-
-## Updating
-
-After pulling a new version of this repo, run the setup script again. It applies new migrations and redeploys the functions, and leaves your GitHub app as it is:
-
-```sh
-# in the repo root
-git pull && apps/pocketterm-desktop/tool/setup-backend.sh <project-ref>
-```
-
-The Mac app updates itself; on Windows, Settings links to a new version when one is out. [CHANGELOG.md](../CHANGELOG.md) says when a new app version needs a backend update.
-
-**Updating to end-to-end encryption.** Run the setup script again (above): the `push` function now forwards notifications the computer sealed, and a migration drops the old per-phone push keys. Then update the apps, and scan each computer's code once more on each phone (**Settings → Add a phone…**): a computer's key travels only in its QR code, so a phone paired before shows each computer as locked until it scans that computer's code.
+The full model: [SECURITY.md](../SECURITY.md).
 
 ## Push
 
-Your server pushes coding-session notifications (a run ended, the agent needs you) and the state of the sessions you follow to your phones. Only the app's publisher holds the credentials that reach PocketTerm's installs (the APNs key for iPhones, the Firebase service account for Android), so your server's `push` function hands each notification to the publisher's **relay**, which passes it to Apple's APNs or Google's Firebase Cloud Messaging.
-
-- Each computer encrypts its notifications itself (AES-256-GCM) with its channel key, which only the phones that scanned that computer's code hold. Your server registers each phone's push token (`push_devices`, with its `platform`, `ios` or `android`) and passes the ciphertext on unread; the relay sees the push token, the kind of notification (terminal, a session's state), the computer's id, a collapse id and ciphertext, and stores nothing on disk. A phone without that computer's key shows a plain "PocketTerm" alert. Live Activity updates (and Android's ongoing notification for a followed session) are the exception: iOS can't decrypt them, so they carry the session's state (working, needs you, finished, ended), since when and, when it needs you, for what (a question, an approval or a plan) in the clear, and no text.
-- Android messages are FCM data messages the app opens itself; iPhone messages are opened by its notification service extension.
-- A computer pushes only when nobody has touched it for 60 seconds.
-- No setup on your side: your server sends to the publisher's relay at `https://push.danyzmaj.com`, on the publisher's own server, sealing each request to the relay's key so nothing in between can read it. What the relay, Cloudflare, Apple and Google can each see: [apps/pocketterm-relay/SECURITY.md](../apps/pocketterm-relay/SECURITY.md).
+A computer pushes coding-session notifications (a run ended, the agent needs you) and the state of the sessions you follow to your phones, only when nobody has touched it for 60 seconds. Only the app's publisher holds the credentials that reach PocketTerm's installs (the APNs key for iPhones, the Firebase service account for Android), so your server hands each notification to the publisher's **relay**, which passes it to Apple's APNs or Google's Firebase Cloud Messaging. Each phone asks before it registers for notifications. A phone without a computer's key shows a plain "PocketTerm" alert for it. No setup on your side: your server seals each request to the relay's key, so nothing in between can read it.
 
 ### Your own app id and relay
 
-A relay only reaches apps signed with the publisher's ids. A fork that ships its own phone app (its own bundle id or Android package) runs its own relay ([apps/pocketterm-relay](../apps/pocketterm-relay/README.md), a container): an APNs key from its Apple team, a Firebase project with its Android app (its `google-services.json` goes into its Android build), that project's service account, and an X25519 key pair of its own. Then point each server that serves those apps at it:
+A relay only reaches apps signed with the publisher's ids. A fork that ships its own phone app (its own bundle id or Android package) runs its own relay ([apps/pocketterm-relay](../apps/pocketterm-relay/README.md), a container): an APNs key from its Apple team, a Firebase project with its Android app (its `google-services.json` goes into its Android build), that project's service account, and an X25519 key pair of its own. Then point each server that serves those apps at it, in the VPS's `~/pocketterm/.env` next to `DOMAIN`:
 
 ```sh
 PUSH_RELAY_URL=https://<relay host>/v1/push
 PUSH_RELAY_KEY=<the relay's public key, base64; the relay logs it at start>
 ```
 
+## Updating
+
+- **On this computer**: the server is part of the app and updates with it. The Mac app updates itself; on Windows, Settings links to a new version when one is out.
+- **On my own server**: on the VPS, run
+
+  ```sh
+  cd ~/pocketterm && sudo docker compose pull && sudo docker compose up -d
+  ```
+
+[CHANGELOG.md](../CHANGELOG.md) says when a new app version needs a server update.
+
 ## Troubleshooting
 
 | What you see | What to do |
 | --- | --- |
-| "GitHub sign-in is off on this project" | Run the setup script again, or turn GitHub on under Authentication → Sign In / Providers. |
-| The browser shows `redirect_uri is not associated` | The GitHub OAuth app's callback URL must be exactly `https://<ref>.supabase.co/auth/v1/callback`. |
-| Sign-in finishes in the browser but the app stays signed out | Authentication → URL Configuration must allow `pocketterm://login-callback` (`supabase config push` sets it). On Windows, start PocketTerm once from the Start menu so it registers the `pocketterm://` link again. |
-| "This PocketTerm server is private" | Expected for everyone but the owner; see [Sharing](#sharing). |
-| Phone: "That code doesn't work" | It ran out (10 minutes), was used already or was revoked: make a new one (**Settings → Add a phone…**). |
+| Setup: **Install Tailscale** says it didn't work | Use **Download instead**. If macOS blocked Tailscale's system extension, allow it in System Settings → Privacy & Security, then try again. |
+| Setup: **Turn on HTTPS certificates** stays | On the page that opened (or [login.tailscale.com/admin/dns](https://login.tailscale.com/admin/dns)), turn on MagicDNS and HTTPS Certificates. The checklist sees it within a few seconds. |
+| Setup: "That isn't a setup link" | Copy the whole line `setup-link` printed, starting with `pocketterm://setup?url=`. |
+| Setup: "That link signs in a phone, not a computer" | That's a phone's code. Use the server's setup link (`setup-link` on the server, or **Add a computer…** on a computer that runs the server). |
+| Setup: "Couldn't reach …" | Check the address, that the server runs (`cd ~/pocketterm && sudo docker compose ps`) and that ports 80 and 443 are open. For a server built into another computer, this computer must be signed in to the same Tailscale account. |
+| Setup: "That setup link doesn't work: the server has a newer one" | It was replaced with `setup-link --new`. Run `setup-link` on the server for the current one. |
+| Setup: the name doesn't resolve | For a domain, add a DNS A record with the server's IP address and wait a few minutes. For an sslip.io name, check this computer's internet connection. |
+| Setup: **HTTPS answers** stays | Open ports 80 and 443 in the provider's firewall; Caddy says why in `cd ~/pocketterm && sudo docker compose logs caddy`. |
+| Setup: "Leave out the port" or "private address" | Type the server's public IPv4 address or its domain only, as your VPS provider shows it. |
+| Phone can't reach a computer that runs the server | Install the Tailscale app on the phone, sign in to the same Tailscale account and turn it on. |
+| Phone: "That code doesn't work" | It ran out (10 minutes) or was used already: make a new one (**Settings → Add a phone…**). |
 | Phone: "Too many tries" | Ten wrong codes from one place in ten minutes: wait a few minutes, then use a fresh code. |
-| Phone: "Your server is older than this app" | Run the setup script again: the server needs the new functions and migrations. |
-| Phone: "Your computer isn't reporting to this account" | Sign in on PocketTerm on your computer with the same GitHub account, turn on **Terminal from phone** (**Settings → Phone**) and keep it running. |
 | Phone: "<computer> isn't answering" | That computer is asleep, off, or PocketTerm isn't running there, or **Terminal from phone** (**Settings → Phone**) is off. |
-| "The project refused this key" on the setup screen | Use the **publishable** key (Project Settings → API Keys), never a secret one. |
-| Terminal: "PocketTerm may not control iTerm2" (or Terminal, Ghostty) | Allow it in System Settings → Privacy & Security → Automation → PocketTerm. |
-| Terminal: "kitty isn't listening" | **Settings → Terminals → Set up** next to kitty, then restart kitty. |
-| Terminal: Ghostty windows show no screen | Expected: Ghostty's screen can't be read. Install tmux (`brew install tmux`) and start sessions from the phone: they run inside tmux with full control. For windows you open yourself, **Settings → Terminals → Start new windows in tmux** (then open a new Ghostty window). |
-| Terminal: can't answer or press keys in a Terminal (macOS) window | Expected: Terminal takes only whole lines. Same fix: install tmux and start sessions from the phone. |
-| Terminal: a Ghostty session isn't matched to its window | Ghostty tells no tty, so PocketTerm matches the session by its folder and, when several Ghostty windows share it, by the window title omp sets (the session's title, or the folder's name until it has one) and by which windows other sessions already run in. Two untitled sessions in one folder (or two Claude Code sessions, whose titles name nothing) stay unmatched until one gets a title or the other is matched: give a session a title, or keep one Ghostty window per folder. |
-| Windows: no windows show up | Only WezTerm windows are listed. Install it with **Install** in **Settings → Terminals** (or `winget install --id wez.wezterm --exact`) and run your agent in WezTerm. |
+| Terminal: "PocketTerm may not control Ghostty" | Allow it in System Settings → Privacy & Security → Automation → PocketTerm. |
+| Terminal: kitty windows don't show | **Settings → Terminals → Set up**, then restart kitty. |
+| Terminal: Ghostty shows no screen, or the phone can't answer | Install tmux (`brew install tmux`): sessions the phone starts in Ghostty run in tmux. For windows you open yourself, **Settings → Terminals → Start new windows in tmux**. |
+| Terminal: no windows on Windows | Only WezTerm windows are listed; install it from **Settings → Terminals**. |
+| Terminal: a Ghostty session isn't matched to its window | Ghostty tells no tty, so PocketTerm matches the session by its folder and, when several Ghostty windows share it, by the window title omp sets (the session's title, or the folder's name until it has one) and by which windows other sessions already run in. Give a session a title, or keep one Ghostty window per folder. |
 | Windows: "This computer reads PNG and JPEG images only." | Send PNG or JPEG images; the phone apps send JPEG. |
 | Claude Code sessions don't show up | Claude Code needs 2.1.287 or later with mods on. If Settings says mods are off, run `claude /login`, start `claude` once, then type `/reload-plugins` in your sessions. |
-| Phone: omp or Claude windows show only as screens (**Screen only**), not as conversations | Where PocketTerm is installed in that agent, open the window on the phone and tap **Switch to conversation**: omp restarts on the same conversation (`omp -c`; if it was working, **Restart and continue** has it carry on), Claude Code reloads its plugins (nothing restarts). Otherwise the note above them says why, from what the computer reports: PocketTerm isn't installed in that agent (**Install** in Settings' status bar or **Settings → Coding agents**), it's out of date (**Update**), or the window's terminal can't press keys and type. Then, once per session: in Claude Code type `/reload-plugins`; in omp quit it and run `omp -c`. If the switch says "It didn't come back as a conversation", look at the window on the computer: omp may still be asking something or the shell may not have run `omp -c`. |
-
-A local Supabase (`supabase start`) works for development, but it doesn't check API keys, so the setup screen accepts any key there.
+| Phone: omp or Claude windows show only as screens (**Screen only**), not as conversations | Where PocketTerm is installed in that agent, open the window on the phone and tap **Switch to conversation**: omp restarts on the same conversation (`omp -c`; if it was working, **Restart and continue** has it carry on), Claude Code reloads its plugins (nothing restarts). Otherwise the note above them says why: PocketTerm isn't installed in that agent (**Install** in Settings' status bar or **Settings → Coding agents**), it's out of date (**Update**), or the window's terminal can't press keys and type. Then, once per session: in Claude Code type `/reload-plugins`; in omp quit it and run `omp -c`. If the switch says "It didn't come back as a conversation", look at the window on the computer: omp may still be asking something or the shell may not have run `omp -c`. |
 
 ## Removing it
 
-Delete your account (**Settings → Account** on the computer, or the account sheet on the phone) to erase your data, or delete the whole Supabase project in its dashboard. Then delete the GitHub OAuth app. If you keep the project, remember that with your account gone the next GitHub sign-in owns the server: delete the OAuth app first, or delete the project.
+**Settings → Account → Sign out** on each computer. On a computer that runs the server, **Erase this server's data** first signs every computer and phone out and deletes what it keeps. On a VPS, `cd ~/pocketterm && sudo docker compose down -v` stops the server and deletes its data; then delete the VPS.

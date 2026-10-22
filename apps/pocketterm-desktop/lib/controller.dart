@@ -14,6 +14,7 @@ import 'package:pocketterm_core/session.dart';
 import 'package:pocketterm_core/terminal.dart' show TermWindow;
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_desktop/channel_keys.dart';
+import 'package:pocketterm_desktop/commands.dart';
 import 'package:pocketterm_desktop/desktop_host.dart';
 import 'package:pocketterm_desktop/hosting/built_in_server.dart';
 import 'package:pocketterm_desktop/hosting/tailscale.dart';
@@ -34,10 +35,12 @@ class AppController extends Session {
     SecretStore? secrets,
     Tailscale? tailscale,
     Future<Directory> Function()? serverDir,
+    Commands? commands,
   }) : integrations = integrations ?? Integrations(),
        _keys = ChannelKeys(secrets ?? SystemSecrets()),
        deviceTokens = SecretDeviceTokens(secrets ?? SystemSecrets()),
        tailscale = tailscale ?? Tailscale(),
+       commands = commands ?? Commands(),
        _serverDir = serverDir ?? _appServerDir;
 
   @override
@@ -51,6 +54,10 @@ class AppController extends Session {
 
   /// Installs PocketTerm into the coding agents (lib/integrations.dart).
   final Integrations integrations;
+
+  /// Installs the setup offers to run (Homebrew's tmux and Tailscale),
+  /// each once the person confirmed it.
+  final Commands commands;
 
   /// Whether PocketTerm starts at login, as the system has it; null until
   /// [refreshLaunchAtLogin] asked.
@@ -175,6 +182,21 @@ class AppController extends Session {
     await _prefs.setString(_agentKey, agent.name);
     notifyListeners();
   }
+
+  static const _setupStepKey = 'setup_step';
+  static const _setupAddressKey = 'setup_address';
+
+  /// Where the first-run setup (lib/setup_page.dart) was left: the screen's
+  /// name, null on the first one. It opens there again.
+  String? get setupStep => _prefs.getString(_setupStepKey);
+
+  Future<void> setSetupStep(String? step) =>
+      step == null ? _prefs.remove(_setupStepKey) : _prefs.setString(_setupStepKey, step);
+
+  /// The VPS address typed in the first-run setup, as typed.
+  String get setupAddress => _prefs.getString(_setupAddressKey) ?? '';
+
+  Future<void> setSetupAddress(String address) => _prefs.setString(_setupAddressKey, address);
 
   static const _getReadyKey = 'get_ready_done';
 

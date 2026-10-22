@@ -15,6 +15,7 @@ import 'package:pocketterm_core/tmux.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_core/wezterm.dart';
 import 'package:pocketterm_desktop/channel_keys.dart';
+import 'package:pocketterm_desktop/commands.dart';
 import 'package:pocketterm_desktop/controller.dart';
 import 'package:pocketterm_desktop/desktop_host.dart';
 import 'package:pocketterm_desktop/hosting/tailscale.dart';
@@ -32,6 +33,7 @@ class FakeApp extends AppController {
     required this.real,
     Tailscale? tailscale,
     Directory? serverDir,
+    Commands? commands,
   }) : super(
          prefs,
          'Mac',
@@ -40,19 +42,22 @@ class FakeApp extends AppController {
          secrets: MemorySecrets(),
          tailscale: tailscale ?? FakeTailscale().tailscale,
          serverDir: () async => serverDir ?? Directory('/nonexistent-pocketterm-test/server'),
+         commands: commands ?? FakeCommands().commands,
        );
 
   /// [terminals] stand in for the computer's; none found by default.
   /// [prefs]: what this computer had saved. [integrations]: the coding
   /// agents', in a home of their own; by default no agent is found.
   /// [tailscale] and [serverDir]: the built-in server's (not installed, and
-  /// nowhere, by default).
+  /// nowhere, by default). [commands]: what installs run (no Homebrew by
+  /// default).
   static Future<FakeApp> create({
     Terminals? terminals,
     Map<String, Object> prefs = const {},
     Integrations? integrations,
     Tailscale? tailscale,
     Directory? serverDir,
+    Commands? commands,
     bool real = false,
   }) async {
     SharedPreferences.setMockInitialValues(prefs);
@@ -63,6 +68,7 @@ class FakeApp extends AppController {
       real: real,
       tailscale: tailscale,
       serverDir: serverDir,
+      commands: commands,
     );
   }
 
@@ -396,6 +402,29 @@ class FakeProcess implements Process {
 
   @override
   IOSink get stdin => throw UnimplementedError();
+}
+
+/// Installs as a test sets them up: Homebrew at [brew] (none when null),
+/// each command recorded in [calls] (with its environment in [envs]) and
+/// answered with [result]; it waits for [gate] when one is set.
+class FakeCommands {
+  FakeCommands({this.brew});
+
+  String? brew;
+  CommandResult result = (code: 0, output: '');
+  Completer<void>? gate;
+  final calls = <String>[];
+  final envs = <Map<String, String>>[];
+
+  late final commands = Commands(
+    brew: () => brew,
+    run: (exe, args, env) async {
+      calls.add([exe, ...args].join(' '));
+      envs.add(env);
+      await gate?.future;
+      return result;
+    },
+  );
 }
 
 /// [child] as main.dart hosts a window: a [MaterialApp] with PocketTerm's theme and

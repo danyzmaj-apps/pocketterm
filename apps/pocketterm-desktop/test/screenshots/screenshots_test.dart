@@ -14,6 +14,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pocketterm_core/agent.dart';
+import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/ghostty.dart';
 import 'package:pocketterm_core/kitty.dart';
 import 'package:pocketterm_core/server_client.dart';
@@ -22,6 +23,7 @@ import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/tmux.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_core/wezterm.dart';
+import 'package:pocketterm_desktop/hosting/vps.dart';
 import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:pocketterm_desktop/main_window.dart';
@@ -80,12 +82,17 @@ Widget subject(Widget child) => window(
 
 /// Writes [crop] (global logical pixels; all of [_shot] if null) of what
 /// [_shot] paints to docs/images/[name], rounded by [radius] and outlined
-/// in [border] if given.
-Future<void> save(WidgetTester tester, String name, {Rect? crop, double radius = 0, Color? border}) async {
-  final box = tester.getRect(find.byKey(_shot));
+/// in [border] if given. [of]: what the layer [of] finds paints instead (a
+/// dialog, which paints above [_shot]).
+Future<void> save(WidgetTester tester, String name, {Rect? crop, double radius = 0, Color? border, Finder? of}) async {
+  var layer = of == null ? _shot.currentContext!.findRenderObject() : tester.renderObject(of);
+  while (layer is! RenderRepaintBoundary) {
+    layer = layer!.parent;
+  }
+  final boundary = layer;
+  final box = MatrixUtils.transformRect(boundary.getTransformTo(null), Offset.zero & boundary.size);
   final r = (crop ?? box).intersect(box).shift(-box.topLeft);
   await tester.runAsync(() async {
-    final boundary = _shot.currentContext!.findRenderObject()! as RenderRepaintBoundary;
     final full = await boundary.toImage(pixelRatio: 2);
     final src = Rect.fromLTRB(r.left * 2, r.top * 2, r.right * 2, r.bottom * 2);
     final (w, h) = (src.width.round(), src.height.round());
@@ -111,20 +118,61 @@ Future<void> save(WidgetTester tester, String name, {Rect? crop, double radius =
   });
 }
 
-/// The first-run setup on [choice]'s screen (the two choices if null), as the main window shows it before there is a
-/// server. [tailscale]: what This computer finds.
-Future<FakeApp> pumpSetup(WidgetTester tester, {SetupChoice? choice, FakeTailscale? tailscale}) async {
-  final app = await FakeApp.create(tailscale: (tailscale ?? FakeTailscale()).tailscale);
+/// A VPS as the setup's checks find it, without the network: its name
+/// resolves, HTTPS answers when [secure], and every PocketTerm server asked
+/// answers.
+class _ShotChecks extends ServerChecks {
+  const _ShotChecks({this.secure = true});
+  final bool secure;
+
+  @override
+  Future<bool> resolves(String domain) async => true;
+
+  @override
+  Future<bool> https(String domain) async => secure;
+
+  @override
+  Future<String?> answers(Backend backend) async => null;
+}
+
+/// The first-run setup on [step]'s screen (the two choices if null), as the main window shows it before there is a
+/// server. [tailscale]: what On this computer finds; [brew]: Homebrew is here; [address]: the VPS's, as typed.
+Future<FakeApp> pumpSetup(
+  WidgetTester tester, {
+  String? step,
+  FakeTailscale? tailscale,
+  bool brew = true,
+  String address = '',
+  ServerChecks checks = const _ShotChecks(),
+}) async {
+  final app = await FakeApp.create(
+    tailscale: (tailscale ?? FakeTailscale()).tailscale,
+    commands: FakeCommands(brew: brew ? '/opt/homebrew/bin/brew' : null).commands,
+    prefs: {'setup_step': ?step, if (address.isNotEmpty) 'setup_address': address},
+  );
   await tester.pumpWidget(
     subject(
       ColoredBox(
         color: C.win,
-        child: SetupPage(app: app, choice: choice, poll: Duration.zero),
+        // A page of its own each time: a new app, a new screen.
+        child: SetupPage(app: app, poll: Duration.zero, checks: checks, key: UniqueKey()),
       ),
     ),
   );
   await tester.pumpAndSettle();
   return app;
+}
+
+/// Saves the setup's page: its column, with a margin, as a card.
+Future<void> saveSetup(WidgetTester tester, String name) async {
+  final page = tester.getRect(find.byWidgetPredicate((w) => w is SizedBox && w.width == 460).first);
+  await save(
+    tester,
+    name,
+    crop: Rect.fromLTRB(page.left - 28, page.top - 28, page.right + 28, page.bottom + 28),
+    radius: 12,
+    border: C.line2,
+  );
 }
 
 /// Types [text] into the [index]th text field, then leaves it.
@@ -318,29 +366,57 @@ void main() {
     await tester.runAsync(() async => await app.hosting?.stop());
   });
 
-  // The first-run setup, made-up values only.
-  const setupView = Size(540, 640);
+  // The first-run setup, made-up values only: a tall view, each picture cropped to its page.
+  const setupView = Size(560, 1500);
   const card = (radius: 12.0, border: C.line2);
 
-  shot('setup: the two choices', setupView, (tester) async {
+  shot('setup: the two choices, and how your data is protected', setupView, (tester) async {
     await pumpSetup(tester);
-    await save(tester, 'mac-setup.png', radius: card.radius, border: card.border);
+    await saveSetup(tester, 'mac-setup.png');
+    await tester.tap(find.text('How your data is protected'));
+    await tester.pumpAndSettle();
+    await saveSetup(tester, 'mac-setup-data.png');
   });
 
-  shot('setup: this computer, Tailscale ready', setupView, (tester) async {
-    await pumpSetup(tester, choice: SetupChoice.thisComputer, tailscale: FakeTailscale(installed: true));
-    await save(tester, 'mac-setup-this-computer.png', radius: card.radius, border: card.border);
+  shot('setup: on this computer, each Tailscale step', setupView, (tester) async {
+    for (final (name, ts) in [
+      ('mac-setup-tailscale-install.png', FakeTailscale()),
+      ('mac-setup-tailscale-sign-in.png', FakeTailscale(installed: true, backendState: 'NeedsLogin')),
+      ('mac-setup-https-off.png', FakeTailscale(installed: true, https: false)),
+      ('mac-setup-this-computer.png', FakeTailscale(installed: true)),
+    ]) {
+      await pumpSetup(tester, step: 'thisComputer', tailscale: ts);
+      if (name == 'mac-setup-tailscale-install.png') {
+        await tester.tap(find.text('What is Tailscale, and why?'));
+        await tester.pumpAndSettle();
+      }
+      await saveSetup(tester, name);
+    }
   });
 
-  shot('setup: this computer, HTTPS off', setupView, (tester) async {
-    await pumpSetup(tester, choice: SetupChoice.thisComputer, tailscale: FakeTailscale(installed: true, https: false));
-    await save(tester, 'mac-setup-https-off.png', radius: card.radius, border: card.border);
+  shot('setup: Install Tailscale asks first', const Size(560, 640), (tester) async {
+    await pumpSetup(tester, step: 'thisComputer');
+    await tester.tap(find.byKey(const ValueKey('command-tailscale-app')));
+    await tester.pumpAndSettle();
+    final dialog = find.descendant(of: find.byType(AlertDialog), matching: find.byType(Material)).first;
+    await save(tester, 'mac-setup-confirm.png', crop: tester.getRect(dialog), radius: 12, of: dialog);
   });
 
-  shot('setup: your own server', setupView, (tester) async {
-    await pumpSetup(tester, choice: SetupChoice.ownServer);
-    await fillField(tester, 0, 'pocketterm://setup?url=https%3A%2F%2Fpt.example.com&setup=Xq3v…');
-    await save(tester, 'mac-setup-own-server.png', radius: card.radius, border: card.border);
+  shot('setup: on my own server, the question and a pasted link', setupView, (tester) async {
+    await pumpSetup(tester, step: 'ownServer');
+    await saveSetup(tester, 'mac-setup-own-server.png');
+    await pumpSetup(tester, step: 'haveServer');
+    await fillField(tester, 0, 'pocketterm://setup?url=https%3A%2F%2Fpt.example.com&setup=Xq3vR8…');
+    await saveSetup(tester, 'mac-setup-have-server.png');
+  });
+
+  shot('setup: a new VPS, its commands and the checks', setupView, (tester) async {
+    await pumpSetup(tester, step: 'newServer', address: '203.0.113.7', checks: const _ShotChecks(secure: false));
+    await tester.tap(find.text('What do Docker and Caddy do?'));
+    await tester.pumpAndSettle();
+    await saveSetup(tester, 'mac-setup-vps.png');
+    await pumpSetup(tester, step: 'newServer', address: '203.0.113.7');
+    await saveSetup(tester, 'mac-setup-vps-ready.png');
   });
 
   shot('get ready: a Mac after the first sign-in', const Size(560, 1700), (tester) async {

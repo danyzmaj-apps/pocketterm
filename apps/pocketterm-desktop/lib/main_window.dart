@@ -14,6 +14,7 @@ import 'package:pocketterm_desktop/controller.dart';
 import 'package:pocketterm_desktop/hosting/built_in_server.dart';
 import 'package:pocketterm_desktop/hosting/hosting_view.dart';
 import 'package:pocketterm_desktop/integrations.dart';
+import 'package:pocketterm_desktop/onboarding/data_protection.dart';
 import 'package:pocketterm_desktop/onboarding/get_ready.dart';
 import 'package:pocketterm_desktop/onboarding/pair.dart';
 import 'package:pocketterm_desktop/setup_page.dart';
@@ -879,6 +880,17 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
           ),
         ),
+      _wide(
+        _card(
+          title: 'How your data is protected',
+          sub: 'End-to-end encryption, and what your server, Tailscale and the push relay can see',
+          trailing: _button(
+            'Read…',
+            () => unawaited(showDataProtection(context)),
+            key: const ValueKey('settings-data-protection'),
+          ),
+        ),
+      ),
       _wide(
         _card(
           sub: _version == null ? 'PocketTerm' : 'PocketTerm $_version',

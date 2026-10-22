@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:pocketterm_core/native.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/mobile.dart';
@@ -24,7 +25,7 @@ class _PushConsentPageState extends State<PushConsentPage> {
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
     final allowed = await widget.session.setPushEnabled(on: on);
-    if (on && !allowed) messenger.showSnackBar(const SnackBar(content: Text(pushNotAllowed)));
+    if (on && !allowed) messenger.showSnackBar(pushNotAllowedSnackBar());
     if (mounted) setState(() => _busy = false);
   }
 
@@ -97,6 +98,16 @@ class _PushConsentPageState extends State<PushConsentPage> {
 /// Turned on, but the phone said no: the system setting is off.
 const pushNotAllowed =
     'Notifications are off for PocketTerm in this phone’s Settings. Allow them there, then try again.';
+
+/// [pushNotAllowed], with a way to that setting.
+SnackBar pushNotAllowedSnackBar() => SnackBar(
+  content: const Text(pushNotAllowed),
+  action: SnackBarAction(label: 'Settings', onPressed: () => unawaited(Native.openSettings(notifications: true))),
+);
+
+/// On here, but turned off since in the phone's Settings: nothing shows.
+const pushBlocked =
+    'On, but notifications are off for PocketTerm in this phone’s Settings, so none show. Allow them there.';
 
 /// Where notifications go and what each one on the way can see.
 class PushExplainer extends StatelessWidget {

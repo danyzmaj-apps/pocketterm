@@ -56,8 +56,38 @@ class MobileSession extends Session {
 
   @override
   Future<void> start() async {
+    await forgetOldApp();
     await loadComputerKeys();
     await super.start();
+  }
+
+  /// PocketTerm 0.1 connected through a Supabase project (its URL kept with
+  /// that project's key): no server this app talks to. What it left goes,
+  /// so the phone starts at setup: the project, a sign-in and computer
+  /// keys if any, the Supabase session and the computers list it cached,
+  /// and the sessions it followed. The tips seen and the list's order stay.
+  @visibleForTesting
+  Future<void> forgetOldApp() async {
+    try {
+      if (!((await Native.getBackend())?.legacy ?? false)) return;
+      await Native.setBackend();
+      await Native.setDeviceToken(null);
+      await Native.removeAllChannelKeys();
+    } on Object catch (e) {
+      debugPrint('PocketTerm: the old app’s data not removed: $e');
+      return;
+    }
+    for (final k in _prefs.getKeys().where(
+      (k) =>
+          k.startsWith('sb-') ||
+          k.startsWith('supabase') ||
+          k == _pushTokenKey ||
+          k == _desktopKey ||
+          k == _desktopsKey,
+    )) {
+      await _prefs.remove(k);
+    }
+    await _endActivities();
   }
 
   /// The keys the native side keeps.
@@ -150,6 +180,27 @@ class MobileSession extends Session {
   Future<void> onSignedIn(Account user) async {
     exitDemo();
     if (pushEnabled ?? false) await _registerPush(user.device.id);
+    await checkNotifications();
+  }
+
+  /// Whether the phone lets PocketTerm's notifications show; null until
+  /// known. Notifications on here but off in the phone's Settings (turned
+  /// off there after saying yes) show nothing: the account sheet says so.
+  bool? get notificationsAllowed => _notificationsAllowed;
+  bool? _notificationsAllowed;
+
+  /// Asks the phone again (at sign-in, coming back to the app, after a
+  /// change here).
+  Future<void> checkNotifications() async {
+    bool? allowed;
+    try {
+      allowed = await Native.notificationsAllowed();
+    } on Object catch (e) {
+      debugPrint('PocketTerm: notification permission not read: $e');
+    }
+    if (allowed == _notificationsAllowed) return;
+    _notificationsAllowed = allowed;
+    notifyListeners();
   }
 
   static const _pushTokenKey = 'pocketterm_push_token';
@@ -181,6 +232,7 @@ class MobileSession extends Session {
     }
     final registered = await _registerPush(u.device.id);
     await _prefs.setBool(key, registered);
+    await checkNotifications();
     notifyListeners();
     return registered;
   }
@@ -325,27 +377,40 @@ class MobileApp extends StatelessWidget {
         final user = session.user;
         if (user == null) {
           if (session.demo case final demo?) {
-            return HomePage(
-              key: const ValueKey('demo'),
-              session: session,
-              userId: demoDesktopId,
-              desktops: demo.desktops,
-              remoteFor: (_, _) => demo.remote,
+            return _HomeSwitch(
+              id: 'demo',
+              child: HomePage(
+                key: const ValueKey('demo'),
+                session: session,
+                userId: demoDesktopId,
+                desktops: demo.desktops,
+                remoteFor: (_, _) => demo.remote,
+              ),
             );
           }
-          return Scaffold(
-            body: SafeArea(
-              child: SetupPage(session: session, onDemo: session.enterDemo),
+          return _HomeSwitch(
+            id: 'setup',
+            child: Scaffold(
+              body: SafeArea(
+                child: SetupPage(session: session, onDemo: session.enterDemo),
+              ),
             ),
           );
         }
-        if (session.pushEnabled == null) return PushConsentPage(session: session);
-        return HomePage(
-          key: ValueKey(user.id),
-          session: session,
-          userId: user.id,
-          desktops: desktops,
-          remoteFor: remoteFor,
+        if (session.pushEnabled == null)
+          return _HomeSwitch(
+            id: 'consent',
+            child: PushConsentPage(session: session),
+          );
+        return _HomeSwitch(
+          id: user.id,
+          child: HomePage(
+            key: ValueKey(user.id),
+            session: session,
+            userId: user.id,
+            desktops: desktops,
+            remoteFor: remoteFor,
+          ),
         );
       },
     ),
@@ -581,7 +646,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _refreshTimer?.cancel();
     _desktops.removeListener(_syncRemote);
     widget.session.removeListener(_syncRemote);
-    if (_terminal case final t?) _dropRemote(t);
+    // After the frame that sends the pages on it away (_HomeSwitch).
+    if (_terminal case final t?) SchedulerBinding.instance.addPostFrameCallback((_) => _dropRemote(t));
     if (widget.desktops == null) _desktops.dispose();
     super.dispose();
   }
@@ -593,6 +659,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _attachTerminal(attach: true);
         _refreshIfInFront();
         unawaited(_openTappedSession());
+        // Notifications may have been turned off or on in Settings meanwhile.
+        if (!_demo) unawaited(widget.session.checkNotifications());
       case AppLifecycleState.hidden || AppLifecycleState.paused:
         _attachTerminal(attach: false);
       case AppLifecycleState.inactive || AppLifecycleState.detached:
@@ -681,14 +749,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   onScan: () => unawaited(_scanComputer()),
                 ),
                 null => Center(
-                  child: Padding(
+                  child: SingleChildScrollView(
                     padding: const EdgeInsets.all(32),
                     child: Text(
                       selected != null
                           ? 'Reaching ${selected.name}…'
                           : _desktops.loaded
                           ? _noDesktop
-                          : 'Looking for your computers…',
+                          : _desktopsError ?? 'Looking for your computers…',
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: C.dim, height: 1.5),
                     ),
@@ -701,6 +769,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       ),
     );
   }
+
+  /// Why the list of computers didn't come, if it didn't: a server the phone
+  /// can't reach says what to do.
+  String? get _desktopsError => switch ((_desktops.error, widget.session.backend)) {
+    (final e?, final b?) when e == b.unreachable => serverUnreachable(b),
+    (final e, _) => e,
+  };
 
   /// A computer's code, scanned while signed in: this phone gets that
   /// computer's key ([Session.connectLink]).
@@ -732,6 +807,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       builder: (sheet) => SafeArea(
         child: ListenableBuilder(
           listenable: _desktops,
+          // The title stays; many computers scroll under it.
           builder: (_, _) => Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -740,38 +816,49 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 padding: EdgeInsets.fromLTRB(20, sheetTop, 20, 8),
                 child: Text('Computers', style: sheetTitleStyle),
               ),
-              if (_desktops.all.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 4, 20, 20),
-                  child: Text(_noDesktop, style: TextStyle(color: C.dim, height: 1.5)),
-                ),
-              for (final d in _desktops.all)
-                ListTile(
-                  key: ValueKey('desktop-${d.id}'),
-                  leading: Icon(d.windows ? Icons.desktop_windows : Icons.laptop_mac, color: C.dim),
-                  title: Text(d.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: widget.session.computerKey(d.id) == null
-                      ? const Text('Locked: scan its code', style: TextStyle(color: C.warn))
-                      : Text(
-                          d.online ? 'Online' : 'Seen ${ago(d.seenAt)}',
-                          style: TextStyle(color: d.online ? C.accent : C.dim),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  children: [
+                    if (_desktops.all.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                        child: Text(
+                          _desktops.loaded ? _noDesktop : _desktopsError ?? 'Looking for your computers…',
+                          style: const TextStyle(color: C.dim, height: 1.5),
                         ),
-                  trailing: d.id == _desktops.selected?.id ? const Icon(Icons.check, color: C.accent) : null,
-                  onTap: () {
-                    Navigator.of(sheet).pop();
-                    _desktops.select(d.id);
-                  },
+                      ),
+                    for (final d in _desktops.all)
+                      ListTile(
+                        key: ValueKey('desktop-${d.id}'),
+                        leading: Icon(d.windows ? Icons.desktop_windows : Icons.laptop_mac, color: C.dim),
+                        title: Text(d.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: widget.session.computerKey(d.id) == null
+                            ? const Text('Locked: scan its code', style: TextStyle(color: C.warn))
+                            : Text(
+                                d.online ? 'Online' : 'Seen ${ago(d.seenAt)}',
+                                style: TextStyle(color: d.online ? C.accent : C.dim),
+                              ),
+                        trailing: d.id == _desktops.selected?.id ? const Icon(Icons.check, color: C.accent) : null,
+                        onTap: () {
+                          Navigator.of(sheet).pop();
+                          _desktops.select(d.id);
+                        },
+                      ),
+                    ListTile(
+                      key: const ValueKey('scan-computer'),
+                      leading: const Icon(Icons.qr_code_scanner, color: C.dim),
+                      title: const Text('Scan a computer’s code'),
+                      onTap: () {
+                        Navigator.of(sheet).pop();
+                        unawaited(_scanComputer());
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                 ),
-              ListTile(
-                key: const ValueKey('scan-computer'),
-                leading: const Icon(Icons.qr_code_scanner, color: C.dim),
-                title: const Text('Scan a computer’s code'),
-                onTap: () {
-                  Navigator.of(sheet).pop();
-                  unawaited(_scanComputer());
-                },
               ),
-              const SizedBox(height: 8),
             ],
           ),
         ),
@@ -782,7 +869,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Future<void> _openAccount() => showAppSheet<void>(
     context,
     builder: (sheet) => SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -796,7 +883,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(widget.session.userName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                      Text(
+                        widget.session.userName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                      ),
                       const Text('Signed in with your computer\u2019s code', style: TextStyle(color: C.dim)),
                     ],
                   ),
@@ -806,26 +898,47 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             const SizedBox(height: 8),
             ListenableBuilder(
               listenable: widget.session,
-              builder: (_, _) => SwitchListTile.adaptive(
-                key: const ValueKey('push-toggle'),
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Notifications'),
-                subtitle: Text(
-                  widget.session.pushEnabled ?? false
-                      ? 'Encrypted, through the push relay at push.danyzmaj.com.'
-                      : isIos
-                      ? 'Off: no notifications and no Lock Screen sessions.'
-                      : 'Off: no notifications and no followed sessions.',
-                  style: const TextStyle(color: C.dim, height: 1.4),
-                ),
-                value: widget.session.pushEnabled ?? false,
-                onChanged: (on) async {
-                  final messenger = ScaffoldMessenger.of(sheet);
-                  if (!await widget.session.setPushEnabled(on: on) && on) {
-                    messenger.showSnackBar(const SnackBar(content: Text(pushNotAllowed)));
-                  }
-                },
-              ),
+              builder: (_, _) {
+                final on = widget.session.pushEnabled ?? false;
+                // On here, off in the phone's Settings (changed there after saying yes): nothing shows.
+                final blocked = on && widget.session.notificationsAllowed == false;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SwitchListTile.adaptive(
+                      key: const ValueKey('push-toggle'),
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Notifications'),
+                      subtitle: Text(
+                        blocked
+                            ? pushBlocked
+                            : on
+                            ? 'Encrypted, through the push relay at push.danyzmaj.com.'
+                            : isIos
+                            ? 'Off: no notifications and no Lock Screen sessions.'
+                            : 'Off: no notifications and no followed sessions.',
+                        style: TextStyle(color: blocked ? C.warn : C.dim, height: 1.4),
+                      ),
+                      value: on,
+                      onChanged: (on) async {
+                        final messenger = ScaffoldMessenger.of(sheet);
+                        if (!await widget.session.setPushEnabled(on: on) && on) {
+                          messenger.showSnackBar(pushNotAllowedSnackBar());
+                        }
+                      },
+                    ),
+                    if (blocked)
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: TextButton(
+                          key: const ValueKey('push-settings'),
+                          onPressed: () => unawaited(Native.openSettings(notifications: true)),
+                          child: const Text('Open Settings'),
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 18),
             OutlinedButton(
@@ -873,6 +986,35 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   );
 }
 
+/// What the app shows at its root ([id]: setup, the demo, the push
+/// question, a sign-in). Pages and sheets opened over one belong to it: when
+/// it changes (signed out here or by the computer, the demo left) they go
+/// too, instead of staying over the new one with a computer that's gone.
+class _HomeSwitch extends StatefulWidget {
+  const _HomeSwitch({required this.id, required this.child});
+  final Object id;
+  final Widget child;
+
+  @override
+  State<_HomeSwitch> createState() => _HomeSwitchState();
+}
+
+class _HomeSwitchState extends State<_HomeSwitch> {
+  @override
+  void didUpdateWidget(_HomeSwitch old) {
+    super.didUpdateWidget(old);
+    if (old.id == widget.id) return;
+    final navigator = Navigator.of(context);
+    // Not while building.
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (mounted) navigator.popUntil((r) => r.isFirst);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 /// Says the demo is one, under the computer's title.
 class _DemoBanner extends StatelessWidget {
   const _DemoBanner();
@@ -913,7 +1055,7 @@ class _Locked extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-    child: Padding(
+    child: SingleChildScrollView(
       padding: const EdgeInsets.all(32),
       child: Column(
         mainAxisSize: MainAxisSize.min,

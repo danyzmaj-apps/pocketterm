@@ -7,6 +7,7 @@ import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/chat_images.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/live_activity.dart';
+import 'package:pocketterm_core/native.dart' show TooManyActivities;
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/ui.dart';
@@ -300,15 +301,19 @@ class _SessionPageState extends State<SessionPage> {
 
   Future<void> _toggleFollow(LiveActivities activities, LiveSummary s) async {
     if (activities.following(key)) return await activities.stop(key);
-    if (!await activities.follow(key, title: _title(s)) && mounted) {
-      termToast(
-        context,
-        isIos
+    String? problem;
+    try {
+      if (!await activities.follow(key, title: _title(s))) {
+        problem = isIos
             ? 'Live Activities are off for PocketTerm: turn them on in Settings → PocketTerm.'
-            : 'Notifications are off for PocketTerm: turn them on in Settings → Apps → PocketTerm.',
-        above: _composerKey,
-      );
+            : 'Notifications are off for PocketTerm: turn them on in Settings → Apps → PocketTerm.';
+      }
+    } on TooManyActivities {
+      problem =
+          'Your iPhone shows only a few Live Activities at once. Stop following another session, or end one on the '
+          'Lock Screen, then try again.';
     }
+    if (problem != null && mounted) termToast(context, problem, above: _composerKey);
   }
 
   Future<void> _stop() async {

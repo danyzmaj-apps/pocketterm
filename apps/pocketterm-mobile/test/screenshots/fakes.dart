@@ -36,7 +36,13 @@ class PushRecorder extends PocketTermServerClient {
 class FakeSession extends MobileSession {
   FakeSession._(SharedPreferences prefs, this._signedIn) : super(prefs, 'iPhone');
 
-  final bool _signedIn;
+  bool _signedIn;
+
+  /// The sign-in ends, as when the computer signs this phone out.
+  void endSignIn() {
+    _signedIn = false;
+    notifyListeners();
+  }
 
   /// Computers whose code this phone hasn't scanned.
   final locked = <String>{};

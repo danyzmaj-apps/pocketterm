@@ -73,8 +73,17 @@ class ServeResult {
 /// `https://<this computer>.<tailnet>.ts.net` to the tailnet only.
 class Tailscale {
   Tailscale({StartProcess? start, String? Function()? locate})
-    : _start = start ?? Process.start,
+    : _start = start ?? _startCli,
       _locate = locate ?? findCli;
+
+  /// The Mac app's binary is the CLI only when started from a terminal; started
+  /// by an app (no TERM), it tries to open its window and prints nothing.
+  /// `TAILSCALE_BE_CLI` tells it to act as the CLI either way.
+  static Future<Process> _startCli(String executable, List<String> arguments) =>
+      Process.start(executable, arguments, environment: cliEnvironment);
+
+  @visibleForTesting
+  static const cliEnvironment = {'TAILSCALE_BE_CLI': '1'};
 
   final StartProcess _start;
   final String? Function() _locate;

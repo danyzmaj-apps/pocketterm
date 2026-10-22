@@ -37,6 +37,15 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     delegate = self
 
     setupStatusItem()
+    // A throwaway profile (tool/smoke) is driven through accessibility: turn
+    // Flutter's tree on as VoiceOver would, once the view is in the window.
+    if !(ProcessInfo.processInfo.environment["POCKETTERM_PROFILE"] ?? "").isEmpty {
+      DispatchQueue.main.async {
+        NotificationCenter.default.post(
+          name: NSNotification.Name("NSApplicationDidChangeAccessibilityEnhancedUserInterfaceNotification"),
+          object: NSApp, userInfo: ["AXEnhancedUserInterface": true])
+      }
+    }
     super.awakeFromNib()
   }
 

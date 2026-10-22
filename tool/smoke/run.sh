@@ -90,17 +90,16 @@ case "${1:-}" in
       kill -9 "$p" 2>/dev/null || true
     fi
     [ "$1" = quit ] && exit 0
-    # Its tmux server, its Keychain items (the throwaway Keychain, and any it
-    # put in the person's under its own service), its preferences and data
-    # (under the throwaway home or the real one, whichever macOS used), then
-    # the folder.
+    # Its tmux server, its throwaway Keychain (the copy keeps its secrets in
+    # memory; nothing goes in the person's), its preferences and data (under
+    # the throwaway home or the real one, whichever macOS used), then the
+    # folder; the app gone, its login item (if one was added) goes too.
     for s in "$SMOKE"/t/tmux-*/*; do
       if [ -S "$s" ]; then /opt/homebrew/bin/tmux -S "$s" kill-server 2>/dev/null || true; fi
     done
     if [ -f "$home/Library/Keychains/login.keychain-db" ]; then
       HOME="$home" /usr/bin/security delete-keychain "$home/Library/Keychains/login.keychain-db" || true
     fi
-    while /usr/bin/security delete-generic-password -s PocketTerm.smoke >/dev/null 2>&1; do :; done
     /usr/bin/defaults delete "$bundle" >/dev/null 2>&1 || true
     # What macOS asked about it (Automation: controlling Ghostty).
     /usr/bin/tccutil reset All "$bundle" >/dev/null 2>&1 || true

@@ -175,7 +175,7 @@ PUSH_RELAY_KEY=<the relay's public key, base64; the relay logs it at start>
   cd ~/pocketterm && echo "POCKETTERM_VERSION=0.2.0" >> .env && sudo docker compose pull && sudo docker compose up -d
   ```
 
-[CHANGELOG.md](../CHANGELOG.md) says when a new app version needs a server update.
+[CHANGELOG.md](../CHANGELOG.md) says when a new app version needs a server update. Your data survives `docker compose pull && docker compose up -d`; to back it up or restore it, see [Back up and restore](../apps/pocketterm-server/README.md#back-up-and-restore).
 
 ## Troubleshooting
 
@@ -191,17 +191,25 @@ PUSH_RELAY_KEY=<the relay's public key, base64; the relay logs it at start>
 | Setup: "That isn't a setup link" | Copy the whole line `setup-link` printed, starting with `pocketterm://setup?url=`. |
 | Setup: "That link signs in a phone, not a computer" | That's a phone's code. Use the server's setup link (`setup-link` on the server, or **Add a computer…** on a computer that runs the server). |
 | Setup: "Couldn't reach …" | Check the address, that the server runs (`cd ~/pocketterm && sudo docker compose ps`) and that ports 80 and 443 are open. For a server built into another computer, this computer must be signed in to the same Tailscale account. |
+| Setup: "Couldn't make a secure connection to <host>: its HTTPS certificate isn't valid or isn't there yet" | Caddy hasn't got a certificate. `cd ~/pocketterm && sudo docker compose logs caddy` says why: ports 80 and 443 closed in the provider's firewall, the name not pointing at the VPS, or Let's Encrypt's limit (5 certificates per name a week; sslip.io names share one big weekly quota that sometimes runs out: wait, or use a domain of your own). Add an AAAA record only if the VPS answers on IPv6. |
+| Setup: "<host> answers, but the PocketTerm server behind it doesn't (502)" | The server container is stopped or failing: `sudo docker compose ps` and `sudo docker compose logs server`. |
+| Setup: "Your server runs PocketTerm server X; this app needs Y or newer" | `cd ~/pocketterm && sudo docker compose pull && sudo docker compose up -d` (built into a computer: update PocketTerm there). "Your server is newer than this app": update PocketTerm. |
+| "The server couldn't save this" | The VPS's disk is full or its data folder isn't writable: `df -h`, then free some space. Nothing saved before is lost. |
+| Server log, or the setup on this computer: "Can't write to the data folder", "Another PocketTerm server is using …", "state.json doesn't read" | See [When something is wrong](../apps/pocketterm-server/README.md#when-something-is-wrong): the folder's owner (65532 in Docker), one server per data folder, restoring from a backup. |
+| Pushes stop arriving | `sudo docker compose logs server \| grep relay`: the push relay is unreachable or refused them. The server retries for 2 minutes, then drops them. |
 | Setup: "That setup link doesn't work: it was replaced by a newer one" | It was replaced with `setup-link --new`. Run `setup-link` on the server for the current one, or use **Add a computer…** on the computer that hosts it. Computers already signed in stay signed in. |
 | Setup: the name doesn't resolve | For a domain, add a DNS A record with the server's IP address and wait a few minutes. For an sslip.io name, check this computer's internet connection. |
 | Setup: **HTTPS answers** stays | Open ports 80 and 443 in the provider's firewall; Caddy says why in `cd ~/pocketterm && sudo docker compose logs caddy`. |
 | Setup: "Leave out the port" or "private address" | Type the server's public IPv4 address or its domain only, as your VPS provider shows it. |
 | Setup: "An IPv6-only server doesn't work" | Add an IPv4 address to the server (most providers sell one), or use a domain with an A record. Docker can't fetch the server from `ghcr.io` over IPv6, and many phone networks are IPv4 only. |
 | Setup: the name resolves to the wrong server, or **HTTPS answers** but **The PocketTerm server answers** doesn't | An old DNS record is still cached: wait for its TTL, or check with `dig +short A <name>` that it shows the VPS's address. |
-| Setup: a domain behind Cloudflare (orange cloud) never gets green | Set Cloudflare's SSL/TLS mode to **Full (strict)** (Flexible makes Caddy redirect forever), or make the record DNS only (grey cloud). WebSockets pass through Cloudflare as they are. |
+| Setup: "Cloudflare answers for <host> but can't reach your server (52x)" | Turn the orange cloud off for that name (DNS only), or set Cloudflare's SSL/TLS mode to **Full (strict)**. WebSockets pass through Cloudflare as they are. |
+| Setup: "<host> keeps redirecting to itself" | Cloudflare in Flexible mode sends requests to port 80, where Caddy redirects them to HTTPS: set SSL/TLS to **Full (strict)**. |
 | A server behind nginx, Traefik or another reverse proxy | Point it at port 47900 with WebSockets passed through: [apps/pocketterm-server/README.md](../apps/pocketterm-server/README.md#behind-another-reverse-proxy-or-a-cloudflare-tunnel). |
 | Phone can't reach a computer that runs the server | Install the Tailscale app on the phone, sign in to the same Tailscale account and turn it on. If it's on and still can't, check **Use Tailscale DNS** in the phone's Tailscale settings (ts.net names need MagicDNS), that your tailnet's access rules let the phone reach this computer, and, with Tailnet Lock on, that the phone is signed (`tailscale lock sign`). |
 | Phone: "That code doesn't work" | It ran out (10 minutes) or was used already: make a new one (**Settings → Add a phone…**). |
-| Phone: "Too many tries" | Ten wrong codes from one place in ten minutes: wait a few minutes, then use a fresh code. |
+| Phone: "Too many tries from this network. Wait N minutes" | Ten wrong codes from one address (an IPv6 /64 counts as one) in 10 minutes. Wait, or restart the server (`sudo docker compose restart server`) to clear it. |
+| Phone: "Notifications are off on this phone: turn them on to follow a session" | Following a session needs notifications: **Account → Notifications**. |
 | Phone: "<computer> isn't answering" | That computer is asleep, off, or PocketTerm isn't running there, or **Terminal from phone** (**Settings → Phone**) is off. |
 | Phone: "Can't reach <name>.ts.net. It's on your tailnet…" | The server is built into a computer and reached through Tailscale. Install Tailscale on the phone, sign in to the same account and connect. If that computer was renamed in Tailscale, its address changed: on the phone, **Account → Leave this server**, then scan its new code. |
 | Phone: "Can't reach <host>. Check your connection." | The phone has no route to the server (offline, captive Wi-Fi not signed in, server down). PocketTerm tries again by itself; coming back to the app retries at once. |

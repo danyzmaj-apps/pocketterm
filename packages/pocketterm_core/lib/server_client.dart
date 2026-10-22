@@ -107,7 +107,19 @@ class PocketTermServerClient {
 
   /// Where this device's sign-in is kept.
   final DeviceTokens tokens;
-  final _http = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+  HttpClient _http = _newHttp();
+  static HttpClient _newHttp() => HttpClient()..connectionTimeout = const Duration(seconds: 8);
+
+  /// Back at the front: the next requests go on new connections. The ones
+  /// kept open from before may be dead without having said so (the system
+  /// stops an app's network in the background, the phone changed networks),
+  /// and a request on one would wait out its whole timeout. Requests under
+  /// way finish where they are.
+  void freshConnections() {
+    final old = _http;
+    _http = _newHttp();
+    old.close();
+  }
 
   static const _timeout = Duration(seconds: 20);
 
@@ -116,16 +128,20 @@ class PocketTermServerClient {
   Account? _account;
   String? _token;
 
+  /// The sign-in as kept in [tokens], so an unchanged one isn't written again.
+  String? _kept;
+
   /// The server refused this device's token: it's signed out here now.
   Stream<void> get ended => _ended.stream;
   final _ended = StreamController<void>.broadcast();
 
-  /// Reads the sign-in this device kept for this server and asks the server
-  /// whether it still holds. True when the server refused it (it's gone
-  /// now); no answer (offline) keeps it.
-  Future<bool> restore() async {
+  /// Reads the sign-in this device kept for this server: [account] at once,
+  /// without asking the server ([recheck] does), so a launch shows what it
+  /// had before the network answers.
+  Future<void> load() async {
     try {
-      final saved = jsonDecode(await tokens.read() ?? 'null');
+      final raw = await tokens.read();
+      final saved = jsonDecode(raw ?? 'null');
       if (saved
           case {
             'url': final String url,
@@ -136,19 +152,28 @@ class PocketTermServerClient {
           when url == backend.url) {
         _token = token;
         _account = Account(id: server, device: Device.fromJson(device));
+        _kept = raw;
       }
     } on Object catch (e) {
       debugPrint('PocketTerm: sign-in not read: $e');
     }
-    if (_token == null) return false;
+  }
+
+  /// Asks the server whether the sign-in still holds, and keeps what it says
+  /// of this device. A refusal ends it ([ended]); no answer (offline), or
+  /// one this app doesn't read (a captive portal's page), keeps it.
+  Future<void> recheck() async {
+    final token = _token;
+    if (token == null) return;
     try {
-      await _signedIn(_token!);
+      final me = await _json('GET', '/v1/me', token: token);
+      // Signed out, or in anew, meanwhile: the answer is about a sign-in that's gone.
+      if (_token == token) await _keep(token, me);
     } on ServerException catch (e) {
-      if (e.status != 401) return false;
-      await _forget();
-      return true;
+      if (e.status == 401 && _token == token) await refused();
+    } on Object catch (e) {
+      debugPrint('PocketTerm: sign-in not checked: $e');
     }
-    return false;
   }
 
   /// Signs this computer in with the server's setup token (its setup link).
@@ -166,28 +191,24 @@ class PocketTermServerClient {
   }
 
   /// Asks the server who [token] is and keeps it.
-  Future<Account> _signedIn(String token) async {
-    final me = await _json('GET', '/v1/me', token: token);
+  Future<Account> _signedIn(String token) async => await _keep(token, await _json('GET', '/v1/me', token: token));
+
+  /// [token] and the device the server's GET /v1/me ([me]) says it is.
+  Future<Account> _keep(String token, Object? me) async {
     if (me case {'device': final Map<String, dynamic> device, 'server': {'id': final String server}}) {
       final account = Account(id: server, device: Device.fromJson(device));
-      await tokens.write(
-        jsonEncode({'url': backend.url, 'token': token, 'server': server, 'device': account.device.toJson()}),
-      );
+      final kept = jsonEncode({
+        'url': backend.url,
+        'token': token,
+        'server': server,
+        'device': account.device.toJson(),
+      });
+      if (kept != _kept) await tokens.write(kept);
+      _kept = kept;
       _token = token;
       return _account = account;
     }
     throw const ServerException(500, 'internal', "The server sent an answer this app doesn't read.");
-  }
-
-  /// Asks the server whether the token still works; a refused one ends the
-  /// sign-in ([ended]). No answer proves nothing.
-  Future<void> verify() async {
-    if (_token == null) return;
-    try {
-      await _json('GET', '/v1/me');
-    } on ServerException {
-      return;
-    }
   }
 
   /// Leaves the server: the token stops working there (DELETE
@@ -212,6 +233,7 @@ class PocketTermServerClient {
   Future<void> _forget() async {
     _token = null;
     _account = null;
+    _kept = null;
     await tokens.write(null);
   }
 

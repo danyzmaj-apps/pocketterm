@@ -109,7 +109,8 @@ void main() {
         'device': {'id': 'dev0000000000001', 'role': 'phone', 'label': 'iPhone', 'platform': 'ios'},
       });
     client = PocketTermServerClient(backend, tokens: tokens);
-    expect(await client.restore(), isFalse);
+    await client.load();
+    expect(client.account, isNotNull);
     states = [];
     received = [];
     channel = TerminalChannel(
@@ -184,6 +185,25 @@ void main() {
     await until(() => channel.joined);
     expect(states, [true]);
     expect(client.account, isNotNull, reason: 'the token itself still works');
+  });
+
+  test('Retry connects at once, however long the wait between tries had grown', () async {
+    await setUpServer(refuse: 1000);
+    channel.open();
+    // Refused at 0, 1 and 3 s: the next try would be at 7 s.
+    for (var i = 0; i < 50 && server.refuse > 997; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    expect(server.refuse, 997);
+    expect(channel.unreachable, isTrue);
+
+    server.refuse = 0;
+    final retried = Stopwatch()..start();
+    channel.reconnect();
+    expect(channel.unreachable, isFalse, reason: 'trying again, not given up');
+    await until(() => channel.joined);
+    expect(retried.elapsed, lessThan(const Duration(seconds: 1)));
+    expect(states, [true]);
   });
 
   test('after close nothing joins again', () async {

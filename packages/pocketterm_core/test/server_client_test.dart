@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal_channel.dart';
@@ -173,4 +175,54 @@ void main() {
     addTearDown(again.close);
     expect(await again.desktops(), isEmpty);
   });
+
+  // A connection kept open from before the app went to the background can be dead without having said so: a
+  // request on it waited out its whole timeout, and the phone said it couldn't reach the server.
+  test('back at the front, requests go on new connections, not on ones that went quiet meanwhile', () async {
+    final quiet = await _GoesQuiet.start();
+    addTearDown(quiet.stop);
+    final client = PocketTermServerClient(
+      quiet.backend,
+      tokens: MemoryDeviceTokens()
+        ..value = jsonEncode({
+          'url': quiet.backend.url,
+          'token': 'token-1',
+          'server': 'srv0000000000001',
+          'device': {'id': 'dev0000000000001', 'role': 'phone', 'label': 'iPhone', 'platform': 'ios'},
+        }),
+    );
+    addTearDown(client.close);
+    await client.load();
+    expect(await client.desktops(), isEmpty);
+
+    client.freshConnections();
+    expect(await client.desktops().timeout(const Duration(seconds: 3)), isEmpty);
+    expect(quiet.connections, 2);
+  });
+}
+
+/// A server that answers the first request on each connection, keeping it
+/// open, and then never another on it: what a connection the network
+/// dropped looks like from the phone.
+class _GoesQuiet {
+  _GoesQuiet._(this._socket) {
+    _socket.listen((s) {
+      connections++;
+      var answered = false;
+      s.listen((_) {
+        if (answered) return;
+        answered = true;
+        s.write('HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\n\r\n[]');
+      });
+    });
+  }
+
+  static Future<_GoesQuiet> start() async => _GoesQuiet._(await ServerSocket.bind(InternetAddress.loopbackIPv4, 0));
+
+  final ServerSocket _socket;
+  int connections = 0;
+
+  Backend get backend => Backend(url: 'http://127.0.0.1:${_socket.port}');
+
+  Future<void> stop() => _socket.close();
 }

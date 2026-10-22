@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
@@ -10,8 +14,10 @@ import 'own_server.dart';
 /// A computer, or with [phone] a phone, keeping its sign-in in [tokens] and
 /// the computer keys from links in [keys].
 class _Device extends Session {
-  _Device(super.device, {this.phone = false, MemoryDeviceTokens? tokens}) : tokens = tokens ?? MemoryDeviceTokens();
+  _Device(super.device, {this.phone = false, this.atOnce = false, MemoryDeviceTokens? tokens})
+    : tokens = tokens ?? MemoryDeviceTokens();
   final bool phone;
+  final bool atOnce;
   final MemoryDeviceTokens tokens;
   final keys = <ComputerKey>[];
 
@@ -26,6 +32,9 @@ class _Device extends Session {
 
   @override
   DeviceTokens get deviceTokens => tokens;
+
+  @override
+  bool get signInAtOnce => atOnce;
 
   @override
   Future<void> addComputerKey(ComputerKey computer) async => keys.add(computer);
@@ -183,6 +192,60 @@ void main() {
     expect(phone.signedOutReason, 'You signed out.');
   });
 
+  group('a phone launched with the sign-in it kept', () {
+    late _Held held;
+    late MemoryDeviceTokens kept;
+
+    setUp(() async {
+      held = await _Held.start();
+      kept = MemoryDeviceTokens()
+        ..value = jsonEncode({
+          'url': held.backend.url,
+          'token': 'token-1',
+          'server': 'srv0000000000001',
+          'device': {'id': 'dev0000000000001', 'role': 'phone', 'label': 'iPhone', 'platform': 'ios'},
+        });
+    });
+    tearDown(() => held.stop());
+
+    test('is signed in before the server answers, and stays so when the answer is no sign-in answer', () async {
+      final phone = _Device('iPhone', phone: true, atOnce: true, tokens: kept);
+      addTearDown(phone.disconnect);
+      await phone.connect(held.backend).timeout(const Duration(seconds: 2));
+      expect(phone.user?.device.id, 'dev0000000000001', reason: 'the server holds its answer');
+
+      // A captive portal's page, say.
+      await held.answer(200, '<html>Sign in to the Wi-Fi</html>');
+      expect(phone.user, isNotNull);
+      expect(kept.value, isNotNull);
+    });
+
+    test('is signed out, with the reason, once the server refuses what it kept', () async {
+      final phone = _Device('iPhone', phone: true, atOnce: true, tokens: kept);
+      addTearDown(phone.disconnect);
+      await phone.connect(held.backend).timeout(const Duration(seconds: 2));
+      expect(phone.user, isNotNull);
+
+      await held.answer(401, jsonEncode({'error': 'unauthorized', 'message': 'Sign in again.'}));
+      await pumpEventQueue();
+      expect(phone.user, isNull);
+      expect(phone.signedOutReason, contains('Scan a new code'));
+      expect(kept.value, isNull);
+    });
+
+    test("signed out while the server is asked: the answer that comes after doesn't sign it back in", () async {
+      final phone = _Device('iPhone', phone: true, atOnce: true, tokens: kept);
+      addTearDown(phone.disconnect);
+      await phone.connect(held.backend).timeout(const Duration(seconds: 2));
+      await phone.signOut();
+      await held.answer(200, jsonEncode(_Held.me));
+      await pumpEventQueue();
+      expect(phone.user, isNull);
+      expect(kept.value, isNull, reason: "the sign-in it left isn't kept again");
+      expect(phone.server!.account, isNull);
+    });
+  });
+
   group('a setup link opened from outside the app', () {
     const mine = Backend(url: 'https://mine.example.com');
     const theirs = Backend(url: 'https://theirs.example.com');
@@ -215,4 +278,48 @@ void main() {
       expect(session.linkToConfirm, isNull);
     });
   });
+}
+
+/// A server that holds GET /v1/me until [answer] says what to answer it,
+/// then answers it at once; anything else gets `{}` at once.
+class _Held {
+  _Held._(this._http) {
+    _http.listen((req) => _answer == null && req.uri.path == '/v1/me' ? _waiting.add(req) : _reply(req));
+  }
+
+  static Future<_Held> start() async => _Held._(await HttpServer.bind(InternetAddress.loopbackIPv4, 0));
+
+  static const me = {
+    'device': {'id': 'dev0000000000001', 'role': 'phone', 'label': 'iPhone', 'platform': 'ios'},
+    'server': {'id': 'srv0000000000001'},
+  };
+
+  final HttpServer _http;
+  final _waiting = <HttpRequest>[];
+  ({int status, String body})? _answer;
+
+  Backend get backend => Backend(url: 'http://127.0.0.1:${_http.port}');
+
+  void _reply(HttpRequest r) {
+    final me = r.uri.path == '/v1/me';
+    r.response
+      ..statusCode = me ? _answer!.status : 200
+      ..write(me ? _answer!.body : '{}');
+    unawaited(r.response.close());
+  }
+
+  /// Answers, once the GET /v1/me is there, with [status] and [body].
+  Future<void> answer(int status, String body) async {
+    for (var i = 0; i < 100 && !_waiting.any((r) => r.uri.path == '/v1/me'); i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    _answer = (status: status, body: body);
+    _waiting
+      ..forEach(_reply)
+      ..clear();
+    // Each answer read before going on.
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
+
+  Future<void> stop() => _http.close(force: true);
 }

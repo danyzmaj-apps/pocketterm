@@ -105,6 +105,18 @@ class TerminalRemote extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// When that computer last told the server it's there (the computers
+  /// list's seen_at, every minute while PocketTerm runs there with
+  /// Terminal from phone on); null while not known. Not answering and not
+  /// seen for a while, it's asleep or off rather than just quiet.
+  DateTime? get desktopSeenAt => _desktopSeenAt;
+  DateTime? _desktopSeenAt;
+  set desktopSeenAt(DateTime? at) {
+    if (at == _desktopSeenAt) return;
+    _desktopSeenAt = at;
+    notifyListeners();
+  }
+
   /// This phone, to the Mac.
   final String from;
 
@@ -310,6 +322,21 @@ class TerminalRemote extends ChangeNotifier {
     _behind.clear();
     if (_transmit == null) unawaited(_ch.close());
     flush();
+  }
+
+  /// Retry: a new connection at once (lib/terminal_channel.dart), and the
+  /// computer asked again, given its 10 seconds to answer before it reads as
+  /// not answering. Only while attached.
+  void reconnect() {
+    if (_users == 0) return;
+    _openedAt = DateTime.now();
+    _heard = null;
+    if (_transmit == null) {
+      _ch.reconnect();
+    } else {
+      hello();
+    }
+    notifyListeners();
   }
 
   void hello() => _post('hello', {'from': from, 'session': ?watchedSession, 'window': ?watchedWindow});

@@ -179,6 +179,21 @@ class TerminalChannel {
     _drop();
   }
 
+  /// Connects again at once, on a new socket, with the wait between tries
+  /// back at its shortest: the person asked (Retry), so whatever the last
+  /// try ran into may be gone. Nothing while closed.
+  void reconnect() {
+    if (!_open) return;
+    final gen = ++_gen;
+    debugPrint('PocketTerm: $name: reconnect');
+    _retry?.cancel();
+    _retry = null;
+    _drop();
+    _wait = _firstWait;
+    _setUnreachable(false);
+    unawaited(_connect(gen));
+  }
+
   /// The largest frame the server takes (packages/pocketterm_server/PROTOCOL.md); a larger one would close the
   /// socket, and every message after it would be lost until the next join.
   static const int maxFrameBytes = 256 * 1024;
@@ -225,7 +240,7 @@ class TerminalChannel {
       timing('socket failed');
       if (stale()) return;
       // Refused at the door: maybe the token stopped working.
-      unawaited(_server.verify());
+      unawaited(_server.recheck());
       _setUnreachable(true);
       return _again(null, '$e');
     }

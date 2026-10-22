@@ -27,7 +27,11 @@ class Desktop {
   bool get windows => platform == 'windows';
 
   /// It has said so within two and a half of its one-minute beats.
-  bool get online => DateTime.now().difference(seenAt) < const Duration(seconds: 150);
+  bool get online => DateTime.now().difference(seenAt) < onlineWithin;
+
+  /// How recently a computer has to have said it's there to count as
+  /// [online].
+  static const onlineWithin = Duration(seconds: 150);
 
   Map<String, dynamic> toJson() => {
     'id': id,

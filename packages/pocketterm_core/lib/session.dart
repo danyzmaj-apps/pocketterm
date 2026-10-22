@@ -73,10 +73,11 @@ abstract class Session extends ChangeNotifier {
   /// other than its own ([saved] until [connect] is done) waits for the
   /// person ([linkToConfirm]): anyone can send a link, and this device's
   /// sessions would then go through that server.
+  /// Any other link goes to [onOtherLink].
   @visibleForTesting
   void openedLink(Uri uri, Backend? saved) {
     final backend = Backend.fromLink(uri);
-    if (backend == null) return;
+    if (backend == null) return onOtherLink(uri);
     if (_user == null && backend != (_backend ?? saved)) {
       _linkToConfirm = uri;
       notifyListeners();
@@ -101,6 +102,12 @@ abstract class Session extends ChangeNotifier {
   /// A link now waits in [linkToConfirm]: the computer brings its window up.
   @protected
   void onLinkToConfirm() {}
+
+  /// A link opened from outside the app that isn't a setup link (the phone:
+  /// a followed session's). The one that launched the app comes here too,
+  /// and only here: the link stream hands it to whoever listens first.
+  @protected
+  void onOtherLink(Uri uri) {}
 
   /// A setup link: connects to its server and signs in with what it carries
   /// (a computer: the server's setup token; a phone: a computer's pairing
@@ -201,7 +208,9 @@ abstract class Session extends ChangeNotifier {
 
   /// Opens [backend] (and remembers it): the one saved at launch, the setup
   /// screen's, or a setup link's, with the sign-in this device kept for it.
-  /// Switching needs the user signed out.
+  /// With [signInAtOnce] that's signed in before the server says it still
+  /// holds; otherwise once it did (or didn't answer). A refusal signs out,
+  /// with the reason. Switching needs the user signed out.
   Future<void> connect(Backend backend) async {
     if (_user != null) throw StateError('Sign out before switching servers.');
     await _close();
@@ -210,14 +219,23 @@ abstract class Session extends ChangeNotifier {
     _backend = backend;
     authError = null;
     notifyListeners();
-    if (await s.restore()) _leaving ??= endedReason;
+    await s.load();
     _ended = s.ended.listen((_) {
       _leaving ??= endedReason;
       _setUser(null);
     });
+    final check = s.recheck();
+    if (!signInAtOnce) await check;
     _setUser(s.account);
     timing('signed in');
   }
+
+  /// A launch shows the sign-in kept here at once and asks the server about
+  /// it meanwhile: a phone, which then shows what it had without waiting on
+  /// the network. A computer asks first: one running the server signs in to
+  /// it anew when it refused the kept one.
+  @protected
+  bool get signInAtOnce => false;
 
   /// Why the sign-in is gone when the server stopped taking it (this device
   /// was removed, the server erased), worded for the person.

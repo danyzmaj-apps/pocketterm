@@ -59,6 +59,15 @@ void main() {
     expect(long, endsWith('.pdf'));
   });
 
+  test('every name Windows opens as a device gets a prefix, however it is written', () {
+    for (final name in [r'conin$', r'CONOUT$.txt', 'COM¹.log', 'lpt³', 'CON .txt', 'nul.tar.gz', 'Aux']) {
+      expect(safeFileName(name), '_$name', reason: name);
+    }
+    for (final name in ['console.txt', 'com10.txt', 'conin.txt', 'lpt.md']) {
+      expect(safeFileName(name), name, reason: name);
+    }
+  });
+
   test('a prompt names its files as omp and Claude Code take them at the computer', () {
     expect(
       withMentions('look at these', ['/tmp/pt/a1/notes.txt', '/tmp/pt/a1/my notes.txt']),

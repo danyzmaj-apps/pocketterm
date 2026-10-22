@@ -69,8 +69,10 @@ class PromptFiles {
 /// [name] as a file name that stays in its folder: only what follows its
 /// last `/` or `\`, without control characters or the ones Windows refuses
 /// (`<>:"|?*`), spaces and dots at its end (so never `.` or `..`) or a
-/// Windows device name; at most 120 characters, its extension kept. Without
-/// an extension it gets the one [mime] has. `file` when nothing is left.
+/// Windows device name (`CON`, `CONIN$`, `COM¹`, … with any extension, also
+/// with spaces before it); at most 120 characters, its extension kept.
+/// Without an extension it gets the one [mime] has. `file` when nothing is
+/// left.
 @visibleForTesting
 String safeFileName(String name, {String mime = ''}) {
   var n = name.split(RegExp(r'[/\\]')).last.replaceAll(RegExp(r'[\x00-\x1f\x7f<>:"|?*]'), '').trim();
@@ -79,13 +81,17 @@ String safeFileName(String name, {String mime = ''}) {
   if (fileExtension(n).isEmpty) {
     if (mimeExtension(mime) case final ext?) n = '$n.$ext';
   }
-  if (RegExp(r'^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$', caseSensitive: false).hasMatch(n)) n = '_$n';
+  if (_deviceName.hasMatch(n)) n = '_$n';
   if (n.length > 120) {
     final ext = p.extension(n);
     n = ext.length < 20 ? '${n.substring(0, 120 - ext.length).trimRight()}$ext' : n.substring(0, 120);
   }
   return n;
 }
+
+/// A name Windows opens as a device: its part before the first dot, spaces
+/// after it ignored, is one of these.
+final _deviceName = RegExp(r'^(con|prn|aux|nul|conin\$|conout\$|com[0-9¹²³]|lpt[0-9¹²³]) *(\..*)?$', caseSensitive: false);
 
 /// [path] as omp and Claude Code take a file named in a prompt: `@path`,
 /// or `@"path"` when it holds a character that would end the mention (a

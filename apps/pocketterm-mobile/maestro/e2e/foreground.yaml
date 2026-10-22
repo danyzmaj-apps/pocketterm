@@ -1,0 +1,16 @@
+# Back to the front after background.yaml (and run.sh's wait): the
+# conversation is still there at once, and the computer answers again by
+# itself, on a fresh connection (the system may have closed the old one).
+#   env: REPLY (regex: a reply in the conversation background.yaml opened)
+appId: com.danyzmaj.pocketterm
+---
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: ".*${REPLY}.*"
+    timeout: 10000
+- extendedWaitUntil:
+    notVisible: "(Updated .* · .*|[Cc]onnecting…|[Aa]sking .*…)"
+    timeout: 60000
+- takeScreenshot: back
+- runFlow: sub/back.yaml

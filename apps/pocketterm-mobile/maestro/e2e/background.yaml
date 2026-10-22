@@ -1,0 +1,14 @@
+# Opens a conversation and leaves the app for the Home Screen; run.sh waits,
+# then foreground.yaml brings it back.
+#   env: SESSION (regex), REPLY (regex: a reply in that conversation)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: ".*${REPLY}.*"
+    timeout: 30000
+- pressKey: Home

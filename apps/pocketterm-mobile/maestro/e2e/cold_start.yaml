@@ -1,0 +1,24 @@
+# A cold start: the app, stopped, launches on the computer's list, the
+# computer answers, and a conversation opened shows what was said in it. The
+# phone's timing log says where the time went (run.sh: timing.txt).
+#   env: SESSION (regex), REPLY (regex: a reply in that conversation)
+appId: com.danyzmaj.pocketterm
+---
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "\n?New session"
+    timeout: 30000
+- extendedWaitUntil:
+    notVisible: "(Updated .* · .*|[Cc]onnecting…|[Aa]sking .*…)"
+    timeout: 60000
+- takeScreenshot: online
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: ".*${REPLY}.*"
+    timeout: 30000
+- takeScreenshot: loaded
+- runFlow: sub/back.yaml

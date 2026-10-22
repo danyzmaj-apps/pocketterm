@@ -1,0 +1,20 @@
+# The app, stopped, opened by run.sh as a tap on a followed session (its link,
+# pocketterm://session?key=…) or on a terminal push (Android) opens it: that
+# session's page shows at once, and fills in once the computer answers.
+#   env: SESSION (regex: its title), REPLY (regex: a reply in it)
+appId: com.danyzmaj.pocketterm
+---
+- extendedWaitUntil:
+    visible: "\n?Back"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "${SESSION}"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: ".*${REPLY}.*"
+    timeout: 30000
+- extendedWaitUntil:
+    notVisible: "(Updated .* · .*|[Cc]onnecting…|[Aa]sking .*…)"
+    timeout: 60000
+- takeScreenshot: opened
+- runFlow: sub/back.yaml

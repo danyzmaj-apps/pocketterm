@@ -19,6 +19,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/backend.dart';
+import 'package:pocketterm_core/live.dart' show routedKey;
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/ui.dart';
@@ -465,7 +466,13 @@ class _Run {
         'computer': app.device,
         'terminal': app.terminals.describe(host),
         'sessions': [
-          for (final w in ['chat', 'approve', 'endme']) {'title': name(w), 'project': name(w)},
+          for (final w in ['chat', 'approve', 'endme'])
+            {
+              'title': name(w),
+              'project': name(w),
+              // What a followed session's link and a push name it by.
+              'key': routedKey(app.desktopId(app.user!.id), app.live.sessions.firstWhere((s) => s.cwd == dir(w)).key),
+            },
         ],
         'approval': {'session': name('approve'), 'answer': 'Approve'},
         'screen': {'window': shell.title},

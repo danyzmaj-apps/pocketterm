@@ -74,6 +74,8 @@ v = {
 for i, x in enumerate(s):
   v[f"SESSION_{i}"] = x.get("title", "")
   v[f"PROJECT_{i}"] = x.get("project", "")
+  # Its routed key (<computer id>/<session key>): what links to a followed session and pushes carry.
+  v[f"SESSION_{i}_KEY"] = x.get("key", "")
 for k, val in list(v.items()):
   v[k + "_RE"] = re.escape(val)
 for k, val in v.items():
@@ -165,6 +167,85 @@ if [ "$PHASE" = main ]; then
 fi
 
 re_escape() { python3 -c 'import re,sys;print(re.escape(sys.argv[1]))' "$1"; }
+now_ms() { python3 -c 'import time;print(int(time.time()*1000))'; }
+
+APP_ID=com.danyzmaj.pocketterm
+# open_cold link|push <routed key>: stops the app, then opens it as a followed
+# session's link (pocketterm://session?key=…) does, or (Android) as a tapped
+# terminal push does: MainActivity with the session in its extra
+# (Notifications.kt).
+open_cold() {
+  local how=$1 key=$2 url
+  url="pocketterm://session?key=$(python3 -c 'import sys,urllib.parse as u;print(u.quote(sys.argv[1],safe=""))' "$key")"
+  if [ "$PLATFORM" = ios ]; then
+    xcrun simctl terminate "$DEVICE" "$APP_ID" 2>/dev/null
+    sleep 1
+    xcrun simctl openurl "$DEVICE" "$url"
+  else
+    "$ADB" -s "$DEVICE" shell am force-stop "$APP_ID"
+    sleep 1
+    if [ "$how" = link ]; then
+      "$ADB" -s "$DEVICE" shell am start -a android.intent.action.VIEW -d "'$url'" "$APP_ID" >/dev/null
+    else
+      "$ADB" -s "$DEVICE" shell am start -n "$APP_ID/.MainActivity" --es com.danyzmaj.pocketterm.session "'$key'" >/dev/null
+    fi
+  fi
+}
+
+# ------------------------------------------------------------------ timing
+
+# What the app logs of getting connected (debug builds: lib/timing.dart in
+# pocketterm_core), with a mark at each flow's start; timing.txt reads them
+# after the phase (timing_report).
+TIMING_LOG="$OUT/timing.log" MARKS="$OUT/timing-marks.log"
+: >"$MARKS"
+if [ "$PLATFORM" = ios ]; then
+  xcrun simctl spawn "$DEVICE" log stream --style compact --level debug \
+    --predicate 'eventMessage CONTAINS "PocketTerm timing"' >"$TIMING_LOG" 2>&1 &
+else
+  "$ADB" -s "$DEVICE" logcat -c
+  "$ADB" -s "$DEVICE" logcat -v brief -s flutter:I >"$TIMING_LOG" 2>&1 &
+fi
+LOG_PID=$!
+
+# Per launch (the app's `launch`) and per return to the front (`resumed`):
+# how long after it each step came, and how long the app was away.
+timing_report() {
+  python3 - "$TIMING_LOG" "$MARKS" <<'PY' >"$OUT/timing.txt"
+import re, sys
+events = []
+for line in open(sys.argv[1], errors="replace"):
+    m = re.search(r"PocketTerm timing (\d{13}) (.+?)\s*$", line)
+    if m: events.append((int(m.group(1)), m.group(2)))
+marks = []
+for line in open(sys.argv[2]):
+    t, _, name = line.strip().partition(" ")
+    if t.isdigit(): marks.append((int(t), name))
+events.sort()
+steps = ["signed in", "home", "computers listed", "computers failed", "attach", "socket connecting",
+         "socket failed", "socket open", "joined", "first state", "deep link", "session page", "caught up"]
+def flow_at(t):
+    name = "-"
+    for mt, n in marks:
+        if mt <= t: name = n
+    return name
+paused = None
+runs = []
+for i, (t, what) in enumerate(events):
+    if what == "paused": paused = t
+    if what not in ("launch", "resumed"): continue
+    seen = {}
+    for t2, w2 in events[i + 1:]:
+        if w2 in ("launch", "resumed"): break
+        if w2 == "paused" and what == "resumed": break
+        seen.setdefault(w2, t2 - t)
+    away = f" after {round((t - paused) / 1000)} s away" if what == "resumed" and paused else ""
+    runs.append(f"{flow_at(t):<22} {what}{away}: " + ", ".join(f"{s} +{seen[s]} ms" for s in steps if s in seen))
+print("\n".join(runs) if runs else "no timing lines (not a debug build?)")
+PY
+  cat "$OUT/timing.txt" >>"$SUMMARY"
+}
+trap 'timing_report; kill $LOG_PID 2>/dev/null' EXIT
 
 # ------------------------------------------------------------------- flows
 
@@ -172,6 +253,8 @@ FAILED=0 STOP=0 CRITICAL=1
 # flow <name> <file> [-e K=V ...]: one Maestro run. A failure while CRITICAL
 # (setting up: the scenarios after need it) stops the phase; a scenario's
 # failure doesn't stop the next, which starts from the session list anyway.
+# BEFORE (sh, optional) runs first: how the app is opened (a link, a tapped
+# push) when the flow itself doesn't.
 flow() {
   local name=$1 file=$2
   shift 2
@@ -182,6 +265,8 @@ flow() {
   # A flow whose Maestro driver didn't start on the device never touched
   # the app: it runs once more.
   for try in 1 2; do
+    echo "$(now_ms) $name" >>"$MARKS"
+    if [ -n "${BEFORE:-}" ]; then eval "$BEFORE"; fi
     if "$MAESTRO" --device "$DEVICE" test "$HERE/$file" --test-output-dir "$dir" --debug-output "$dir" \
       --format junit --output "$dir/report.xml" \
       -e PLATFORM="$PLATFORM" -e COMPUTER="$COMPUTER" -e COMPUTER_RE="$COMPUTER_RE" -e TERMINAL="$TERMINAL" -e TERMINAL_RE="$TERMINAL_RE" \
@@ -248,11 +333,30 @@ case $PHASE in
     flow switch-continue switch.yaml -e WINDOW=".*$SWITCH_CONTINUE_RE" -e HOW="Restart and continue"
     flow switch-restart switch.yaml -e WINDOW=".*$SWITCH_RESTART_RE" -e HOW="Just restart"
     flow end-session end_session.yaml -e SESSION="$END_SESSION_RE"
+    # How long a cold start and a return to the front take (timing.txt), and
+    # that a followed session's link opens its session on a cold start.
+    # E2E_AWAY_LONG=1 also leaves the app in the background for 10 minutes.
+    REPLY_1="fake reply: $(re_escape "$(prompt 1)")"
+    flow cold-start cold_start.yaml -e SESSION="$SESSION_1_RE" -e REPLY="$REPLY_1"
+    for away in 60 ${E2E_AWAY_LONG:+600}; do
+      flow "away-${away}s" background.yaml -e SESSION="$SESSION_1_RE" -e REPLY="$REPLY_1"
+      [ -d "$OUT/away-${away}s" ] && sleep "$away"
+      flow "resume-${away}s" foreground.yaml -e REPLY="$REPLY_1"
+    done
+    BEFORE="open_cold link '$SESSION_1_KEY'" flow deep-link-cold deep_link.yaml -e SESSION="$SESSION_1_RE" \
+      -e REPLY="$REPLY_1"
+    if [ "$PLATFORM" = android ]; then
+      BEFORE="open_cold push '$SESSION_1_KEY'" flow push-tap-cold deep_link.yaml -e SESSION="$SESSION_1_RE" \
+        -e REPLY="$REPLY_1"
+    fi
     ;;
   server-restart | desktop-restart)
     # A new prompt goes and comes back once; conversation-1's exchange (session
     # 0's was reset by /new) shows once, nothing replayed.
     t=SESSION_1_RE
+    # First, cold from a followed session's link, with the server just back.
+    BEFORE="open_cold link '$SESSION_1_KEY'" flow "deep-link-$PHASE" deep_link.yaml -e SESSION="${!t}" \
+      -e REPLY="fake reply: $(re_escape "$(prompt 1)")"
     flow reconnect reconnect.yaml -e SESSION="$SESSION_0_RE" -e PROMPT="after ${PHASE/-/ } $TERMINAL_ID" \
       -e PROMPT_RE="$(re_escape "after ${PHASE/-/ } $TERMINAL_ID")" \
       -e OLD_SESSION="${!t:-$SESSION_0_RE}" -e OLD_PROMPT_RE="$(re_escape "$(prompt 1)")"

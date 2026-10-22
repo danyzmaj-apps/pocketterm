@@ -117,6 +117,23 @@ void main() {
     expect(app.projectRoots, ['$home/Dev']);
   });
 
+  testWidgets("a phone whose clock is too far off this computer's is named, under Phone", (tester) async {
+    await pumpSettings(tester);
+    await app.setProjectRoots(['$home/Dev']);
+    app.phoneClockOff = const Duration(minutes: -9, seconds: -50);
+    await app.setProjectRoots(['$home/Dev', '$home/Work']);
+    await tester.pumpAndSettle();
+    expect(dot('phone'), findsOneWidget);
+    await tester.tap(find.text('Show'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('10 minutes behind this computer’s'), findsOneWidget);
+
+    app.phoneClockOff = null;
+    await app.setProjectRoots(['$home/Dev']);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('behind this computer’s'), findsNothing);
+  });
+
   testWidgets('New sessions open in: Auto or a terminal app found here', (tester) async {
     await pumpSettings(tester);
     await tester.tap(find.byKey(const ValueKey('settings-tab-terminals')));

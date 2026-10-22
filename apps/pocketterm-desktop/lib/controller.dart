@@ -94,6 +94,10 @@ class AppController extends Session {
   /// Whose `<desktop id>` topic [_bridge] is on: the server's id.
   String? _bridgeUser;
 
+  /// How far a phone's clock is off this computer's while it's too far for
+  /// anything from it to be taken (TerminalBridge.clockOff); null otherwise.
+  Duration? get phoneClockOff => _bridge?.clockOff;
+
   /// [_startBridge] calls, one after the other.
   Future<void> _bridging = Future.value();
 

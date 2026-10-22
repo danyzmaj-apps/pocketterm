@@ -1020,6 +1020,17 @@ class _SettingsPageState extends State<SettingsPage> {
     if (_clock case final clock?) {
       items.add((tab: _Tab.account, short: 'This computer’s clock is off', text: clock, action: null));
     }
+    if (app.phoneClockOff case final off?) {
+      final minutes = (off.inSeconds.abs() / 60).round();
+      items.add((
+        tab: _Tab.phone,
+        short: 'A phone’s clock is off',
+        text:
+            'A phone’s clock is $minutes minutes ${off.isNegative ? 'behind' : 'ahead of'} this computer’s, so '
+            'what it sends is refused: turn on automatic date and time on both',
+        action: null,
+      ));
+    }
     if (app.hosting case final h? when h.state != HostState.ready && h.state != HostState.checking) {
       final open = h.state == HostState.tailscaleOff || h.state == HostState.loggedOut;
       items.add((

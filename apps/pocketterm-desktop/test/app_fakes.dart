@@ -75,6 +75,10 @@ class FakeApp extends AppController {
   /// The server and sign-in are Session's own.
   final bool real;
 
+  /// How far a phone's clock is off, as the terminal bridge would say.
+  @override
+  Duration? phoneClockOff;
+
   /// Integrations in [home] with neither omp nor `claude` around.
   static Integrations noAgents(String home) => Integrations(
     home: home,

@@ -13,10 +13,14 @@ class _Phone extends MobileSession {
 }
 
 void main() {
-  testWidgets('the server ending the sign-in takes its push token, computer keys and followed sessions off the phone', (
+  testWidgets('the sign-in ending takes its push token and choice, computer keys and followed sessions off the phone', (
     tester,
   ) async {
-    SharedPreferences.setMockInitialValues({'pocketterm_push_token': 'push-token'});
+    SharedPreferences.setMockInitialValues({
+      'pocketterm_push_token': 'push-token',
+      'pocketterm_push_on_srv00000000001': true,
+      'pocketterm_terminal_sort': 'recent',
+    });
     final prefs = await SharedPreferences.getInstance();
     final key = ChannelKey.generate();
     final calls = <MethodCall>[];
@@ -48,5 +52,11 @@ void main() {
       reason: 'every key goes, also ones Dart never loaded',
     );
     expect(phone.computerKey('abcd1234'), isNull, reason: 'the next sign-in scans a code, and gets its key');
+    expect(
+      prefs.getBool('pocketterm_push_on_srv00000000001'),
+      isNull,
+      reason: 'signing in again asks about notifications again, never carried over',
+    );
+    expect(prefs.getString('pocketterm_terminal_sort'), 'recent', reason: "the phone's own settings stay");
   });
 }

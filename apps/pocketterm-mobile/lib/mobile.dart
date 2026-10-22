@@ -241,10 +241,15 @@ class MobileSession extends Session {
   }
 
   /// Drops what this phone keeps for the server: the push registration's
-  /// record, every computer's key (the next sign-in scans a code, which
-  /// brings its computer's), and the followed sessions, ended at once.
+  /// record and the push choice (the next sign-in asks again), every
+  /// computer's key (the next sign-in scans a code, which brings its
+  /// computer's), and the followed sessions, ended at once.
   Future<void> _forgetHere() async {
     await _prefs.remove(_pushTokenKey);
+    // Every server's: the sign-in may already be gone, and with it its id.
+    for (final k in _prefs.getKeys().where((k) => k.startsWith('${_pushChoiceKey}_'))) {
+      await _prefs.remove(k);
+    }
     await _prefs.remove(_desktopKey);
     await _prefs.remove(_desktopsKey);
     try {

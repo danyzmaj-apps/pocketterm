@@ -239,10 +239,11 @@ void main() {
     final phone = ChannelSeal(key, _topic, clock: () => DateTime.now().add(skew));
     final mac = ChannelSeal(key, _topic, clock: DateTime.now);
     expect(await mac.open('hello', await phone.seal('hello', {'from': 'p'})), isNull);
-    expect(mac.clockOff!.inMinutes, 12);
+    // The receiver reads its clock a moment after the sender did.
+    expect(mac.clockOff!.inSeconds, closeTo(12 * 60, 2));
     skew = const Duration(minutes: -30);
     expect(await mac.open('hello', await phone.seal('hello', {'from': 'p'})), isNull);
-    expect(mac.clockOff!.inMinutes, -30);
+    expect(mac.clockOff!.inSeconds, closeTo(-30 * 60, 2));
     skew = Duration.zero;
     expect(await mac.open('hello', await phone.seal('hello', {'from': 'p'})), {'from': 'p'});
     expect(mac.clockOff, isNull);

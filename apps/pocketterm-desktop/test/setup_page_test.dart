@@ -275,10 +275,9 @@ void main() {
 
       await confirm(run: true);
       expect(brew.calls, ['/opt/homebrew/bin/brew install --cask tailscale-app']);
-      // The installer's sudo asks through macOS's own password dialog.
-      final askpass = brew.envs.single['SUDO_ASKPASS']!;
-      addTearDown(() => File(askpass).parent.deleteSync(recursive: true));
-      expect(File(askpass).readAsStringSync(), contains('display dialog'));
+      // The installer's sudo asks through macOS's own password dialog, whose script goes after the run.
+      expect(brew.askpass.single, contains('display dialog'));
+      expect(File(brew.envs.single['SUDO_ASKPASS']!).parent.existsSync(), isFalse);
       expect(find.textContaining('Error: Failure while executing installer'), findsOneWidget);
 
       // Try again, and it works: the checklist moves on to starting Tailscale.
@@ -294,7 +293,7 @@ void main() {
       await until(tester, () => check(tester, 'check-installed') == CheckState.done);
       expect(brew.calls, hasLength(2));
       expect(check(tester, 'check-running'), CheckState.now);
-      File(brew.envs.last['SUDO_ASKPASS']!).parent.deleteSync(recursive: true);
+      expect(File(brew.envs.last['SUDO_ASKPASS']!).parent.existsSync(), isFalse);
     });
 
     testWidgets('on Windows, winget installs Tailscale after Run; Download instead is Windows’ page', (tester) async {

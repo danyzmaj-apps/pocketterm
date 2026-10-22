@@ -475,6 +475,10 @@ class FakeCommands {
   final calls = <String>[];
   final envs = <Map<String, String>>[];
 
+  /// What sudo's password script said while each run that had one ran
+  /// (it is deleted after).
+  final askpass = <String>[];
+
   late final commands = Commands(
     brew: () => brew,
     macPorts: () => macPorts,
@@ -482,6 +486,7 @@ class FakeCommands {
     run: (exe, args, env) async {
       calls.add([exe, ...args].join(' '));
       envs.add(env);
+      if (env['SUDO_ASKPASS'] case final path?) askpass.add(File(path).readAsStringSync());
       await gate?.future;
       return result;
     },

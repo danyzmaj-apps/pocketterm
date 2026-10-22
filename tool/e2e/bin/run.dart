@@ -6,11 +6,14 @@
 //
 //   dart run tool/e2e/bin/run.dart [--terminal kitty|ghostty|wezterm|all]
 //       [--server local|<https url> --setup-link <link>] [--no-phone]
-//       [--platform ios|android] [--from-head] [--artifacts <dir>]
+//       [--platform ios|android [--avd <name>]] [--phone-only <flow>,…]
+//       [--from-head] [--artifacts <dir>]
 //
 // --from-head runs what's committed: a detached worktree of HEAD in /tmp
 // (others' uncommitted edits stay out), artifacts still in this checkout's
-// build/e2e. --artifacts: where the stamped run folders go.
+// build/e2e. --artifacts: where the stamped run folders go. --avd: the
+// Android emulator the phone phases boot when none is running. --phone-only:
+// just these phone flows (the phone run.sh's --only).
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -106,7 +109,7 @@ Map<String, String> _parse(List<String> args) {
   final o = <String, String>{'terminal': 'all', 'server': 'local', 'platform': 'ios'};
   for (var i = 0; i < args.length; i++) {
     switch (args[i]) {
-      case '--terminal' || '--server' || '--setup-link' || '--platform' || '--artifacts':
+      case '--terminal' || '--server' || '--setup-link' || '--platform' || '--artifacts' || '--avd' || '--phone-only':
         o[args[i].substring(2)] = args[++i];
       case '--no-phone':
         o['phone'] = 'no';
@@ -354,7 +357,7 @@ Future<Map<String, String>> _runTerminal(
         final name = p.basename(f.path);
         if (!name.endsWith('.ready') || !handled.add(name)) continue;
         final phase = name.substring(0, name.length - 6);
-        final code = phone ? await _phonePhase(repo, artifacts, phase, opts['platform']!) : 'skipped';
+        final code = phone ? await _phonePhase(repo, artifacts, phase, opts) : 'skipped';
         results['phone: $phase'] = code == '0'
             ? 'pass'
             : (code == 'skipped' ? 'skip: --no-phone' : 'fail: phone flow exit $code (see phone/)');
@@ -391,14 +394,18 @@ Future<Map<String, String>> _runTerminal(
   return results;
 }
 
-Future<String> _phonePhase(String repo, String artifacts, String phase, String platform) async {
+Future<String> _phonePhase(String repo, String artifacts, String phase, Map<String, String> opts) async {
   final script = p.join(repo, 'apps', 'pocketterm-mobile', 'maestro', 'e2e', 'run.sh');
   if (!File(script).existsSync()) return 'missing';
   stdout.writeln('  phone: $phase');
   final log = File(p.join(artifacts, 'phone-$phase.log')).openWrite();
   final proc = await Process.start(
     script,
-    ['--run-dir', artifacts, '--phase', phase, '--platform', platform],
+    [
+      ...['--run-dir', artifacts, '--phase', phase, '--platform', opts['platform']!],
+      if (opts['avd'] case final avd?) ...['--avd', avd],
+      if (opts['phone-only'] case final only?) ...['--only', only],
+    ],
     workingDirectory: repo,
     environment: cleanEnv(),
     includeParentEnvironment: false,

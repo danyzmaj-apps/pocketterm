@@ -5,7 +5,7 @@
 # build/e2e/<stamp>/.
 #
 #   tool/e2e/run.sh [--terminal kitty|ghostty|wezterm|all] [--server local|<https url> --setup-link <link>]
-#                   [--no-phone] [--platform ios|android]
+#                   [--no-phone] [--platform ios|android [--avd <name>]] [--phone-only <flow>,…] [--from-head]
 set -eu
 cd "$(dirname "$0")/../.."
 exec fvm dart run tool/e2e/bin/run.dart "$@"

@@ -9,7 +9,8 @@
 //   ax <pid> set <label> <text> types <text> into the text field so labelled
 //   ax <pid> window             the window's CGWindowID (screencapture -l)
 //
-// A label matches exactly, by its first line, or else by containing it.
+// A label matches exactly, by its first line, or else by containing it;
+// `#field` is the first text field, labelled or not.
 import ApplicationServices
 import CoreGraphics
 import Foundation
@@ -50,6 +51,7 @@ func all() -> [(AXUIElement, Int)] {
 }
 
 func find(_ want: String) -> AXUIElement? {
+  if want == "#field" { return all().first { role($0.0) == "AXTextField" }?.0 }
   let labelled = all().map { ($0.0, label($0.0)) }.filter { !$0.1.isEmpty }
   func lines(_ l: String) -> [String] {
     l.components(separatedBy: " | ").flatMap { $0.components(separatedBy: "\n") }.map {

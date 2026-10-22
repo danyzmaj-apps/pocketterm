@@ -46,6 +46,12 @@ case "${1:-}" in
     HOME="$home" /usr/bin/security set-keychain-settings "$home/Library/Keychains/login.keychain-db"
     /usr/bin/ditto "$src" "$app"
     /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $bundle" -c "Set :CFBundleName PocketTerm Smoke" "$app/Contents/Info.plist"
+    # Every launch of the copy is throwaway, however it's opened (a link, the
+    # Dock, `open -n` without --env): Launch Services hands it these.
+    /usr/libexec/PlistBuddy -c "Add :LSEnvironment dict" \
+      -c "Add :LSEnvironment:HOME string $home" -c "Add :LSEnvironment:TMUX_TMPDIR string $SMOKE/t" \
+      -c "Add :LSEnvironment:POCKETTERM_KITTY_DIR string $SMOKE/k" -c "Add :LSEnvironment:POCKETTERM_PROFILE string smoke" \
+      "$app/Contents/Info.plist"
     /usr/bin/codesign --force --deep --sign - "$app" 2>/dev/null
     # Claude Code as installed, in the throwaway home (its own ~/.claude there).
     for c in "$HOME/.local/bin/claude"; do [ -e "$c" ] && ln -s "$(readlink -f "$c")" "$home/.local/bin/claude"; done

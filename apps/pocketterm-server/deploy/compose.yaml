@@ -1,0 +1,44 @@
+# Compose file for PocketTerm's test server on danyzmaj-server (contract: danyzmaj-server/docs/connect-an-app.md),
+# the server the E2E runs reach over the internet. Deployed by .github/workflows/test-server-deploy.yml as compose
+# project `pocketterm-test`. Public at https://pocketterm-test.danyzmaj.com: the Cloudflare tunnel passes /v1/ only
+# (WebSockets included) and sets X-Forwarded-For, hence POCKETTERM_TRUST_PROXY.
+#
+# The server serves no /metrics: Grafana shows its CPU, memory and logs from Docker. Its setup link:
+#   docker exec pocketterm-test-app-1 pocketterm-server setup-link
+
+services:
+  app:
+    build:
+      context: ../../.. # the repository root
+      dockerfile: apps/pocketterm-server/Dockerfile
+    restart: unless-stopped
+    env_file: # overrides for the settings below, kept on the server
+      - path: /etc/danyzmaj/pocketterm-test/app.env
+        required: false
+    environment:
+      POCKETTERM_PUBLIC_URL: https://pocketterm-test.danyzmaj.com
+      POCKETTERM_TRUST_PROXY: "1"
+      PUSH_RELAY_URL: https://push.danyzmaj.com/v1/push
+    volumes: [data:/data] # state.json, setup-token, blobs/
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    labels:
+      app: pocketterm-test
+    healthcheck:
+      test: ["CMD", "pocketterm-server", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      default: {}
+      observability:
+        aliases: [pocketterm-test]
+
+volumes:
+  data: # backed up nightly (danyzmaj-server monitoring/backup/targets: pocketterm-test_data)
+
+networks:
+  observability:
+    external: true

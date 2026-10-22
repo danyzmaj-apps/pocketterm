@@ -10,6 +10,7 @@ User-visible changes to PocketTerm. Each release says whether servers need `apps
 - **Reviewer codes are gone** (Settings → Reviewer access on the computer); a demo mode on the phone replaces them.
 - A computer or phone set up with a Supabase project shows the setup screen again.
 - Supported terminals: kitty, Ghostty and WezTerm. iTerm2 and Terminal are no longer supported.
+- `pocketterm-server health` exits 0 when the server on the same machine answers, for container healthchecks (the image has no shell, curl or wget).
 
 **End-to-end encryption.** Your server (Supabase) now relays only ciphertext between a computer and its phones: sessions, screens, prompts, images and notification text.
 

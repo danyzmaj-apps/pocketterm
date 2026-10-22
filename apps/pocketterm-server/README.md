@@ -95,6 +95,9 @@ docker run -d --name pocketterm --restart unless-stopped -p 127.0.0.1:47900:4790
 Set `POCKETTERM_TRUST_PROXY=1` only when the proxy is the only way in: the server then rate limits failed
 sign-ins by the last address in `X-Forwarded-For`.
 
+For a container healthcheck, use the server itself (the image has no shell, curl or wget):
+`healthcheck: {test: ["CMD", "pocketterm-server", "health"]}` exits 0 when it answers `GET /v1/health`.
+
 The proxy must pass WebSocket upgrades on `/v1/ws`, keep them open (the server pings each socket every 25
 seconds; an idle timeout of 60 seconds or more is fine) and accept request bodies up to 20 MB (images).
 

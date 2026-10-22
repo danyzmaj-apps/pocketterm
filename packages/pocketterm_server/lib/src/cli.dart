@@ -12,13 +12,15 @@ PocketTerm server $serverVersion
 Usage:
   pocketterm-server serve [options]        Runs the server.
   pocketterm-server setup-link [options]   Prints the setup link for computers.
+  pocketterm-server health [options]       Exits 0 when the server on this machine answers GET /v1/health (for
+                                           container healthchecks).
 
 Options (each also read from the environment variable in brackets):
   --data <dir>           Where everything is kept [POCKETTERM_DATA] (default: ./data)
   --public-url <url>     The https address phones and computers reach the server at, put in setup links
                          [POCKETTERM_PUBLIC_URL] (required)
-  --port <n>             serve: the port to listen on [POCKETTERM_PORT] (default: 47900)
-  --address <ip>         serve: the address to listen on [POCKETTERM_ADDRESS] (default: 0.0.0.0)
+  --port <n>             serve, health: the port to listen on [POCKETTERM_PORT] (default: 47900)
+  --address <ip>         serve, health: the address to listen on [POCKETTERM_ADDRESS] (default: 0.0.0.0)
   --relay <url>          serve: the push relay [PUSH_RELAY_URL] (default: the publisher's)
   --relay-key <base64>   serve: the relay's X25519 public key, every push is sealed to it [PUSH_RELAY_KEY]
                          (default: the publisher's relay's)
@@ -119,6 +121,31 @@ Future<int> runCli(List<String> args, {Map<String, String>? environment}) async 
       stdout.writeln(PocketTermServer.setupLinkFor(data, publicUrl, replace: replace));
       if (replace) stderr.writeln('The previous setup link no longer works.');
       return 0;
+    case 'health':
+      final port = int.tryParse(option('port', 'POCKETTERM_PORT') ?? '47900');
+      final address = InternetAddress.tryParse(option('address', 'POCKETTERM_ADDRESS') ?? '0.0.0.0');
+      if (port == null || port < 1 || port > 65535 || address == null) {
+        stderr.writeln('--port or --address is not valid.\n\n$_usage');
+        return 64;
+      }
+      // A server listening on every address answers on loopback.
+      final host = address == InternetAddress.anyIPv4 || address == InternetAddress.anyIPv6
+          ? InternetAddress.loopbackIPv4
+          : address;
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
+      try {
+        final request = await client.get(host.address, port, '/v1/health');
+        final response = await request.close().timeout(const Duration(seconds: 3));
+        await response.drain<void>();
+        if (response.statusCode == 200) return 0;
+        stderr.writeln('GET /v1/health answered ${response.statusCode}');
+        return 1;
+      } on Object catch (e) {
+        stderr.writeln('GET /v1/health failed: $e');
+        return 1;
+      } finally {
+        client.close(force: true);
+      }
     case 'help' || '--help' || '-h':
       stdout.write(_usage);
       return 0;

@@ -520,7 +520,7 @@ class _Run {
     });
     await act('keys', () async {
       final shell = windowOf('shell');
-      await r.send(shell.key, 'echo e2e-typed');
+      await r.send(shell.key, r'echo e2e-$((6*7))');
       await r.press(shell.key, 'esc');
       await r.press(shell.key, 'up');
       await r.press(shell.key, 'down');

@@ -3,6 +3,7 @@ package com.danyzmaj.pocketterm
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -136,6 +137,17 @@ class MainActivity : FlutterActivity() {
             "channelKeys" -> result.success(
                 PocketTermShared.channelKeys(this).mapValues { Base64.encodeToString(it.value, Base64.NO_WRAP) },
             )
+            "notificationsAllowed" -> result.success(Notifications.allowed(this))
+            "openSettings" -> {
+                // PocketTerm's notification settings (Android 8+), else its app info (permissions).
+                val intent = if (args["notifications"] == true) {
+                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                } else {
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
+                }
+                runCatching { startActivity(intent) }
+                result.success(null)
+            }
             "startActivity" -> askNotifications { result.success(SessionActivities.start(this, args)) }
             "updateActivity" -> result.success(SessionActivities.update(this, args))
             "endActivity" -> {

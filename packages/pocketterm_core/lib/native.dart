@@ -35,6 +35,17 @@ class Native {
   static Future<String?> registerPush() async =>
       (await _channel.invokeMapMethod<String, Object?>('registerPush'))?['token'] as String?;
 
+  /// Phone: whether the system lets PocketTerm's notifications show now; the
+  /// person can turn them off in the phone's Settings after saying yes.
+  /// iOS's quiet (provisional) delivery counts.
+  static Future<bool> notificationsAllowed() async =>
+      await _channel.invokeMethod<bool>('notificationsAllowed') ?? false;
+
+  /// Phone: opens PocketTerm's page in the phone's Settings: its
+  /// [notifications] settings, else the app's (camera and the rest).
+  static Future<void> openSettings({bool notifications = false}) =>
+      _channel.invokeMethod('openSettings', {'notifications': notifications});
+
   /// Phone: the computers' channel keys (lib/e2e.dart), by computer id, kept
   /// where the push extension reads them too: the Keychain (App Group,
   /// this device only) on iOS, Keystore-backed storage on Android.
@@ -57,6 +68,7 @@ class Native {
 
   /// Starts one for session [key], or updates the one it has; false when
   /// Live Activities (iOS) or notifications (Android) are off for PocketTerm.
+  /// Throws [TooManyActivities] when iOS already shows as many as it allows.
   static Future<bool> startActivity({
     required String key,
     required String title,
@@ -64,16 +76,22 @@ class Native {
     required String state,
     required DateTime since,
     String? kind,
-  }) async =>
-      await _channel.invokeMethod<bool>('startActivity', {
-        'key': key,
-        'title': title,
-        'project': project,
-        'state': state,
-        'kind': ?kind,
-        'since': since.millisecondsSinceEpoch,
-      }) ??
-      false;
+  }) async {
+    try {
+      return await _channel.invokeMethod<bool>('startActivity', {
+            'key': key,
+            'title': title,
+            'project': project,
+            'state': state,
+            'kind': ?kind,
+            'since': since.millisecondsSinceEpoch,
+          }) ??
+          false;
+    } on PlatformException catch (e) {
+      if (e.code == 'too-many') throw const TooManyActivities();
+      rethrow;
+    }
+  }
 
   static Future<void> updateActivity({
     required String key,
@@ -126,4 +144,13 @@ class Native {
 
   /// Keeps the screen from dimming and locking while [on].
   static Future<void> setKeepAwake({required bool on}) => _channel.invokeMethod('setKeepAwake', {'on': on});
+}
+
+/// iOS shows only so many Live Activities at once, per app and in all: one
+/// more is refused until another ends.
+class TooManyActivities implements Exception {
+  const TooManyActivities();
+
+  @override
+  String toString() => 'Too many Live Activities';
 }

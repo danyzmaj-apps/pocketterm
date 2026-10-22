@@ -8,6 +8,7 @@ import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/live_activity.dart';
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
+import 'package:pocketterm_core/native.dart';
 
 void main() {
   LiveSummary summary({bool busy = false, LiveAsk? ask}) => LiveSummary(
@@ -95,5 +96,33 @@ void main() {
       (calls.last.method, (calls.last.arguments as Map<Object?, Object?>)['key']),
       ('endActivity', 'abcd1234/kitty-1/2'),
     );
+  });
+
+  test('one Live Activity more than iOS shows is told apart from them being off; a prompt goes all the same', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('pocketterm/native'),
+      (call) async => switch (call.method) {
+        'startActivity' => throw PlatformException(code: 'too-many'),
+        'liveActivities' => const <Object>[],
+        _ => null,
+      },
+    );
+    final dir = Directory.systemTemp.createTempSync('pocketterm_activity');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final client = PocketTermServerClient(const Backend(url: 'http://localhost:1'), tokens: MemoryDeviceTokens());
+    final remote =
+        TerminalRemote(client, dir, desktopId: 'abcd1234', key: ChannelKey(List.filled(32, 7)), send: (_, _) {})
+          ..handle('state', {
+            'windows': const <Object>[],
+            'sessions': [
+              {'key': 'kitty-1/2', 'id': 's2', 'title': 'Fix it', 'cwd': '/x/app', 'epoch': 'e', 'seq': 0},
+            ],
+          });
+    final a = LiveActivities(client, remote);
+    await pumpEventQueue();
+    await expectLater(a.follow('kitty-1/2', title: 'Fix it'), throwsA(isA<TooManyActivities>()));
+    await a.prompted('kitty-1/2', title: 'Fix it');
+    expect(a.following('kitty-1/2'), isFalse);
   });
 }

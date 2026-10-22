@@ -97,7 +97,8 @@ class LiveActivities extends ChangeNotifier {
 
   /// Starts following [key], shown as [title]; [status] if known better
   /// than the Mac's state (a prompt just sent). False: Live Activities are
-  /// off for PocketTerm, or the session isn't there.
+  /// off for PocketTerm, or the session isn't there. Throws
+  /// [TooManyActivities] when iOS shows as many as it allows.
   Future<bool> follow(String key, {required String title, ActivityStatus? status}) async {
     final s = _remote.session(key);
     if (s == null) return false;
@@ -117,12 +118,17 @@ class LiveActivities extends ChangeNotifier {
     return started;
   }
 
-  /// A prompt went to [key]: it's working now, followed from here on.
+  /// A prompt went to [key]: it's working now, followed from here on, if
+  /// the phone can show one more.
   Future<void> prompted(String key, {required String title}) async {
     _prompted[key] = DateTime.now();
     const working = (state: ActivityState.working, kind: null);
     if (!following(key)) {
-      await follow(key, title: title, status: working);
+      try {
+        await follow(key, title: title, status: working);
+      } on TooManyActivities {
+        return; // The prompt went all the same.
+      }
     } else if (_shown[key]?.status.state != ActivityState.working) {
       await _show(key, working);
     }

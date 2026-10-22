@@ -105,6 +105,17 @@ import UserNotifications
             UIApplication.shared.registerForRemoteNotifications()
           }
         }
+      case "notificationsAllowed":
+        // Provisional (quiet) delivery counts: they still arrive.
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+          let allowed = [.authorized, .provisional, .ephemeral].contains(settings.authorizationStatus)
+          DispatchQueue.main.async { result(allowed) }
+        }
+      case "openSettings":
+        let url = args["notifications"] as? Bool == true
+          ? UIApplication.openNotificationSettingsURLString : UIApplication.openSettingsURLString
+        if let url = URL(string: url) { UIApplication.shared.open(url) }
+        result(nil)
       case "startActivity":
         activities.start(args, result: result)
       case "updateActivity":
@@ -182,6 +193,9 @@ final class SessionActivities {
     do {
       watch(try Activity.request(attributes: attributes, content: content, pushType: .token))
       result(true)
+    } catch ActivityAuthorizationError.targetMaximumExceeded, ActivityAuthorizationError.globalMaximumExceeded {
+      // iOS shows only so many at once, for this app and in all.
+      result(FlutterError(code: "too-many", message: "Too many Live Activities", details: nil))
     } catch {
       NSLog("PocketTerm: Live Activity: \(error)")
       result(false)

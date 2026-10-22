@@ -206,6 +206,11 @@ Deno.test("an Android push goes to FCM as a data-only message", async () => {
     android: { priority: "high", collapse_key: "k3x9m2qa/s1", ttl: "3600s" },
   });
 
+  network(() => json({ name: "sent" }));
+  const sealedActivity = { ...followed, state: undefined, session: undefined, enc: "c2VhbGVk", desktop: "k3x9m2qa" };
+  assertEquals((await relay(post(sealedActivity))).status, 200);
+  assertEquals(JSON.parse(sent[0].body).message.data, { kind: "activity", enc: "c2VhbGVk", d: "k3x9m2qa" });
+
   network(() => json({ error: { status: "NOT_FOUND", message: "Requested entity was not found." } }, 404));
   assertEquals(
     (await relay(post({ ...android, token: "g".repeat(160) }))).status,

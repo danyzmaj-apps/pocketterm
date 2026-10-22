@@ -18,6 +18,8 @@
 //    "kind": "terminal", "enc": base64, "desktop"?: computer id, "collapse"?: string}
 //   {"platform": "android", "token": FCM registration token,
 //    "kind": "activity", "session": coding session key, "state": {as above}, "collapse"?: string}
+//   {"platform": "android", "token": FCM registration token,
+//    "kind": "activity", "enc": base64 (the state, sealed by the computer), "desktop": computer id, "collapse"?: string}
 //   → 200 sent · 410 the phone is gone (uninstalled, signed out): forget it ·
 //     429 over a rate limit (Retry-After) · 501 FCM not configured here · 4xx/5xx otherwise
 //
@@ -166,6 +168,11 @@ export function relay(config: Config): Push {
       const alert = sealedAlert(body);
       if (typeof alert === "string") return json(400, { error: alert });
       data = { kind: "terminal", ...alert };
+    } else if (body.kind === "activity" && body.enc !== undefined) {
+      // A followed session's state, sealed by the computer like an alert: the phone opens it with that computer's key.
+      const sealed = sealedAlert(body);
+      if (typeof sealed === "string") return json(400, { error: sealed });
+      data = { kind: "activity", ...sealed };
     } else if (body.kind === "activity") {
       if (typeof body.session !== "string" || !/^[\w.:/-]{1,64}$/.test(body.session)) {
         return json(400, { error: "session must be a coding session key" });
@@ -331,9 +338,9 @@ function liveActivity(body: Record<string, unknown>): { payload: string; priorit
   const now = Math.floor(Date.now() / 1000);
   const aps: Record<string, unknown> = { timestamp: now, event: body.event, "content-state": s };
   // Gone from the Lock Screen 10 minutes after it ended; otherwise stale (the
-  // phone shows it as such) after 8 hours without news.
+  // phone shows it as such) after 3 minutes without news: the server updates a live session more often.
   if (body.event === "end") aps["dismissal-date"] = now + 600;
-  else aps["stale-date"] = now + 8 * 3600;
+  else aps["stale-date"] = now + 180;
   // Apple rations priority 10; working can wait.
   return { payload: JSON.stringify({ aps }), priority: s.state === "working" ? "5" : "10" };
 }

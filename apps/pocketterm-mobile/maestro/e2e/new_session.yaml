@@ -10,7 +10,8 @@ appId: com.danyzmaj.pocketterm
     timeout: 10000
 - assertVisible: "Start omp\n.*"
 - takeScreenshot: sheet
-- tapOn: "~/.*${PROJECT}"
+# The run's projects aren't under its home, so the sheet lists their full paths.
+- tapOn: ".*/${PROJECT}"
 - extendedWaitUntil:
     visible: "Prompt omp…"
     timeout: 45000

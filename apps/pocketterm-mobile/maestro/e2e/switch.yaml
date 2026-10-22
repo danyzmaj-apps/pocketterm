@@ -34,7 +34,8 @@ appId: com.danyzmaj.pocketterm
       true: ${HOW != 'Restart and continue'}
     commands:
       - extendedWaitUntil:
-          visible: "Continue"
+          # The chip reads with its tooltip.
+          visible: "Continue(\n.*)?"
           timeout: 15000
       - assertNotVisible: ".*fake reply: continue.*"
 - takeScreenshot: conversation

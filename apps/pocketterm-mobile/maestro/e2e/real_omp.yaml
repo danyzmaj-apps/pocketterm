@@ -13,11 +13,12 @@ appId: com.danyzmaj.pocketterm
     timeout: 30000
 - takeScreenshot: before
 - tapOn: "Prompt omp…"
-- inputText: "/"
+# The real omp lists dozens of commands: typed out, /new is the first.
+- inputText: "/new"
 - extendedWaitUntil:
-    visible: "/new.*"
+    visible: "/new .+"
     timeout: 10000
-- tapOn: "/new.*"
+- tapOn: "/new .+"
 - tapOn: "Send"
 - extendedWaitUntil:
     notVisible: ".*e2e-real.*"

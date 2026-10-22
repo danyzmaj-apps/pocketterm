@@ -6,3 +6,10 @@ appId: com.danyzmaj.pocketterm
     timeout: 20000
 - tapOn: "${ROW}\n.*"
 - waitForAnimationToEnd
+# A tap while the list still moves (a row's age refreshed) can be lost.
+- runFlow:
+    when:
+      notVisible: "Back"
+    commands:
+      - tapOn: "${ROW}\n.*"
+      - waitForAnimationToEnd

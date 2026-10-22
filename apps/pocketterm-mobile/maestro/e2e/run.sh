@@ -199,7 +199,8 @@ case $PHASE in
   main)
     flow fresh fresh.yaml
     flow pair-accept pair.yaml -e LINK="$LINK" -e PUSH=accept
-    flow tips tips_home.yaml -e SESSION="$SESSION_0_RE"
+    if [ "$TERMINAL_ID" = ghostty ]; then SCREEN=no; else SCREEN=yes; fi
+    flow tips tips_home.yaml -e SESSION="$SESSION_0_RE" -e SCREEN="$SCREEN"
     flow sign-out signout.yaml
     # The tips flow turned every tip back on; a fresh install again (signed
     # out already) starts them seen, so none covers what the scenarios tap.

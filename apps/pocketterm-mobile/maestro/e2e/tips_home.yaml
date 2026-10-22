@@ -1,7 +1,7 @@
 # First-use tips, turned back on (Show tips again), come one at a time in
 # their order and only once: the list's, then a conversation's; after a
 # relaunch none comes back.
-#   env: SESSION (regex)
+#   env: SESSION (regex), SCREEN (yes: the conversation has a Screen button)
 appId: com.danyzmaj.pocketterm
 ---
 - runFlow: sub/home.yaml
@@ -49,11 +49,17 @@ appId: com.danyzmaj.pocketterm
           visible: "Follow this session in your notifications."
           timeout: 10000
 - tapOn: "Got it"
-- extendedWaitUntil:
-    visible: "See the raw terminal screen."
-    timeout: 10000
-- takeScreenshot: tip-screen
-- tapOn: "Got it"
+# No Screen button (so no tip for it) where the terminal can't share its
+# screen (Ghostty).
+- runFlow:
+    when:
+      true: ${SCREEN == 'yes'}
+    commands:
+      - extendedWaitUntil:
+          visible: "See the raw terminal screen."
+          timeout: 10000
+      - takeScreenshot: tip-screen
+      - tapOn: "Got it"
 - tapOn: "Back"
 - stopApp
 - launchApp

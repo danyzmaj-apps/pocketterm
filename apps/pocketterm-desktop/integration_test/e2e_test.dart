@@ -328,13 +328,14 @@ class _Run {
     await _open('approve', autorun: 'omp --ask');
     await _open('endme', autorun: 'omp');
     for (final w in ['chat', 'approve', 'endme']) {
-      final s = await until('${name(w)} reports in a window', () {
-        final s = app.live.sessions.where((s) => s.cwd == dir(w)).toList();
-        return s.length == 1 && s.single.window != null ? s.single : null;
-      }).catchError((Object e) async {
-        final sessions = [for (final s in app.live.sessions) '${s.cwd} window=${s.window}'];
-        throw TimeoutException('$e; sessions: $sessions; windows: ${_ws(await app.terminals.windows())}');
-      });
+      final s =
+          await until('${name(w)} reports in a window', () {
+            final s = app.live.sessions.where((s) => s.cwd == dir(w)).toList();
+            return s.length == 1 && s.single.window != null ? s.single : null;
+          }).catchError((Object e) async {
+            final sessions = [for (final s in app.live.sessions) '${s.cwd} window=${s.window}'];
+            throw TimeoutException('$e; sessions: $sessions; windows: ${_ws(await app.terminals.windows())}');
+          });
       expect(ours(s.window!), isTrue, reason: '${name(w)} placed in ${s.window}');
     }
     final windows = await app.terminals.windows();
@@ -344,7 +345,11 @@ class _Run {
     final claimed = {for (final s in app.live.sessions) s.window};
     final others = windows.where((w) => !claimed.contains(w.key)).toList();
     for (final w in ['chat', 'approve', 'endme']) {
-      expect(others.where((o) => o.cwd == dir(w)), isEmpty, reason: '${name(w)} also among Other windows: ${_ws(others)}');
+      expect(
+        others.where((o) => o.cwd == dir(w)),
+        isEmpty,
+        reason: '${name(w)} also among Other windows: ${_ws(others)}',
+      );
     }
     expect(app.unreportedAgentWindows(windows).where((w) => !w.cwd.contains(name('switch'))), isEmpty);
   }
@@ -514,12 +519,16 @@ class _Run {
       expect(prompts('chat').where((e) => '${e['text']}'.startsWith('hello from phone')).length, 1);
     });
     await report.step(
-      t == 'ghostty' ? 'phone: approval left to the computer (Ghostty has no screen to read)' : 'phone: approval answered',
+      t == 'ghostty'
+          ? 'phone: approval left to the computer (Ghostty has no screen to read)'
+          : 'phone: approval answered',
       () async {
         if (t == 'ghostty') {
           expect(log('approve').where((e) => e['event'] == 'answered'), isEmpty);
           // Answered on the computer, so the run carries on.
-          await app.terminals.pressKeys(app.live.sessions.firstWhere((s) => s.cwd == dir('approve')).window!, ['enter']);
+          await app.terminals.pressKeys(app.live.sessions.firstWhere((s) => s.cwd == dir('approve')).window!, [
+            'enter',
+          ]);
         }
         final answered = await until(
           'approval answered',
@@ -531,7 +540,8 @@ class _Run {
     await report.step('phone: keys reach the window', () async {
       final typed = await until('typed in the shell', () {
         final l = typedLog(c, name('shell'));
-        return l.contains('cmd:echo e2e-typed') &&
+        // What screen.yaml types (the shell shows e2e-42).
+        return l.contains(r'cmd:echo e2e-$((6*7))') &&
                 l.contains('key:esc') &&
                 l.any((k) => k == 'key:up' || k == 'key:down')
             ? l
@@ -584,13 +594,13 @@ class _Run {
     });
     await report.step('phone: /new starts a fresh session in place', () async {
       await until('/new in chat', () => log('chat').any((e) => e['event'] == 'new'));
+      final lastNew = log('chat').lastWhere((e) => e['event'] == 'new');
+      // By its id: the image flow prompts it again after /new.
       final s = await until('chat session renewed', () {
         final s = app.live.sessions.where((s) => s.cwd == dir('chat')).toList();
-        return s.length == 1 && s.single.log.items.isEmpty ? s.single : null;
+        return s.length == 1 && s.single.id == lastNew['session'] ? s.single : null;
       });
       expect(ours(s.window ?? ''), isTrue);
-      final lastNew = log('chat').lastWhere((e) => e['event'] == 'new');
-      expect(s.id, lastNew['session'], reason: 'the hub has the new session');
     });
     await report.step('phone: close window closes only that one', () async {
       await until('endme quit', () => log('endme').any((e) => e['event'] == 'quit'));

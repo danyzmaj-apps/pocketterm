@@ -16,23 +16,16 @@ void main() {
       }
     });
 
-    test('allows plain http only on this machine, the local network and Tailscale', () {
-      for (final url in [
-        'http://127.0.0.1:47900',
-        'http://localhost:47900',
-        'http://192.168.1.20:47900',
-        'http://mac.local:47900',
-        'http://100.64.0.1:47900',
-        'http://100.127.255.254:47900',
-        'http://mac.tail1234.ts.net:47900',
-      ]) {
+    test('allows plain http only to this machine; Tailscale and the local network need https', () {
+      for (final url in ['http://127.0.0.1:47900', 'http://localhost:47900', 'https://mac.tail1234.ts.net']) {
         expect(Backend.parse(url).backend, isNotNull, reason: url);
       }
       for (final url in [
         'http://pt.example.com',
-        'http://100.63.0.1',
-        'http://100.128.0.1',
-        'http://ts.net.example.com',
+        'http://192.168.1.20:47900',
+        'http://mac.local:47900',
+        'http://100.64.0.1:47900',
+        'http://mac.tail1234.ts.net:47900',
       ]) {
         expect(Backend.parse(url).error, isNotNull, reason: url);
       }

@@ -69,8 +69,8 @@ void main() {
     late ChannelSeal desktop;
     setUp(() {
       now = DateTime(2026, 10, 22, 12);
-      phone = ChannelSeal(key, topic, side: ChannelSide.phone, clock: clock);
-      desktop = ChannelSeal(key, topic, side: ChannelSide.desktop, clock: clock);
+      phone = ChannelSeal(key, topic, clock: clock);
+      desktop = ChannelSeal(key, topic, clock: clock);
     });
 
     test('both ways, each side reads what the other sealed, as it was', () async {
@@ -94,15 +94,92 @@ void main() {
       expect(await phone.open('state', fromDesktop), isNull);
     });
 
-    test("the computer drops a message without a phone's id: its own, sent back by the server", () async {
-      final own = await desktop.seal('hello', {'from': 'p1'});
-      expect(await desktop.open('hello', own), isNull);
-    });
-
     test('a message sealed with another computer key is dropped', () async {
-      final stranger = ChannelSeal(other, topic, side: ChannelSide.phone, clock: clock);
+      final stranger = ChannelSeal(other, topic, clock: clock);
       expect(await desktop.open('hello', await stranger.seal('hello', {'from': 'p1'})), isNull);
     });
+
+    test("a phone's command replayed to the computer's next channel (the bridge restarted) is dropped", () async {
+      final guard = ReplayGuard(clock: clock);
+      final first = ChannelSeal(key, topic, guard: guard, clock: clock);
+      final wire = await phone.seal('run', {'id': 'r1', 'op': 'send'});
+      expect(await first.open('run', wire), isNotNull);
+      now = now.add(const Duration(minutes: 1));
+      final next = ChannelSeal(key, topic, guard: guard, clock: clock);
+      expect(await next.open('run', wire), isNull);
+      expect(await next.open('run', await phone.seal('run', {'id': 'r2'})), {'id': 'r2'});
+    });
+
+    test('a message sealed before the app started is dropped, a fresh one after it goes through', () async {
+      final wire = await phone.seal('run', {'id': 'r1', 'op': 'send'});
+      now = now.add(const Duration(seconds: 30));
+      final restarted = ChannelSeal(key, topic, clock: clock);
+      expect(await restarted.open('run', wire), isNull);
+      expect(await restarted.open('run', await phone.seal('run', {'id': 'r2'})), {'id': 'r2'});
+    });
+
+    test("the phone drops the computer's messages replayed or out of order", () async {
+      final first = await desktop.seal('screen', {'n': 1});
+      final second = await desktop.seal('screen', {'n': 2});
+      final third = await desktop.seal('ran', {'id': 'r1'});
+      expect(await phone.open('screen', second), {'n': 2});
+      expect(await phone.open('screen', first), isNull, reason: 'older than one already taken');
+      expect(await phone.open('screen', second), isNull, reason: 'replayed');
+      expect(await phone.open('ran', third), {'id': 'r1'});
+      expect(await phone.open('ran', third), isNull);
+    });
+
+    test('a sender that starts again (new epoch) goes through; its old messages still do not', () async {
+      final guard = ReplayGuard(clock: clock);
+      final computer = ChannelSeal(key, topic, guard: guard, clock: clock);
+      final old = await phone.seal('run', {'id': 'r1'});
+      expect(await computer.open('run', old), isNotNull);
+      final relaunched = ChannelSeal(key, topic, clock: clock);
+      expect(await computer.open('hello', await relaunched.seal('hello', {'from': 'p1'})), {'from': 'p1'});
+      expect(await computer.open('run', await relaunched.seal('run', {'id': 'r2'})), {'id': 'r2'});
+      expect(await computer.open('run', old), isNull);
+      expect(await computer.open('run', await phone.seal('run', {'id': 'r3'})), {'id': 'r3'});
+    });
+
+    test('a message without its epoch and count is dropped', () async {
+      final env = await sealEnvelope(key, {
+        'id': 'r1',
+        'ts': now.millisecondsSinceEpoch,
+        'mid': newMessageId(),
+      }, channelAad(topic, 'run'));
+      expect(await desktop.open('run', env), isNull);
+    });
+
+    test('epochs past the limit are forgotten oldest first; the newest still refuse a replay', () async {
+      final guard = ReplayGuard(clock: clock, maxEpochs: 2);
+      Map<String, dynamic> msg(String ep, int seq) => {
+        'ts': now.millisecondsSinceEpoch,
+        'mid': newMessageId(),
+        'ep': ep,
+        'seq': seq,
+      };
+      for (final ep in ['a', 'b', 'c']) {
+        expect(guard.check(msg(ep, 5)), isNull);
+      }
+      expect(guard.check(msg('c', 5)), 'order');
+      expect(guard.check(msg('b', 4)), 'order');
+      expect(guard.check(msg('a', 1)), isNull, reason: 'forgotten');
+    });
+  });
+
+  test("a sealed push opens for that computer's phones, with a time and an id inside", () async {
+    final before = DateTime.now().millisecondsSinceEpoch;
+    final a = await sealNotice(key, topic, {'title': 'Claude', 'body': 'Needs approval'});
+    final b = await sealNotice(key, topic, {'title': 'Claude', 'body': 'Needs approval'});
+    final opened = jsonDecode(utf8.decode((await openBytes(key, base64Decode(a), pushAad(topic)))!)) as Map;
+    final again = jsonDecode(utf8.decode((await openBytes(key, base64Decode(b), pushAad(topic)))!)) as Map;
+    expect(opened['title'], 'Claude');
+    expect(opened['ts'] as int, greaterThanOrEqualTo(before));
+    expect(opened['id'], isNot(again['id']));
+    expect(await openBytes(key, base64Decode(a), pushAad('zzzz9999')), isNull);
+    final activity = await sealActivity(key, topic, {'session': 's1', 'state': 'working'});
+    expect(await openBytes(key, base64Decode(activity), pushAad(topic)), isNull);
+    expect(await openBytes(key, base64Decode(activity), activityAad(topic)), isNotNull);
   });
 
   test('a key reads back from both of its spellings; anything else is no key', () {

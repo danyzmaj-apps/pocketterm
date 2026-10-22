@@ -9,43 +9,42 @@ import 'package:pocketterm_core/server_client.dart';
 /// Receives one message, opened: its fields as the sender gave them.
 typedef TopicHandler = void Function(Map<String, dynamic> payload);
 
-/// Which end of a computer's topic this is.
-enum ChannelSide {
-  /// The computer: the phones' messages must carry a `mid` it hasn't seen.
-  desktop,
-
-  /// A phone: its messages carry a `mid`.
-  phone,
-}
-
 /// Seals what goes out on [topic] with the computer's [key] and opens what
-/// comes in (lib/e2e.dart): each message gets a `ts`, a phone's a `mid`
-/// too; a message that doesn't open, is more than 5 minutes off, or (on the
-/// computer) was seen before, is dropped and logged once per kind.
+/// comes in (lib/e2e.dart). Each message gets a `ts`, a random `mid`, this
+/// seal's `ep` (random, new for each seal: each start of a sender) and
+/// `seq` (1, 2, 3 …). What doesn't open or the [ReplayGuard] refuses
+/// (stale, seen before, out of order) is dropped and logged once per kind.
+/// The guard is the computer's for this run of the app
+/// ([ReplayGuard.of]) unless one is given (`guard`, or a fresh one on a
+/// test `clock`).
 class ChannelSeal {
-  ChannelSeal(this.key, this.topic, {required this.side, this.name = 'channel', DateTime Function()? clock})
+  ChannelSeal(this.key, this.topic, {this.name = 'channel', ReplayGuard? guard, DateTime Function()? clock})
     : _clock = clock ?? DateTime.now,
-      _guard = ReplayGuard(requireMid: side == ChannelSide.desktop, clock: clock);
+      _guard = guard ?? (clock == null ? ReplayGuard.of(topic) : ReplayGuard(clock: clock));
 
   final ChannelKey key;
   final String topic;
-  final ChannelSide side;
 
   /// Who this is, in the log.
   final String name;
   final DateTime Function() _clock;
   final ReplayGuard _guard;
   final _logged = <String>{};
+  final String _epoch = newMessageId();
+  int _seq = 0;
 
-  /// [payload] of [event], as it goes on the topic.
+  /// [payload] of [event], as it goes on the topic. Seal in the order sent:
+  /// a receiver drops a `seq` below one it already took.
   Future<Map<String, dynamic>> seal(String event, Map<String, dynamic> payload) => sealEnvelope(key, {
     ...payload,
     'ts': _clock().millisecondsSinceEpoch,
-    if (side == ChannelSide.phone) 'mid': newMessageId(),
+    'mid': newMessageId(),
+    'ep': _epoch,
+    'seq': ++_seq,
   }, channelAad(topic, event));
 
-  /// What [wire] (an [event] off the topic) says, without its `ts` and
-  /// `mid`; null when it's dropped.
+  /// What [wire] (an [event] off the topic) says, without `ts`, `mid`, `ep`
+  /// and `seq`; null when it's dropped.
   Future<Map<String, dynamic>?> open(String event, Map<String, dynamic> wire) async {
     final (:message, :drop) = await openEnvelope(key, wire, channelAad(topic, event));
     final why = drop ?? _guard.check(message!);
@@ -55,7 +54,9 @@ class ChannelSeal {
     }
     return message!
       ..remove('ts')
-      ..remove('mid');
+      ..remove('mid')
+      ..remove('ep')
+      ..remove('seq');
   }
 }
 
@@ -76,10 +77,9 @@ class TerminalChannel {
     this.topic,
     this._handlers, {
     required ChannelKey key,
-    required ChannelSide side,
     required this.name,
     this.onJoined,
-  }) : _seal = ChannelSeal(key, topic, side: side, name: name);
+  }) : _seal = ChannelSeal(key, topic, name: name);
 
   final PocketTermServerClient _server;
 

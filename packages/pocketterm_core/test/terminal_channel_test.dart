@@ -91,7 +91,7 @@ void main() {
   final key = ChannelKey(List.filled(32, 3));
 
   /// The computer's side of the topic, sealing what [_FakeServer.deliver] relays.
-  final computer = ChannelSeal(key, _topic, side: ChannelSide.desktop);
+  final computer = ChannelSeal(key, _topic);
 
   Future<void> setUpServer({int refuse = 0}) async {
     server = _FakeServer(refuse: refuse);
@@ -113,7 +113,6 @@ void main() {
       _topic,
       {'state': received.add},
       key: key,
-      side: ChannelSide.phone,
       name: 'test',
       onJoined: ({required joined}) => states.add(joined),
     );

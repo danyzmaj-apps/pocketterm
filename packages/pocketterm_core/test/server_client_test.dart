@@ -56,22 +56,8 @@ void main() {
     final key = ChannelKey.generate();
     final atMac = <Map<String, dynamic>>[];
     final atPhone = <Map<String, dynamic>>[];
-    final desk = TerminalChannel(
-      mac,
-      'abcd1234',
-      {'hello': atMac.add},
-      key: key,
-      side: ChannelSide.desktop,
-      name: 'mac',
-    );
-    final remote = TerminalChannel(
-      phone,
-      'abcd1234',
-      {'state': atPhone.add},
-      key: key,
-      side: ChannelSide.phone,
-      name: 'phone',
-    );
+    final desk = TerminalChannel(mac, 'abcd1234', {'hello': atMac.add}, key: key, name: 'mac');
+    final remote = TerminalChannel(phone, 'abcd1234', {'state': atPhone.add}, key: key, name: 'phone');
     // Someone on the same server without the key hears nothing it can open.
     final stranger = <Map<String, dynamic>>[];
     final other = TerminalChannel(
@@ -79,7 +65,6 @@ void main() {
       'abcd1234',
       {'hello': stranger.add, 'state': stranger.add},
       key: ChannelKey.generate(),
-      side: ChannelSide.desktop,
       name: 'stranger',
     );
     addTearDown(() async {

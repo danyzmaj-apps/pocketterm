@@ -85,7 +85,6 @@ class TerminalBridge {
     _desktopId,
     {'hello': _onHello, 'sync': _onSync, 'run': (m) => unawaited(_onRun(m))},
     key: _key,
-    side: ChannelSide.desktop,
     name: 'terminal bridge',
   );
   Timer? _tick;

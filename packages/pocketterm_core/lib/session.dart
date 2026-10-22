@@ -82,7 +82,7 @@ abstract class Session extends ChangeNotifier {
       onLinkToConfirm();
       return;
     }
-    unawaited(connectLink(uri, external: true));
+    unawaited(connectLink(uri));
   }
 
   /// A setup link to another server, waiting for [answerLink].
@@ -104,21 +104,24 @@ abstract class Session extends ChangeNotifier {
   /// A setup link: connects to its server and signs in with what it carries
   /// (a computer: the server's setup token; a phone: a computer's pairing
   /// code). A computer key in it ([Backend.computerKey]) goes to
-  /// [addComputerKey], also when already signed in (a phone scanning one
-  /// more computer). Problems land in [authError]. An [external] link
-  /// (opened from outside the app) doesn't replace a key this device already
-  /// holds for that computer: anyone can send a link.
-  Future<void> connectLink(Uri uri, {bool external = false}) async {
+  /// [addComputerKey] only when the link was [scanned] with the in-app
+  /// scanner, also when already signed in (a phone scanning one more
+  /// computer): anyone can send a link from outside the app, and a key it
+  /// planted would let them read that computer's sessions. Problems land in
+  /// [authError].
+  Future<void> connectLink(Uri uri, {bool scanned = false}) async {
     final backend = Backend.fromLink(uri);
     if (backend == null) return;
     final phone = role == DeviceRole.phone;
     final secret = phone ? Backend.pairingCode(uri) : Backend.setupToken(uri);
-    final computer = Backend.computerKey(uri);
+    final computer = scanned ? Backend.computerKey(uri) : null;
     if (user != null) {
       if (backend != this.backend) {
         authError = 'Sign out before switching to ${backend.host}.';
       } else if (computer != null) {
-        await addComputerKey(computer, replace: !external);
+        await addComputerKey(computer);
+      } else if (phone && Backend.computerKey(uri) != null) {
+        authError = "To connect to a computer, scan its code with PocketTerm's scanner.";
       }
       notifyListeners();
       return;
@@ -148,7 +151,7 @@ abstract class Session extends ChangeNotifier {
           ? await s.redeemCode(secret, label: device, platform: platform)
           : await s.redeemSetup(secret, label: device, platform: platform);
       // Before the sign-in lands, so the computer shows unlocked at once.
-      if (computer != null) await addComputerKey(computer, replace: true);
+      if (computer != null) await addComputerKey(computer);
       _setUser(account);
       return;
     } on ServerException catch (e) {
@@ -167,10 +170,10 @@ abstract class Session extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// A computer's key from a setup link: the phone keeps it. [replace]: also
-  /// over a different one it holds for that computer.
+  /// A computer's key from a scanned setup link: the phone keeps it, over
+  /// any it held for that computer.
   @protected
-  Future<void> addComputerKey(ComputerKey computer, {required bool replace}) async {}
+  Future<void> addComputerKey(ComputerKey computer) async {}
 
   /// This computer and its key, for the setup link a phone scans; null where
   /// there's none (a phone).

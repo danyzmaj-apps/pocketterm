@@ -28,7 +28,7 @@ class _Device extends Session {
   DeviceTokens get deviceTokens => tokens;
 
   @override
-  Future<void> addComputerKey(ComputerKey computer, {required bool replace}) async => keys.add(computer);
+  Future<void> addComputerKey(ComputerKey computer) async => keys.add(computer);
 
   @override
   Future<ComputerKey?> pairingComputer() async => computer;
@@ -38,9 +38,13 @@ class _Device extends Session {
 class _LinkSession extends _Device {
   _LinkSession() : super('iPhone', phone: true);
   final connected = <Uri>[];
+  final scans = <bool>[];
 
   @override
-  Future<void> connectLink(Uri uri, {bool external = false}) async => connected.add(uri);
+  Future<void> connectLink(Uri uri, {bool scanned = false}) async {
+    connected.add(uri);
+    scans.add(scanned);
+  }
 }
 
 void main() {
@@ -66,7 +70,7 @@ void main() {
 
     final phone = _Device('iPhone', phone: true);
     addTearDown(phone.disconnect);
-    await phone.connectLink(await mac.pairingLink());
+    await phone.connectLink(await mac.pairingLink(), scanned: true);
     expect(phone.authError, isNull);
     expect(phone.user?.device.role, DeviceRole.phone);
     expect(phone.user?.id, mac.user?.id, reason: 'the same server');
@@ -83,6 +87,23 @@ void main() {
     await third.connectLink(link);
     expect(third.user, isNull);
     expect(third.authError, contains('used'));
+  });
+
+  test("a link not from the scanner signs a phone in but never gives it a computer's key", () async {
+    final phone = _Device('iPhone', phone: true);
+    addTearDown(phone.disconnect);
+    await phone.connectLink(await mac.pairingLink());
+    expect(phone.user, isNotNull);
+    expect(phone.keys, isEmpty, reason: 'signed out: the sign-in goes ahead, the key does not');
+
+    final planted = (desktop: 'zzzz9999', key: ChannelKey.generate());
+    final link = mac.backend!.linkWithCode('ABCD-1234', computer: planted);
+    await phone.connectLink(link);
+    expect(phone.keys, isEmpty, reason: 'signed in: still no key');
+    expect(phone.authError, isNotNull);
+
+    await phone.connectLink(link, scanned: true);
+    expect(phone.keys, [planted]);
   });
 
   test('a link without what this device signs in with says so, and a phone never takes a setup token', () async {
@@ -159,11 +180,12 @@ void main() {
       expect(session.linkToConfirm, isNull);
     });
 
-    test("goes ahead for the device's own server: the computer's code scanned with the camera", () {
+    test("goes ahead for the device's own server, never as a scan: the computer's code from the camera", () {
       final session = _LinkSession();
       final link = mine.linkWithCode('ABCD-1234');
       session.openedLink(link, mine);
       expect(session.connected, [link]);
+      expect(session.scans, [false]);
       expect(session.linkToConfirm, isNull);
     });
   });

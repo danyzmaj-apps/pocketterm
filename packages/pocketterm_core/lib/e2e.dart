@@ -69,6 +69,10 @@ String imageAad(String path) => 'pocketterm/v1|image|$path';
 /// The additional data of a push from computer [desktopId].
 String pushAad(String desktopId) => 'pocketterm/v1|push|$desktopId';
 
+/// The additional data of a followed session's update (Android) from
+/// computer [desktopId].
+String activityAad(String desktopId) => 'pocketterm/v1|activity|$desktopId';
+
 const _nonceLength = 12;
 const _tagLength = 16;
 
@@ -147,33 +151,100 @@ String newMessageId() {
   return base64UrlEncode([for (var i = 0; i < 12; i++) r.nextInt(256)]);
 }
 
-/// Drops opened messages that are stale or seen before: a `ts` (ms since
-/// epoch) more than [window] off this clock, and, where [requireMid], a
-/// missing `mid` or one seen in the last [remember].
+/// Drops opened live channel messages that are stale, seen before or out
+/// of order. Every message carries `ts` (ms since epoch), `mid` (a random
+/// id), `ep` (its sender's epoch: random, new each time a sender starts)
+/// and `seq` (that sender's count, from 1). Dropped: a `ts` more than
+/// [window] off this clock or before [notBefore] (sent before this guard
+/// existed, so before this app started: nothing here remembers it), a
+/// `mid` seen in the last [remember], and a `seq` at or below the last one
+/// taken for its `ep`. Memory stays bounded: epochs and ids go after
+/// [remember] unseen, and past [maxEpochs] / [maxIds] the oldest go first
+/// (a message that old is out of [window] by then anyway, or caught by the
+/// other check).
 class ReplayGuard {
   ReplayGuard({
-    this.requireMid = false,
     this.window = const Duration(minutes: 5),
     this.remember = const Duration(minutes: 10),
+    this.maxEpochs = 64,
+    this.maxIds = 10000,
     DateTime Function()? clock,
-  }) : _clock = clock ?? DateTime.now;
+  }) : _clock = clock ?? DateTime.now,
+       notBefore = (clock ?? DateTime.now)();
 
-  final bool requireMid;
+  /// One guard per computer ([topic], its id) for this whole run of the
+  /// app: it outlives each channel, so a channel made again (the bridge
+  /// restarted, another sign-in) still knows what it took.
+  static ReplayGuard of(String topic) => _byTopic.putIfAbsent(topic, ReplayGuard.new);
+  static final _byTopic = <String, ReplayGuard>{};
+
   final Duration window;
-  final Duration remember;
-  final DateTime Function() _clock;
-  final _seen = <String, DateTime>{};
 
-  /// Null when [message] may go on, else why not: `time` or `replay`.
+  /// How long an id or an epoch is kept after it was last seen; at least
+  /// twice [window], so a message taken once can't come back in time.
+  final Duration remember;
+  final int maxEpochs;
+  final int maxIds;
+
+  /// When this guard started: messages from before it are dropped.
+  final DateTime notBefore;
+  final DateTime Function() _clock;
+
+  // Both in the order last seen, oldest first.
+  final _ids = <String, DateTime>{};
+  final _epochs = <String, ({int seq, DateTime at})>{};
+
+  /// Null when [message] may go on (and it is remembered), else why not:
+  /// `time`, `replay` or `order`.
   String? check(Map<String, dynamic> message) {
     final now = _clock();
     final ts = message['ts'];
-    if (ts is! int || (now.millisecondsSinceEpoch - ts).abs() > window.inMilliseconds) return 'time';
-    _seen.removeWhere((_, at) => now.difference(at) > remember);
+    if (ts is! int ||
+        (now.millisecondsSinceEpoch - ts).abs() > window.inMilliseconds ||
+        ts < notBefore.millisecondsSinceEpoch) {
+      return 'time';
+    }
     final mid = message['mid'];
-    if (mid is! String || mid.isEmpty) return requireMid ? 'replay' : null;
-    if (_seen.containsKey(mid)) return 'replay';
-    _seen[mid] = now;
+    final ep = message['ep'];
+    final seq = message['seq'];
+    if (mid is! String || mid.isEmpty || ep is! String || ep.isEmpty || seq is! int || seq < 1) return 'replay';
+    _ids.removeWhere((_, at) => now.difference(at) > remember);
+    _epochs.removeWhere((_, e) => now.difference(e.at) > remember);
+    if (_ids.containsKey(mid)) return 'replay';
+    final last = _epochs.remove(ep);
+    if (last != null && seq <= last.seq) {
+      _epochs[ep] = last;
+      return 'order';
+    }
+    _epochs[ep] = (seq: seq, at: now);
+    _ids[mid] = now;
+    while (_epochs.length > maxEpochs) {
+      _epochs.remove(_epochs.keys.first);
+    }
+    while (_ids.length > maxIds) {
+      _ids.remove(_ids.keys.first);
+    }
     return null;
   }
 }
+
+/// A push [notice] (`{title, body, session?, state?}`) from computer
+/// [desktopId], sealed with its [key] for the phones (AAD [pushAad]), in
+/// base64: the `enc` the server forwards. Inside it gains `ts` (ms since
+/// epoch) and `id` (random), so a phone can refuse an old or repeated one.
+Future<String> sealNotice(ChannelKey key, String desktopId, Map<String, Object?> notice) =>
+    _sealPush(key, notice, pushAad(desktopId));
+
+/// A followed session's [activity] (`{session, state, since, kind?}`) from
+/// computer [desktopId] for Android phones, sealed like [sealNotice] (also
+/// with `ts` and `id` inside) but for [activityAad].
+Future<String> sealActivity(ChannelKey key, String desktopId, Map<String, Object?> activity) =>
+    _sealPush(key, activity, activityAad(desktopId));
+
+Future<String> _sealPush(ChannelKey key, Map<String, Object?> body, String aad) async => base64Encode(
+  await sealBytes(
+    key,
+    utf8.encode(jsonEncode({...body, 'ts': DateTime.now().millisecondsSinceEpoch, 'id': newMessageId()})),
+    aad,
+  ),
+);

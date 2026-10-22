@@ -23,7 +23,7 @@ class Backend {
   const Backend({required this.url});
 
   /// The server's public URL, `https://pocketterm.example.com` or
-  /// `http://100.101.102.103:47900`, without a trailing slash.
+  /// `https://my-mac.tail1234.ts.net`, without a trailing slash.
   final String url;
 
   /// [url] as typed, or a reason it can't be used.
@@ -38,11 +38,8 @@ class Backend {
     if (u.isEmpty || uri == null || !uri.hasScheme || uri.host.isEmpty) {
       return (backend: null, error: 'Enter your server URL, like https://pocketterm.example.com.');
     }
-    if (uri.scheme != 'https' && !(uri.scheme == 'http' && _isLocal(uri.host))) {
-      return (
-        backend: null,
-        error: 'The server URL must start with https:// (http:// only on this network or through Tailscale).',
-      );
+    if (uri.scheme != 'https' && !(uri.scheme == 'http' && _isThisMachine(uri.host))) {
+      return (backend: null, error: 'The server URL must start with https://.');
     }
     if (uri.path.isNotEmpty || uri.hasQuery || uri.hasFragment) {
       return (backend: null, error: 'Use the server URL alone, without a path.');
@@ -101,14 +98,11 @@ class Backend {
   /// The host, for display.
   String get host => Uri.parse(url).host;
 
-  /// Plain http is fine on this machine, the local network and Tailscale
-  /// (100.64.0.0/10, MagicDNS names under ts.net), which encrypts it.
-  static bool _isLocal(String host) =>
-      host == 'localhost' ||
-      host.endsWith('.local') ||
-      host.endsWith('.ts.net') ||
-      RegExp(r'^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)')
-          .hasMatch(host);
+  /// Plain http only to this machine (a computer reaching the server built
+  /// into it); everything else, Tailscale included (`tailscale serve` gives
+  /// it a ts.net certificate), needs https.
+  static bool _isThisMachine(String host) =>
+      host == 'localhost' || host == '::1' || host == '[::1]' || RegExp(r'^127\.').hasMatch(host);
 
   /// The protocol version this app speaks (GET /v1/health).
   static const protocol = 1;

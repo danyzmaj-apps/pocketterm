@@ -119,7 +119,6 @@ class TerminalRemote extends ChangeNotifier {
       for (final event in const ['state', 'items', 'live', 'screen', 'ran']) event: (p) => _receive(event, p),
     },
     key: key,
-    side: ChannelSide.phone,
     name: 'terminal remote',
     onJoined: ({required joined}) {
       // Ops may have gone by while away.

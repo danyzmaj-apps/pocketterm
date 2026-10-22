@@ -111,6 +111,19 @@ class FakeApp extends AppController {
   @override
   Future<List<Device>> serverDevices() async => real ? await super.serverDevices() : devices;
 
+  /// The devices signed out from Settings, unless [real].
+  final revoked = <String>[];
+
+  @override
+  Future<void> revokeServerDevice(String id) async {
+    if (real) return await super.revokeServerDevice(id);
+    revoked.add(id);
+    devices = [
+      for (final d in devices)
+        if (d.id != id) d,
+    ];
+  }
+
   /// What went to the server's push, in order: the action and its body.
   final pushes = <Map<String, Object>>[];
 

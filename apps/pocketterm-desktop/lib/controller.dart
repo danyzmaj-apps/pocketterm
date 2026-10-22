@@ -538,6 +538,10 @@ class AppController extends Session {
   /// Every computer and phone signed in to the server.
   Future<List<Device>> serverDevices() => server!.devices();
 
+  /// Signs device [id] out of the server (a lost phone): its sign-in stops
+  /// working and its push registrations go.
+  Future<void> revokeServerDevice(String id) => server!.revokeDevice(id);
+
   /// Signing out of a server this computer runs stops it, and the
   /// first-run setup shows again. Its data stays: This computer starts it
   /// again with the same phones and computers.

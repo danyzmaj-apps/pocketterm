@@ -60,7 +60,7 @@ The computer has to be awake, with PocketTerm running and **Terminal from phone*
 - **iPhone Lock Screen.** Apple delivers Live Activity updates unencrypted, so a followed session's state (working, needs you, finished) is visible to Apple, the relay and your server. It never carries text, names, folders or ids.
 - **Tailscale** (On this computer) sees device metadata: which of your devices connect and when, not what they send.
 - **No keys from links.** Only the in-app scanner adds a key; a link opened from outside the app never can.
-- **Reset key.** **Settings → Phone → Reset key** makes a new key: a lost phone is locked out, and your other phones scan again.
+- **Reset key.** **Settings → Phone → Reset key** makes a new key: a lost phone can no longer read your sessions, and your other phones scan again. **Settings → Account** lists the phones signed in to your server; **Sign out…** next to a lost one ends its sign-in, so it can no longer reach your server or get notifications.
 
 Full model: [SECURITY.md](SECURITY.md). What the publisher collects: the [privacy policy](https://www.danyzmaj.com/pocketterm/privacy/).
 

@@ -54,6 +54,7 @@ A device token is 32 random bytes; the server keeps only its SHA-256. It works u
 - **The QR code carries the key.** The same QR code holds the server address, the pairing code and the computer's id and channel key, so it is a secret; the app says so where it shows it. A phone keeps one key per computer and shows a computer it holds no key for as locked.
 - **No keys from links.** Only the in-app scanner adds a key. A link opened from outside the app never does, and one that would sign a signed-out device in to another server waits for the person to confirm.
 - **Reset key** (computer's **Settings → Phone**) makes a new key. Every phone must scan again; a lost phone's key opens nothing new.
+- **Sign out a phone** (computer's **Settings → Account**, **Sign out…** next to the phone) revokes its device token (`DELETE /v1/devices/:id`): it can no longer list the computers, upload or get pushes. For a lost phone, do both.
 - **Leaving.** **Sign out** on a computer and **Leave this server** on a phone end that device's sign-in and delete its keys. **Erase this server's data** signs every device out and deletes what the server keeps.
 
 ## Encryption and replay protection

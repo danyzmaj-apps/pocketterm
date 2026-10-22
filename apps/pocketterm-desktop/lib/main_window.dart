@@ -578,8 +578,9 @@ class _SettingsPageState extends State<SettingsPage> {
             title: const Text('Reset this computer’s key?'),
             content: const Text(
               'Your phones read this computer’s sessions with a key from its code. A new key locks out every phone '
-              'that has the old one, including a lost one. Each phone you keep must scan this computer’s code again: '
-              'Add a phone….',
+              'that has the old one, including a lost one. Each phone you keep must scan this computer’s code again '
+              '(Settings → Phone → Add a phone…). To keep a lost phone off your server too, sign it out under '
+              'Settings → Account.',
             ),
             actions: [
               TextButton(onPressed: () => Navigator.of(dialog).pop(false), child: const Text('Cancel')),
@@ -865,6 +866,8 @@ class _SettingsPageState extends State<SettingsPage> {
             if (_devices case final d?) _devicesLine(d),
           ].join(' · '),
           body: [
+            for (final d in _devices ?? const <Device>[])
+              if (d.role == DeviceRole.phone) _phoneRow(d),
             if (hosting != null) ...[
               HostingStatusView(server: hosting),
               if (hosting.state == HostState.ready)
@@ -949,6 +952,42 @@ class _SettingsPageState extends State<SettingsPage> {
   static String _devicesLine(List<Device> devices) {
     final phones = devices.where((d) => d.role == DeviceRole.phone).length;
     return '${_count(devices.length - phones, 'computer')}, ${_count(phones, 'phone')}';
+  }
+
+  /// A phone signed in to the server, with Sign out (a lost one).
+  Widget _phoneRow(Device d) {
+    final name = d.label.isEmpty ? 'Phone' : d.label;
+    return Row(
+      key: ValueKey('settings-phone-${d.id}'),
+      children: [
+        Expanded(child: Text(name, style: _subStyle(C.dim))),
+        _button(
+          'Sign out…',
+          () => unawaited(_signOutPhone(d, name)),
+          danger: true,
+          key: ValueKey('settings-phone-sign-out-${d.id}'),
+        ),
+      ],
+    );
+  }
+
+  /// Signs [d] out of the server, asked first.
+  Future<void> _signOutPhone(Device d, String name) async {
+    final go = await confirmDanger(
+      context,
+      title: 'Sign out $name?',
+      body:
+          'It can no longer reach your server or get its notifications. To use it again, scan this computer’s '
+          'code on it (Settings → Phone → Add a phone…).',
+      action: 'Sign out',
+    );
+    if (!go) return;
+    try {
+      await app.revokeServerDevice(d.id);
+    } on Object catch (e) {
+      if (mounted) Toaster.of(context).show('Not signed out: $e');
+    }
+    await _checkDevices();
   }
 
   /// Signing out of a server this computer runs stops it: asked first.

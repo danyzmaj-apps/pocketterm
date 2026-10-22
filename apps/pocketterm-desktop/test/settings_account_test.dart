@@ -66,6 +66,36 @@ void main() {
     expect(find.text('Lock Screen updates (iPhone)'), findsOneWidget);
   });
 
+  testWidgets('a lost phone is signed out of the server from its row, asked first', (tester) async {
+    final app = await FakeApp.create(integrations: FakeApp.noAgents(dir.path))
+      ..devices = const [
+        Device(id: 'd1', role: DeviceRole.desktop, label: 'Mac', platform: 'macos'),
+        Device(id: 'p1', role: DeviceRole.phone, label: 'iPhone', platform: 'ios'),
+        Device(id: 'p2', role: DeviceRole.phone, label: 'Pixel', platform: 'android'),
+      ];
+    await pumpAccount(tester, app);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('settings-phone-p1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('settings-phone-p2')), findsOneWidget);
+    expect(find.byKey(const ValueKey('settings-phone-d1')), findsNothing, reason: 'computers have no row');
+
+    final signOut = find.byKey(const ValueKey('settings-phone-sign-out-p1'));
+    await tester.tap(signOut);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(app.revoked, isEmpty);
+
+    await tester.tap(signOut);
+    await tester.pumpAndSettle();
+    expect(find.text('Sign out iPhone?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Sign out').last);
+    await tester.pumpAndSettle();
+    expect(app.revoked, ['p1']);
+    expect(find.byKey(const ValueKey('settings-phone-p1')), findsNothing);
+    expect(find.text('pt.example.com · 1 computer, 1 phone'), findsOneWidget);
+  });
+
   testWidgets('a computer that runs the server: HTTPS to turn on, then Add a computer, Erase, and Sign out stops it', (
     tester,
   ) async {

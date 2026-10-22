@@ -56,31 +56,43 @@ class Reveal extends StatelessWidget {
 
 /// A sheet in the app's one style: radius 28 on top, the raised surface,
 /// clear of the notch, a grab handle on top. What [builder] shows starts
-/// [sheetTop] below the handle.
-Future<T?> showAppSheet<T>(BuildContext context, {required WidgetBuilder builder, bool isScrollControlled = false}) =>
-    showModalBottomSheet<T>(
-      context: context,
-      isScrollControlled: isScrollControlled,
-      useSafeArea: true,
-      backgroundColor: isIos ? M.container : M.containerHigh,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(sheetRadius))),
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(
-            height: 20,
-            child: Center(
-              child: DecoratedBox(
-                decoration: BoxDecoration(color: C.line2, borderRadius: BorderRadius.all(Radius.circular(2))),
-                child: SizedBox(width: 36, height: 4),
-              ),
-            ),
-          ),
-          Flexible(child: builder(context)),
-        ],
-      ),
-    );
+/// [sheetTop] below the handle. Not [dismissible], only its own buttons
+/// close it (no handle then).
+Future<T?> showAppSheet<T>(
+  BuildContext context, {
+  required WidgetBuilder builder,
+  bool isScrollControlled = false,
+  bool dismissible = true,
+}) => showModalBottomSheet<T>(
+  context: context,
+  isScrollControlled: isScrollControlled,
+  isDismissible: dismissible,
+  enableDrag: dismissible,
+  useSafeArea: true,
+  backgroundColor: isIos ? M.container : M.containerHigh,
+  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(sheetRadius))),
+  builder: (context) => PopScope(
+    canPop: dismissible,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 20,
+          child: dismissible
+              ? const Center(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(color: C.line2, borderRadius: BorderRadius.all(Radius.circular(2))),
+                    child: SizedBox(width: 36, height: 4),
+                  ),
+                )
+              : null,
+        ),
+        Flexible(child: builder(context)),
+      ],
+    ),
+  ),
+);
 
 /// Once a sheet, dialog or menu has gone, the page under it says again where
 /// its parts are. Flutter (3.47) drops the semantics geometry of what moved

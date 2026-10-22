@@ -71,15 +71,16 @@ void main() {
     });
   }
 
-  /// The app, signed in, its tips not yet seen (unless [fresh] is false: the same phone's prefs as before).
-  Future<void> app(WidgetTester tester, {bool fresh = true}) async {
+  /// The app, signed in, its tips not yet seen (unless [fresh] is false: the same phone's prefs as before); with
+  /// [asked] false, the first-use question not answered yet. [push] null: the notifications question still to come.
+  Future<void> app(WidgetTester tester, {bool fresh = true, bool asked = true, bool? push = false}) async {
     tester.view
       ..physicalSize = const Size(1179, 2556)
       ..devicePixelRatio = 3;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MobileApp(
-        session: await FakeSession.create(tips: true, fresh: fresh),
+        session: await FakeSession.create(tips: true, asked: asked, fresh: fresh, push: push),
         desktops: Desktops(
           client,
           cached: [Desktop(id: 'abcd1234', name: 'MacBook Pro', platform: 'macos', seenAt: DateTime.now())],
@@ -160,6 +161,75 @@ void main() {
     remote.flush();
   });
 
+  final question = find.text('New here?');
+
+  testWidgets('the first time on the list it asks first; Show me starts the tips, and it asks only once', (
+    tester,
+  ) async {
+    state();
+    await app(tester, asked: false);
+    await settle(tester);
+    expect(question, findsOneWidget);
+    expect(find.text('Want a quick tour? A few tips point out what you can tap, one at a time.'), findsOneWidget);
+    expect(anyTip, findsNothing, reason: 'no tip before the answer');
+
+    await tester.tap(find.text('Show me'));
+    await tester.pumpAndSettle();
+    await settle(tester);
+    expect(question, findsNothing);
+    expect(tip('project-heading'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await app(tester, fresh: false);
+    await settle(tester);
+    expect(question, findsNothing);
+    expect(tip('project-heading'), findsOneWidget, reason: 'the tour goes on where it was');
+    remote.flush();
+  });
+
+  testWidgets('No thanks: no tips now or after a restart, and Show tips again brings them without asking', (
+    tester,
+  ) async {
+    state();
+    await app(tester, asked: false);
+    await settle(tester);
+    await tester.tap(find.text('No thanks'));
+    await tester.pumpAndSettle();
+    await settle(tester);
+    expect(question, findsNothing);
+    expect(anyTip, findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+    await app(tester, fresh: false);
+    await settle(tester);
+    expect(question, findsNothing);
+    expect(anyTip, findsNothing);
+
+    await tester.tap(find.byTooltip('Account'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('show-tips')));
+    await tester.pumpAndSettle();
+    await settle(tester);
+    expect(question, findsNothing);
+    expect(tip('project-heading'), findsOneWidget);
+    remote.flush();
+  });
+
+  testWidgets('not over the notifications question: it asks once that one is answered', (tester) async {
+    state();
+    await app(tester, asked: false, push: null);
+    await settle(tester);
+    expect(find.byKey(const ValueKey('push-not-now')), findsOneWidget);
+    expect(question, findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('push-not-now')));
+    await tester.pumpAndSettle();
+    await settle(tester);
+    expect(question, findsOneWidget);
+    expect(anyTip, findsNothing);
+    remote.flush();
+  });
+
   testWidgets('the switch tour: tapping the spotlit row opens it, then the banner, then the switched row', (
     tester,
   ) async {
@@ -217,12 +287,13 @@ void main() {
     remote.flush();
   });
 
-  // E2E debug builds start with every tip seen so the flows aren't held up; Show tips again brings them back, also
-  // after the app restarts, as on any phone.
+  // E2E debug builds start with every tip seen and the question answered, so the flows aren't held up; Show tips
+  // again brings the tips back, also after the app restarts, as on any phone.
   test('tips seen from the start stay gone until Show tips again', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     final first = CoachController(prefs, startSeen: true);
+    expect(first.answered, isTrue);
     expect(Tip.values.where(first.seen), Tip.values);
     expect(Tip.values.where(CoachController(prefs, startSeen: true).seen), Tip.values);
 
@@ -234,6 +305,8 @@ void main() {
     expect(Tip.values.where(CoachController(prefs, startSeen: true).seen), [Tip.slash]);
 
     SharedPreferences.setMockInitialValues({});
-    expect(Tip.values.where(CoachController(await SharedPreferences.getInstance()).seen), isEmpty);
+    final store = CoachController(await SharedPreferences.getInstance());
+    expect(store.answered, isFalse);
+    expect(Tip.values.where(store.seen), isEmpty);
   });
 }

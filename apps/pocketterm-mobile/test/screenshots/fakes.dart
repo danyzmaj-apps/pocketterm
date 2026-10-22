@@ -29,9 +29,10 @@ class PushRecorder extends PocketTermServerClient {
 
 /// A phone signed in to `ana.example.com` (or, with `signedIn: false`, not
 /// yet), with nothing behind it: no disk, no server but [server]'s push
-/// calls. Its first-use tips are all seen unless `tips`; not `fresh`, it
-/// keeps the phone's prefs from before (the app started again). It holds
-/// [testKey] for every computer but the [locked] ones. `push`: its
+/// calls. Its first-use tips are all seen unless `tips` (Show me answered);
+/// with `asked: false` the first-use question hasn't been answered yet. Not
+/// `fresh`, it keeps the phone's prefs from before (the app started again).
+/// It holds [testKey] for every computer but the [locked] ones. `push`: its
 /// notifications choice on that server (null: not asked yet).
 class FakeSession extends MobileSession {
   FakeSession._(SharedPreferences prefs, this._signedIn) : super(prefs, 'iPhone');
@@ -63,12 +64,17 @@ class FakeSession extends MobileSession {
   static Future<FakeSession> create({
     bool signedIn = true,
     bool tips = false,
+    bool asked = true,
     bool fresh = true,
     bool? push = false,
   }) async {
     if (fresh) {
       SharedPreferences.setMockInitialValues({
-        if (!tips) CoachController.seenKey: [for (final t in Tip.values) t.id],
+        if (asked)
+          CoachController.seenKey: [
+            if (!tips)
+              for (final t in Tip.values) t.id,
+          ],
         'pocketterm_push_on_server': ?push,
       });
     }

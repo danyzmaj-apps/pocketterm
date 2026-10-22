@@ -1,7 +1,7 @@
 # Opens the demo (made-up sessions, no server) from the setup screen and
 # walks through it: a session, its approval, and back to setup. Needs the app
-# signed out, as after a fresh install. First-use tips get "Got it" as they
-# come.
+# signed out, as after a fresh install. A fresh install asks first whether to
+# have the first-use tips: Show me, then they get "Got it" as they come.
 #   maestro test demo.yaml
 appId: com.danyzmaj.pocketterm
 ---
@@ -12,6 +12,13 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     visible: ".*DEMO.*"
     timeout: 5000
+- extendedWaitUntil:
+    visible: "Show me"
+    timeout: 2500
+    optional: true
+- tapOn:
+    text: "Show me"
+    optional: true
 - runFlow: tips.yaml
 # A row reads as its whole text. A tip's tour can take the first tap.
 - tapOn: ".*Fix the pricing table on small screens.*"

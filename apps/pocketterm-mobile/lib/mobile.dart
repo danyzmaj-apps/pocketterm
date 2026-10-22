@@ -658,6 +658,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (mounted) _refreshIfInFront();
     });
     _refreshTimer = Timer.periodic(_refreshEvery, (_) => _refreshIfInFront());
+    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_askForTour()));
+  }
+
+  /// The first time on the list (also the demo's), whether to have the first-use tips. Not answered (the list went
+  /// with the question on it), it asks again next time.
+  Future<void> _askForTour() async {
+    final tips = widget.session.tips;
+    if (!mounted || tips.answered) return;
+    final tour = await askForTour(context);
+    if (tour != null && mounted) await tips.answer(tour: tour);
   }
 
   @override

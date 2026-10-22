@@ -44,21 +44,40 @@ enum Tip {
   };
 }
 
-/// Which tips this install has seen, kept in [SharedPreferences] (per phone, not per account). With `startSeen` a
-/// fresh install starts with every tip seen, so the end-to-end flows aren't held up by them (E2E debug builds only),
+/// Which tips this install has seen, kept in [SharedPreferences] (per phone, not per account). None shows until
+/// [answered]: a fresh install first asks whether to have them ([askForTour]). With `startSeen` a fresh install
+/// starts answered with every tip seen, so the end-to-end flows aren't held up by them (E2E debug builds only),
 /// until Show tips again.
 class CoachController extends ChangeNotifier {
   CoachController(this._prefs, {@visibleForTesting bool startSeen = e2eBuild})
-    : _seen = {
+    : _answered = startSeen || _prefs.getStringList(seenKey) != null,
+      _seen = {
         ...?_prefs.getStringList(seenKey) ?? (startSeen ? [for (final t in Tip.values) t.id] : null),
       };
 
+  /// The seen ids; kept from the first answer on (empty for Show me), so a missing list is a question not answered.
   static const seenKey = 'pocketterm_tips_seen';
 
   final SharedPreferences _prefs;
   final Set<String> _seen;
 
   bool seen(Tip tip) => _seen.contains(tip.id);
+
+  /// Whether the person said whether they want the tips (or brought them back): until then none shows.
+  bool get answered => _answered;
+  bool _answered;
+
+  /// The answer to [askForTour]: with [tour] the tips show from the first, without it they're all seen.
+  Future<void> answer({required bool tour}) async {
+    if (tour) {
+      await reset();
+      return;
+    }
+    _answered = true;
+    _seen.addAll([for (final t in Tip.values) t.id]);
+    notifyListeners();
+    await _prefs.setStringList(seenKey, [..._seen]);
+  }
 
   /// The window a switch to the conversation view just turned into a session: its row gets [Tip.switchDone].
   String? get switchedWindow => _switchedWindow;
@@ -75,13 +94,83 @@ class CoachController extends ChangeNotifier {
     await _prefs.setStringList(seenKey, [..._seen]);
   }
 
-  /// Every tip shows again.
+  /// Every tip shows again, without asking first.
   Future<void> reset() async {
+    _answered = true;
     _seen.clear();
     notifyListeners();
-    // Kept empty rather than removed: a fresh install's tips are the only ones [CoachController.new] marks seen.
+    // Kept empty rather than removed: no list is a fresh install, which asks first ([answered]).
     await _prefs.setStringList(seenKey, const []);
   }
+}
+
+/// Asks whether to have the first-use tips, the first time the list shows: in iOS's way a sheet, in Android's a
+/// dialog. Only its two buttons answer it (true: Show me); null when it went another way (the page under it went).
+Future<bool?> askForTour(BuildContext context) {
+  const title = 'New here?';
+  const text = 'Want a quick tour? A few tips point out what you can tap, one at a time.';
+  if (!isIos) {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialog) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          key: const ValueKey('tour-ask'),
+          backgroundColor: M.containerHigh,
+          title: const Text(title),
+          content: const Text(text, style: TextStyle(color: C.dim, height: 1.4)),
+          actions: [
+            TextButton(
+              key: const ValueKey('tour-no'),
+              onPressed: () => Navigator.of(dialog).pop(false),
+              child: const Text('No thanks'),
+            ),
+            TextButton(
+              key: const ValueKey('tour-yes'),
+              onPressed: () => Navigator.of(dialog).pop(true),
+              child: const Text('Show me'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  return showAppSheet<bool>(
+    context,
+    dismissible: false,
+    builder: (sheet) => SafeArea(
+      key: const ValueKey('tour-ask'),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, sheetTop, 24, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(title, textAlign: TextAlign.center, style: sheetTitleStyle),
+            const SizedBox(height: 8),
+            const Text(
+              text,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: C.dim, height: 1.4),
+            ),
+            const SizedBox(height: 20),
+            FilledButton(
+              key: const ValueKey('tour-yes'),
+              onPressed: () => Navigator.of(sheet).pop(true),
+              child: const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Text('Show me')),
+            ),
+            const SizedBox(height: 6),
+            TextButton(
+              key: const ValueKey('tour-no'),
+              onPressed: () => Navigator.of(sheet).pop(false),
+              child: const Text('No thanks'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 /// Shows the tips of the [CoachTarget]s below it, one at a time, over everything [child] shows: the first unseen
@@ -152,7 +241,8 @@ class _CoachState extends State<Coach> {
     if (_showing == t) _hide();
   }
 
-  bool get _waiting => _showing != null || _targets.any((t) => !_controller.seen(t.widget.tip));
+  bool get _waiting =>
+      _showing != null || (_controller.answered && _targets.any((t) => !_controller.seen(t.widget.tip)));
 
   /// Looks at the targets while a tip may show.
   void _wake() {

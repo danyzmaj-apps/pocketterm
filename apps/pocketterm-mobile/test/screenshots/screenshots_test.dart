@@ -91,17 +91,19 @@ void main() {
   }
 
   /// The app, signed in (else on its setup page), its Terminal list fed by [terminal].
-  /// [tips]: its first-use tips not seen yet. [locked]: its computer's code not scanned yet.
+  /// [tips]: its first-use tips not seen yet; [asked] false: the question whether to have them not answered yet.
+  /// [locked]: its computer's code not scanned yet.
   Future<void> app(
     WidgetTester tester, {
     required TerminalRemote terminal,
     bool signedIn = true,
     bool tips = false,
+    bool asked = true,
     bool locked = false,
     bool? push = false,
   }) async {
     phone(tester);
-    final session = await FakeSession.create(signedIn: signedIn, tips: tips, push: push);
+    final session = await FakeSession.create(signedIn: signedIn, tips: tips, asked: asked, push: push);
     if (locked) session.locked.add('abcd1234');
     await tester.pumpWidget(
       RepaintBoundary(
@@ -243,6 +245,15 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('term-$window')));
     await tipShows(tester);
     await save(tester, 'phone-tip-switch-button.png');
+    r.flush();
+  });
+
+  testWidgets('the first-use question', variant: _ios, (tester) async {
+    if (skipped()) return;
+    final r = remote();
+    await app(tester, terminal: r, asked: false);
+    await tester.pumpAndSettle();
+    await save(tester, 'phone-tour-ask.png');
     r.flush();
   });
 

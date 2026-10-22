@@ -51,7 +51,10 @@ class _Phone extends MobileSession {
 
   static Future<_Phone> create({String name = 'ana.example.com', bool signedIn = true, bool tips = false}) async {
     SharedPreferences.setMockInitialValues({
-      if (!tips) CoachController.seenKey: [for (final t in Tip.values) t.id],
+      CoachController.seenKey: [
+        if (!tips)
+          for (final t in Tip.values) t.id,
+      ],
       'pocketterm_push_on_server': true,
     });
     return _Phone._(await SharedPreferences.getInstance(), name, signedIn);

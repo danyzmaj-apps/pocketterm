@@ -66,9 +66,9 @@ flowchart LR
 | `mobile/lib/terminal_view.dart`, `session_view.dart`, `switch_view.dart`, `swipe_action.dart` | The Terminal list (sessions by project, sorted by name or recent activity; a project's heading folds on tap and offers a new session and folding on long press), screens, new sessions; a coding session's transcript and composer; switching an agent window that shows only as a screen to the conversation view; a list row's swipe-to-reveal action |
 | `mobile/lib/setup_page.dart`, `onboarding/scan.dart`, `chrome.dart` | Scanning or pasting a computer's code, and **Try the demo**; the per-platform chrome (Cupertino on iPhone, Material 3 on Android) |
 | `mobile/lib/push_consent.dart` | After the first sign-in on a server: what notifications go through and who runs the relay, then the person's choice |
-| `mobile/lib/coach.dart` | The first-use tips |
+| `mobile/lib/coach.dart` | The first-use tips, and the question whether to have them (asked once per phone) |
 | `mobile/lib/demo/` | **Try the demo**: the real app on a made-up computer, answered on the phone; nothing goes over the network |
-| `mobile/lib/e2e_hooks.dart` | Debug builds for the end-to-end tests only (`--dart-define=POCKETTERM_E2E=true`): the scanner takes a pasted code, the tips start out seen |
+| `mobile/lib/e2e_hooks.dart` | Debug builds for the end-to-end tests only (`--dart-define=POCKETTERM_E2E=true`): the scanner takes a pasted code, the tips start out seen and the question about them answered |
 | `mobile/maestro/` | The phone's Maestro flows: `e2e/` (with its `run.sh`) for the end-to-end run, `demo.yaml` and `tips.yaml` |
 | `mobile/ios/Runner/AppDelegate.swift`, `mobile/ios/Shared/` | The iPhone half of `native.dart`: App Group, push registration, notification taps, Live Activities |
 | `mobile/ios/PocketTermLive/`, `PocketTermPush/` | The Live Activity (WidgetKit); the notification service extension that decrypts pushes |

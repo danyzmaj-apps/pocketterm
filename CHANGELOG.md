@@ -27,7 +27,7 @@ The first release of PocketTerm: the omp and Claude Code sessions on your comput
 - **Switch to conversation.** A session opened before PocketTerm was installed in its agent shows only its screen. **Switch to conversation** restarts omp on the same conversation (`omp -c`); if it was working, **Restart and continue** has it carry on and **Just restart** leaves it stopped. In Claude Code it types `/reload-plugins` and nothing restarts.
 - **New and ended sessions.** Start your agent or a shell in a project without taking the computer's focus; **New project…** makes the folder first. Swipe a row left to **End session** (or **Close window**).
 - **Notifications, if you turn them on.** A push when a run finishes or the agent needs you, and a Live Activity on iPhone (an ongoing notification on Android) for the sessions you follow. The phone explains who sees what before it asks; **Account → Notifications** changes it later.
-- **First-use tips.** The first time a control shows up, a short tip says what it does, once per phone; **Show tips again** in the account sheet brings them back.
+- **First-use tips, if you want them.** The first time you reach your sessions (or the demo), the phone asks **New here?**: **Show me** starts short tips that point out what you can tap, one at a time and each once; **No thanks** skips them. It asks once per phone; **Show tips again** in the account sheet brings the tips back.
 - **Leave this server** in the account sheet signs the phone out and removes its keys.
 
 ### Your server

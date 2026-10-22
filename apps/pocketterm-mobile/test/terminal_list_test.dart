@@ -233,6 +233,22 @@ void main() {
     remote.flush();
   });
 
+  testWidgets('the sort pill is as big for accessibility as on screen, not the whole row', (tester) async {
+    final semantics = tester.ensureSemantics();
+    macState();
+    await pumpList(tester);
+    final pill = find.byKey(const ValueKey('project-sort'));
+    final node = tester.getSemantics(pill);
+    expect(node.label, contains('Name'));
+    expect(node.tooltip, 'Sort projects');
+    // Not the whole row: VoiceOver's frame and a tap at its middle (as UI
+    // automation does) land on the pill itself.
+    expect(node.rect.width, closeTo(tester.getSize(pill).width, 1));
+    expect(node.rect.height, closeTo(tester.getSize(pill).height, 1));
+    remote.flush();
+    semantics.dispose();
+  });
+
   testWidgets('a long folder name gets the row; its menu starts the agent there', (tester) async {
     const long = '/Users/me/IdeaProjects/customer-integration-service-frontend-and-more';
     remote.handle('state', {

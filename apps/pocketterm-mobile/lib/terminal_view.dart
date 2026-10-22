@@ -737,24 +737,29 @@ class _TerminalListState extends State<TerminalList> {
     alignment: Alignment.centerRight,
     child: Padding(
       padding: const EdgeInsets.only(right: 16),
-      child: PopupMenuButton<ProjectSort>(
-        key: const ValueKey('project-sort'),
-        tooltip: 'Sort projects',
-        initialValue: _sort,
-        onSelected: _setSort,
-        borderRadius: BorderRadius.circular(Panel.headingRadius),
-        itemBuilder: (_) => [for (final s in ProjectSort.values) PopupMenuItem(value: s, child: Text(_sortLabel(s)))],
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 36),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(_sortLabel(_sort), style: const TextStyle(fontSize: 13, color: C.dim)),
-                const SizedBox(width: 2),
-                const Icon(Icons.arrow_drop_down, size: 18, color: C.dim),
-              ],
+      // A node of its own: otherwise accessibility reads the pill as the whole
+      // row (the list item's node), and a tap at that row's middle misses it.
+      child: Semantics(
+        container: true,
+        child: PopupMenuButton<ProjectSort>(
+          key: const ValueKey('project-sort'),
+          tooltip: 'Sort projects',
+          initialValue: _sort,
+          onSelected: _setSort,
+          borderRadius: BorderRadius.circular(Panel.headingRadius),
+          itemBuilder: (_) => [for (final s in ProjectSort.values) PopupMenuItem(value: s, child: Text(_sortLabel(s)))],
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 36),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_sortLabel(_sort), style: const TextStyle(fontSize: 13, color: C.dim)),
+                  const SizedBox(width: 2),
+                  const Icon(Icons.arrow_drop_down, size: 18, color: C.dim),
+                ],
+              ),
             ),
           ),
         ),

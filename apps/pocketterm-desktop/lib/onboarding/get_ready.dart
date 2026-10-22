@@ -481,7 +481,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
   Widget _phoneBody() {
     if (app.phoneSignedIn ?? false) {
       return const Text(
-        'A phone is signed in. To add another: Settings \u2192 Add a phone\u2026',
+        'A phone is signed in. To add another: Settings \u2192 Phone \u2192 Add a phone\u2026',
         style: TextStyle(color: C.dim, height: 1.45, fontSize: 13),
       );
     }

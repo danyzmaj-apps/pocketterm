@@ -101,7 +101,7 @@ Full model: [SECURITY.md](SECURITY.md). What the publisher collects: the [privac
 
 2. **Set up the server.** Open PocketTerm on the computer. The wizard asks where the server runs and walks you through it: installing and signing in to Tailscale, or the four commands for a VPS. It shows every command before it runs anything.
 3. **Get the computer ready.** The checklist installs PocketTerm into omp and Claude Code, fixes up your terminals and offers your project folders.
-4. **Scan the code.** In the phone app, tap **Scan the code from your computer** and scan the QR code the checklist shows (later: **Settings → Add a phone…**). The code is single-use for sign-in, expires in 10 minutes and carries the computer's key: show it only to your own phone. With several computers, scan each one's code once.
+4. **Scan the code.** In the phone app, tap **Scan the code from your computer** and scan the QR code the checklist shows (later: **Settings → Phone → Add a phone…**). The code is single-use for sign-in, expires in 10 minutes and carries the computer's key: show it only to your own phone. With several computers, scan each one's code once.
 
 <p align="center">
   <img src="docs/images/mac-setup.png" width="45%" align="top" alt="Setup: On this computer, or On my own server">

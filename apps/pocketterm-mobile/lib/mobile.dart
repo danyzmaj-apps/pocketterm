@@ -1267,7 +1267,7 @@ class _Locked extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             'Its sessions are end-to-end encrypted with a key only its code holds. '
-            'On $computer, open Settings → Add a phone…',
+            'On $computer, open Settings → Phone → Add a phone…',
             textAlign: TextAlign.center,
             style: const TextStyle(color: C.dim, height: 1.5),
           ),

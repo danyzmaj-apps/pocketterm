@@ -100,7 +100,7 @@ open ios/Runner.xcworkspace   # once: pick your phone, let Xcode register the de
 fvm flutter run -d <your-iphone> --release
 ```
 
-Then pair it: on the computer, **Settings → Add a phone…**, and scan the code with the app ([SELF_HOSTING.md](SELF_HOSTING.md#connect-the-apps)).
+Then pair it: on the computer, **Settings → Phone → Add a phone…**, and scan the code with the app ([SELF_HOSTING.md](SELF_HOSTING.md#connect-the-apps)).
 
 Pushes reach a phone only through a relay that holds an APNs key of the team that signed it. With your own team, deploy your own relay ([SELF_HOSTING.md](SELF_HOSTING.md#your-own-app-id-and-relay)).
 
@@ -144,7 +144,7 @@ fvm dart run apps/pocketterm-server/bin/pocketterm_server.dart serve \
 fvm dart run apps/pocketterm-server/bin/pocketterm_server.dart setup-link --data build/local-server --public-url http://127.0.0.1:47900
 ```
 
-Paste that link in the desktop app (**On my own server**) to sign the computer in, then add a phone with **Settings → Add a phone…**. `pocketterm-server help` lists every option. Pushes go through the publisher's relay unless you pass `--relay`. A phone on a device (not the Simulator) can't reach `127.0.0.1`; for one, pick **On this computer**, the server built into the desktop app.
+Paste that link in the desktop app (**On my own server**) to sign the computer in, then add a phone with **Settings → Phone → Add a phone…**. `pocketterm-server help` lists every option. Pushes go through the publisher's relay unless you pass `--relay`. A phone on a device (not the Simulator) can't reach `127.0.0.1`; for one, pick **On this computer**, the server built into the desktop app.
 
 ## Checks
 

@@ -1031,7 +1031,7 @@ String? cantAnswer(Terminals terms, String window) {
   if (read && terms.can(window, TermCap.keys)) return null;
   final label = terms.hostOf(window)?.label ?? 'This terminal';
   return "$label can't ${read ? 'press keys' : 'show its screen'}, so answer this on the computer. "
-      '${(terms.tmux?.installed ?? false) ? 'Sessions you start from the phone run in tmux there, which can.' : 'With tmux installed (Homebrew: brew install tmux), sessions you start from the phone can.'}';
+      '${(terms.tmux?.installed ?? false) ? 'Sessions you start from the phone run in tmux there, which can.' : 'With tmux installed (Homebrew: brew install tmux, or MacPorts: sudo port install tmux), sessions you start from the phone can.'}';
 }
 
 /// Why a slash command for the session in [window] can't be run from the

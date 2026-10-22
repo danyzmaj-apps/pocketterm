@@ -8,6 +8,7 @@
 // ready, opens throwaway terminal windows with the fake omp in them, hands
 // pairing links to the phone's flows and checks on the computer what each
 // phone scenario should have done. See tool/e2e/lib/e2e.dart.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -195,6 +196,10 @@ class _Run {
 
   Finder _key(String k) => find.byKey(ValueKey(k));
 
+  /// [windows] as a failure reason can show them.
+  static String _ws(Iterable<TermWindow> windows) =>
+      windows.map((w) => '${w.key} "${w.title}" ${w.cwd} tty=${w.tty} program=${w.program}').join('; ');
+
   // ---------------------------------------------------------------- windows
 
   /// Before PocketTerm is set up: the terminal with a plain shell, and two
@@ -288,7 +293,7 @@ class _Run {
       await _see(_key('get-ready-open-sessions'), timeout: const Duration(seconds: 20));
       final windows = await app.terminals.windows();
       final early = app.unreportedAgentWindows(windows).where((w) => w.cwd.contains(name('switch'))).toList();
-      expect(early.length, 2, reason: 'both omp started before PocketTerm: $windows');
+      expect(early.length, 2, reason: 'both omp started before PocketTerm: ${_ws(windows)}');
       for (final w in early) {
         await _see(_key('get-ready-unreported-${w.key}'));
       }
@@ -325,17 +330,20 @@ class _Run {
       final s = await until('${name(w)} reports in a window', () {
         final s = app.live.sessions.where((s) => s.cwd == dir(w)).toList();
         return s.length == 1 && s.single.window != null ? s.single : null;
+      }).catchError((Object e) async {
+        final sessions = [for (final s in app.live.sessions) '${s.cwd} window=${s.window}'];
+        throw TimeoutException('$e; sessions: $sessions; windows: ${_ws(await app.terminals.windows())}');
       });
       expect(ours(s.window!), isTrue, reason: '${name(w)} placed in ${s.window}');
     }
     final windows = await app.terminals.windows();
     for (final s in app.live.sessions) {
-      expect(windows.where((w) => w.key == s.window).length, 1, reason: '${s.cwd}: its window once: $windows');
+      expect(windows.where((w) => w.key == s.window).length, 1, reason: '${s.cwd}: its window once: ${_ws(windows)}');
     }
     final claimed = {for (final s in app.live.sessions) s.window};
     final others = windows.where((w) => !claimed.contains(w.key)).toList();
     for (final w in ['chat', 'approve', 'endme']) {
-      expect(others.where((o) => o.cwd == dir(w)), isEmpty, reason: '${name(w)} also among Other windows: $others');
+      expect(others.where((o) => o.cwd == dir(w)), isEmpty, reason: '${name(w)} also among Other windows: ${_ws(others)}');
     }
     expect(app.unreportedAgentWindows(windows).where((w) => !w.cwd.contains(name('switch'))), isEmpty);
   }
@@ -343,7 +351,7 @@ class _Run {
   Future<void> _shellIsScreen() async {
     final windows = await app.terminals.windows();
     final shell = windows.where((w) => w.cwd == dir('shell')).toList();
-    expect(shell.length, 1, reason: 'the shell window: $windows');
+    expect(shell.length, 1, reason: 'the shell window: ${_ws(windows)}');
     expect(shell.single.agent, isNull);
     expect(app.live.sessions.any((s) => s.window == shell.single.key), isFalse);
   }
@@ -575,7 +583,7 @@ class _Run {
       await until('endme window gone', () async => !(await app.terminals.windows()).any((w) => w.cwd == dir('endme')));
       final windows = await app.terminals.windows();
       for (final w in ['shell', 'chat', 'approve']) {
-        expect(windows.where((x) => x.cwd == dir(w)), isNotEmpty, reason: '${name(w)} still open: $windows');
+        expect(windows.where((x) => x.cwd == dir(w)), isNotEmpty, reason: '${name(w)} still open: ${_ws(windows)}');
       }
     });
   }

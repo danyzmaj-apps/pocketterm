@@ -22,7 +22,8 @@ class SupabaseServer implements TestBackend {
   /// Null when the tests run against it, else why not.
   static String? get skip => Platform.environment.containsKey('POCKETTERM_SUPABASE')
       ? null
-      : 'PocketTerm on Supabase: run tool/supabase-local.sh start, then the tests with POCKETTERM_SUPABASE=1';
+      : 'PocketTerm on Supabase: run tool/supabase-local.sh start, then the tests with POCKETTERM_SUPABASE=1 and -j 1 '
+            '(each test empties the one local project)';
 
   static String _repo() {
     var dir = Directory.current;

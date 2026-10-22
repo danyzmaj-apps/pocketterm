@@ -24,7 +24,8 @@ tool/supabase-local.sh stop    # stop and remove the throwaway project
 The client tests run against it from `packages/pocketterm_core`:
 
 ```sh
-POCKETTERM_SUPABASE=1 fvm flutter test test/server_client_test.dart
+POCKETTERM_SUPABASE=1 fvm flutter test -j 1 test/server_client_test.dart test/session_test.dart
+# -j 1: each test empties the one local project, so test files must not run side by side.
 ```
 
 ## Design

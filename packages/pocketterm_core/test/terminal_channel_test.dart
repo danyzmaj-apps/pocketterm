@@ -16,7 +16,10 @@ const _topic = 'abcd1234';
 /// answering joins of [_topic]. It refuses the first [refuse] connections at
 /// the door, and can drop or end the one there is.
 class _FakeServer {
-  _FakeServer({this.refuse = 0});
+  _FakeServer({this.refuse = 0, this.at = 0});
+
+  /// The port to take; 0: any free one.
+  final int at;
 
   int refuse;
   late final HttpServer _http;
@@ -32,7 +35,7 @@ class _FakeServer {
   int get port => _http.port;
 
   Future<void> start() async {
-    _http = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    _http = await HttpServer.bind(InternetAddress.loopbackIPv4, at);
     _http.listen((req) async {
       final authorized = req.headers.value('authorization') == 'Bearer token-1';
       if (req.uri.path == '/v1/me') {
@@ -222,5 +225,32 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 1500));
     expect(server.joinCount, 1);
     expect(channel.joined, isFalse);
+  });
+
+  test('a server that goes away reads as unreachable until the channel is let in again', () async {
+    await setUpServer();
+    var told = 0;
+    channel = TerminalChannel(client, _topic, {}, key: key, name: 'test', onUnreachable: () => told++)..open();
+    await joined(1);
+    expect(channel.unreachable, isFalse);
+
+    final port = server.port;
+    // Upgraded sockets outlive the listener: the connection goes too.
+    await server.stop();
+    await server.drop(1001);
+    await until(() => channel.unreachable);
+    expect(channel.joined, isFalse);
+
+    server = _FakeServer(at: port);
+    await server.start();
+    for (var i = 0; i < 150 && !channel.joined; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    expect(channel.joined, isTrue);
+    expect(channel.unreachable, isFalse);
+    expect(told, 2, reason: 'once when it went, once when it came back');
+
+    await channel.close();
+    expect(channel.unreachable, isFalse, reason: 'closed, nothing is tried');
   });
 }

@@ -83,6 +83,7 @@ class TerminalChannel {
     required ChannelKey key,
     required this.name,
     this.onJoined,
+    this.onUnreachable,
   }) : _seal = ChannelSeal(key, topic, name: name);
 
   final PocketTermServerClient _server;
@@ -97,6 +98,9 @@ class TerminalChannel {
 
   /// The channel joined (true), or stopped being joined (false).
   final void Function({required bool joined})? onJoined;
+
+  /// [unreachable] changed.
+  final VoidCallback? onUnreachable;
 
   /// Sealing and opening take a moment (the system's AES-GCM, through a
   /// platform channel); messages still go out and are handled in order.
@@ -128,6 +132,12 @@ class TerminalChannel {
 
   bool get joined => _joined;
 
+  /// The last try to connect got no connection to the server (offline, DNS,
+  /// TLS, a timeout), as opposed to one still on its way; false again once a
+  /// connection is made, and after [close].
+  bool get unreachable => _unreachable;
+  bool _unreachable = false;
+
   void open() {
     if (_open) return;
     _open = true;
@@ -144,6 +154,7 @@ class TerminalChannel {
     debugPrint('PocketTerm: $name: close');
     _retry?.cancel();
     _retry = null;
+    _unreachable = false;
     _drop();
   }
 
@@ -192,9 +203,11 @@ class TerminalChannel {
       if (stale()) return;
       // Refused at the door: maybe the token stopped working.
       unawaited(_server.verify());
+      _setUnreachable(true);
       return _again(null, '$e');
     }
     if (stale()) return unawaited(ws.close(1000).then((_) {}, onError: (Object _) {}));
+    _setUnreachable(false);
     _ws = ws;
     _sub = ws.listen((data) => _frame(ws, data), onDone: () => _closed(ws), onError: (Object _) {});
     ws.add(jsonEncode({'t': 'join', 'topic': topic}));
@@ -268,6 +281,12 @@ class TerminalChannel {
       _retry = null;
       if (gen == _gen) unawaited(_connect(gen));
     });
+  }
+
+  void _setUnreachable(bool unreachable) {
+    if (_unreachable == unreachable) return;
+    _unreachable = unreachable;
+    onUnreachable?.call();
   }
 
   void _setJoined({required bool joined}) {

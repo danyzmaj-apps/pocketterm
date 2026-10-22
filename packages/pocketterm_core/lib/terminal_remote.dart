@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/ansi.dart';
+import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/live_activity.dart';
@@ -21,6 +22,10 @@ import 'package:uuid/uuid.dart';
 enum TerminalLink {
   /// Joining the topic.
   connecting,
+
+  /// The server can't be reached (offline, Tailscale off, the server down):
+  /// trying again.
+  unreachable,
 
   /// Joined; no answer from the Mac yet.
   waiting,
@@ -127,8 +132,13 @@ class TerminalRemote extends ChangeNotifier {
       if (joined) _watched();
       notifyListeners();
     },
+    onUnreachable: notifyListeners,
   );
   Timer? _timer;
+
+  /// The server this goes through, as [TerminalLink.unreachable] tells it.
+  Backend get backend => _server.backend;
+
   DateTime _openedAt = DateTime.now();
   DateTime? _heard;
   int _users = 0;
@@ -197,7 +207,7 @@ class TerminalRemote extends ChangeNotifier {
 
   TerminalLink get link {
     // A transport handed in (tests) is always there.
-    if (_transmit == null && !_ch.joined) return TerminalLink.connecting;
+    if (_transmit == null && !_ch.joined) return _ch.unreachable ? TerminalLink.unreachable : TerminalLink.connecting;
     final now = DateTime.now();
     final heard = _heard;
     if (heard != null && now.difference(heard) < _silent) return TerminalLink.online;

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/ansi.dart';
+import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/native.dart';
 import 'package:pocketterm_core/terminal.dart';
@@ -221,6 +222,14 @@ class CloseConfirm extends StatelessWidget {
   }
 }
 
+/// Why the phone gets no answer from [server], and what to do: a Tailscale
+/// address also changes when the computer serving it is renamed, and the
+/// phone then needs that computer's new code.
+String serverUnreachable(Backend server) => server.onTailnet
+    ? '${server.unreachable} If that computer was renamed in Tailscale, leave this server (Account) and scan its '
+          'new code.'
+    : server.unreachable;
+
 /// What's wrong with the link, if anything, as one line for the top of a
 /// screen (on [color]: a bar by default); with how old the shown state is when
 /// it isn't live. Keyed by its text, so a [Reveal] cross-fades a change.
@@ -229,6 +238,7 @@ Widget? linkNote(TerminalRemote r, {Color color = C.bar}) {
   final who = r.desktopName ?? 'the computer';
   final (text, busy) = switch (r.link) {
     TerminalLink.connecting => ('connecting…', true),
+    TerminalLink.unreachable => (serverUnreachable(r.backend), false),
     TerminalLink.waiting => ('asking $who…', true),
     TerminalLink.offline => (
       "$who isn't answering. It has to be awake, with PocketTerm running and "

@@ -10,6 +10,8 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   final device = await Native.deviceName();
   final session = MobileSession(prefs, device);
+  // Started first: the app's first frame shows it's still reading what it kept, not setup.
+  final started = session.start();
   runApp(MobileApp(session: session));
-  await session.start();
+  await started;
 }

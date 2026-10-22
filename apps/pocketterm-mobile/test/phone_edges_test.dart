@@ -161,22 +161,41 @@ void main() {
     remote.flush();
   });
 
-  testWidgets("the link note tells a server out of reach, a computer's clock and a computer not answering apart", (
+  testWidgets("the link note tells a server out of reach, a computer's clock, one asleep and one not answering apart", (
     tester,
   ) async {
-    Future<String> note(TerminalLink link, {Duration? clockOff}) async {
-      final r = _Link(dir, link, clockOff)..desktopName = 'MacBook Pro';
+    Future<String> note(TerminalLink link, {Duration? clockOff, Duration? seen, bool retry = true}) async {
+      final r = _Link(dir, link, clockOff)
+        ..desktopName = 'MacBook Pro'
+        ..desktopSeenAt = seen == null ? null : DateTime.now().subtract(seen);
       await tester.pumpWidget(MaterialApp(home: Scaffold(body: linkNote(r))));
-      final text = tester.widget<Text>(find.byType(Text)).data!;
+      final text = tester.widgetList<Text>(find.byType(Text)).first.data!;
+      expect(find.byKey(const ValueKey('link-retry')), retry ? findsOneWidget : findsNothing, reason: text);
       r.dispose();
       return text;
     }
 
+    expect(await note(TerminalLink.connecting, retry: false), 'Connecting…');
     expect(await note(TerminalLink.unreachable), contains("Can't reach my-mac.tail1234.ts.net"));
+    expect(await note(TerminalLink.unreachable), contains('has to be awake'));
     expect(await note(TerminalLink.unreachable), contains('renamed in Tailscale'));
-    expect(await note(TerminalLink.offline, clockOff: const Duration(minutes: -7)), contains('differ by 7 minutes'));
-    expect(await note(TerminalLink.offline, clockOff: const Duration(hours: 5)), contains('differ by 5 hours'));
-    expect(await note(TerminalLink.offline), contains("MacBook Pro isn't answering"));
+    expect(
+      await note(TerminalLink.offline, clockOff: const Duration(minutes: -7), retry: false),
+      contains('differ by 7 minutes'),
+    );
+    expect(
+      await note(TerminalLink.offline, clockOff: const Duration(hours: 5), retry: false),
+      contains('differ by 5 hours'),
+    );
+    // Still telling the server it's there: PocketTerm runs, but doesn't answer.
+    expect(
+      await note(TerminalLink.offline, seen: const Duration(seconds: 30)),
+      contains("MacBook Pro isn't answering"),
+    );
+    expect(
+      await note(TerminalLink.offline, seen: const Duration(hours: 3)),
+      allOf(contains('MacBook Pro was last seen 3 h ago'), contains('asleep or off')),
+    );
   });
 }
 

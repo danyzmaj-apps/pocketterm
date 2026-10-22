@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:path_provider/path_provider.dart';
@@ -45,6 +44,11 @@ class MobileSession extends Session {
   @override
   DeviceTokens get deviceTokens => const NativeDeviceTokens();
 
+  /// The phone opens on what it had (its computers, their sessions, from
+  /// cache) while the server is asked whether the sign-in still holds.
+  @override
+  bool get signInAtOnce => true;
+
   final _computerKeys = <String, ChannelKey>{};
 
   /// Computer [desktopId]'s channel key; null while this phone hasn't
@@ -55,11 +59,44 @@ class MobileSession extends Session {
     _ => _computerKeys[desktopId],
   };
 
+  /// Until [start] has read what this phone kept (its server, sign-in and
+  /// computer keys): nothing shows yet, rather than setup for a moment.
+  bool get launching => _launching;
+  bool _launching = false;
+
   @override
   Future<void> start() async {
-    await forgetOldApp();
-    await loadComputerKeys();
-    await super.start();
+    _launching = true;
+    try {
+      await forgetOldApp();
+      await loadComputerKeys();
+      await super.start();
+    } finally {
+      _launching = false;
+      notifyListeners();
+    }
+  }
+
+  /// A followed session's link (`pocketterm://session?key=<routed key>`, a
+  /// Live Activity's or Android's ongoing notification's), kept until the
+  /// home page takes it ([takeOpenedSession]): the one that launched the app
+  /// comes before there's a home page.
+  @override
+  void onOtherLink(Uri uri) {
+    if (uri.scheme != 'pocketterm' || uri.host != 'session') return;
+    final key = uri.queryParameters['key'];
+    if (key == null || key.isEmpty) return;
+    _openedSession = key;
+    notifyListeners();
+  }
+
+  String? _openedSession;
+
+  /// The routed key of the session a link opened, once.
+  String? takeOpenedSession() {
+    final key = _openedSession;
+    _openedSession = null;
+    return key;
   }
 
   /// PocketTerm 0.1 connected through a Supabase project (its URL kept with
@@ -312,6 +349,7 @@ class MobileSession extends Session {
   /// computer's key (the next sign-in scans a code, which brings its
   /// computer's), and the followed sessions, ended at once.
   Future<void> _forgetHere() async {
+    _openedSession = null;
     await _prefs.remove(_pushTokenKey);
     // Every server's: the sign-in may already be gone, and with it its id.
     for (final k in _prefs.getKeys().where((k) => k.startsWith('${_pushChoiceKey}_'))) {
@@ -391,6 +429,8 @@ class MobileApp extends StatelessWidget {
       listenable: session,
       builder: (context, _) {
         final user = session.user;
+        // What this phone kept is still being read: setup only once it's known there's none.
+        if (user == null && session.launching) return const Scaffold(backgroundColor: C.win);
         if (user == null) {
           if (session.demo case final demo?) {
             return _HomeSwitch(
@@ -486,13 +526,15 @@ class HomePage extends StatefulWidget {
   /// server, sealed with that computer's key.
   final TerminalRemote Function(String desktopId, ChannelKey key)? remoteFor;
 
+  /// How long a tapped session (a push, a followed session's link) may take
+  /// to come before the phone gives up on it.
+  static const routedWait = Duration(seconds: 20);
+
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
-  StreamSubscription<Uri>? _links;
-
   late final Desktops _desktops = widget.desktops ?? widget.session.desktops();
 
   /// While the Terminal list is in front, the list of computers is fetched
@@ -510,8 +552,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   TerminalRemote? _terminal;
   bool _terminalAttached = false;
 
-  /// A tapped push's or link's session, waiting for its computer's remote.
-  ({String desktop, String key})? _sessionToOpen;
+  /// A tapped push's or followed session's session, until it shows
+  /// ([_openRouted]).
+  _Routed? _routed;
 
   /// Showing "Try the demo"'s made-up computer.
   bool get _demo => widget.session.demo != null && widget.session.user == null;
@@ -534,9 +577,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final key = d == null ? null : widget.session.computerKey(d.id);
     final old = _terminal;
     if (old != null && old.desktopId == d?.id && old.key == key) {
-      old.desktopName = d?.name;
+      old
+        ..desktopName = d?.name
+        ..desktopSeenAt = d?.seenAt;
       _syncFollow(old);
-      return;
+      return _advanceRouted();
     }
     TerminalRemote? next;
     if (d != null && key != null) {
@@ -547,7 +592,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       } else {
         return; // Made once the cache folder is known.
       }
-      next.desktopName = d.name;
+      next
+        ..desktopName = d.name
+        ..desktopSeenAt = d.seenAt;
       _syncFollow(next);
     }
     if (old != null) {
@@ -556,14 +603,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     _terminal = next;
     if (mounted) setState(() {});
-    if (next == null) return;
-    if (_resumed) _attachTerminal(attach: true);
-    if (_sessionToOpen case (:final desktop, :final key) when desktop == next.desktopId) {
-      _sessionToOpen = null;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _openSession(desktop, key);
-      });
-    }
+    if (next != null && _resumed) _attachTerminal(attach: true);
+    _advanceRouted();
   }
 
   /// Following sessions (Live Activities, Android's ongoing notifications)
@@ -608,50 +649,112 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     unawaited(_desktops.refresh());
   }
 
-  /// A session of one of the computers ([routed]: a tapped push or Live
-  /// Activity), over the Terminal list of that computer. One on no computer
-  /// listed opens nothing.
-  Future<void> _openRouted(String routed) async {
+  /// A session of one of the computers ([routed]: a tapped push or followed
+  /// session, also one that launched the app), over that computer's list:
+  /// the computer is selected as soon as it's listed, the session's page
+  /// opens at once (with what this phone has of it, and the link's note:
+  /// connecting…) and fills in as the computer answers. If the session
+  /// isn't there after [HomePage.routedWait], or the computer says it's gone, the
+  /// page goes, the list stays and a message says why.
+  void _openRouted(String routed) {
     final r = splitRoutedKey(routed);
-    if (r == null) return;
+    if (r == null || !mounted) return;
     timing('deep link');
-    if (!_desktops.all.any((d) => d.id == r.desktop)) await _desktops.refresh();
-    if (!mounted || !_desktops.all.any((d) => d.id == r.desktop)) return;
-    _desktops.select(r.desktop);
-    _openSession(r.desktop, r.key);
+    _dropRouted();
+    _routed = _Routed(r.desktop, r.key, Timer(HomePage.routedWait, _routedTimedOut));
+    if (!_desktops.all.any((d) => d.id == r.desktop)) unawaited(_desktops.refresh());
+    _advanceRouted();
   }
 
-  void _openSession(String desktop, String key) {
-    final t = _terminal;
-    if (t == null || t.desktopId != desktop) {
-      _sessionToOpen = (desktop: desktop, key: key);
-      return;
+  /// The routed session one step on, as far as what's known allows: its
+  /// computer selected, its page open, done once the computer lists it.
+  void _advanceRouted() {
+    final r = _routed;
+    if (r == null || !mounted) return;
+    final desktop = _desktops.all.where((d) => d.id == r.desktop).firstOrNull;
+    if (desktop == null) return; // Until the list has it.
+    if (r.page == null) {
+      if (widget.session.computerKey(desktop.id) == null) {
+        _desktops.select(desktop.id);
+        return _giveUpRouted('Scan ${desktop.name}’s code to open its sessions.');
+      }
+      if (_desktops.selected?.id != desktop.id) return _desktops.select(desktop.id); // Comes back here.
+      final t = _terminal;
+      if (t == null || t.desktopId != desktop.id) return; // Until its remote is made.
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      timing('session page');
+      final page = r.page = openSession(context, t, r.key);
+      r.remote = t..addListener(_advanceRouted);
+      unawaited(
+        page.popped.then((_) {
+          if (identical(_routed, r)) _dropRouted();
+        }),
+      );
     }
-    Navigator.of(context).popUntil((r) => r.isFirst);
-    timing('session page');
-    openSession(context, t, key);
+    final t = r.remote!;
+    // What the computer says now, not what this phone kept.
+    if (!t.online || t.fromCache) return;
+    if (t.session(r.key) != null) {
+      timing('session shown');
+      return _dropRouted();
+    }
+    _giveUpRouted('That session isn’t on ${desktop.name} anymore.');
+  }
+
+  void _routedTimedOut() {
+    final r = _routed;
+    if (r == null || !mounted) return;
+    final name = _desktops.all.where((d) => d.id == r.desktop).firstOrNull?.name;
+    _giveUpRouted(switch (r.remote?.link) {
+      _ when name == null => 'That session’s computer isn’t on this server.',
+      TerminalLink.unreachable => "Can't reach ${widget.session.userName}, so that session didn't open.",
+      _ => "$name didn't answer in time, so that session didn't open. It opens from the list once $name answers.",
+    });
+  }
+
+  /// Stops waiting for the routed session: its page goes (the list stays)
+  /// and [why] shows.
+  void _giveUpRouted(String why) {
+    final page = _routed?.page;
+    _dropRouted();
+    timing('deep link gave up');
+    if (page != null && page.isActive) Navigator.of(context).removeRoute(page);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(why)));
+  }
+
+  void _dropRouted() {
+    final r = _routed;
+    if (r == null) return;
+    _routed = null;
+    r.timer.cancel();
+    r.remote?.removeListener(_advanceRouted);
   }
 
   /// Opens the session whose terminal push was tapped, if one was.
   Future<void> _openTappedSession() async {
     final key = await Native.takeTappedSession();
-    if (key != null && mounted) await _openRouted(key);
+    if (key != null && mounted) _openRouted(key);
+  }
+
+  /// Opens the session a followed session's link named, if one did
+  /// ([MobileSession.takeOpenedSession]).
+  void _openLinkedSession() {
+    if (widget.session.takeOpenedSession() case final key?) _openRouted(key);
   }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // A followed session (Live Activity, Android's ongoing notification)
-    // opens pocketterm://session?key=…. The stream also carries the link
-    // that cold-started the app, so getInitialLink() would handle it twice.
-    _links = AppLinks().uriLinkStream.listen(_onLink);
     Native.listen(_onNative);
     // A terminal push tap that launched the app.
     WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_openTappedSession()));
     _desktops.addListener(_syncRemote);
     // A computer's key scanned.
     widget.session.addListener(_syncRemote);
+    // A followed session's link, also the one that launched the app (before this page was there).
+    widget.session.addListener(_openLinkedSession);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openLinkedSession());
     if (widget.remoteFor != null) {
       _syncRemote();
     } else {
@@ -677,10 +780,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    unawaited(_links?.cancel());
     _refreshTimer?.cancel();
+    _dropRouted();
     _desktops.removeListener(_syncRemote);
-    widget.session.removeListener(_syncRemote);
+    widget.session
+      ..removeListener(_syncRemote)
+      ..removeListener(_openLinkedSession);
     // After the frame that sends the pages on it away (_HomeSwitch).
     if (_terminal case final t?) SchedulerBinding.instance.addPostFrameCallback((_) => _dropRemote(t));
     if (widget.desktops == null) _desktops.dispose();
@@ -692,6 +797,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     switch (state) {
       case AppLifecycleState.resumed:
         timing('resumed');
+        // Before anything asks the server: connections from before may have died while away.
+        widget.session.server?.freshConnections();
         _attachTerminal(attach: true);
         _refreshIfInFront();
         unawaited(_openTappedSession());
@@ -720,12 +827,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case 'pushToken':
         unawaited(widget.session.pushTokenChanged());
     }
-  }
-
-  void _onLink(Uri? uri) {
-    if (uri == null || uri.scheme != 'pocketterm' || uri.host != 'session' || !mounted) return;
-    final key = uri.queryParameters['key'];
-    if (key != null && key.isNotEmpty) unawaited(_openRouted(key));
   }
 
   @override
@@ -788,14 +889,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 null => Center(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(32),
-                    child: Text(
-                      selected != null
-                          ? 'Reaching ${selected.name}…'
-                          : _desktops.loaded
-                          ? _noDesktop
-                          : _desktopsError ?? 'Looking for your computers…',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: C.dim, height: 1.5),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          selected != null
+                              ? 'Reaching ${selected.name}…'
+                              : _desktops.loaded
+                              ? _noDesktop
+                              : _desktopsError ?? 'Looking for your computers…',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: C.dim, height: 1.5),
+                        ),
+                        // The list didn't come: asked again now, not at the next 30-second refresh.
+                        if (selected == null && _desktops.error != null && widget.desktops == null)
+                          TextButton(
+                            key: const ValueKey('computers-retry'),
+                            onPressed: () {
+                              widget.session.server?.freshConnections();
+                              unawaited(_desktops.refresh());
+                            },
+                            child: const Text('Retry'),
+                          ),
+                      ],
                     ),
                   ),
                 ),
@@ -1021,6 +1137,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       ),
     ),
   );
+}
+
+/// A tapped session on its way to showing ([_HomePageState._openRouted]):
+/// computer [desktop]'s session [key], given up when [timer] fires; its
+/// [page] once open, on [remote].
+class _Routed {
+  _Routed(this.desktop, this.key, this.timer);
+  final String desktop;
+  final String key;
+  final Timer timer;
+  Route<void>? page;
+  TerminalRemote? remote;
 }
 
 /// What the app shows at its root ([id]: setup, the demo, the push

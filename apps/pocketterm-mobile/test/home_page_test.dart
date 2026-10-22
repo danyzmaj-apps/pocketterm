@@ -256,6 +256,134 @@ void main() {
     flush();
   });
 
+  group('a tapped followed session (its link) or push', () {
+    /// What happens to Studio's (abcd1234) remote when it's made; it answers only when the test says.
+    late void Function(TerminalRemote remote) onMade;
+
+    Future<FakeSession> pumpTwo(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1170, 2532);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      final session = await FakeSession.create();
+      final now = DateTime.now().toIso8601String();
+      await tester.pumpWidget(
+        MobileApp(
+          session: session,
+          desktops: Desktops(client)
+            ..apply([
+              {'id': 'mac00001', 'name': 'MacBook Pro', 'platform': 'macos', 'seen_at': now},
+              {'id': 'abcd1234', 'name': 'Studio', 'platform': 'macos', 'seen_at': now},
+            ]),
+          remoteFor: (id, key) {
+            if (id == 'mac00001') return made[id] = remoteFor(id, 'Mac work', key);
+            final r = made[id] = TerminalRemote(client, dir, desktopId: id, key: key, from: 'phone', send: (_, _) {});
+            onMade(r);
+            return r;
+          },
+        ),
+      );
+      await tester.pump();
+      return session;
+    }
+
+    void state(TerminalRemote r, {required bool withSession}) => r.handle('state', {
+      'windows': <Object>[],
+      'sessions': [
+        if (withSession)
+          {'key': 'kitty-1/2', 'id': 's2', 'title': 'Studio work', 'cwd': '/Users/me/app', 'epoch': 'e', 'seq': 0},
+      ],
+    });
+
+    SessionPage? page(WidgetTester tester) => tester.widgetList<SessionPage>(find.byType(SessionPage)).firstOrNull;
+
+    /// The page's push, under a note whose spinner never settles.
+    Future<void> opened(WidgetTester tester) async {
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
+    testWidgets('opens at once on its computer, the computer switched, and fills in when the computer answers', (
+      tester,
+    ) async {
+      onMade = (_) {};
+      final session = await pumpTwo(tester);
+      // As a Live Activity's tap sends it (ios/Shared/SessionActivity.swift): the routed key's / as it is.
+      session.onOtherLink(Uri.parse('pocketterm://session?key=abcd1234/kitty-1/2'));
+      await opened(tester);
+      expect((page(tester)?.remote.desktopId, page(tester)?.sessionKey), ('abcd1234', 'kitty-1/2'));
+      expect(find.textContaining('Asking Studio…'), findsOneWidget, reason: 'open before the computer answered');
+
+      state(made['abcd1234']!, withSession: true);
+      await tester.pumpAndSettle();
+      expect(find.text('Studio work'), findsWidgets);
+      await tester.pump(HomePage.routedWait + const Duration(seconds: 1));
+      state(made['abcd1234']!, withSession: true);
+      await tester.pumpAndSettle();
+      expect(page(tester), isNotNull, reason: 'it came: nothing gives up on it later');
+      expect(find.byType(SnackBar), findsNothing);
+      flush();
+    });
+
+    testWidgets('one that launched the app, before there was a home page, opens once there is', (tester) async {
+      onMade = (r) => state(r, withSession: true);
+      final session = await FakeSession.create();
+      session.onOtherLink(Uri.parse('pocketterm://session?key=abcd1234/kitty-1/2'));
+      tester.view.physicalSize = const Size(1170, 2532);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MobileApp(
+          session: session,
+          desktops: Desktops(client)
+            ..apply([
+              {'id': 'abcd1234', 'name': 'Studio', 'platform': 'macos', 'seen_at': DateTime.now().toIso8601String()},
+            ]),
+          remoteFor: (id, key) {
+            final r = made[id] = TerminalRemote(client, dir, desktopId: id, key: key, from: 'phone', send: (_, _) {});
+            onMade(r);
+            return r;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect((page(tester)?.remote.desktopId, page(tester)?.sessionKey), ('abcd1234', 'kitty-1/2'));
+      expect(find.text('Studio work'), findsWidgets);
+      flush();
+    });
+
+    testWidgets("gives up after 20 s when the computer doesn't answer: back on its list, with why", (tester) async {
+      onMade = (_) {};
+      final session = await pumpTwo(tester);
+      session.onOtherLink(Uri.parse('pocketterm://session?key=abcd1234/kitty-1/2'));
+      await opened(tester);
+      expect(page(tester), isNotNull);
+
+      await tester.pump(HomePage.routedWait);
+      await opened(tester);
+      expect(page(tester), isNull);
+      expect(find.textContaining("Studio didn't answer in time"), findsOneWidget);
+      expect(find.text('Studio'), findsOneWidget, reason: "that computer's list, not the one shown before");
+
+      // Answering later, it opens nothing by itself.
+      state(made['abcd1234']!, withSession: true);
+      await tester.pumpAndSettle();
+      expect(page(tester), isNull);
+      flush();
+    });
+
+    testWidgets('a session the computer no longer has goes at once, saying so', (tester) async {
+      onMade = (_) {};
+      final session = await pumpTwo(tester);
+      session.onOtherLink(Uri.parse('pocketterm://session?key=abcd1234/kitty-1/2'));
+      await opened(tester);
+      state(made['abcd1234']!, withSession: false);
+      await tester.pumpAndSettle();
+      expect(page(tester), isNull);
+      expect(find.textContaining('That session isn’t on Studio anymore'), findsOneWidget);
+      flush();
+    });
+  });
+
   testWidgets('no computer: it says how to get one reporting, and there is no + to start a session', (tester) async {
     await tester.pumpWidget(
       MobileApp(

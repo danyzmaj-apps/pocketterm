@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/ansi.dart';
 import 'package:pocketterm_core/backend.dart';
+import 'package:pocketterm_core/desktops.dart' show Desktop;
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/native.dart';
 import 'package:pocketterm_core/terminal.dart';
@@ -239,20 +240,24 @@ class CloseConfirm extends StatelessWidget {
   }
 }
 
-/// Why the phone gets no answer from [server], and what to do: a Tailscale
-/// address also changes when the computer serving it is renamed, and the
-/// phone then needs that computer's new code.
+/// Why the phone gets no answer from [server], and what to do: a server on
+/// a tailnet runs on one of the person's computers, which has to be awake,
+/// and its address changes when that computer is renamed (the phone then
+/// needs that computer's new code).
 String serverUnreachable(Backend server) => server.onTailnet
-    ? '${server.unreachable} If that computer was renamed in Tailscale, leave this server (Account) and scan its '
-          'new code.'
+    ? '${server.unreachable} The computer running it has to be awake. If it was renamed in Tailscale, leave this '
+          'server (Account) and scan its new code.'
     : server.unreachable;
 
 /// What's wrong with the link, if anything, as one line for the top of a
 /// screen (on [color]: a bar by default); with how old the shown state is when
-/// it isn't live. Keyed by its text, so a [Reveal] cross-fades a change.
+/// it isn't live, and a Retry that connects again at once
+/// ([TerminalRemote.reconnect]) when it's stuck. Keyed by its text, so a
+/// [Reveal] cross-fades a change.
 Widget? linkNote(TerminalRemote r, {Color color = C.bar}) {
   final at = r.stateAt;
   final who = r.desktopName ?? 'the computer';
+  final seen = r.desktopSeenAt;
   final (text, busy) = switch (r.link) {
     TerminalLink.connecting => ('connecting…', true),
     TerminalLink.unreachable => (serverUnreachable(r.backend), false),
@@ -261,6 +266,11 @@ Widget? linkNote(TerminalRemote r, {Color color = C.bar}) {
     TerminalLink.offline when r.clockOff != null => (
       "This phone's clock and $who's differ by ${_clockGap(r.clockOff!)}, so nothing from it can be trusted. Turn on "
           'Set Automatically (date and time) on both.',
+      false,
+    ),
+    // Not reporting to the server either: not there, rather than not answering.
+    TerminalLink.offline when seen != null && DateTime.now().difference(seen) >= Desktop.onlineWithin => (
+      "$who was last seen ${ago(seen)}. It may be asleep or off, or PocketTerm isn't running there.",
       false,
     ),
     TerminalLink.offline => (
@@ -276,10 +286,11 @@ Widget? linkNote(TerminalRemote r, {Color color = C.bar}) {
       : at != null
       ? 'Updated ${ago(at)} · $text'
       : '${text[0].toUpperCase()}${text.substring(1)}';
+  final retry = !busy && r.link != TerminalLink.online && r.clockOff == null;
   return Container(
     key: ValueKey('link-note-$line'),
     color: color,
-    padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+    padding: EdgeInsets.fromLTRB(16, retry ? 4 : 10, retry ? 4 : 16, retry ? 4 : 10),
     child: Row(
       children: [
         if (busy) ...[
@@ -289,6 +300,7 @@ Widget? linkNote(TerminalRemote r, {Color color = C.bar}) {
         Expanded(
           child: Text(line, style: const TextStyle(fontSize: 13, color: C.dim, height: 1.4)),
         ),
+        if (retry) TextButton(key: const ValueKey('link-retry'), onPressed: r.reconnect, child: const Text('Retry')),
       ],
     ),
   );
@@ -303,13 +315,14 @@ String _clockGap(Duration off) {
 }
 
 /// Opens coding session [key]; [starting]: it was just launched and its agent
-/// may not have reported yet.
-void openSession(BuildContext context, TerminalRemote remote, String key, {bool starting = false}) =>
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => SessionPage(remote: remote, sessionKey: key, starting: starting),
-      ),
-    );
+/// may not have reported yet. The page's route, to take it away again.
+Route<void> openSession(BuildContext context, TerminalRemote remote, String key, {bool starting = false}) {
+  final route = MaterialPageRoute<void>(
+    builder: (_) => SessionPage(remote: remote, sessionKey: key, starting: starting),
+  );
+  Navigator.of(context).push(route);
+  return route;
+}
 
 /// Opens terminal window [window]'s screen.
 void openWindow(BuildContext context, TerminalRemote remote, String window) => Navigator.of(context).push(

@@ -2,10 +2,6 @@
 
 What each PocketTerm release brings.
 
-## Unreleased
-
-- **Less outside the encryption.** A notification names its computer and session only by tags made with that computer's key, so the push relay, Apple and Google see an encrypted message, a push token and when it was sent. A Lock Screen update on iPhone carries only its state (working, needs you, finished); which session it shows stays on the phone. Android's followed sessions name theirs the same way. Phones, computers and servers need this version together.
-
 ## 0.1.0
 
 The first release of PocketTerm: the omp and Claude Code sessions on your computer, on your phone, end-to-end encrypted, through a PocketTerm server you run yourself.
@@ -44,7 +40,7 @@ The first release of PocketTerm: the omp and Claude Code sessions on your comput
 
 - **End-to-end encrypted.** Each computer makes its own key and keeps it in the Keychain on a Mac, or in a file encrypted for your Windows user (DPAPI) on Windows. It reaches a phone only in that computer's QR code. Sessions, screens, prompts, images and notification text are sealed with it (AES-256-GCM), so your server only passes on ciphertext. Live messages carry a timestamp and are dropped when more than 5 minutes off, and the computer drops a message from a phone that it has seen already.
 - **Reset key** (Settings → Phone) makes a new key after a lost phone; every phone you keep scans the computer's code again.
-- **Pushes** are sealed by the computer and go from your server to the push relay at `push.danyzmaj.com`, run by Danijel Lovric in Germany, which passes them to Apple or Google. Every request to the relay is sealed to the relay's own key (X25519, AES-256-GCM). The relay stores nothing. Live Activity updates carry only a session's state, never text.
+- **Pushes** are sealed by the computer and go from your server to the push relay at `push.danyzmaj.com`, run by Danijel Lovric in Germany, which passes them to Apple or Google. Every request to the relay is sealed to the relay's own key (X25519, AES-256-GCM). The relay stores nothing. A notification names its computer and session only by tags made with that computer's key, so the push relay, Apple and Google see an encrypted message, a push token and when it was sent. A Lock Screen update on iPhone carries only its state (working, needs you, finished), never text; which session it shows stays on the phone. Android's followed sessions name theirs the same way.
 - **Pairing codes** work once, for 10 minutes; ten wrong codes from one address in 10 minutes are turned away for a while. The server keeps only the SHA-256 of each device's token.
 - **Local only:** the desktop app's API for the agents listens on 127.0.0.1 behind a random token.
 

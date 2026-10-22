@@ -144,7 +144,7 @@ It speaks plain HTTP: put it behind something that adds HTTPS, or reach it over 
 | `--data`         | `POCKETTERM_DATA`        | `./data` (`/data` image) | where everything is kept                     |
 | `--public-url`   | `POCKETTERM_PUBLIC_URL`  | required                 | the address put in setup links               |
 | `--port`         | `POCKETTERM_PORT`        | `47900`                  | the port to listen on                        |
-| `--address`      | `POCKETTERM_ADDRESS`     | `0.0.0.0`                | the address to listen on                     |
+| `--address`      | `POCKETTERM_ADDRESS`     | `0.0.0.0`                | the address to listen on (`::` for IPv6 and IPv4) |
 | `--relay`        | `PUSH_RELAY_URL`         | the publisher's relay    | where push notifications are sent            |
 | `--relay-key`    | `PUSH_RELAY_KEY`         | the publisher's relay's  | the relay's X25519 public key (base64); every push is sealed to it |
 | `--trust-proxy`  | `POCKETTERM_TRUST_PROXY` | off                      | rate limit by `X-Forwarded-For` (set to `1`) |

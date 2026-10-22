@@ -161,6 +161,38 @@ void main() {
     flush();
   });
 
+  // E2E: the phone paired with one computer landed on another, seen later.
+  testWidgets('scanning a computer shows it, even when another was seen since; also its key already known', (
+    tester,
+  ) async {
+    const server = Backend(url: 'https://pt.example.com');
+    final session = await FakeSession.create()
+      ..connected = server;
+    final desktops = await pumpHome(tester, session: session);
+    expect(desktops.selected?.id, 'mac00001');
+
+    final key = ChannelKey.generate();
+    await session.connectLink(
+      server.linkWithCode('ABCD-1234', computer: (desktop: 'win00001', key: key)),
+      scanned: true,
+    );
+    await tester.pumpAndSettle();
+    expect(desktops.selected?.id, 'win00001');
+    expect(find.text('PC work'), findsOneWidget);
+
+    flush();
+    desktops.select('mac00001');
+    await tester.pumpAndSettle();
+    flush();
+    await session.connectLink(
+      server.linkWithCode('ABCD-1234', computer: (desktop: 'win00001', key: key)),
+      scanned: true,
+    );
+    await tester.pumpAndSettle();
+    expect(desktops.selected?.id, 'win00001');
+    flush();
+  });
+
   testWidgets('a tapped push opens its session on its computer; one that names no computer opens nothing', (
     tester,
   ) async {

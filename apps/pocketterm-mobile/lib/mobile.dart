@@ -102,11 +102,25 @@ class MobileSession extends Session {
     notifyListeners();
   }
 
+  /// The computer whose code was last scanned, until the home page shows it
+  /// ([takeScannedComputer]).
+  String? _scanned;
+
+  /// The computer just scanned, once: the home page shows it rather than
+  /// whichever was seen last.
+  String? takeScannedComputer() {
+    final id = _scanned;
+    _scanned = null;
+    return id;
+  }
+
   @override
   Future<void> addComputerKey(ComputerKey computer) async {
-    if (_computerKeys[computer.desktop] == computer.key) return;
-    await Native.setChannelKey(desktop: computer.desktop, key: computer.key.toBase64());
-    _computerKeys[computer.desktop] = computer.key;
+    _scanned = computer.desktop;
+    if (_computerKeys[computer.desktop] != computer.key) {
+      await Native.setChannelKey(desktop: computer.desktop, key: computer.key.toBase64());
+      _computerKeys[computer.desktop] = computer.key;
+    }
     notifyListeners();
   }
 
@@ -509,6 +523,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// another computer selected, or a new key scanned, the old one goes (with
   /// any page on it) and a new one comes.
   void _syncRemote() {
+    // A code just scanned: that computer, not the one seen last.
+    if (widget.session.takeScannedComputer() case final id?) {
+      _desktops.show(id);
+      if (!_desktops.all.any((d) => d.id == id)) unawaited(_desktops.refresh());
+    }
     final d = _desktops.selected;
     final key = d == null ? null : widget.session.computerKey(d.id);
     final old = _terminal;

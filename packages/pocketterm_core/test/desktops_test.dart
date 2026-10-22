@@ -52,6 +52,19 @@ void main() {
     expect(changes, ['aaaaaaaa', 'bbbbbbbb']);
   });
 
+  test('a computer asked for (its code scanned) is shown once listed, over one seen later', () {
+    final d = Desktops(client)
+      ..apply([row('aaaaaaaa', Duration.zero)])
+      ..show('bbbbbbbb');
+    expect(d.selected?.id, 'aaaaaaaa', reason: 'not listed yet');
+    d.apply([row('cccccccc', Duration.zero), row('bbbbbbbb', const Duration(minutes: 1))]);
+    expect(d.selected?.id, 'bbbbbbbb');
+    d.apply([row('aaaaaaaa', Duration.zero), row('bbbbbbbb', const Duration(minutes: 1))]);
+    expect(d.selected?.id, 'bbbbbbbb', reason: 'asked for once, then kept like any choice');
+    d.show('aaaaaaaa');
+    expect(d.selected?.id, 'aaaaaaaa');
+  });
+
   test('the cached list shows the computer last shown before the server answers', () {
     final cached = Desktop.fromJson(row('bbbbbbbb', const Duration(minutes: 5)));
     final d = Desktops(client, cached: [cached], saved: 'bbbbbbbb');

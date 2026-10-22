@@ -118,9 +118,27 @@ class Desktops extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The one shown stays while listed; else the newest seen (kept from then
-  /// on, so it doesn't flip as computers take turns being newest); else none.
+  /// The person just scanned [id]'s code: it's shown now if listed, else as
+  /// soon as [apply] lists it, whichever computer was seen last.
+  void show(String id) {
+    if (all.any((d) => d.id == id)) {
+      _wanted = null;
+      select(id);
+    } else {
+      _wanted = id;
+    }
+  }
+
+  String? _wanted;
+
+  /// The one asked for by [show] once listed; else the one shown stays while
+  /// listed; else the newest seen (kept from then on, so it doesn't flip as
+  /// computers take turns being newest); else none.
   void _pick() {
+    if (_wanted case final w? when all.any((d) => d.id == w)) {
+      _selectedId = w;
+      _wanted = null;
+    }
     if (selected == null) _selectedId = all.firstOrNull?.id;
   }
 }

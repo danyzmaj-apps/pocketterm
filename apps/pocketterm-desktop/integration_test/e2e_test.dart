@@ -358,7 +358,7 @@ class _Run {
     await until('signed in', () => app.user != null);
     await _see(find.text('Get this computer ready'));
     expect(app.terminalOn, isTrue, reason: 'the first sign-in turns Terminal from phone on');
-    expect(await app.host.launchAtLogin(), isTrue, reason: 'the first sign-in asks for launch at login');
+    expect(await app.host.launchAtLogin(), isFalse, reason: 'the first sign-in adds no login item on its own');
   }
 
   Future<void> _getReady() async {

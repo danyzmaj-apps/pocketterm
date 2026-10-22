@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:pocketterm_core/backend.dart';
@@ -145,8 +146,9 @@ class _ScanPageState extends State<_ScanPage> {
           ),
           // The Simulator and emulators have no camera: E2E debug builds take
           // the link a code holds, as if the camera had read it (maestro/e2e).
-          // Release and profile builds don't have it.
-          if (widget.pasteCode)
+          // kDebugMode is a constant false in release and profile builds, so
+          // the field isn't compiled into them at all.
+          if (kDebugMode && widget.pasteCode)
             SafeArea(
               child: Align(
                 alignment: Alignment.bottomCenter,

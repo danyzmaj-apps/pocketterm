@@ -672,7 +672,7 @@ class _Run {
     );
     expect(ours(s.window!), isTrue, reason: 'real omp placed in ${s.window}');
     await Future<void>.delayed(const Duration(seconds: 2));
-    await app.terminals.send(s.window!, '!echo e2e-real');
+    await app.terminals.send(s.window!, '!echo e2e-real', enter: true);
     final before = await until('the shell command in its transcript', () {
       final now = app.live[s.key];
       return now != null && now.log.items.any((i) => '${i.args}${i.output}${i.text}'.contains('e2e-real'))

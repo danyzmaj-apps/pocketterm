@@ -11,6 +11,7 @@ import 'package:pocketterm_mobile/coach.dart';
 import 'package:pocketterm_mobile/mobile.dart';
 import 'package:pocketterm_mobile/push_consent.dart';
 import 'package:pocketterm_mobile/session_view.dart';
+import 'package:pocketterm_mobile/terminal_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'screenshots/fakes.dart';
@@ -159,6 +160,39 @@ void main() {
     expect(find.text('Looking for your computers…'), findsNothing);
     remote.flush();
   });
+
+  testWidgets("the link note tells a server out of reach, a computer's clock and a computer not answering apart", (
+    tester,
+  ) async {
+    Future<String> note(TerminalLink link, {Duration? clockOff}) async {
+      final r = _Link(dir, link, clockOff)..desktopName = 'MacBook Pro';
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: linkNote(r))));
+      final text = tester.widget<Text>(find.byType(Text)).data!;
+      r.dispose();
+      return text;
+    }
+
+    expect(await note(TerminalLink.unreachable), contains("Can't reach my-mac.tail1234.ts.net"));
+    expect(await note(TerminalLink.unreachable), contains('renamed in Tailscale'));
+    expect(await note(TerminalLink.offline, clockOff: const Duration(minutes: -7)), contains('differ by 7 minutes'));
+    expect(await note(TerminalLink.offline, clockOff: const Duration(hours: 5)), contains('differ by 5 hours'));
+    expect(await note(TerminalLink.offline), contains("MacBook Pro isn't answering"));
+  });
+}
+
+/// A computer's remote whose link is [link], through a server on a tailnet.
+class _Link extends TerminalRemote {
+  _Link(Directory dir, this._link, this._clockOff)
+    : super(_Unreachable(), dir, desktopId: 'mac00001', key: testKey, send: (_, _) {});
+
+  final TerminalLink _link;
+  final Duration? _clockOff;
+
+  @override
+  TerminalLink get link => _link;
+
+  @override
+  Duration? get clockOff => _clockOff;
 }
 
 /// A server on a tailnet this phone isn't on (Tailscale off here).

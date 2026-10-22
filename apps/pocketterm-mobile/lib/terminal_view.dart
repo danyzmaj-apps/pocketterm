@@ -257,6 +257,12 @@ Widget? linkNote(TerminalRemote r, {Color color = C.bar}) {
     TerminalLink.connecting => ('connecting…', true),
     TerminalLink.unreachable => (serverUnreachable(r.backend), false),
     TerminalLink.waiting => ('asking $who…', true),
+    // Its messages come, but a clock this far off makes them look replayed: they're dropped.
+    TerminalLink.offline when r.clockOff != null => (
+      "This phone's clock and $who's differ by ${_clockGap(r.clockOff!)}, so nothing from it can be trusted. Turn on "
+          'Set Automatically (date and time) on both.',
+      false,
+    ),
     TerminalLink.offline => (
       "$who isn't answering. It has to be awake, with PocketTerm running and "
           'Settings → Terminal from phone on.',
@@ -286,6 +292,14 @@ Widget? linkNote(TerminalRemote r, {Color color = C.bar}) {
       ],
     ),
   );
+}
+
+/// [off] in words: minutes, or hours once that's more.
+String _clockGap(Duration off) {
+  final minutes = off.inMinutes.abs();
+  if (minutes < 120) return minutes == 1 ? '1 minute' : '$minutes minutes';
+  final hours = off.inHours.abs();
+  return '$hours hours';
 }
 
 /// Opens coding session [key]; [starting]: it was just launched and its agent

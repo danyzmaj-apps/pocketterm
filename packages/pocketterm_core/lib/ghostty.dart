@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/terminal.dart';
@@ -155,14 +156,9 @@ return out''';
   /// windows an agent named its tty in) are kept here: key → `ttys012`.
   final _ttys = <String, String>{};
 
-  /// The ttys of Ghostty's terminals now: its children's (a login each).
-  Set<String> _surfaceTtys(Procs procs) {
-    final ghostty = procs.pidOf('$appPath/Contents/MacOS/');
-    return {
-      for (final p in procs.all)
-        if (ghostty != null && p.ppid == ghostty && p.tty.isNotEmpty) p.tty,
-    };
-  }
+  /// The ttys of Ghostty's terminals now ([ghosttySurfaceTtys]).
+  Set<String> _surfaceTtys(Procs procs) => ghosttySurfaceTtys(procs, procs.pidOf('$appPath/Contents/MacOS/'));
+
 
   /// [key]'s tty is [tty] (an agent there said so).
   void learn(String key, String tty) => _ttys[key] = tty.replaceFirst('/dev/', '');
@@ -284,6 +280,24 @@ end run''',
     final named = open.where((w) => agent.sessionOfTitle(w.title) == name).toList();
     return named.length == 1 ? named.single.key : null;
   }
+}
+
+/// The ttys of the terminals of the Ghostty at pid [ghostty]: each one's
+/// first process, a child of Ghostty, or (Ghostty 1.3 double-forks it) an
+/// orphan whose parent is gone, which is Ghostty's `login -flp <user>` or
+/// the command it ran as a login one (`-zsh`, `-/bin/sleep 9`). A process
+/// whose parent is still there (another terminal's shell, a tmux pane) never
+/// counts.
+@visibleForTesting
+Set<String> ghosttySurfaceTtys(Procs procs, int? ghostty) {
+  if (ghostty == null) return const {};
+  final alive = {for (final p in procs.all) p.pid};
+  bool orphanRoot(Proc p) =>
+      p.ppid > 1 && !alive.contains(p.ppid) && (p.args.startsWith('/usr/bin/login -f') || p.args.startsWith('-'));
+  return {
+    for (final p in procs.all)
+      if (p.tty.isNotEmpty && (p.ppid == ghostty || orphanRoot(p))) p.tty,
+  };
 }
 
 /// The listing script's output: a line per terminal (id, title, folder,

@@ -807,15 +807,16 @@ function run(argv) {
   return $.AEDeterminePermissionToAutomateTarget(app.aeDesc, 0x2a2a2a2a, 0x2a2a2a2a, argv[1] === 'ask');
 }''';
 
-  /// macOS asks about [bundle] (once at a time); a yes is remembered.
+  /// macOS asks about [bundle] (once at a time); a yes is remembered. A
+  /// helper that fails to start leaves the next script to look again.
   void _ask(String bundle) {
     if (!_asking.add(bundle)) return;
-    unawaited(
-      consent(bundle, ask: true).then((answer) {
-        _asking.remove(bundle);
-        if (answer == 0) _allowed.add(bundle);
-      }),
-    );
+    consent(bundle, ask: true)
+        .then((answer) {
+          if (answer == 0) _allowed.add(bundle);
+        })
+        .whenComplete(() => _asking.remove(bundle))
+        .ignore();
   }
 
   Future<String> run(String app, String bundle, String script, [List<String> args = const []]) async {

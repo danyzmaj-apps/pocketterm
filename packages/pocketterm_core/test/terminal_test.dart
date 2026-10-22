@@ -306,5 +306,24 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 200));
       expect(kinds(), ['look', 'script', 'look', 'ask']);
     });
+
+    test('a question helper that fails to start leaves the next script free to look again', () async {
+      final looks = ['-1744', '0'];
+      final o = AppleScript(
+        timeout: const Duration(milliseconds: 600),
+        stuckAfter: const Duration(milliseconds: 200),
+        start: (exe, args) async {
+          started.add(args);
+          if (args.last == 'ask') throw const ProcessException('/usr/bin/osascript', [], 'Resource busy');
+          final p = await Process.start('/bin/sh', ['-c', args.contains('JavaScript') ? 'echo ${looks.removeAt(0)}' : 'echo out']);
+          procs.add(p);
+          return p;
+        },
+      );
+      await expectLater(o.run('Terminal', 'com.apple.Terminal', 'x'), throwsA(pending));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(await o.run('Terminal', 'com.apple.Terminal', 'x'), 'out');
+      expect(kinds(), ['look', 'ask', 'look', 'script']);
+    });
   });
 }

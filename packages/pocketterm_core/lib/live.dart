@@ -179,10 +179,80 @@ class LiveOp {
 
 String _newEpoch() => List.generate(8, (_) => Random.secure().nextInt(36).toRadixString(36)).join();
 
+/// The character of [s] starting at code unit [i]: how many bytes it takes
+/// inside a JSON string, UTF-8 encoded (quotes, backslashes and control
+/// characters escaped as jsonEncode does), and how many code units it is.
+(int, int) _jsonChar(String s, int i) {
+  final c = s.codeUnitAt(i);
+  if (c == 0x22 || c == 0x5c) return (2, 1);
+  if (c < 0x20) return (const {0x08, 0x09, 0x0a, 0x0c, 0x0d}.contains(c) ? 2 : 6, 1);
+  if (c < 0x80) return (1, 1);
+  if (c < 0x800) return (2, 1);
+  if ((c & 0xfc00) == 0xd800 && i + 1 < s.length && (s.codeUnitAt(i + 1) & 0xfc00) == 0xdc00) return (4, 2);
+  // A lone surrogate is escaped.
+  if ((c & 0xf800) == 0xd800) return (6, 1);
+  return (3, 1);
+}
+
+/// How many bytes [s] takes inside a JSON string, UTF-8 encoded.
+int jsonBytes(String s) {
+  var n = 0;
+  for (var i = 0; i < s.length;) {
+    final (bytes, units) = _jsonChar(s, i);
+    n += bytes;
+    i += units;
+  }
+  return n;
+}
+
+/// The start of [s] that takes at most [max] bytes as JSON ([jsonBytes]),
+/// never splitting a character.
+String _headBytes(String s, int max) {
+  var n = 0;
+  for (var i = 0; i < s.length;) {
+    final (bytes, units) = _jsonChar(s, i);
+    n += bytes;
+    if (n > max) return s.substring(0, i);
+    i += units;
+  }
+  return s;
+}
+
+/// The end of [s] that takes at most [max] bytes as JSON, never splitting a
+/// character.
+String _tailBytes(String s, int max) {
+  var n = 0;
+  for (var end = s.length; end > 0;) {
+    final pair = end >= 2 && (s.codeUnitAt(end - 1) & 0xfc00) == 0xdc00 && (s.codeUnitAt(end - 2) & 0xfc00) == 0xd800;
+    final start = pair ? end - 2 : end - 1;
+    n += _jsonChar(s, start).$1;
+    if (n > max) return s.substring(end);
+    end = start;
+  }
+  return s;
+}
+
+/// How an item's text that was too long for the phone ends.
+const cutNote = '\n\n… (too long to show here: the rest is on the computer)';
+
+/// The most JSON bytes an item's text takes on the way to the phone, with
+/// [cutNote]; its tool output, arguments and title take less. An item
+/// then always fits in one message: the server closes a socket on a frame
+/// over 256 KiB, and sealing grows a message by a third (lib/e2e.dart).
+const int maxItemTextBytes = 64 * 1024;
+const int _maxOutputBytes = 16 * 1024;
+const int _maxArgsBytes = 4 * 1024;
+const int _maxTitleBytes = 1024;
+
+/// [s] cut to its first [max] bytes, ending with [cutNote].
+String _clipText(String s, int max) => jsonBytes(s) <= max ? s : '${_headBytes(s, max - jsonBytes(cutNote))}$cutNote';
+
 /// The Mac's copy of one session's transcript. Every change gets the next
 /// [seq]; a phone that has seen up to some seq catches up with [since].
 /// [epoch] changes when the transcript starts over (another session in that
 /// omp, the extension reconnected), and a phone then drops what it has.
+/// An item too big for one message is cut ([maxItemTextBytes]): its text
+/// keeps its start, a tool's output its end.
 class LiveLog {
   LiveLog(List<LiveItem> snapshot, {required this.older, this.cap = 3000, String? epoch})
     : epoch = epoch ?? _newEpoch() {
@@ -200,15 +270,29 @@ class LiveLog {
   bool older;
 
   final _items = <String, LiveItem>{};
+
+  /// Each item's text size as JSON ([jsonBytes]), kept up as text streams in.
+  final _textBytes = <String, int>{};
   int _next = 0;
   int _min = 0;
 
   /// Oldest first.
   List<LiveItem> get items => _items.values.toList()..sort((a, b) => a.order.compareTo(b.order));
 
+  /// A copy of [item] cut to what fits in a message.
+  LiveItem _fit(LiveItem item) {
+    final copy = item.copy()
+      ..text = _clipText(item.text, maxItemTextBytes)
+      ..title = _clipText(item.title, _maxTitleBytes)
+      ..args = _clipText(item.args, _maxArgsBytes);
+    if (jsonBytes(copy.output) > _maxOutputBytes) copy.output = '…${_tailBytes(copy.output, _maxOutputBytes - 3)}';
+    _textBytes[copy.id] = jsonBytes(copy.text);
+    return copy;
+  }
+
   LiveItem _add(LiveItem item) {
     final old = _items[item.id];
-    final copy = item.copy()
+    final copy = _fit(item)
       ..order = old?.order ?? _next++
       ..seq = ++seq;
     return _items[item.id] = copy;
@@ -222,14 +306,23 @@ class LiveLog {
     return LiveOp.item(copy.seq, copy.copy());
   }
 
-  /// Streamed [text] added to [id]; null if there's no such item.
+  /// Streamed [text] added to [id]; null if there's no such item, or its
+  /// text was already cut. Text past [maxItemTextBytes] is cut.
   LiveOp? append(String id, String text) {
     final item = _items[id];
-    if (item == null || text.isEmpty) return null;
+    final had = _textBytes[id] ?? 0;
+    if (item == null || text.isEmpty || item.text.endsWith(cutNote)) return null;
+    var add = text;
+    var bytes = jsonBytes(text);
+    if (had + bytes > maxItemTextBytes) {
+      add = '${_headBytes(text, max(0, maxItemTextBytes - had - jsonBytes(cutNote)))}$cutNote';
+      bytes = jsonBytes(add);
+    }
+    _textBytes[id] = had + bytes;
     item
-      ..text += text
+      ..text += add
       ..seq = ++seq;
-    return LiveOp.append(seq, id, text);
+    return LiveOp.append(seq, id, add);
   }
 
   /// Items from before the oldest one here (oldest first), placed above it.
@@ -239,7 +332,7 @@ class LiveLog {
     final ops = <LiveOp>[];
     for (final item in items.reversed) {
       if (_items.containsKey(item.id)) continue;
-      final copy = item.copy()
+      final copy = _fit(item)
         ..order = --_min
         ..seq = ++seq;
       _items[copy.id] = copy;
@@ -259,6 +352,7 @@ class LiveLog {
     final drop = items.take(_items.length - cap);
     for (final i in drop) {
       _items.remove(i.id);
+      _textBytes.remove(i.id);
     }
     _min = items.first.order;
     older = true;

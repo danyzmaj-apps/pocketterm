@@ -139,6 +139,48 @@ void main() {
       _follow(log, [log.upsert(_text('10', 'x'))], view: back);
       expect(back.items.last.id, '10');
     });
+
+    test('jsonBytes is what an item text takes in JSON, whatever the characters', () {
+      for (final s in [
+        'plain',
+        r'quote " and \ back',
+        'tab\tnl\n\x00\x1b[31m',
+        'é中文',
+        '😀👍🏽',
+        'שלום',
+        'a\u200db',
+        '\ud800 lone',
+      ]) {
+        expect(jsonBytes(s), utf8.encode(jsonEncode(s)).length - 2, reason: s);
+      }
+    });
+
+    test('a huge item is cut to fit one message, the same for the Mac and the phone that follows', () {
+      final log = LiveLog([], older: false);
+      final huge = '中文 ok 😀 \x1b[1m"' * 40000;
+      final ops = [
+        log.upsert(_text('u', huge, kind: ItemKind.user)),
+        log.upsert(_text('a', '')),
+        for (var i = 0; i < 300; i++) ?log.append('a', '$i ${'x' * 500}\n'),
+        log.upsert(
+          LiveItem(id: 't', kind: ItemKind.tool, tool: 'bash', args: 'y' * 100000, output: '${'z' * 100000}END'),
+        ),
+      ];
+      final view = _follow(log, ops);
+      for (final i in log.items) {
+        expect(utf8.encode(jsonEncode(i.toJson())).length, lessThan(maxItemTextBytes + 32 * 1024), reason: i.id);
+      }
+      expect(log.items[0].text, startsWith('中文 ok 😀'));
+      expect(log.items[0].text, endsWith(cutNote));
+      expect(log.items[1].text, endsWith(cutNote), reason: 'streamed text stops at the cap');
+      expect(log.items[2].output, endsWith('END'), reason: "a tool's output keeps its end");
+      String texts(LiveItem i) => jsonEncode([i.id, i.text, i.args, i.output]);
+      expect(view.items.map(texts), log.items.map(texts));
+      // What a catch-up sends: every chunk under the server's frame once sealed.
+      for (final chunk in chunkJson([for (final i in log.items) i.toJson()])) {
+        expect(utf8.encode(jsonEncode(chunk)).length * 4 ~/ 3, lessThan(256 * 1024));
+      }
+    });
   });
 
   group('answerKeys', () {

@@ -146,6 +146,31 @@ void main() {
       expect(onPath.calls, ['--version', 'plugin list --json']);
     });
 
+    test("a profile that prints something before the shell's answer doesn't hide claude", () async {
+      File(claude.path).renameSync('$home/claude');
+      final onPath = FakeClaude('$home/claude')..onPath = 'Welcome back!\n\x1b[1mbanner\x1b[0m\n$home/claude\n';
+      final found = Integrations(home: home, run: onPath.run, claudePaths: [claude.path]);
+      expect(await found.state(Agent.claude), (installed: false, current: false, problem: null));
+    });
+
+    test(
+      "from Finder, claude installed with nvm (newest Node first) or npm's global prefix is found without a shell",
+      () async {
+        final shell = <String>[];
+        for (final v in ['v9.11.2', 'v20.10.0', 'v18.19.1']) {
+          File('$home/.nvm/versions/node/$v/bin/claude').createSync(recursive: true);
+        }
+        final nvm = FakeClaude('$home/.nvm/versions/node/v20.10.0/bin/claude');
+        Future<ProcessResult> run(String exe, List<String> args) {
+          if (exe == '/bin/zsh') shell.add(args.join(' '));
+          return nvm.run(exe, args);
+        }
+
+        expect((await Integrations(home: home, run: run).state(Agent.claude)).problem, isNull);
+        expect(shell, isEmpty);
+      },
+    );
+
     test("on Windows claude is the native installer's claude.exe, and no login shell is asked", () async {
       final exe = FakeClaude('$home/.local/bin/claude.exe')..onPath = '$home/claude\n';
       File(exe.path).createSync(recursive: true);

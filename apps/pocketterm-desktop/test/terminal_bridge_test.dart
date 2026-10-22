@@ -61,6 +61,62 @@ void main() {
     expect(phoneTerminals(statuses).map((s) => s.id), ['kitty', 'tmux', 'ghostty']);
   });
 
+  group('what goes to the phone fits under the server frame', () {
+    int size(Object? json) => utf8.encode(jsonEncode(json)).length;
+    final cmds = [
+      for (var i = 0; i < 90; i++)
+        ['command-$i', 'What command $i does, in up to eighty characters or so, as omp says'],
+    ];
+    Map<String, dynamic> state({int sessions = 60, int projects = 5000, int windows = 80}) => {
+      'windows': [
+        for (var i = 0; i < windows; i++)
+          {'key': 'kitty-1/$i', 'title': 'π > 中文 window $i 😀', 'cwd': '/Users/me/p $i'},
+      ],
+      'sessions': [
+        for (var i = 0; i < sessions; i++) {'key': 'kitty-1/$i', 'id': 's$i', 'title': 'Fix $i', 'cmds': cmds},
+      ],
+      'projects': [for (var i = 0; i < projects; i++) '/Users/me/Dev/some-organisation/project-number-$i'],
+      'home': '/Users/me',
+    };
+
+    test('a small state goes as it is', () {
+      final s = state(sessions: 2, projects: 10);
+      expect(TerminalBridge.fitState(s, watched: const {}), same(s));
+    });
+
+    test("many sessions and repositories: unwatched sessions' commands go first, then repositories past what fits", () {
+      final fit = TerminalBridge.fitState(state(), watched: {'kitty-1/3'});
+      expect(size(fit), lessThanOrEqualTo(150000));
+      final sessions = (fit['sessions'] as List).cast<Map<String, dynamic>>();
+      expect(sessions.length, 60, reason: 'every session is still listed');
+      expect(sessions.where((s) => s['cmds'] != null).map((s) => s['key']), ['kitty-1/3']);
+      expect(sessions[3]['cmds'], cmds, reason: 'the watched one keeps its commands whole');
+      expect((fit['windows'] as List).length, 80);
+      final projects = fit['projects'] as List;
+      expect(projects, isNotEmpty);
+      expect(projects.length, lessThan(5000));
+      expect(projects.first, '/Users/me/Dev/some-organisation/project-number-0');
+    });
+
+    test('with nothing else left to cut, windows go from the end', () {
+      final fit = TerminalBridge.fitState(state(windows: 4000, projects: 0), watched: const {}, maxBytes: 100000);
+      expect(size(fit), lessThanOrEqualTo(100000));
+      expect((fit['windows'] as List).first, containsPair('key', 'kitty-1/0'));
+    });
+
+    test('a screen keeps its newest lines; a single line too long keeps its start', () {
+      final lines = [for (var i = 0; i < 5000; i++) '\x1b[38;2;1;2;3m$i 中文 😀\x1b[0m'];
+      final fit = TerminalBridge.fitLines(lines, 60000);
+      expect(size(fit), lessThanOrEqualTo(60000));
+      expect(fit.last, lines.last);
+      expect(fit, lines.sublist(lines.length - fit.length));
+      final long = TerminalBridge.fitLines(['x' * 200000], 60000);
+      expect(size(long), lessThanOrEqualTo(60000));
+      expect(long.single, startsWith('xxx'));
+      expect(TerminalBridge.fitLines(const [], 60000), isEmpty);
+    });
+  });
+
   test('an error only when nothing shows and no terminal is usable: the setup one', () {
     const setup = TermStatus('kitty', 'kitty', TermState.setup, note: "kitty isn't listening.");
     const idle = TermStatus('ghostty', 'Ghostty', TermState.idle);

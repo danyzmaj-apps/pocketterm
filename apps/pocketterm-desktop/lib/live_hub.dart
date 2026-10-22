@@ -178,21 +178,23 @@ class LiveHub {
   LiveSession? operator [](String key) => _byKey[key];
 
   /// Serves one extension, whose JSON [frames] come in order over [link],
-  /// until they end.
+  /// until they end. A frame this side can't read (an extension older or
+  /// newer than the app, with fields missing or of another shape) is
+  /// skipped; the session goes on.
   Future<void> accept(Stream<String> frames, LiveLink link) async {
     LiveSession? session;
     try {
       await for (final frame in frames) {
-        final Map<String, dynamic> m;
         try {
-          m = jsonDecode(frame) as Map<String, dynamic>;
-        } on FormatException {
-          continue;
-        }
-        if (m['t'] == 'hello') {
-          session = await _hello(link, session, m);
-        } else if (session != null && identical(_byKey[session.key], session)) {
-          _handle(session, m);
+          final m = jsonDecode(frame);
+          if (m is! Map<String, dynamic>) continue;
+          if (m['t'] == 'hello') {
+            session = await _hello(link, session, m);
+          } else if (session != null && identical(_byKey[session.key], session)) {
+            _handle(session, m);
+          }
+        } on Object catch (e) {
+          debugPrint('PocketTerm: live session: a frame skipped: $e');
         }
       }
     } on Object catch (e) {
@@ -231,7 +233,8 @@ class LiveHub {
     window ??= same?.window;
     final key = same != null && same.window == window ? same.key : window ?? 'pid:${m['pid']}';
     final log = LiveLog([
-      for (final i in m['items'] as List? ?? const []) LiveItem.fromJson((i as Map).cast()),
+      for (final i in m['items'] as List? ?? const [])
+        if (i is Map && i['id'] is String) LiveItem.fromJson(i.cast()),
     ], older: m['older'] == true);
     final LiveSession session;
     if (current != null && current.key == key && identical(_byKey[key], current)) {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -120,9 +121,39 @@ class Integrations {
   Future<bool> found(Agent agent) async => switch (agent) {
     Agent.omp =>
       Directory(p.join(home, '.omp')).existsSync() ||
-          await _find('omp', _ompPaths ?? [p.join(home, '.bun', 'bin', _windows ? 'omp.exe' : 'omp')]) != null,
+          await _find(
+                'omp',
+                _ompPaths ?? (_windows ? [p.join(home, '.bun', 'bin', 'omp.exe')] : _usualPlaces('omp')),
+              ) !=
+              null,
     Agent.claude => (await _claude()).path != null,
   };
+
+  /// Where [name] goes on macOS when installed by hand, by Homebrew, bun, npm (a global prefix, nvm with the
+  /// newest Node first, Volta): a GUI app started from Finder or the Dock has none of these on its PATH, and a
+  /// login shell has only what the profile files add, not ~/.zshrc (where bun's and nvm's installers put theirs).
+  List<String> _usualPlaces(String name) {
+    final nvm = Directory(p.join(home, '.nvm', 'versions', 'node'));
+    final nodes = nvm.existsSync() ? nvm.listSync().whereType<Directory>().map((d) => d.path).toList() : <String>[];
+    List<int> version(String dir) => [for (final n in RegExp(r'\d+').allMatches(p.basename(dir))) int.parse(n[0]!)];
+    nodes.sort((a, b) {
+      final (x, y) = (version(a), version(b));
+      for (var i = 0; i < x.length && i < y.length; i++) {
+        if (x[i] != y[i]) return y[i].compareTo(x[i]);
+      }
+      return y.length.compareTo(x.length);
+    });
+    return [
+      p.join(home, '.local', 'bin', name),
+      if (name == 'claude') p.join(home, '.claude', 'local', 'claude'),
+      p.join(home, '.bun', 'bin', name),
+      p.join(home, '.npm-global', 'bin', name),
+      for (final n in nodes) p.join(n, 'bin', name),
+      p.join(home, '.volta', 'bin', name),
+      '/opt/homebrew/bin/$name',
+      '/usr/local/bin/$name',
+    ];
+  }
 
   /// Installs [agent]'s integration, or updates it to the bundled copy. Its
   /// running sessions load it when they restart (omp) or reload their plugins (Claude Code).
@@ -209,14 +240,21 @@ class Integrations {
 
   /// [name]'s executable: on macOS in [candidates] before asking a login
   /// shell (a GUI app has no login shell's PATH); on Windows PATH, then
-  /// [candidates].
+  /// [candidates]. The shell's answer is its last line that is a path (a
+  /// profile may print something first); a shell that doesn't answer within
+  /// 10 s counts as not finding it.
   Future<String?> _find(String name, List<String> candidates) async {
     if (_windows) return findExecutable(name, extra: candidates, windows: true);
     final path = candidates.where((c) => File(c).existsSync()).firstOrNull;
     if (path != null) return path;
-    final r = await _run('/bin/zsh', ['-lc', 'command -v $name']);
-    final found = '${r.stdout}'.trim();
-    return r.exitCode == 0 && found.isNotEmpty ? found : null;
+    final ProcessResult r;
+    try {
+      r = await _run('/bin/zsh', ['-lc', 'command -v $name']).timeout(const Duration(seconds: 10));
+    } on TimeoutException {
+      return null;
+    }
+    if (r.exitCode != 0) return null;
+    return '${r.stdout}'.split('\n').map((l) => l.trim()).where((l) => l.startsWith('/')).lastOrNull;
   }
 
   /// The `claude` executable and whether it's new enough: on macOS the usual
@@ -225,15 +263,7 @@ class Integrations {
   Future<({String? path, String? problem})> _claude() async {
     final path = await _find(
       'claude',
-      _claudePaths ??
-          (_windows
-              ? [p.join(home, '.local', 'bin', 'claude.exe')]
-              : [
-                  '$home/.local/bin/claude',
-                  '$home/.claude/local/claude',
-                  '/opt/homebrew/bin/claude',
-                  '/usr/local/bin/claude',
-                ]),
+      _claudePaths ?? (_windows ? [p.join(home, '.local', 'bin', 'claude.exe')] : _usualPlaces('claude')),
     );
     if (path == null) return (path: null, problem: "Claude Code isn't installed");
     final r = await _run(path, ['--version']);

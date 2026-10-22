@@ -88,6 +88,33 @@ void main() {
     expect(s.project, 'pocketterm');
   });
 
+  test("frames an older or newer extension sends that the hub can't read are skipped; the session goes on", () async {
+    final ext = await connect();
+    ext
+      ..send({
+        't': 'hello',
+        'session': {'id': 's1', 'cwd': '/tmp'},
+        'window': 'kitty-1/7',
+        'items': [
+          {'k': 'user'},
+          'junk',
+          {'id': 'a', 'k': 'assistant', 't': 'kept'},
+        ],
+      })
+      ..send({'t': 'item'})
+      ..send({'t': 'append', 'text': 'x'})
+      ..send({'t': 'meta', 'title': 7})
+      ..send({'t': 'shiny-new-thing', 'what': true});
+    ext.ws.add('[1, 2]');
+    ext.ws.add('not json');
+    ext.send({
+      't': 'item',
+      'item': {'id': 'b', 'k': 'assistant', 't': 'after'},
+    });
+    await until(() => hub['kitty-1/7']?.log.items.length == 2);
+    expect(hub['kitty-1/7']!.log.items.map((i) => i.text), ['kept', 'after']);
+  });
+
   test('outside kitty the key is the pid', () async {
     (await connect()).hello(window: null);
     await until(() => hub['pid:42'] != null);

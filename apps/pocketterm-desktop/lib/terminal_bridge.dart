@@ -76,9 +76,10 @@ class TerminalBridge {
   /// Live ops wait this long to go out together.
   static const _batch = Duration(milliseconds: 150);
 
-  /// Realtime refuses big messages; a full screen is cut to this much JSON
-  /// (sealed and in base64 it grows by a third; see chunkJson in live.dart).
+  /// The server closes a socket on a frame over 256 KiB, and sealed and in base64 a message grows by a third (see
+  /// chunkJson in live.dart): a full screen is cut to this much JSON, a state to [_maxStateJson].
   static const _maxScreenJson = 60000;
+  static const _maxStateJson = 150000;
 
   late final TerminalChannel _ch = TerminalChannel(
     _server,
@@ -362,19 +363,22 @@ class TerminalBridge {
   }
 
   void _sendState() {
-    final sessions = [for (final s in _hub.sessions) s.summary.toJson()];
-    final state = {
-      'windows': [for (final w in _windows) w.toJson()],
-      'sessions': sessions,
-      'projects': _projects,
-      'roots': _roots(),
-      'home': _terms.home,
-      'agent': _agent().name,
-      'opensIn': ?_opensIn,
-      'terminals': [for (final s in phoneTerminals(_statuses)) s.toJson()],
-      'error': ?_termError,
-      if (_agentsNow case final a?) 'agents': AgentIntegration.toJsonAll(a),
-    };
+    final state = fitState(
+      {
+        'windows': [for (final w in _windows) w.toJson()],
+        'sessions': [for (final s in _hub.sessions) s.summary.toJson()],
+        'projects': _projects,
+        'roots': _roots(),
+        'home': _terms.home,
+        'agent': _agent().name,
+        'opensIn': ?_opensIn,
+        'terminals': [for (final s in phoneTerminals(_statuses)) s.toJson()],
+        'error': ?_termError,
+        if (_agentsNow case final a?) 'agents': AgentIntegration.toJsonAll(a),
+      },
+      watched: {for (final p in _phones.values) ?p.session},
+    );
+    final sessions = (state['sessions'] as List).cast<Map<String, dynamic>>();
     final key = jsonEncode({
       ...state,
       'sessions': [
@@ -388,6 +392,67 @@ class TerminalBridge {
     _sentClock = clock;
     _sentAt = now;
     _send('state', state);
+  }
+
+  /// [state] cut to at most [maxBytes] of JSON, least needed first: the slash commands of the sessions no phone
+  /// shows ([watched]: the ones phones show), the repositories in the Project folders that don't fit, every
+  /// command's description, every session's commands, then windows from the end of the list. Many coding sessions
+  /// (each with its agent's whole list of commands) or a Project folder with thousands of repositories would
+  /// otherwise make a state the server can't take.
+  @visibleForTesting
+  static Map<String, dynamic> fitState(
+    Map<String, dynamic> state, {
+    required Set<String> watched,
+    int maxBytes = _maxStateJson,
+  }) {
+    int size(Object? json) => utf8.encode(jsonEncode(json)).length;
+    final text = jsonEncode(state);
+    // UTF-8 takes at most three bytes per UTF-16 unit: most states are measured without encoding them.
+    if (text.length * 3 <= maxBytes) return state;
+    var total = utf8.encode(text).length;
+    if (total <= maxBytes) return state;
+    final out = {...state};
+    void cmds(Object? Function(Map<String, dynamic> session, List<Object?> cmds) keep) {
+      out['sessions'] = [
+        for (final s in (out['sessions'] as List).cast<Map<String, dynamic>>())
+          if (s['cmds'] case final List<Object?> c)
+            {
+              for (final e in s.entries)
+                if (e.key != 'cmds') e.key: e.value,
+              'cmds': ?keep(s, c),
+            }
+          else
+            s,
+      ];
+      total = size(out);
+    }
+
+    cmds((s, c) => watched.contains(s['key']) ? c : null);
+    if (out['projects'] case final List<Object?> projects when total > maxBytes) {
+      var room = maxBytes - (total - size(projects));
+      out['projects'] = [
+        for (final p in projects)
+          if ((room -= size(p) + 1) >= 0) p,
+      ];
+      total = size(out);
+    }
+    if (total > maxBytes) {
+      cmds(
+        (s, c) => [
+          for (final cmd in c)
+            if (cmd is List && cmd.isNotEmpty) [cmd.first],
+        ],
+      );
+    }
+    if (total > maxBytes) cmds((s, c) => null);
+    if (total > maxBytes) {
+      final windows = (out['windows'] as List).toList();
+      while (total > maxBytes && windows.isNotEmpty) {
+        total -= size(windows.removeLast()) + 1;
+      }
+      out['windows'] = windows;
+    }
+    return out;
   }
 
   bool _askingAgents = false;
@@ -486,7 +551,7 @@ class TerminalBridge {
   }
 
   Future<void> _sendScreen(String window) async {
-    final lines = await _terms.lines(window, history: true);
+    final lines = fitLines(await _terms.lines(window, history: true), _maxScreenJson);
     final before = _screens[window];
     final full = before == null || _fullScreen.remove(window);
     if (!full && listEquals(before.lines, lines)) return;
@@ -497,20 +562,36 @@ class TerminalBridge {
       _send('screen', {'window': window, 'v': v, 'diff': diff.toJson()});
       return;
     }
-    var from = 0;
-    var size = utf8.encode(jsonEncode(lines)).length;
-    while (size > _maxScreenJson && from < lines.length - 1) {
-      size -= utf8.encode(jsonEncode(lines[from])).length + 1;
-      from++;
-    }
-    final sent = from == 0 ? lines : lines.sublist(from);
-    _screens[window] = (v: v, lines: sent);
     _send('screen', {
       'window': window,
       'v': v,
-      'lines': sent,
+      'lines': lines,
       if (before == null) 'colors': ?await _terms.colors(window),
     });
+  }
+
+  /// The newest of [lines] that take at most [maxBytes] as JSON (one line at least, itself cut to fit): what a
+  /// screen sends whole. Its diffs are made between these too, so they're never larger.
+  @visibleForTesting
+  static List<String> fitLines(List<String> lines, int maxBytes) {
+    var size = 2;
+    var from = lines.length;
+    while (from > 0) {
+      final next = size + jsonBytes(lines[from - 1]) + 3;
+      if (next > maxBytes) break;
+      size = next;
+      from--;
+    }
+    if (from == lines.length && lines.isNotEmpty) {
+      // One line longer than all of it: its start, which is what a terminal shows of it.
+      final last = lines.last;
+      var end = last.length;
+      while (end > 0 && jsonBytes(last.substring(0, end)) + 5 > maxBytes) {
+        end = end * 3 ~/ 4;
+      }
+      return [last.substring(0, end)];
+    }
+    return from == 0 ? lines : lines.sublist(from);
   }
 
   // ------------------------------------------------------------ requests
@@ -939,7 +1020,7 @@ String? cantAnswer(Terminals terms, String window) {
   if (read && terms.can(window, TermCap.keys)) return null;
   final label = terms.hostOf(window)?.label ?? 'This terminal';
   return "$label can't ${read ? 'press keys' : 'show its screen'}, so answer this on the computer. "
-      '${(terms.tmux?.installed ?? false) ? 'Sessions you start from the phone run in tmux there, which can.' : 'With tmux (brew install tmux), sessions you start from the phone can.'}';
+      '${(terms.tmux?.installed ?? false) ? 'Sessions you start from the phone run in tmux there, which can.' : 'With tmux installed (Homebrew: brew install tmux), sessions you start from the phone can.'}';
 }
 
 /// Why a slash command for the session in [window] can't be run from the

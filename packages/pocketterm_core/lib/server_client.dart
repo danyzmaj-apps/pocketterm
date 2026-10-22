@@ -238,11 +238,11 @@ class PocketTermServerClient {
   }
 
   /// The server refused the token (an answer 401, the live channel closed
-  /// with 4003): forgotten here, [ended] says so.
+  /// with 4003): forgotten here, [ended] says so (unless [close]d by then).
   Future<void> refused() async {
     if (_token == null) return;
     await _forget();
-    _ended.add(null);
+    if (!_ended.isClosed) _ended.add(null);
   }
 
   /// Computer only: a pairing code for a phone, good once for 10 minutes.

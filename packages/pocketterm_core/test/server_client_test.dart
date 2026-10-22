@@ -199,6 +199,23 @@ void main() {
     expect(await client.desktops().timeout(const Duration(seconds: 3)), isEmpty);
     expect(quiet.connections, 2);
   });
+
+  // A background recheck's 401 can land while the app disconnects: the sign-in is forgotten, no error escapes.
+  test('a refusal that lands after the client closed is quiet', () async {
+    final tokens = MemoryDeviceTokens()
+      ..value = jsonEncode({
+        'url': 'http://127.0.0.1:9',
+        'token': 'token-1',
+        'server': 'srv0000000000001',
+        'device': {'id': 'dev0000000000001', 'role': 'phone', 'label': 'iPhone', 'platform': 'ios'},
+      });
+    final client = PocketTermServerClient(const Backend(url: 'http://127.0.0.1:9'), tokens: tokens);
+    await client.load();
+    client.close();
+    await client.refused();
+    expect(client.account, isNull);
+    expect(tokens.value, isNull);
+  });
 }
 
 /// A server that answers the first request on each connection, keeping it

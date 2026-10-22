@@ -35,8 +35,8 @@ const APPEND_MS = 100;
 
 type Cli = { port: number; token: string };
 type Frame = Record<string, unknown>;
-/** The answer being written: one text block of one model request. */
-type Stream = { id: string; text: string; pending: string; created: boolean; timer?: Timer };
+/** The answer being written: the text blocks of one model request, as the row that stores them joins them. */
+type Stream = { id: string; text: string; pending: string; created: boolean; block?: number; timer?: Timer };
 
 // Live ids: unique to this module, so never confused with row ids or another connection's.
 const instance = Math.random().toString(36).slice(2, 10);
@@ -62,7 +62,7 @@ let turnId: string | undefined;
 let interrupted = false;
 // Phone prompts waiting for their turn: the run goes on after this one ends.
 let queued = 0;
-// Text blocks being written, oldest first, until their row is stored.
+// Answers being written, one per model request, oldest first, until their row is stored.
 const streams = new Map<string, Stream>();
 const tools = new Map<string, Item>();
 // What Claude waits on, in the order its dialogs come: the first is on screen.
@@ -357,8 +357,9 @@ function flush($: EngineInterface, s: Stream): void {
 	s.pending = "";
 }
 
-/** Text as it streams, sent every [APPEND_MS] at most. */
-function streamText($: EngineInterface, key: string, text: string): void {
+/** Text as it streams, sent every [APPEND_MS] at most. A new text block of the same answer starts a paragraph,
+ * as the stored row joins them ([rowItems]), so the answer stays one item. */
+function streamText($: EngineInterface, key: string, block: number, text: string): void {
 	if (!text) return;
 	let s = streams.get(key);
 	if (!s) {
@@ -369,13 +370,15 @@ function streamText($: EngineInterface, key: string, text: string): void {
 		s.created = true;
 		sendItem($, { id: s.id, k: "assistant" });
 	}
+	if (s.block !== undefined && s.block !== block && s.text) text = `\n\n${text}`;
+	s.block = block;
 	s.text += text;
 	s.pending += text;
 	const stream = s;
 	s.timer ??= $.clock.after(APPEND_MS, () => flush($, stream));
 }
 
-/** The oldest streamed block, done now that its row is stored: its id goes to the row's text. */
+/** The oldest answer being written, done now that its row is stored: its id goes to the row's text. */
 function endStream(): Stream | undefined {
 	const [key, s] = streams.entries().next().value ?? [];
 	if (key === undefined || !s) return undefined;
@@ -520,7 +523,7 @@ export function register(on: On): void {
 			const chunk = step.value;
 			if (chunk.kind === "text") {
 				try {
-					streamText($, `${e.turnId}:${e.index}:${chunk.index}`, chunk.text);
+					streamText($, `${e.turnId}:${e.index}`, chunk.index, chunk.text);
 				} catch {}
 			}
 			yield chunk;

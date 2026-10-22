@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/server_client.dart';
+import 'package:pocketterm_core/session.dart';
 import 'package:pocketterm_desktop/commands.dart';
 import 'package:pocketterm_desktop/hosting/vps.dart';
 import 'package:pocketterm_desktop/onboarding/commands_view.dart';
@@ -31,9 +33,13 @@ class FakeChecks extends ServerChecks {
   /// The names asked about, in order.
   final asked = <String>[];
 
+  /// While set, asking whether a name resolves waits for it.
+  Completer<void>? gate;
+
   @override
   Future<bool> resolves(String domain) async {
     asked.add(domain);
+    await gate?.future;
     return resolvesNow;
   }
 
@@ -93,7 +99,13 @@ void main() {
   late List<String> opened;
 
   /// The setup of a computer with no server yet, Session's own sign-in; signed in, the window moves on.
-  Future<FakeApp> pumpSetup(WidgetTester tester, {Map<String, Object> prefs = const {}, Commands? commands}) async {
+  Future<FakeApp> pumpSetup(
+    WidgetTester tester, {
+    Map<String, Object> prefs = const {},
+    Commands? commands,
+    Directory? serverDir,
+    MemorySecrets? secrets,
+  }) async {
     tester.view
       ..physicalSize = const Size(900, 2400)
       ..devicePixelRatio = 1;
@@ -108,7 +120,8 @@ void main() {
     );
     final app = await FakeApp.create(
       tailscale: fake.tailscale,
-      serverDir: dir,
+      serverDir: serverDir ?? dir,
+      secrets: secrets,
       real: true,
       prefs: prefs,
       commands: commands,
@@ -352,6 +365,50 @@ void main() {
       expect(shows('Do you already have a PocketTerm server?'), isTrue);
       expect(app.setupStep, 'ownServer');
     });
+
+    String error(WidgetTester tester) => tester.widget<Text>(find.byKey(const ValueKey('setup-error'))).data!;
+
+    testWidgets('a server that can’t start says why, and Start can be pressed again', (tester) async {
+      // Its data folder is a file: the server can't keep anything there.
+      final file = File('${dir.path}/not-a-folder')..writeAsStringSync('');
+      final app = await pumpSetup(tester, prefs: {'setup_step': 'thisComputer'}, serverDir: Directory(file.path));
+      await until(tester, () => startEnabled(tester));
+      await tap(tester, 'setup-start-server');
+      await until(tester, () => find.byKey(const ValueKey('setup-error')).evaluate().isNotEmpty);
+      expect(error(tester), startsWith('The server didn’t start: '));
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(startEnabled(tester), isTrue);
+      expect(app.hostsServer, isFalse);
+      expect(app.user, isNull);
+    });
+
+    testWidgets('a sign-in the Keychain refuses says so, leaves nothing running, and Start works once it’s unlocked', (
+      tester,
+    ) async {
+      final keychain = MemorySecrets()..locked = true;
+      final app = await pumpSetup(tester, prefs: {'setup_step': 'thisComputer'}, secrets: keychain);
+      await until(tester, () => startEnabled(tester));
+      await tap(tester, 'setup-start-server');
+      await until(tester, () => find.byKey(const ValueKey('setup-error')).evaluate().isNotEmpty);
+      expect(error(tester), Session.keychainProblem);
+      expect(startEnabled(tester), isTrue);
+      expect(app.hostsServer, isFalse);
+      expect(app.backend, isNull);
+      expect(fake.serveConfig, isEmpty);
+
+      // Back to the choice: nothing of the start is left to overrule it.
+      await tap(tester, 'setup-back');
+      expect(shows('On this computer'), isTrue);
+      expect(app.hosting, isNull);
+
+      keychain.locked = false;
+      await tap(tester, 'setup-this-computer');
+      await until(tester, () => startEnabled(tester));
+      await tap(tester, 'setup-start-server');
+      await until(tester, () => app.user != null);
+      expect(app.hostsServer, isTrue);
+      await finish(tester, app);
+    });
   });
 
   group('On my own server, I have one', () {
@@ -486,6 +543,19 @@ void main() {
       await tester.pump();
       expect(tester.widget<CopyCommand>(find.byKey(const ValueKey('setup-ssh'))).command, 'ssh root@pt.example.com');
       await until(tester, () => checks.asked.isNotEmpty);
+    });
+
+    testWidgets('an address changed while the checks run is checked at once, not at the next look', (tester) async {
+      await pumpSetup(tester, prefs: {'setup_step': 'newServer'});
+      checks.gate = Completer<void>();
+      await tester.enterText(find.byKey(const ValueKey('setup-address')), '203.0.113.7');
+      await until(tester, () => checks.asked.isNotEmpty);
+      await tester.enterText(find.byKey(const ValueKey('setup-address')), '203.0.113.8');
+      await tester.pump();
+      checks.gate!.complete();
+      // No time passes for the window: only an immediate round asks about the new address.
+      await until(tester, () => checks.asked.contains('203-0-113-8.sslip.io'));
+      expect(checks.asked, ['203-0-113-7.sslip.io', '203-0-113-8.sslip.io']);
     });
   });
 

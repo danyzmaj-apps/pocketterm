@@ -34,12 +34,13 @@ class FakeApp extends AppController {
     Tailscale? tailscale,
     Directory? serverDir,
     Commands? commands,
+    SecretStore? secrets,
   }) : super(
          prefs,
          'Mac',
          FakeDesktopHost(),
          integrations: integrations,
-         secrets: MemorySecrets(),
+         secrets: secrets ?? MemorySecrets(),
          tailscale: tailscale ?? FakeTailscale().tailscale,
          serverDir: () async => serverDir ?? Directory('/nonexistent-pocketterm-test/server'),
          commands: commands ?? FakeCommands().commands,
@@ -50,7 +51,7 @@ class FakeApp extends AppController {
   /// agents', in a home of their own; by default no agent is found.
   /// [tailscale] and [serverDir]: the built-in server's (not installed, and
   /// nowhere, by default). [commands]: what installs run (no Homebrew by
-  /// default).
+  /// default). [secrets]: the Keychain's stand-in, in memory by default.
   static Future<FakeApp> create({
     Terminals? terminals,
     Map<String, Object> prefs = const {},
@@ -58,6 +59,7 @@ class FakeApp extends AppController {
     Tailscale? tailscale,
     Directory? serverDir,
     Commands? commands,
+    SecretStore? secrets,
     bool real = false,
   }) async {
     SharedPreferences.setMockInitialValues(prefs);
@@ -69,6 +71,7 @@ class FakeApp extends AppController {
       tailscale: tailscale,
       serverDir: serverDir,
       commands: commands,
+      secrets: secrets,
     );
   }
 
@@ -168,15 +171,20 @@ class FakeApp extends AppController {
   );
 }
 
-/// Secrets kept in memory, as the Keychain would keep them.
+/// Secrets kept in memory, as the Keychain would keep them; while [locked],
+/// writes fail as a locked Keychain's do.
 class MemorySecrets implements SecretStore {
   final values = <String, String>{};
+  bool locked = false;
 
   @override
   Future<String?> read(String name) async => values[name];
 
   @override
-  Future<void> write(String name, String value) async => values[name] = value;
+  Future<void> write(String name, String value) async {
+    if (locked) throw PlatformException(code: 'Unexpected security result code', message: 'Code: -25308');
+    values[name] = value;
+  }
 
   @override
   Future<void> delete(String name) async => values.remove(name);

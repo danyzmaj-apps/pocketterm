@@ -481,8 +481,14 @@ void main() {
     });
     tearDown(() => dir.deleteSync(recursive: true));
 
-    Future<FakeApp> app({Map<String, Object> prefs = const {}}) async {
-      final app = await FakeApp.create(prefs: prefs, tailscale: fake.tailscale, serverDir: dir, real: true);
+    Future<FakeApp> app({Map<String, Object> prefs = const {}, MemorySecrets? secrets}) async {
+      final app = await FakeApp.create(
+        prefs: prefs,
+        tailscale: fake.tailscale,
+        serverDir: dir,
+        secrets: secrets,
+        real: true,
+      );
       addTearDown(() => app.hosting?.stop());
       return app;
     }
@@ -495,6 +501,33 @@ void main() {
       expect(a.hostsServer, isTrue);
       expect(a.backend, a.hosting!.backend);
       expect(Uri.parse(a.backend!.url).host, '127.0.0.1');
+    });
+
+    test('a start whose sign-in the Keychain refuses takes it all back, also for the next launch', () async {
+      final keychain = MemorySecrets()..locked = true;
+      final a = await app(secrets: keychain);
+      await a.startHosting();
+      expect(a.user, isNull);
+      expect(a.authError, Session.keychainProblem);
+      expect(a.hosting, isNull);
+      expect(a.hostsServer, isFalse);
+      expect(a.backend, isNull);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('hosting') ?? false, isFalse);
+      final port = prefs.getInt('hosting_port')!;
+      expect(await listening(port), isFalse);
+
+      // Launched again, it waits for a choice: no server of its own starts.
+      final again = await app(prefs: {for (final k in prefs.getKeys()) k: prefs.get(k)!}, secrets: keychain);
+      await again.start();
+      expect(again.hosting, isNull);
+      expect(again.backend, isNull);
+
+      // Unlocked, Start works.
+      keychain.locked = false;
+      await again.startHosting();
+      expect(again.user, isNotNull);
+      expect((await SharedPreferences.getInstance()).getBool('hosting'), isTrue);
     });
 
     test("a phone's code carries the ts.net address, and its code signs a phone in", () async {

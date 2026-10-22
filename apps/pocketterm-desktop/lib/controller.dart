@@ -452,11 +452,30 @@ class AppController extends Session {
   Set<int> get ownServerPorts => {if (_hosting case final h? when h.running) h.port, ?_prefs.getInt(_hostingPortKey)};
 
   /// "This computer": starts the built-in server, from now on at every
-  /// launch, and signs this computer in to it. Throws what went wrong.
+  /// launch, and signs this computer in to it. Throws what went wrong. A
+  /// sign-in that fails (the Keychain refused it, say) takes it all back:
+  /// the server stops and nothing is kept, so a later choice isn't overruled
+  /// at the next launch; [authError] says why.
   Future<void> startHosting() async {
     await _startHosting();
+    try {
+      await _signInToOwnServer();
+    } on Object {
+      await _undoStart();
+      rethrow;
+    }
+    if (user == null) {
+      await _undoStart();
+      return;
+    }
     await _prefs.setBool(_hostingKey, true);
-    await _signInToOwnServer();
+  }
+
+  Future<void> _undoStart() async {
+    final why = authError;
+    await disconnect();
+    authError = why;
+    notifyListeners();
   }
 
   Future<void> _startHosting() async {

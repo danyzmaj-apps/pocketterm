@@ -900,9 +900,9 @@ class _NewServerSetupState extends State<NewServerSetup> {
       });
     } finally {
       _looking = false;
+      // The address changed while this round ran: look at the new one now.
+      if (mounted && domain != _parsed.domain) unawaited(_look());
     }
-    // The address changed while this round ran: look at the new one.
-    if (mounted && _checked != _parsed.domain) unawaited(_look());
   }
 
   @override

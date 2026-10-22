@@ -13,7 +13,8 @@
 # installed app.
 # iOS: the Simulator "PocketTerm E2E" (made and booted when missing), an E2E
 # debug build (its scanner takes a pasted code: lib/e2e_hooks.dart).
-# Android: the running emulator, or --avd booted without saving its snapshot;
+# Android: the running emulator, or --avd cold-booted (its snapshot neither
+# loaded nor saved);
 # `adb reverse` makes the server's 127.0.0.1 port the emulator's too.
 # Exit status: 0 when every flow passed.
 set -o pipefail
@@ -109,7 +110,7 @@ android_device() {
   serial=$("$ADB" devices | awk '/^emulator-.*device$/ {print $1; exit}')
   if [ -z "$serial" ]; then
     [ -n "$AVD" ] || { echo "no emulator running; pass --avd <name>" >&2; return 1; }
-    "$EMULATOR" -avd "$AVD" -no-snapshot-save -no-boot-anim -no-audio >"$OUT/emulator.log" 2>&1 &
+    "$EMULATOR" -avd "$AVD" -no-snapshot-load -no-snapshot-save -no-boot-anim -no-audio >"$OUT/emulator.log" 2>&1 &
     "$ADB" wait-for-device
     until [ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; do sleep 2; done
     serial=$("$ADB" devices | awk '/^emulator-.*device$/ {print $1; exit}')

@@ -11,13 +11,14 @@ appId: com.danyzmaj.pocketterm
     file: sub/open_row.yaml
     env:
       ROW: ${SESSION}
+# Below Android 9 the field's hint isn't read (sub/prompt.yaml): there Send, its tooltip after a line break.
 - extendedWaitUntil:
-    visible: "Prompt omp…"
+    visible: "(Prompt omp…|\nSend)"
     timeout: 15000
 - takeScreenshot: opened
-- tapOn: "Prompt omp…"
+- runFlow: sub/prompt.yaml
 - inputText: ${PROMPT}
-- tapOn: "Send"
+- tapOn: "\n?Send"
 - extendedWaitUntil:
     visible: ".*fake reply: ${PROMPT_RE}.*"
     timeout: 30000

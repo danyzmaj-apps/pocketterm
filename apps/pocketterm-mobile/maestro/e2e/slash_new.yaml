@@ -11,14 +11,14 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     visible: ".*fake reply: .*"
     timeout: 15000
-- tapOn: "Prompt omp…"
+- runFlow: sub/prompt.yaml
 - inputText: "/"
 - extendedWaitUntil:
     visible: "/new.*"
     timeout: 10000
 - takeScreenshot: commands
 - tapOn: "/new.*"
-- tapOn: "Send"
+- tapOn: "\n?Send"
 - extendedWaitUntil:
     notVisible: ".*fake reply: .*"
     timeout: 30000

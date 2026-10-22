@@ -1,5 +1,7 @@
 # The page's Back. While typing on Android, the keyboard's own back (in the
-# navigation bar) reads "Back" too: the keyboard goes first.
+# navigation bar) reads "Back" too: the keyboard goes first. Below Android 9
+# the navigation bar's back reads Back as well, and the page's (its tooltip)
+# "\nBack": that one is tapped.
 appId: com.danyzmaj.pocketterm
 ---
 - runFlow:
@@ -8,4 +10,13 @@ appId: com.danyzmaj.pocketterm
         id: "android:id/input_method_nav_back"
     commands:
       - hideKeyboard
-- tapOn: "Back"
+- runFlow:
+    when:
+      visible: "\nBack"
+    commands:
+      - tapOn: "\nBack"
+- runFlow:
+    when:
+      notVisible: "\nBack"
+    commands:
+      - tapOn: "Back"

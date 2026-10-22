@@ -3,8 +3,9 @@
 appId: com.danyzmaj.pocketterm
 ---
 - launchApp
+# Below Android 9 a button's tooltip is read after a line break.
 - extendedWaitUntil:
-    visible: "New session"
+    visible: "\n?New session"
     timeout: 60000
 # Until the computer answers, a note at the top says so; when it goes the list
 # moves up, and a tap aimed before then lands on the row below.

@@ -11,7 +11,23 @@ appId: com.danyzmaj.pocketterm
     visible: "Scan the code from your computer"
     timeout: 30000
 - tapOn: "Scan the code from your computer"
-- tapOn: "Paste a code \\(debug\\)"
+# Below Android 9 Flutter hands a text field's hint to nobody: there it's the
+# field under the instructions, left of Use.
+- extendedWaitUntil:
+    visible: "Use"
+    timeout: 10000
+- runFlow:
+    when:
+      visible: "Paste a code \\(debug\\)"
+    commands:
+      - tapOn: "Paste a code \\(debug\\)"
+- runFlow:
+    when:
+      notVisible: "Paste a code \\(debug\\)"
+    commands:
+      - tapOn:
+          below: "On your computer:[\\s\\S]*"
+          leftOf: "Use"
 - inputText: ${LINK}
 - tapOn: "Use"
 - extendedWaitUntil:
@@ -36,6 +52,6 @@ appId: com.danyzmaj.pocketterm
     visible: ${COMPUTER}
     timeout: 20000
 - extendedWaitUntil:
-    visible: "New session"
+    visible: "\n?New session"
     timeout: 20000
 - takeScreenshot: home

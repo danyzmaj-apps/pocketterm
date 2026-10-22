@@ -315,7 +315,8 @@ void main() {
         start: (exe, args) async {
           started.add(args);
           if (args.last == 'ask') throw const ProcessException('/usr/bin/osascript', [], 'Resource busy');
-          final p = await Process.start('/bin/sh', ['-c', args.contains('JavaScript') ? 'echo ${looks.removeAt(0)}' : 'echo out']);
+          final cmd = args.contains('JavaScript') ? 'echo ${looks.removeAt(0)}' : 'echo out';
+          final p = await Process.start('/bin/sh', ['-c', cmd]);
           procs.add(p);
           return p;
         },

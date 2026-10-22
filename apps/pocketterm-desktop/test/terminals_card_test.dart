@@ -188,7 +188,7 @@ void main() {
       ghostty: Ghostty(appPath: '$home/Ghostty.app'),
     );
     await pump(tester, mac, poll: const Duration(hours: 1));
-    expect(find.textContaining('adds two lines to Ghostty’s config'), findsOneWidget);
+    expect(find.text(ghosttyTmuxWhy), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('ghostty-tmux')));
     await tester.pump();

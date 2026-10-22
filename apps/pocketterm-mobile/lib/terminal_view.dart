@@ -243,10 +243,12 @@ class CloseConfirm extends StatelessWidget {
 /// Why the phone gets no answer from [server], and what to do: a server on
 /// a tailnet runs on one of the person's computers, which has to be awake,
 /// and its address changes when that computer is renamed (the phone then
-/// needs that computer's new code).
+/// needs that computer's new code); a tailnet with device approval on holds
+/// a new phone back until its admin approves it.
 String serverUnreachable(Backend server) => server.onTailnet
     ? '${server.unreachable} The computer running it has to be awake. If it was renamed in Tailscale, leave this '
-          'server (Account) and scan its new code.'
+          'server (Account) and scan its new code. If Tailscale says Awaiting Approval, approve this phone in the '
+          'Tailscale admin console under Machines.'
     : server.unreachable;
 
 /// What's wrong with the link, if anything, as one line for the top of a

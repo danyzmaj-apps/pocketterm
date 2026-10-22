@@ -179,6 +179,7 @@ void main() {
     expect(await note(TerminalLink.unreachable), contains("Can't reach my-mac.tail1234.ts.net"));
     expect(await note(TerminalLink.unreachable), contains('has to be awake'));
     expect(await note(TerminalLink.unreachable), contains('renamed in Tailscale'));
+    expect(await note(TerminalLink.unreachable), contains('Awaiting Approval'));
     expect(
       await note(TerminalLink.offline, clockOff: const Duration(minutes: -7), retry: false),
       contains('differ by 7 minutes'),

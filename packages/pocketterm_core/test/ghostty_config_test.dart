@@ -117,6 +117,38 @@ void main() {
     expect(File(xdg).readAsStringSync(), 'a = 1\n');
   });
 
+  group('upgrade', () {
+    const old = r'command = /opt/homebrew/bin/tmux new-session \; set-option destroy-unattached on';
+
+    test("an earlier PocketTerm's line becomes this one's; every other byte and the permissions stay", () {
+      // Around it: the person's lines, a CRLF one, and no newline at the end.
+      const before = 'font-size = 14\r\n# a comment\n${GhosttyConfig.marker}\n$old\ntheme = dark';
+      File(xdg)
+        ..createSync(recursive: true)
+        ..writeAsStringSync(before);
+      Process.runSync('/bin/chmod', ['600', xdg]);
+      expect(config.upgrade(tmux), isTrue);
+      expect(File(xdg).readAsStringSync(), before.replaceFirst(old, GhosttyConfig.line(tmux)));
+      expect(File(xdg).statSync().mode & 0x1ff, 0x180, reason: 'permissions kept');
+      expect(config.upgrade(tmux), isFalse, reason: 'once');
+      config.remove();
+      expect(File(xdg).readAsStringSync(), 'font-size = 14\r\n# a comment\ntheme = dark');
+    });
+
+    test("a command of the person's own is never touched, PocketTerm's block or not", () {
+      const mine = '# command = /bin/zsh\n$old\n';
+      File(support)
+        ..createSync(recursive: true)
+        ..writeAsStringSync(mine);
+      File(xdg)
+        ..createSync(recursive: true)
+        ..writeAsStringSync('${GhosttyConfig.marker}\ncommand =\n');
+      expect(config.upgrade(tmux), isFalse);
+      expect(File(support).readAsStringSync(), mine);
+      expect(File(xdg).readAsStringSync(), '${GhosttyConfig.marker}\ncommand =\n');
+    });
+  });
+
   test('writes through a symlinked config to its target', () {
     final real = File('${dir.path}/dotfiles/ghostty')
       ..createSync(recursive: true)

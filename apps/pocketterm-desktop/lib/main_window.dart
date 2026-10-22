@@ -18,6 +18,7 @@ import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/onboarding/data_protection.dart';
 import 'package:pocketterm_desktop/onboarding/get_ready.dart';
 import 'package:pocketterm_desktop/onboarding/pair.dart';
+import 'package:pocketterm_desktop/onboarding/terminals_card.dart' show ghosttyTmuxWhy;
 import 'package:pocketterm_desktop/setup_page.dart';
 import 'package:pocketterm_desktop/terminal_fixes.dart';
 import 'package:pocketterm_desktop/update_check.dart';
@@ -140,6 +141,10 @@ class _SettingsPageState extends State<SettingsPage> {
       : GhosttyConfig.standard(home: app.terminals.home);
   GhosttyCommand? _ghosttyCommand;
 
+  /// PocketTerm's Ghostty line was an earlier one's and was made this
+  /// one's ([GhosttyConfig.upgrade]) while the app runs: its card says so.
+  bool _ghosttyUpgraded = false;
+
   /// This build's version, for the Account tab's footer; null until known.
   String? _version;
 
@@ -222,7 +227,17 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _checkTerminals() async {
     final statuses = await app.terminals.statuses();
-    final ghosttyCommand = _ghosttyConfig?.read();
+    final config = _ghosttyConfig;
+    final tmux = app.terminals.tmux?.executable;
+    var upgraded = false;
+    if (config != null && tmux != null) {
+      try {
+        upgraded = config.upgrade(tmux);
+      } on TerminalException catch (e) {
+        debugPrint('PocketTerm: Ghostty config not upgraded: ${e.message}');
+      }
+    }
+    final ghosttyCommand = config?.read();
     var windows = const <TermWindow>[];
     try {
       windows = await app.terminals.windows();
@@ -233,6 +248,7 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {
       _terminals = statuses;
       _ghosttyCommand = ghosttyCommand;
+      if (upgraded) _ghosttyUpgraded = true;
       _windowCount = windows.length;
       _unreported = app.unreportedAgentWindows(windows);
     });
@@ -791,7 +807,11 @@ class _SettingsPageState extends State<SettingsPage> {
     Widget note(String text) => Text(text, style: _subStyle(C.dim));
     return switch (command?.state) {
       GhosttyCommandState.ours => [
-        note('Open new Ghostty windows to get full control. Windows already open stay as they are.'),
+        note(
+          _ghosttyUpgraded
+              ? 'New Ghostty windows open in tmux with a title PocketTerm can match. Open new windows to use it.'
+              : 'Open new Ghostty windows to get full control. Windows already open stay as they are.',
+        ),
         _button('Remove', () => unawaited(_ghosttyTmux(on: false)), key: const ValueKey('settings-ghostty-tmux')),
       ],
       GhosttyCommandState.theirs when tmux => [
@@ -801,6 +821,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ],
       GhosttyCommandState.none when tmux => [
+        note(ghosttyTmuxWhy),
         _button(
           'Start new windows in tmux',
           () => unawaited(_ghosttyTmux(on: true)),

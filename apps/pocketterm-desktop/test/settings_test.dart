@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/ghostty.dart';
+import 'package:pocketterm_core/ghostty_config.dart';
 import 'package:pocketterm_core/kitty.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
@@ -191,6 +192,19 @@ void main() {
       expect(find.textContaining('already sets command = /bin/zsh -l'), findsOneWidget);
       expect(button(), findsNothing);
       expect(File(config()).readAsStringSync(), 'command=/bin/zsh -l\n');
+    });
+
+    testWidgets("an earlier PocketTerm's line is brought up to date when Settings looks, and the card says so", (
+      tester,
+    ) async {
+      const old = r'command = /bin/sh new-session \; set-option destroy-unattached on';
+      const before = 'font-size = 14\n${GhosttyConfig.marker}\n$old\ntheme = dark\n';
+      File(config())
+        ..createSync(recursive: true)
+        ..writeAsStringSync(before);
+      await openTerminals(tester, tmux: true);
+      expect(File(config()).readAsStringSync(), before.replaceFirst(old, GhosttyConfig.line('/bin/sh')));
+      expect(find.textContaining('with a title PocketTerm can match'), findsOneWidget);
     });
   });
 

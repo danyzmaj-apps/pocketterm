@@ -13,7 +13,8 @@ void openLink(Uri url) => unawaited(launchUrl(url, mode: LaunchMode.externalAppl
 /// phone's QR (lib/onboarding/get_ready.dart) both say so.
 const phoneTailscaleNote =
     'Your phone needs the Tailscale app too, signed in to the same Tailscale account. Get it from the App Store or '
-    'Google Play.';
+    'Google Play. If Tailscale says Awaiting Approval, approve this phone in the Tailscale admin console under '
+    'Machines.';
 
 /// A small outlined button, as the setup screens use them.
 Widget smallButton(String label, VoidCallback? onPressed, {Key? key}) => OutlinedButton(

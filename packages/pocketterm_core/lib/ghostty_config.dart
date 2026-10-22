@@ -126,6 +126,32 @@ class GhosttyConfig {
     }
   }
 
+  /// PocketTerm's `command =` line made [line] for [tmux] wherever it's
+  /// another (an earlier PocketTerm's, which gave windows no title to match
+  /// them by); every other byte stays, the file's permissions too. Whether
+  /// a file changed.
+  bool upgrade(String tmux) {
+    var changed = false;
+    for (final path in files) {
+      if (!File(path).existsSync()) continue;
+      final target = File(path).resolveSymbolicLinksSync();
+      final lines = _text(target)?.split('\n');
+      if (lines == null) continue;
+      var here = false;
+      for (var i = 1; i < lines.length; i++) {
+        if (!_isMarker(lines[i - 1]) || _command(lines[i]) == null) continue;
+        final want = '${line(tmux)}${lines[i].endsWith('\r') ? '\r' : ''}';
+        if (lines[i] == want) continue;
+        lines[i] = want;
+        here = true;
+      }
+      if (!here) continue;
+      _write(target, lines.join('\n'));
+      changed = true;
+    }
+    return changed;
+  }
+
   /// [text] without each marker line and the `command =` line under it. As
   /// [add] puts them in: at the end of a file not ending in a newline, the
   /// newline before them is theirs too.

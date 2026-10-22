@@ -11,6 +11,12 @@ import 'package:pocketterm_desktop/onboarding/commands_view.dart';
 import 'package:pocketterm_desktop/terminal_fixes.dart';
 import 'package:pocketterm_desktop/wezterm_setup.dart';
 
+/// What Start new windows in tmux does, said where it's offered (the
+/// checklist and Settings' Ghostty card).
+const ghosttyTmuxWhy =
+    'Click once: from then on every new Ghostty window opens in tmux by itself, so your phone gets full control. '
+    'Nothing changes in how you use Ghostty. Settings → Terminals can undo it.';
+
 /// The setup checklist's terminals on a Mac (lib/onboarding/get_ready.dart):
 /// the terminals found on it, each with its one-click fix where it needs one
 /// (kitty's config, Automation), tmux when it's missing (installed with
@@ -206,11 +212,7 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           spacing: 8,
           children: [
-            note(
-              'Ghostty doesn’t let other apps read or type into its windows; in tmux, your phone gets full '
-              'control. PocketTerm adds two lines to Ghostty’s config, so each new Ghostty window opens in tmux. '
-              'Settings → Terminals takes them out again.',
-            ),
+            note(ghosttyTmuxWhy),
             OutlinedButton(
               key: const ValueKey('ghostty-tmux'),
               onPressed: () => unawaited(_ghosttyTmux()),

@@ -1,7 +1,7 @@
 // The Mac screenshots in the docs: the real widgets, made-up data, the Mac's own fonts.
 // Run from apps/pocketterm-desktop: fvm flutter test --tags screenshots --run-skipped
-// They're written to docs/images/mac-settings-*.png, wizard-*.png and get-ready.png; a plain `fvm flutter test` skips
-// them (dart_test.yaml).
+// They're written to docs/images/mac-settings-*.png, mac-setup-*.png and get-ready.png; a plain `fvm flutter test`
+// skips them (dart_test.yaml).
 @Tags(['screenshots', 'posix'])
 library;
 
@@ -18,6 +18,7 @@ import 'package:pocketterm_core/apple_terminal.dart';
 import 'package:pocketterm_core/ghostty.dart';
 import 'package:pocketterm_core/iterm.dart';
 import 'package:pocketterm_core/kitty.dart';
+import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/tmux.dart';
@@ -26,10 +27,8 @@ import 'package:pocketterm_core/wezterm.dart';
 import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:pocketterm_desktop/main_window.dart';
-import 'package:pocketterm_desktop/onboarding/flow.dart';
 import 'package:pocketterm_desktop/onboarding/get_ready.dart';
-import 'package:pocketterm_desktop/onboarding/provision.dart';
-import 'package:pocketterm_desktop/onboarding/wizard.dart';
+import 'package:pocketterm_desktop/setup_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_fakes.dart';
@@ -114,19 +113,20 @@ Future<void> save(WidgetTester tester, String name, {Rect? crop, double radius =
   });
 }
 
-/// The setup wizard at [flow]'s step, as the main window shows it before
-/// there is a server.
-Future<void> pumpWizard(WidgetTester tester, SetupFlow flow) async {
-  addTearDown(flow.dispose);
+/// The first-run setup on [choice]'s screen (the two choices if null), as the main window shows it before there is a
+/// server. [tailscale]: what This computer finds.
+Future<FakeApp> pumpSetup(WidgetTester tester, {SetupChoice? choice, FakeTailscale? tailscale}) async {
+  final app = await FakeApp.create(tailscale: (tailscale ?? FakeTailscale()).tailscale);
   await tester.pumpWidget(
     subject(
       ColoredBox(
         color: C.win,
-        child: SetupWizard(flow: flow, onConnect: (_) async {}, onExisting: () {}),
+        child: SetupPage(app: app, choice: choice, poll: Duration.zero),
       ),
     ),
   );
   await tester.pumpAndSettle();
+  return app;
 }
 
 /// Types [text] into the [index]th text field, then leaves it.
@@ -265,9 +265,19 @@ void main() {
               ],
             ),
             integrations: integrations,
+            // This Mac runs the server, which Tailscale publishes.
+            tailscale: FakeTailscale(installed: true, dnsName: 'ana-macbook.tail4b2c.ts.net').tailscale,
+            serverDir: Directory('$home/server'),
           )
           ..name = 'Ana'
-          ..phoneUsedCode = true;
+          ..phoneUsedCode = true
+          ..devices = const [
+            Device(id: 'd1', role: DeviceRole.desktop, label: 'Ana’s MacBook', platform: 'macos'),
+            Device(id: 'd2', role: DeviceRole.desktop, label: 'Mac mini', platform: 'macos'),
+            Device(id: 'p1', role: DeviceRole.phone, label: 'iPhone', platform: 'ios'),
+          ];
+    await tester.runAsync(app.startHosting);
+    await tester.runAsync(() => app.hosting!.refresh());
     app.host.loginItem = true;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('terminal_bridge', true);
@@ -322,37 +332,32 @@ void main() {
         border: C.line2,
       );
     }
+    await tester.runAsync(() async => await app.hosting?.stop());
   });
 
-  // The setup wizard, made-up values only: no account, token or project is real.
-  const wizardView = Size(540, 620);
-  const wizardCard = (radius: 12.0, border: C.line2);
+  // The first-run setup, made-up values only.
+  const setupView = Size(540, 640);
+  const card = (radius: 12.0, border: C.line2);
 
-  shot('wizard: token', wizardView, (tester) async {
-    await pumpWizard(tester, SetupFlow()..step = WizardStep.token);
-    await fillField(tester, 0, 'sbp_demo0000000000000000000000000000000000');
-    await save(tester, 'wizard-token.png', radius: wizardCard.radius, border: wizardCard.border);
+  shot('setup: the two choices', setupView, (tester) async {
+    await pumpSetup(tester);
+    await save(tester, 'mac-setup.png', radius: card.radius, border: card.border);
   });
 
-  shot('wizard: github', wizardView, (tester) async {
-    await pumpWizard(
-      tester,
-      SetupFlow()
-        ..step = WizardStep.github
-        ..ref = 'demoprojectrefabcdef',
-    );
-    await fillField(tester, 0, 'Ov23liDemo0000000000');
-    await fillField(tester, 1, 'demo0000000000000000000000000000000000000');
-    await save(tester, 'wizard-github.png', radius: wizardCard.radius, border: wizardCard.border);
+  shot('setup: this computer, Tailscale ready', setupView, (tester) async {
+    await pumpSetup(tester, choice: SetupChoice.thisComputer, tailscale: FakeTailscale(installed: true));
+    await save(tester, 'mac-setup-this-computer.png', radius: card.radius, border: card.border);
   });
 
-  shot('wizard: ready', wizardView, (tester) async {
-    final flow = SetupFlow()
-      ..step = WizardStep.setup
-      ..ready = true;
-    flow.done.addAll(ProvisionStep.values);
-    await pumpWizard(tester, flow);
-    await save(tester, 'wizard-ready.png', radius: wizardCard.radius, border: wizardCard.border);
+  shot('setup: this computer, HTTPS off', setupView, (tester) async {
+    await pumpSetup(tester, choice: SetupChoice.thisComputer, tailscale: FakeTailscale(installed: true, https: false));
+    await save(tester, 'mac-setup-https-off.png', radius: card.radius, border: card.border);
+  });
+
+  shot('setup: your own server', setupView, (tester) async {
+    await pumpSetup(tester, choice: SetupChoice.ownServer);
+    await fillField(tester, 0, 'pocketterm://setup?url=https%3A%2F%2Fpt.example.com&setup=Xq3v…');
+    await save(tester, 'mac-setup-own-server.png', radius: card.radius, border: card.border);
   });
 
   shot('get ready: a Mac after the first sign-in', const Size(560, 1700), (tester) async {
@@ -400,8 +405,8 @@ void main() {
       tester,
       'get-ready.png',
       crop: Rect.fromLTRB(page.left - 24, page.top - 24, page.right + 24, page.bottom + 24),
-      radius: wizardCard.radius,
-      border: wizardCard.border,
+      radius: card.radius,
+      border: card.border,
     );
   });
 }

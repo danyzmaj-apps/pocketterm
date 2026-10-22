@@ -19,29 +19,57 @@ import 'package:pocketterm_core/wezterm.dart';
 import 'package:pocketterm_desktop/channel_keys.dart';
 import 'package:pocketterm_desktop/controller.dart';
 import 'package:pocketterm_desktop/desktop_host.dart';
+import 'package:pocketterm_desktop/hosting/tailscale.dart';
 import 'package:pocketterm_desktop/integrations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// An [AppController] signed in as [fakeUser], its computer's side [host].
+/// With `real`, its server and sign-in are Session's own (a real server,
+/// say the built-in one), not [fakeBackend] and [fakeUser].
 class FakeApp extends AppController {
-  FakeApp._(SharedPreferences prefs, this._givenTerminals, Integrations integrations)
-    : super(prefs, 'Mac', FakeDesktopHost(), integrations: integrations, secrets: MemorySecrets());
+  FakeApp._(
+    SharedPreferences prefs,
+    this._givenTerminals,
+    Integrations integrations, {
+    required this.real,
+    Tailscale? tailscale,
+    Directory? serverDir,
+  }) : super(
+         prefs,
+         'Mac',
+         FakeDesktopHost(),
+         integrations: integrations,
+         secrets: MemorySecrets(),
+         tailscale: tailscale ?? FakeTailscale().tailscale,
+         serverDir: () async => serverDir ?? Directory('/nonexistent-pocketterm-test/server'),
+       );
 
   /// [terminals] stand in for the computer's; none found by default.
   /// [prefs]: what this computer had saved. [integrations]: the coding
   /// agents', in a home of their own; by default no agent is found.
+  /// [tailscale] and [serverDir]: the built-in server's (not installed, and
+  /// nowhere, by default).
   static Future<FakeApp> create({
     Terminals? terminals,
     Map<String, Object> prefs = const {},
     Integrations? integrations,
+    Tailscale? tailscale,
+    Directory? serverDir,
+    bool real = false,
   }) async {
     SharedPreferences.setMockInitialValues(prefs);
     return FakeApp._(
       await SharedPreferences.getInstance(),
       terminals,
       integrations ?? noAgents('/nonexistent-pocketterm-test'),
+      real: real,
+      tailscale: tailscale,
+      serverDir: serverDir,
     );
   }
+
+  /// The server and sign-in are Session's own.
+  final bool real;
 
   /// Integrations in [home] with neither omp nor `claude` around.
   static Integrations noAgents(String home) => Integrations(
@@ -62,8 +90,15 @@ class FakeApp extends AppController {
   int pairingLinks = 0;
 
   @override
-  Future<Uri> pairingLink() async =>
-      backend!.linkWithCode('PAIR-${++pairingLinks}AAA-BBBB-CCCC-DDDD-EEEE-FFFF', computer: await pairingComputer());
+  Future<Uri> pairingLink() async => real
+      ? await super.pairingLink()
+      : backend!.linkWithCode('PAIR-${++pairingLinks}AAA-BBBB-CCCC-DDDD-EEEE-FFFF', computer: await pairingComputer());
+
+  /// Who the server says is signed in, unless [real].
+  List<Device> devices = const [];
+
+  @override
+  Future<List<Device>> serverDevices() async => real ? await super.serverDevices() : devices;
 
   /// What went to the server's push, in order: the action and its body.
   final pushes = <Map<String, Object>>[];
@@ -104,10 +139,10 @@ class FakeApp extends AppController {
   Backend? fakeBackend = const Backend(url: 'https://pt.example.com');
 
   @override
-  Backend? get backend => fakeBackend;
+  Backend? get backend => real ? super.backend : fakeBackend;
 
   @override
-  Account? get user => fakeUser;
+  Account? get user => real ? super.user : fakeUser;
 
   /// Unless given: no terminal here, no kitty sockets, no tmux, no apps to script.
   @override
@@ -251,6 +286,120 @@ class FakeClaude {
     if (call == 'plugin list --json') return ProcessResult(0, 0, jsonEncode(list), '');
     return ProcessResult(0, 0, '{"outcome":"ok"}\n', '');
   }
+}
+
+/// Tailscale's CLI as a test sets it up, recording every command in [calls]
+/// (without the CLI's path). Not installed by default.
+class FakeTailscale {
+  FakeTailscale({
+    this.installed = false,
+    this.daemon = true,
+    this.backendState = 'Running',
+    this.dnsName = 'mac.tail1234.ts.net',
+    this.https = true,
+  });
+
+  bool installed;
+
+  /// The Tailscale service runs (else the CLI can't reach it).
+  bool daemon;
+  String backendState;
+  String dnsName;
+
+  /// HTTPS certificates (and Serve) are on for the tailnet.
+  bool https;
+
+  static const enableLink = 'https://login.tailscale.com/f/serve?node=nTEST123';
+
+  final calls = <String>[];
+
+  /// `serve` processes still running (one that asks for HTTPS waits until killed).
+  final running = <FakeProcess>[];
+
+  late final tailscale = Tailscale(start: _start, locate: () => installed ? '/fake/bin/tailscale' : null);
+
+  Future<Process> _start(String exe, List<String> args) async {
+    calls.add(args.join(' '));
+    if (args.firstOrNull == 'status') {
+      if (!daemon) {
+        return FakeProcess.done(1, err: 'failed to connect to local Tailscale service; is Tailscale running?\n');
+      }
+      return FakeProcess.done(
+        0,
+        out: jsonEncode({
+          'BackendState': backendState,
+          'Self': {
+            'DNSName': '$dnsName.',
+            'TailscaleIPs': ['100.101.102.103'],
+          },
+          'CertDomains': https ? [dnsName] : null,
+        }),
+      );
+    }
+    if (args.firstOrNull == 'serve' && args.last != 'off' && !https) {
+      // What the CLI prints, then it waits for HTTPS to be turned on.
+      final p = FakeProcess.waiting(
+        out: 'Serve is not enabled on your tailnet.\nTo enable, visit:\n\n         $enableLink\n\n',
+      );
+      running.add(p);
+      return p;
+    }
+    if (args.firstOrNull == 'serve' && args.last != 'off') {
+      return FakeProcess.done(0, out: 'Available within your tailnet:\n\nhttps://$dnsName/\n|-- proxy ${args.last}\n');
+    }
+    return FakeProcess.done(0);
+  }
+}
+
+/// A process that prints what it's given, then exits with its code, or
+/// keeps running until killed.
+class FakeProcess implements Process {
+  FakeProcess.done(int code, {String out = '', String err = ''}) {
+    _print(out, err);
+    _end(code);
+  }
+
+  FakeProcess.waiting({String out = ''}) {
+    _print(out, '');
+  }
+
+  final _out = StreamController<List<int>>();
+  final _err = StreamController<List<int>>();
+  final _exit = Completer<int>();
+  bool killed = false;
+
+  void _print(String out, String err) {
+    if (out.isNotEmpty) _out.add(utf8.encode(out));
+    if (err.isNotEmpty) _err.add(utf8.encode(err));
+  }
+
+  void _end(int code) {
+    unawaited(_out.close());
+    unawaited(_err.close());
+    if (!_exit.isCompleted) _exit.complete(code);
+  }
+
+  @override
+  Stream<List<int>> get stdout => _out.stream;
+
+  @override
+  Stream<List<int>> get stderr => _err.stream;
+
+  @override
+  Future<int> get exitCode => _exit.future;
+
+  @override
+  bool kill([ProcessSignal signal = ProcessSignal.sigterm]) {
+    killed = true;
+    _end(-15);
+    return true;
+  }
+
+  @override
+  int get pid => 4242;
+
+  @override
+  IOSink get stdin => throw UnimplementedError();
 }
 
 /// [child] as main.dart hosts a window: a [MaterialApp] with PocketTerm's theme and

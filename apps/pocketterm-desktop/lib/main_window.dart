@@ -7,9 +7,12 @@ import 'package:pocketterm_core/account.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/connect.dart' show ConfirmLink;
 import 'package:pocketterm_core/ghostty_config.dart';
+import 'package:pocketterm_core/server_client.dart' show Device, DeviceRole;
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_desktop/controller.dart';
+import 'package:pocketterm_desktop/hosting/built_in_server.dart';
+import 'package:pocketterm_desktop/hosting/hosting_view.dart';
 import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/onboarding/get_ready.dart';
 import 'package:pocketterm_desktop/onboarding/pair.dart';
@@ -19,7 +22,7 @@ import 'package:pocketterm_desktop/update_check.dart';
 import 'package:pocketterm_desktop/wezterm_setup.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// The window: the setup wizard, then sign-in, then the setup checklist
+/// The window: the first-run setup, then sign-in, then the setup checklist
 /// until it's done, then Settings. Closing it only hides it
 /// (lib/desktop_host.dart); the app keeps running.
 class MainWindow extends StatelessWidget {
@@ -34,7 +37,7 @@ class MainWindow extends StatelessWidget {
       child: Stack(
         children: [
           if (app.backend == null)
-            SetupPage(session: app)
+            SetupPage(app: app)
           else if (!signedIn)
             SignInPage(session: app)
           else if (!app.getReadyDone)
@@ -138,6 +141,9 @@ class _SettingsPageState extends State<SettingsPage> {
   /// This build's version, for the Account tab's footer; null until known.
   String? _version;
 
+  /// Who is signed in to the server, for the Account tab; null until known.
+  List<Device>? _devices;
+
   AppController get app => widget.app;
 
   void _shown() {
@@ -185,6 +191,16 @@ class _SettingsPageState extends State<SettingsPage> {
     unawaited(_checkTerminals());
     unawaited(app.checkAgents());
     unawaited(app.checkPhone());
+    unawaited(_checkDevices());
+  }
+
+  Future<void> _checkDevices() async {
+    try {
+      final devices = await app.serverDevices();
+      if (mounted) setState(() => _devices = devices);
+    } on Object catch (e) {
+      debugPrint('PocketTerm: devices not listed: $e');
+    }
   }
 
   Future<void> _checkTerminals() async {
@@ -780,70 +796,119 @@ class _SettingsPageState extends State<SettingsPage> {
 
   // ---------------------------------------------------------------- account
 
-  List<_Cell> _accountTab() => [
-    _half(
-      _card(
-        leading: Avatar(name: app.userName, size: 32),
-        title: app.userName,
-        sub: 'Signed in to this server',
-        body: [_button('Sign out', () => unawaited(app.signOut()), danger: true)],
-      ),
-    ),
-    _half(_card(title: 'Your server', sub: app.backend?.host ?? '')),
-    _half(
-      _card(
-        title: 'Launch at login',
-        sub: _launchError ?? 'Start PocketTerm when you log in',
-        subColor: _launchError != null ? _error : C.dim,
-        trailing: Switch(
-          key: const ValueKey('settings-launch-at-login'),
-          value: app.launchAtLogin ?? false,
-          onChanged: app.launchAtLogin == null
-              ? null
-              : (v) => unawaited(
-                  app
-                      .setLaunchAtLogin(on: v)
-                      .then(
-                        (_) => mounted ? setState(() => _launchError = null) : null,
-                        onError: (Object e) =>
-                            mounted ? setState(() => _launchError = e is PlatformException ? e.message : '$e') : null,
-                      ),
-                ),
-        ),
-      ),
-    ),
-    if (app.hostsServer)
+  List<_Cell> _accountTab() {
+    final hosting = app.hosting;
+    return [
       _half(
         _card(
-          title: 'Erase this server\u2019s data',
-          sub: 'Signs out every computer and phone and deletes what the server keeps',
+          leading: Avatar(name: app.userName, size: 32),
+          title: app.userName,
+          sub: hosting == null ? 'Signed in to this server' : 'This computer runs your server',
           body: [
-            _button('Erase…', () async {
-              final go = await confirmDanger(
-                context,
-                title: 'Erase this server\u2019s data?',
-                body:
-                    'Every computer and phone is signed out of this server, and its images and push registrations '
-                    'are deleted. This cannot be undone.',
-                action: 'Erase',
-              );
-              if (!go) return;
-              try {
-                await app.eraseServer();
-              } on Object catch (e) {
-                if (mounted) Toaster.of(context).show('Not erased: $e');
-              }
-            }, danger: true),
+            _button('Sign out', () => unawaited(_signOut()), danger: true, key: const ValueKey('settings-sign-out')),
           ],
         ),
       ),
-    _wide(
-      _card(
-        sub: _version == null ? 'PocketTerm' : 'PocketTerm $_version',
-        trailing: _button('Quit PocketTerm', () => unawaited(app.host.quit())),
+      _half(
+        _card(
+          key: const ValueKey('settings-server'),
+          title: 'Your server',
+          sub: [
+            // A computer running the server says where in its status below.
+            if (hosting == null) app.backend?.host ?? '',
+            if (_devices case final d?) _devicesLine(d),
+          ].join(' · '),
+          body: [
+            if (hosting != null) ...[
+              HostingStatusView(server: hosting),
+              if (hosting.state == HostState.ready)
+                _button(
+                  'Add a computer…',
+                  () => unawaited(showAddComputer(context, app.computerSetupLink()!)),
+                  key: const ValueKey('settings-add-computer'),
+                ),
+            ],
+          ],
+        ),
       ),
-    ),
-  ];
+      _half(
+        _card(
+          title: 'Launch at login',
+          sub: _launchError ?? 'Start PocketTerm when you log in',
+          subColor: _launchError != null ? _error : C.dim,
+          trailing: Switch(
+            key: const ValueKey('settings-launch-at-login'),
+            value: app.launchAtLogin ?? false,
+            onChanged: app.launchAtLogin == null
+                ? null
+                : (v) => unawaited(
+                    app
+                        .setLaunchAtLogin(on: v)
+                        .then(
+                          (_) => mounted ? setState(() => _launchError = null) : null,
+                          onError: (Object e) =>
+                              mounted ? setState(() => _launchError = e is PlatformException ? e.message : '$e') : null,
+                        ),
+                  ),
+          ),
+        ),
+      ),
+      if (app.hostsServer)
+        _half(
+          _card(
+            title: 'Erase this server\u2019s data',
+            sub: 'Signs out every computer and phone and deletes what the server keeps',
+            body: [
+              _button('Erase…', () async {
+                final go = await confirmDanger(
+                  context,
+                  title: 'Erase this server\u2019s data?',
+                  body:
+                      'Every computer and phone is signed out of this server, and its images and push registrations '
+                      'are deleted. This cannot be undone.',
+                  action: 'Erase',
+                );
+                if (!go) return;
+                try {
+                  await app.eraseServer();
+                } on Object catch (e) {
+                  if (mounted) Toaster.of(context).show('Not erased: $e');
+                }
+                unawaited(_checkDevices());
+              }, danger: true),
+            ],
+          ),
+        ),
+      _wide(
+        _card(
+          sub: _version == null ? 'PocketTerm' : 'PocketTerm $_version',
+          trailing: _button('Quit PocketTerm', () => unawaited(app.host.quit())),
+        ),
+      ),
+    ];
+  }
+
+  /// "2 computers, 1 phone".
+  static String _devicesLine(List<Device> devices) {
+    final phones = devices.where((d) => d.role == DeviceRole.phone).length;
+    return '${_count(devices.length - phones, 'computer')}, ${_count(phones, 'phone')}';
+  }
+
+  /// Signing out of a server this computer runs stops it: asked first.
+  Future<void> _signOut() async {
+    if (app.hosting != null) {
+      final go = await confirmDanger(
+        context,
+        title: 'Stop your server and sign out?',
+        body:
+            'This computer runs your server. Signing out stops it, and your phones and other computers can\u2019t '
+            'connect until you choose This computer again. What the server keeps stays on this computer.',
+        action: 'Sign out',
+      );
+      if (!go) return;
+    }
+    await app.signOut();
+  }
 
   // ---------------------------------------------------------------- status
 

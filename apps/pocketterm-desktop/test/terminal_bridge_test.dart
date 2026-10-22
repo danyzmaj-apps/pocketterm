@@ -2,6 +2,7 @@
 @Tags(['posix'])
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -13,6 +14,7 @@ import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/ghostty.dart';
 import 'package:pocketterm_core/iterm.dart';
 import 'package:pocketterm_core/kitty.dart';
+import 'package:pocketterm_core/live_activity.dart';
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
@@ -133,6 +135,31 @@ void main() {
     );
     await expectLater(TerminalBridge.openImage(ChannelKey.generate(), path, sealed), throwsA(isA<LiveException>()));
     await expectLater(TerminalBridge.openImage(key, 'another', sealed), throwsA(isA<LiveException>()));
+  });
+
+  test("a followed session's update goes sealed for Android; iPhones get only its state", () async {
+    final key = ChannelKey.generate();
+    final body = await TerminalBridge.activityPush(key, 'abcd1234', 'kitty-1/2', (
+      state: ActivityState.needs,
+      kind: ActivityKind.approval,
+    ));
+    expect(body.keys, unorderedEquals(['session', 'state', 'kind', 'desktop', 'enc']));
+    expect(body['session'], 'abcd1234/kitty-1/2');
+    expect(body['desktop'], 'abcd1234');
+
+    final sealed = base64Decode(body['enc']! as String);
+    final opened = jsonDecode(utf8.decode((await openBytes(key, sealed, activityAad('abcd1234')))!));
+    expect(opened, {
+      'session': 'abcd1234/kitty-1/2',
+      'state': 'needs',
+      'kind': 'approval',
+      'since': isA<int>(),
+      'ts': isA<int>(),
+      'id': isA<String>(),
+    });
+    // Not another computer's, not a notification.
+    expect(await openBytes(key, sealed, activityAad('zzzz9999')), isNull);
+    expect(await openBytes(key, sealed, pushAad('abcd1234')), isNull);
   });
 
   group('switching a screen-only agent window to its conversation', () {

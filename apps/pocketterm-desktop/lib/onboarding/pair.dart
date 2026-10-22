@@ -5,7 +5,7 @@ import 'package:pocketterm_core/session.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
-/// How long a phone's code works (functions/pair, action create).
+/// How long a phone's code works (POST /v1/pair).
 const pairingLifetime = Duration(minutes: 10);
 
 /// A QR the phone opens in PocketTerm (its Scan button, or the iPhone's Camera):

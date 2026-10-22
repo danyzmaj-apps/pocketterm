@@ -44,7 +44,7 @@ void main() {
     return app;
   }
 
-  testWidgets('with no server, the window is the setup wizard', (tester) async {
+  testWidgets('with no server, the window is the first-run setup', (tester) async {
     await pumpWindow(
       tester,
       (app) => app

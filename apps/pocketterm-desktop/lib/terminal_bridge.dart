@@ -296,10 +296,10 @@ class TerminalBridge {
   // ------------------------------------------------------------ Live Activities
 
   /// A session started or stopped working, asks or stopped asking, or went:
-  /// its Live Activity on the phone hears about it through the server
-  /// (functions/push {action: activity}), which does nothing for a session
-  /// no phone follows. A session seen for the first time pushes nothing:
-  /// no phone can follow it yet.
+  /// the phones following it hear about it through the server (POST
+  /// /v1/push/activity, [activityPush]), which does nothing for a session no
+  /// phone follows. A session seen for the first time pushes nothing: no
+  /// phone can follow it yet.
   void _activitiesChanged() {
     for (final s in _hub.sessions) {
       final status = activityStatus(busy: s.busy, ask: s.ask);
@@ -330,10 +330,35 @@ class TerminalBridge {
       _activitySent.remove(key);
     }
     unawaited(
-      _server
-          .push('activity', {'session': routedKey(_desktopId, key), ...activityJson(status)})
+      activityPush(_key, _desktopId, key, status)
+          .then((body) => _server.push('activity', body))
           .then((_) {}, onError: (Object e) => debugPrint('PocketTerm: Live Activity push: $e')),
     );
+  }
+
+  /// What goes to POST /v1/push/activity for coding session [key] now at
+  /// [status]: its routed key, state and kind in the clear for iPhones' Live
+  /// Activities (Apple can't open anything sealed), and the same sealed with
+  /// this computer's [channelKey] as `enc`, the only thing Android phones get.
+  @visibleForTesting
+  static Future<Map<String, Object?>> activityPush(
+    ChannelKey channelKey,
+    String desktopId,
+    String key,
+    ActivityStatus status,
+  ) async {
+    final session = routedKey(desktopId, key);
+    final state = activityJson(status);
+    return {
+      'session': session,
+      ...state,
+      'desktop': desktopId,
+      'enc': await sealActivity(channelKey, desktopId, {
+        'session': session,
+        ...state,
+        'since': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      }),
+    };
   }
 
   void _sendState() {

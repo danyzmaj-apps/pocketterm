@@ -9,6 +9,8 @@ import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_desktop/controller.dart';
+import 'package:pocketterm_desktop/hosting/built_in_server.dart';
+import 'package:pocketterm_desktop/hosting/hosting_view.dart';
 import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/onboarding/pair.dart';
 import 'package:pocketterm_desktop/onboarding/terminals_card.dart';
@@ -464,6 +466,8 @@ class _GetReadyPageState extends State<GetReadyPage> {
         style: TextStyle(color: C.dim, height: 1.45, fontSize: 13),
       );
     }
+    // A computer running the server: the phone's code needs Tailscale's address.
+    if (app.hosting case final h? when h.state != HostState.ready) return HostingStatusView(server: h);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

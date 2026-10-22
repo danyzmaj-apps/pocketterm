@@ -1,5 +1,5 @@
 name: pocketterm_desktop
-description: "PocketTerm: this computer's coding sessions and terminals on your phone, through Supabase."
+description: "PocketTerm: this computer's coding sessions and terminals on your phone, through your own PocketTerm server."
 publish_to: 'none'
 version: 0.1.0+10
 resolution: workspace
@@ -18,7 +18,9 @@ dependencies:
   launch_at_startup: ^0.5.1
   package_info_plus: ^9.0.1
   path: ^1.9.1
+  path_provider: ^2.1.5
   pocketterm_core: any
+  pocketterm_server: any
   qr_flutter: ^4.1.0
   shared_preferences: ^2.5.6
   tray_manager: ^0.8.0
@@ -34,12 +36,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  # The backend, for the in-app setup (lib/onboarding/): it applies these to
-  # the user's Supabase project.
   assets:
-    - supabase/migrations/
-    - supabase/functions/pair/
-    - supabase/functions/push/
     # The coding agents' PocketTerm integrations, for Settings to install
     # (lib/integrations.dart). Claude Code's plugin without its tests/.
     - integrations/omp/

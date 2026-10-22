@@ -92,7 +92,8 @@ jobs:
         working-directory: ${{ matrix.member }}
         run: flutter build windows --debug
 
-  functions:
+  # The omp extension the desktop app installs, against omp's and Bun's types.
+  omp-extension:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -102,10 +103,6 @@ jobs:
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version: v2.x
-      - run: deno check supabase/functions/*/index.ts
-      # pair and push in-process against a fake network (supabase/functions/_tests/harness.ts).
-      - run: deno test --allow-env supabase/functions/_tests/
-      # The omp extension the desktop app installs, against omp's and Bun's types.
       - run: deno check --config integrations/omp-check.json integrations/omp/*.ts
 
   # The push relay (apps/pocketterm-relay): requests the Dart server seals must open in the relay, so the
@@ -129,19 +126,3 @@ jobs:
       - working-directory: apps/pocketterm-relay
         run: deno fmt --check && deno check main.ts tests/*.ts && deno task test
       - run: docker build -t pocketterm-relay apps/pocketterm-relay
-
-  migrations:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/pocketterm-desktop
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
-        with:
-          version: 2.116.0
-      # A fresh database from every migration, the way a new self-hoster gets one.
-      - run: supabase db start
-      - run: supabase db lint --level error
-      # pgTAP (supabase/tests): pairing codes, the sign-up hook, account deletion, the demo account, row level security.
-      - run: supabase test db

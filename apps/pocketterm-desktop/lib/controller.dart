@@ -1,10 +1,12 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:pocketterm_core/agent.dart';
+import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/server_client.dart';
@@ -13,6 +15,8 @@ import 'package:pocketterm_core/terminal.dart' show TermWindow;
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_desktop/channel_keys.dart';
 import 'package:pocketterm_desktop/desktop_host.dart';
+import 'package:pocketterm_desktop/hosting/built_in_server.dart';
+import 'package:pocketterm_desktop/hosting/tailscale.dart';
 import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:pocketterm_desktop/terminal_bridge.dart';
@@ -22,10 +26,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// The desktop app: [Session] plus its main window and the terminal bridge.
 class AppController extends Session {
-  AppController(this._prefs, super.device, this.host, {Integrations? integrations, SecretStore? secrets})
-    : integrations = integrations ?? Integrations(),
-      _keys = ChannelKeys(secrets ?? SystemSecrets()),
-      deviceTokens = SecretDeviceTokens(secrets ?? SystemSecrets());
+  AppController(
+    this._prefs,
+    super.device,
+    this.host, {
+    Integrations? integrations,
+    SecretStore? secrets,
+    Tailscale? tailscale,
+    Future<Directory> Function()? serverDir,
+  }) : integrations = integrations ?? Integrations(),
+       _keys = ChannelKeys(secrets ?? SystemSecrets()),
+       deviceTokens = SecretDeviceTokens(secrets ?? SystemSecrets()),
+       tailscale = tailscale ?? Tailscale(),
+       _serverDir = serverDir ?? _appServerDir;
 
   @override
   final DeviceTokens deviceTokens;
@@ -360,9 +373,136 @@ class AppController extends Session {
         })
         ..start();
     }
+    if (_prefs.getBool(_hostingKey) ?? false) {
+      try {
+        await _startHosting();
+        // Where it listens now, should the port have moved: the sign-in kept
+        // for the old one doesn't count, and this computer signs in again.
+        await _hosting!.backend.save();
+      } on Object catch (e) {
+        debugPrint('PocketTerm: built-in server not started: $e');
+      }
+    }
     await super.start();
+    await _signInToOwnServer();
     // Not set up or signed out: there's nothing to do but that, so say so.
     if (user == null) await openMain();
+  }
+
+  // ---------------------------------------------------------------- hosting
+
+  /// This computer runs the server ("This computer" in the first-run
+  /// setup): it starts with the app, until signing out here.
+  static const _hostingKey = 'hosting';
+
+  /// The port it listened on last, tried first next time.
+  static const _hostingPortKey = 'hosting_port';
+
+  /// The Tailscale CLI, which publishes the built-in server.
+  final Tailscale tailscale;
+
+  /// Where the built-in server keeps its data.
+  final Future<Directory> Function() _serverDir;
+
+  /// App support `pocketterm-server/`.
+  static Future<Directory> _appServerDir() async =>
+      Directory(p.join((await getApplicationSupportDirectory()).path, 'pocketterm-server'));
+
+  /// The built-in server, while this computer runs it.
+  BuiltInServer? get hosting => _hosting;
+  BuiltInServer? _hosting;
+
+  @override
+  bool get hostsServer => _hosting?.running ?? false;
+
+  /// "This computer": starts the built-in server, from now on at every
+  /// launch, and signs this computer in to it. Throws what went wrong.
+  Future<void> startHosting() async {
+    await _startHosting();
+    await _prefs.setBool(_hostingKey, true);
+    await _signInToOwnServer();
+  }
+
+  Future<void> _startHosting() async {
+    if (_hosting != null) return;
+    final h = BuiltInServer(dataDir: await _serverDir(), tailscale: tailscale);
+    try {
+      await h.start(port: _prefs.getInt(_hostingPortKey) ?? 47900);
+    } on Object {
+      h.dispose();
+      rethrow;
+    }
+    _hosting = h..addListener(notifyListeners);
+    await _prefs.setInt(_hostingPortKey, h.port);
+    notifyListeners();
+  }
+
+  /// A computer running the server signs itself in with the server's own
+  /// setup token, on 127.0.0.1.
+  Future<void> _signInToOwnServer() async {
+    final h = _hosting;
+    if (h == null || user != null) return;
+    await connectLink(h.ownSetupLink());
+  }
+
+  Future<void> _stopHosting() async {
+    final h = _hosting;
+    if (h == null) return;
+    _hosting = null;
+    h.removeListener(notifyListeners);
+    await _prefs.setBool(_hostingKey, false);
+    await h.stop();
+    h.dispose();
+    notifyListeners();
+  }
+
+  /// "Add a computer…": the link another computer sets up with (through
+  /// Tailscale); null until Tailscale serves this one.
+  Uri? computerSetupLink() => _hosting?.setupLink();
+
+  /// A phone's code from a computer running the server carries its
+  /// Tailscale address: phones can't reach 127.0.0.1.
+  @override
+  Future<Uri> pairingLink() async {
+    final h = _hosting;
+    if (h == null) return await super.pairingLink();
+    final url = h.publicUrl;
+    if (url == null) throw const PairingException('Tailscale isn’t serving this computer yet. See Settings → Account.');
+    final String code;
+    try {
+      code = await server!.createPairingCode();
+    } on ServerException catch (e) {
+      throw PairingException(e.message);
+    }
+    return Backend(url: url.toString()).linkWithCode(code, computer: await pairingComputer());
+  }
+
+  /// Every computer and phone signed in to the server.
+  Future<List<Device>> serverDevices() => server!.devices();
+
+  /// Signing out of a server this computer runs stops it, and the
+  /// first-run setup shows again. Its data stays: This computer starts it
+  /// again with the same phones and computers.
+  @override
+  Future<void> signOut() async {
+    await super.signOut();
+    if (_hosting != null) await disconnect();
+  }
+
+  @override
+  Future<void> disconnect() async {
+    await super.disconnect();
+    await _stopHosting();
+  }
+
+  /// Erasing signs this computer out too; it signs in again at once, as
+  /// the first computer of an empty server.
+  @override
+  Future<void> eraseServer() async {
+    final phoneKey = _phoneKey;
+    await super.eraseServer();
+    await _prefs.remove(phoneKey);
+    await _signInToOwnServer();
   }
 
   @override
@@ -432,7 +572,7 @@ class AppController extends Session {
       case 'openMain' || 'openSettings':
         unawaited(openMain());
       case 'quitting':
-        return onQuit?.call();
+        return Future.wait([?onQuit?.call(), if (_hosting case final h?) h.stop()]).then((_) {});
     }
   }
 
@@ -459,10 +599,9 @@ class AppController extends Session {
       final id = desktopId(user!.id);
       final routed = session == null ? null : routedKey(id, session);
       final notice = {'title': title, 'body': body, 'session': ?routed, 'state': ?activity};
-      final enc = await sealBytes(await channelKey(), utf8.encode(jsonEncode(notice)), pushAad(id));
       final data = await invokePush('notify', {
         'desktop': id,
-        'enc': base64Encode(enc),
+        'enc': await sealNotice(await channelKey(), id, notice),
         // Lets a newer push for the same session replace an older one.
         if (routed != null && RegExp(r'^[\w.:/-]{1,64}$').hasMatch(routed)) 'collapse': routed,
       });

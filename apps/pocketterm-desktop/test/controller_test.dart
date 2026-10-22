@@ -54,10 +54,14 @@ void main() {
       // A phone that scanned this computer's code opens it.
       final key = Backend.computerKey(await app.pairingLink())!.key;
       final opened = await openBytes(key, base64Decode(body['enc']! as String), pushAad(desktop));
-      expect(jsonDecode(utf8.decode(opened!)), {
+      final notice = jsonDecode(utf8.decode(opened!)) as Map<String, dynamic>;
+      expect(notice, {
         'title': 'omp finished · secret-project',
         'body': 'Fixed the login bug.',
         'session': '$desktop/kitty-1/2',
+        // A phone refuses an old or repeated notice.
+        'ts': isA<int>().having((t) => DateTime.now().millisecondsSinceEpoch - t, 'age (ms)', lessThan(60000)),
+        'id': isA<String>(),
       });
       expect(await openBytes(key, base64Decode(body['enc']! as String), pushAad('zzzz9999')), isNull);
     });
@@ -129,7 +133,7 @@ void main() {
         );
     });
 
-    testWidgets('a computer not set up yet shows its window (the wizard)', (tester) async {
+    testWidgets('a computer not set up yet shows its window (the first-run setup)', (tester) async {
       final app = await FakeApp.create();
       app
         ..fakeBackend = null

@@ -642,13 +642,18 @@ String? setupLinkProblem(String text) {
 }
 
 /// A setup link, checked as it's pasted (a link at all, a computer's, its
-/// server answering), then redeemed by Connect.
+/// server answering, this computer's clock against the server's), then
+/// redeemed by Connect.
 class SetupLinkForm extends StatefulWidget {
-  const SetupLinkForm({required this.app, this.checks = const ServerChecks(), super.key});
+  const SetupLinkForm({required this.app, this.checks = const ServerChecks(), this.clock = true, super.key});
   final AppController app;
 
   /// What asks the pasted link's server for its health.
   final ServerChecks checks;
+
+  /// Says when this computer's clock is off the server's; false where the
+  /// screen already says so.
+  final bool clock;
 
   @override
   State<SetupLinkForm> createState() => _SetupLinkFormState();
@@ -661,6 +666,9 @@ class _SetupLinkFormState extends State<SetupLinkForm> {
 
   /// The pasted link's server: null while not asked, `''` while asking.
   String? _health;
+
+  /// This computer's clock is too far off the server's ([Backend.clockWarning]).
+  String? _clock;
   int _asked = 0;
 
   @override
@@ -675,16 +683,18 @@ class _SetupLinkFormState extends State<SetupLinkForm> {
     setState(() {
       _error = problem;
       _health = null;
+      _clock = null;
     });
     if (text.trim().isEmpty || problem != null) return;
     final backend = Backend.fromLink(Uri.parse(text.trim()))!;
     setState(() => _health = '');
     unawaited(
-      widget.checks.answers(backend).then((problem) {
+      widget.checks.answers(backend).then((h) {
         if (!mounted || asked != _asked) return;
         setState(() {
-          _health = problem == null ? '${backend.host} answers' : null;
-          _error = problem;
+          _health = h.error == null ? '${backend.host} answers' : null;
+          _error = h.error;
+          _clock = Backend.clockWarning(h.clockOffset);
         });
       }),
     );
@@ -742,6 +752,10 @@ class _SetupLinkFormState extends State<SetupLinkForm> {
           ],
         ),
       ],
+      if (_clock case final clock? when widget.clock) ...[
+        const SizedBox(height: 10),
+        _notice(clock, icon: Icons.schedule, key: const ValueKey('setup-link-clock')),
+      ],
       const SizedBox(height: 14),
       FilledButton(
         key: const ValueKey('setup-connect'),
@@ -798,6 +812,9 @@ class _NewServerSetupState extends State<NewServerSetup> {
   bool? _https;
   bool? _healthy;
   String? _healthProblem;
+
+  /// This computer's clock is too far off the server's ([Backend.clockWarning]).
+  String? _clock;
   bool _looking = false;
 
   /// This app's version: the commands fetch the compose file of its release.
@@ -833,7 +850,7 @@ class _NewServerSetupState extends State<NewServerSetup> {
       setState(() {
         _checked = domain;
         _resolves = _https = _healthy = null;
-        _healthProblem = null;
+        _healthProblem = _clock = null;
       });
     }
     if (domain == null || (_healthy ?? false) || _looking) return;
@@ -842,13 +859,14 @@ class _NewServerSetupState extends State<NewServerSetup> {
       final checks = widget.checks;
       final resolves = await checks.resolves(domain);
       final https = resolves && await checks.https(domain);
-      final problem = https ? await checks.health(domain) : null;
+      final health = https ? await checks.health(domain) : null;
       if (!mounted || _checked != domain) return;
       setState(() {
         _resolves = resolves;
         _https = resolves ? https : null;
-        _healthy = https ? problem == null : null;
-        _healthProblem = problem;
+        _healthy = health == null ? null : health.error == null;
+        _healthProblem = health?.error;
+        _clock = Backend.clockWarning(health?.clockOffset);
       });
     } finally {
       _looking = false;
@@ -942,6 +960,10 @@ class _NewServerSetupState extends State<NewServerSetup> {
           Text('Checking $domain', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
           ..._checks(domain),
+          if (_clock case final clock?) ...[
+            const SizedBox(height: 10),
+            _notice(clock, icon: Icons.schedule, key: const ValueKey('setup-clock')),
+          ],
           if (_healthy ?? false) ...[
             const SizedBox(height: 14),
             const Text(
@@ -949,7 +971,7 @@ class _NewServerSetupState extends State<NewServerSetup> {
               style: TextStyle(fontSize: 13, color: C.dim, height: 1.45),
             ),
             const SizedBox(height: 10),
-            SetupLinkForm(app: widget.app, checks: widget.checks),
+            SetupLinkForm(app: widget.app, checks: widget.checks, clock: false),
           ],
         ],
         const SizedBox(height: 14),

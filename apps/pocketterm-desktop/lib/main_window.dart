@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pocketterm_core/account.dart';
 import 'package:pocketterm_core/agent.dart';
+import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/connect.dart' show ConfirmLink;
 import 'package:pocketterm_core/ghostty_config.dart';
 import 'package:pocketterm_core/server_client.dart' show Device, DeviceRole;
@@ -145,6 +146,10 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Who is signed in to the server, for the Account tab; null until known.
   List<Device>? _devices;
 
+  /// This computer's clock is too far off its server's (a VPS's, another
+  /// computer's): phones drop what it sends ([Backend.clockWarning]).
+  String? _clock;
+
   AppController get app => widget.app;
 
   void _shown() {
@@ -193,6 +198,7 @@ class _SettingsPageState extends State<SettingsPage> {
     unawaited(app.checkAgents());
     unawaited(app.checkPhone());
     unawaited(_checkDevices());
+    unawaited(_checkClock());
   }
 
   Future<void> _checkDevices() async {
@@ -202,6 +208,16 @@ class _SettingsPageState extends State<SettingsPage> {
     } on Object catch (e) {
       debugPrint('PocketTerm: devices not listed: $e');
     }
+  }
+
+  /// Whether this computer's clock is far off its server's, while signed
+  /// in to one; the server built into this app keeps this computer's own
+  /// time.
+  Future<void> _checkClock() async {
+    final backend = app.backend;
+    if (backend == null || app.server == null || app.hosting != null) return;
+    final health = await backend.health();
+    if (mounted && health.error == null) setState(() => _clock = Backend.clockWarning(health.clockOffset));
   }
 
   Future<void> _checkTerminals() async {
@@ -1000,6 +1016,9 @@ class _SettingsPageState extends State<SettingsPage> {
         text: 'No terminal app found: PocketTerm works with kitty, Ghostty and WezTerm',
         action: null,
       ));
+    }
+    if (_clock case final clock?) {
+      items.add((tab: _Tab.account, short: 'This computer’s clock is off', text: clock, action: null));
     }
     if (app.hosting case final h? when h.state != HostState.ready && h.state != HostState.checking) {
       final open = h.state == HostState.tailscaleOff || h.state == HostState.loggedOut;

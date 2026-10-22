@@ -131,10 +131,14 @@ class ServerChecks {
   /// The server at [domain]: `https://<domain>`.
   Backend backendFor(String domain) => Backend(url: 'https://$domain');
 
-  /// GET /v1/health: null when it's a PocketTerm server this app speaks to,
-  /// else what's wrong.
-  Future<String?> health(String domain) => answers(backendFor(domain));
+  /// GET /v1/health: `error` is null when it's a PocketTerm server this app
+  /// speaks to, else what's wrong; `clockOffset`, how far its clock is from
+  /// this computer's ([Backend.clockWarning]).
+  Future<ServerHealth> health(String domain) => answers(backendFor(domain));
 
   /// [backend]'s GET /v1/health, as [health] (a pasted setup link's server).
-  Future<String?> answers(Backend backend) => backend.check();
+  Future<ServerHealth> answers(Backend backend) => backend.health();
 }
+
+/// A server's answer to GET /v1/health ([Backend.health]).
+typedef ServerHealth = ({String? error, Duration? clockOffset});

@@ -40,6 +40,16 @@ class FakeChecks extends ServerChecks {
   @override
   Future<bool> https(String domain) async => httpsNow;
 
+  /// How far the server's clock is ahead of this computer's, when the test
+  /// sets it (the real server shares this one's).
+  Duration? clockOffset;
+
+  @override
+  Future<ServerHealth> answers(Backend backend) async {
+    final h = await super.answers(backend);
+    return (error: h.error, clockOffset: clockOffset ?? h.clockOffset);
+  }
+
   @override
   Backend backendFor(String domain) => Backend(url: '$server'.replaceFirst(RegExp(r'/$'), ''));
 }
@@ -356,6 +366,22 @@ void main() {
       expect(app.hostsServer, isFalse);
       expect(find.byKey(signedIn), findsOneWidget);
       await finish(tester, app);
+    });
+
+    testWidgets('a computer whose clock is far off the server’s hears so before it connects', (tester) async {
+      checks.clockOffset = const Duration(minutes: 9);
+      await paste(tester, '${setupLink()}');
+      await until(tester, () => shows('127.0.0.1 answers'));
+      expect(find.byKey(const ValueKey('setup-link-clock')), findsOneWidget);
+      expect(find.textContaining('9 minutes behind'), findsOneWidget);
+
+      // A minute off is fine.
+      checks.clockOffset = const Duration(minutes: 1);
+      await tester.enterText(find.byKey(const ValueKey('setup-link')), '${setupLink()} ');
+      await tester.pump();
+      expect(shows('Asking the server…'), isTrue);
+      await until(tester, () => shows('127.0.0.1 answers'));
+      expect(find.byKey(const ValueKey('setup-link-clock')), findsNothing);
     });
 
     testWidgets('a replaced setup link stays on the form, saying why, with nothing kept', (tester) async {

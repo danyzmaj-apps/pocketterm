@@ -132,7 +132,7 @@ class _ShotChecks extends ServerChecks {
   Future<bool> https(String domain) async => secure;
 
   @override
-  Future<String?> answers(Backend backend) async => null;
+  Future<ServerHealth> answers(Backend backend) async => (error: null, clockOffset: Duration.zero);
 }
 
 /// The first-run setup on [step]'s screen (the two choices if null), as the main window shows it before there is a

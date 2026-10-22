@@ -444,7 +444,7 @@ class LiveHub {
     if (!dir.existsSync()) {
       dir.createSync(recursive: true);
       // Private to this user; Windows' per-user temp folder already is.
-      if (!Platform.isWindows) await Process.run('chmod', ['700', dir.path]);
+      if (!Platform.isWindows) await Process.run('/bin/chmod', ['700', dir.path]);
     }
     final dayAgo = DateTime.now().subtract(const Duration(days: 1));
     for (final f in dir.listSync().whereType<File>()) {

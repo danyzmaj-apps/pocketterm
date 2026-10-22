@@ -325,7 +325,7 @@ class Tailscale {
     try {
       final process = Platform.isWindows
           ? await _start(windowsApp(), const [])
-          : await _start('open', ['-a', 'Tailscale']);
+          : await _start('/usr/bin/open', ['-a', 'Tailscale']);
       unawaited(process.exitCode);
     } on Object catch (e) {
       debugPrint('PocketTerm: Tailscale not opened: $e');

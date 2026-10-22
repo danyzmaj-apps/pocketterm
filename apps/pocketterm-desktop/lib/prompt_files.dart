@@ -25,7 +25,7 @@ class PromptFiles {
     if (!dir.existsSync()) {
       await dir.create(recursive: true);
       // Private to this user; Windows' per-user temp folder already is.
-      if (!Platform.isWindows) await Process.run('chmod', ['700', dir.path]);
+      if (!Platform.isWindows) await Process.run('/bin/chmod', ['700', dir.path]);
     }
     await prune();
     final random = Random.secure();

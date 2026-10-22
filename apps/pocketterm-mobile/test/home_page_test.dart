@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/backend.dart';
@@ -103,6 +104,43 @@ void main() {
     await pumpHome(tester);
     final button = tester.getSemantics(find.byTooltip('Account'));
     expect((button.tooltip, button.label), ('Account', ''));
+    semantics.dispose();
+    flush();
+  });
+
+  // E2E (Android): the list's note went while the computer picker was up, and a tap aimed by the accessibility
+  // tree (as a screen reader or Maestro aims) landed on the project heading below the row.
+  testWidgets('rows say where they are after the list moved under the computer picker', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await pumpHome(tester);
+    final remote = made['mac00001']!;
+    void state({String? error}) => remote.handle('state', {
+      'windows': <Object>[],
+      'sessions': [
+        {'key': 'kitty-1/1', 'id': 's1', 'title': 'Mac work', 'cwd': '/Users/me/app', 'epoch': 'e', 'seq': 0},
+      ],
+      'error': ?error,
+    });
+    state(error: 'kitty is busy');
+    await tester.pumpAndSettle();
+    expect(find.text('kitty is busy'), findsOneWidget);
+
+    await tester.tap(find.text('MacBook Pro'));
+    await tester.pumpAndSettle();
+    state();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('MacBook Pro').last);
+    await tester.pumpAndSettle();
+    expect(find.text('kitty is busy'), findsNothing);
+
+    final row = find.text('Mac work');
+    final node = tester.getSemantics(row);
+    var rect = node.rect;
+    for (SemanticsNode? n = node; n != null; n = n.parent) {
+      if (n.transform case final t?) rect = MatrixUtils.transformRect(t, rect);
+    }
+    final onScreen = tester.getCenter(row) * tester.view.devicePixelRatio;
+    expect(rect.contains(onScreen), isTrue, reason: 'row at $onScreen, its semantics at $rect');
     semantics.dispose();
     flush();
   });

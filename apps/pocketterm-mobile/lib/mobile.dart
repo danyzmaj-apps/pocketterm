@@ -382,6 +382,7 @@ class MobileApp extends StatelessWidget {
     title: 'PocketTerm',
     debugShowCheckedModeBanner: false,
     theme: _theme(appTheme()),
+    navigatorObservers: [SemanticsRefresh()],
     builder: (context, child) => Coach(controller: session.tips, child: child!),
     // No session, no app: only the computer's code gets a phone in, or the
     // demo shows a made-up computer. Signed in, push waits for a yes.

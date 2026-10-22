@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:pocketterm_core/ui.dart';
@@ -79,6 +81,27 @@ Future<T?> showAppSheet<T>(BuildContext context, {required WidgetBuilder builder
         ],
       ),
     );
+
+/// Once a sheet, dialog or menu has gone, the page under it says again where
+/// its parts are. Flutter (3.47) drops the semantics geometry of what moved
+/// under such a popup's barrier, so a screen reader (and Maestro, which aims
+/// by the same tree) went on reading the list where it was before: with the
+/// connecting note gone under the computer picker, a tap on a row landed on
+/// the project heading below it.
+class SemanticsRefresh extends NavigatorObserver {
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (route is! PopupRoute || previousRoute is! ModalRoute) return;
+    // Disposed means its barrier is out of the tree from this frame on.
+    unawaited(
+      route.completed.whenComplete(
+        () => WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (previousRoute.isActive) previousRoute.subtreeContext?.findRenderObject()?.markNeedsSemanticsUpdate();
+        }),
+      ),
+    );
+  }
+}
 
 /// A sheet's top corners.
 const sheetRadius = 28.0;

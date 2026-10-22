@@ -226,6 +226,10 @@ class _PasteCodeState extends State<_PasteCode> {
                 child: TextField(
                   key: const ValueKey('paste-code'),
                   controller: _text,
+                  // A link: Android 8's keyboard "corrected" url= to URL= and d= to do=.
+                  keyboardType: TextInputType.url,
+                  autocorrect: false,
+                  enableSuggestions: false,
                   style: const TextStyle(color: Colors.white),
                   decoration: const InputDecoration(hintText: 'Paste a code (debug)', isDense: true),
                   onSubmitted: widget.onCode,

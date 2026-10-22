@@ -71,6 +71,14 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
         } else {
           try SMAppService.mainApp.unregister()
         }
+        if args["enabled"] as? Bool == true && SMAppService.mainApp.status == .requiresApproval {
+          // Registered, but macOS waits for the person to allow it.
+          result(FlutterError(
+            code: "launch_at_login",
+            message: "Allow PocketTerm in System Settings > General > Login Items.",
+            details: nil))
+          return
+        }
         result(SMAppService.mainApp.status == .enabled)
       } catch {
         result(FlutterError(code: "launch_at_login", message: error.localizedDescription, details: nil))

@@ -75,8 +75,22 @@ class MacHost implements DesktopHost {
   @override
   Future<bool> launchAtLogin() async => await _channel.invokeMethod<bool>('launchAtLogin') ?? false;
 
+  /// What to do when macOS keeps PocketTerm out of the login items.
+  static const loginItemsHint = 'Allow PocketTerm in System Settings > General > Login Items.';
+
+  /// Throws when the system didn't make it so (a login item it wants the
+  /// person to allow first), saying where to allow it.
   @override
-  Future<void> setLaunchAtLogin({required bool on}) => _channel.invokeMethod('setLaunchAtLogin', {'enabled': on});
+  Future<void> setLaunchAtLogin({required bool on}) async {
+    final now = await _channel.invokeMethod<bool>('setLaunchAtLogin', {'enabled': on});
+    if (now != null && now != on) {
+      throw PlatformException(
+        code: 'launch_at_login',
+        message: on ? loginItemsHint : 'macOS still starts PocketTerm at login. Turn it off in System Settings > '
+            'General > Login Items.',
+      );
+    }
+  }
 
   @override
   Future<List<String>> pickFolders() async => await _channel.invokeListMethod<String>('pickFolders') ?? const [];

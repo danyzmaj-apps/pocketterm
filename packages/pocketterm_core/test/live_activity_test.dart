@@ -6,9 +6,9 @@ import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/live_activity.dart';
+import 'package:pocketterm_core/native.dart';
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
-import 'package:pocketterm_core/native.dart';
 
 void main() {
   LiveSummary summary({bool busy = false, LiveAsk? ask}) => LiveSummary(

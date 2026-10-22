@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -45,7 +46,7 @@ void main() {
     expect(Backend.fromLink(Uri.parse('pocketterm://setup?code=K7QM')), isNull);
   });
 
-  test("a setup link from PocketTerm 0.1 (a Supabase project and its key) is told apart and never connects", () {
+  test('a setup link from PocketTerm 0.1 (a Supabase project and its key) is told apart and never connects', () {
     final old = Uri.parse(
       'pocketterm://setup?url=https://abcd.supabase.co&key=sb_publishable_x&code=K7QM&d=abcd1234&k=AAAA',
     );
@@ -114,6 +115,65 @@ void main() {
       });
       final problem = await Backend(url: 'http://127.0.0.1:${server.port}').check();
       expect(problem, contains("Couldn't reach"));
+    });
+
+    /// A server on a free port that answers every request with [answer].
+    Future<Backend> answering(void Function(HttpResponse res) answer) async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(server.close);
+      server.listen((req) async {
+        answer(req.response);
+        await req.response.close();
+      });
+      return Backend(url: 'http://127.0.0.1:${server.port}');
+    }
+
+    test("a device whose clock is off the server's is told; one close enough is not", () async {
+      final own = await OwnServer.start();
+      addTearDown(own.stop);
+      final ok = await own.backend.health();
+      expect(ok.error, isNull);
+      expect(Backend.clockWarning(ok.clockOffset), isNull);
+
+      final ahead = await answering(
+        (res) => res.write(
+          jsonEncode({
+            'pocketterm': 1,
+            'version': Backend.minServer,
+            'time': DateTime.now().add(const Duration(minutes: 10)).toUtc().toIso8601String(),
+          }),
+        ),
+      );
+      final skewed = await ahead.health();
+      expect(skewed.error, isNull);
+      expect(skewed.clockOffset!.inMinutes, inInclusiveRange(9, 10));
+      expect(Backend.clockWarning(skewed.clockOffset), contains('10 minutes behind'));
+      expect(Backend.clockWarning(const Duration(minutes: -3)), contains('ahead of'));
+      expect(Backend.clockWarning(const Duration(seconds: 90)), isNull);
+    });
+
+    test('a server older than this app needs says to update it', () async {
+      final old = await answering((res) => res.write(jsonEncode({'pocketterm': 1, 'version': '0.0.9'})));
+      expect(await old.check(), contains('Update the server'));
+      final newer = await answering((res) => res.write(jsonEncode({'pocketterm': 1, 'version': '0.10.0'})));
+      expect(await newer.check(), isNull);
+    });
+
+    test("Cloudflare that can't reach the server, and a redirect loop, are named as such", () async {
+      final cloudflare = await answering(
+        (res) => res
+          ..statusCode = 521
+          ..headers.set('cf-ray', '8a1b2c3d4e5f-FRA'),
+      );
+      expect(await cloudflare.check(), contains('Cloudflare'));
+
+      late final Backend loop;
+      loop = await answering(
+        (res) => res
+          ..statusCode = 301
+          ..headers.set('location', '${loop.url}/v1/health'),
+      );
+      expect(await loop.check(), contains('redirecting'));
     });
   });
 

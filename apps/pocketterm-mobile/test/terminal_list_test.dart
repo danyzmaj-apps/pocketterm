@@ -575,6 +575,99 @@ void main() {
     remote.flush();
   });
 
+  group("an ask PocketTerm can't answer from the phone", () {
+    /// The idle session a's window can only be [caps]; its session asks [ask].
+    Future<void> asking(WidgetTester tester, Map<String, dynamic> ask, {String? window, List<String>? caps}) async {
+      remote.handle('state', {
+        'windows': [
+          if (window != null)
+            {'key': window, 'title': 'omp', 'cwd': _a, 'program': 'omp', 'app': 'kitty', 'caps': ?caps},
+        ],
+        'sessions': [
+          {'key': window ?? 'pid:9', 'id': 's2', 'agent': 'omp', 'window': ?window, 'title': 'Asking', 'cwd': _a},
+        ],
+        'projects': [_a],
+        'home': '/Users/me',
+        'agent': 'omp',
+        'opensIn': 'kitty',
+      });
+      await pumpList(tester);
+      await tester.tap(session(window ?? 'pid:9'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      remote.handle('state', {
+        'windows': [
+          if (window != null)
+            {'key': window, 'title': 'omp', 'cwd': _a, 'program': 'omp', 'app': 'kitty', 'caps': ?caps},
+        ],
+        'sessions': [
+          {
+            'key': window ?? 'pid:9',
+            'id': 's2',
+            'agent': 'omp',
+            'window': ?window,
+            'title': 'Asking',
+            'cwd': _a,
+            'ask': ask,
+          },
+        ],
+        'projects': [_a],
+        'home': '/Users/me',
+        'agent': 'omp',
+        'opensIn': 'kitty',
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    const menu = {
+      'kind': 'menu',
+      'id': 'm1',
+      'title': 'Resume',
+      'filter': true,
+      'items': [
+        {'label': 'Yesterday'},
+      ],
+    };
+
+    testWidgets('a picker in a window that takes no keys offers its screen and can be put away', (tester) async {
+      await asking(tester, menu, window: 'kitty-1/2', caps: ['read']);
+      expect(find.text('Yesterday'), findsOneWidget);
+      expect(find.byKey(const ValueKey('menu-cancel')), findsNothing, reason: 'Esc needs keys');
+      expect(find.byKey(const ValueKey('menu-search')), findsNothing, reason: 'typing too');
+      expect(find.textContaining('Pick on the computer.'), findsOneWidget);
+      await tester.tap(find.text('Yesterday'));
+      await tester.pump();
+      expect(runs('answer'), isEmpty, reason: 'a pick presses keys it has no way to press');
+
+      await tester.tap(find.byKey(const ValueKey('menu-screen')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(TerminalPage), findsOneWidget);
+      Navigator.of(tester.element(find.byType(TerminalPage))).pop();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      await tester.tap(find.byKey(const ValueKey('menu-hide')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Yesterday'), findsNothing);
+      remote.flush();
+    });
+
+    testWidgets('a plan with no options in a terminal PocketTerm can’t read says to answer it on the computer', (
+      tester,
+    ) async {
+      await asking(tester, {'kind': 'plan', 'id': 'p1', 'title': 'Plan'});
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('plan-waiting'))).data,
+        'Answer it on the computer: PocketTerm can’t read this terminal.',
+      );
+      expect(find.byKey(const ValueKey('plan-screen')), findsNothing);
+      remote.flush();
+    });
+  });
+
   group('a slash command with no picker', () {
     /// Sends [command] in the idle session; the computer takes it.
     Future<void> sendCommand(WidgetTester tester, String command) async {

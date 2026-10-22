@@ -404,6 +404,10 @@ class _SessionPageState extends State<SessionPage> {
       _anchorEpoch = v.epoch;
       _atBottom = true;
       _built.clear();
+    } else if (_built.length > 2 * items.length + 64) {
+      // Items the view no longer holds (dropped, a fresh catch-up): their widgets go too.
+      final ids = {for (final i in items) i.id};
+      _built.removeWhere((id, _) => !ids.contains(id));
     }
     if (items.isEmpty) {
       final agent = _agent(s).label;
@@ -1207,7 +1211,13 @@ class _AskCardState extends State<_AskCard> {
           if (ask.options.isEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text('$agent is waiting on its screen', style: const TextStyle(fontSize: 13, color: C.dim)),
+              child: Text(
+                screen == null
+                    ? 'Answer it on the computer: PocketTerm can’t read this terminal.'
+                    : '$agent is waiting on its screen',
+                key: const ValueKey('plan-waiting'),
+                style: const TextStyle(fontSize: 13, color: C.dim),
+              ),
             ),
           for (final (i, label) in ask.options.indexed)
             Padding(
@@ -1344,6 +1354,9 @@ class _MenuCardState extends State<_MenuCard> {
   /// The item being picked, or -1 for Cancel.
   int? _busy;
 
+  /// Put away here (no keys to press Esc with); a new picker shows again.
+  bool _hidden = false;
+
   @override
   void dispose() {
     _searchSoon?.cancel();
@@ -1430,7 +1443,10 @@ class _MenuCardState extends State<_MenuCard> {
   Widget build(BuildContext context) {
     final ask = widget.ask;
     final window = widget.window;
+    if (_hidden) return const SizedBox.shrink();
     final enabled = _busy == null && widget.remote.online;
+    // Picking presses keys in the agent's window: with none, only the screen and Hide.
+    final picks = enabled && window != null;
     return Container(
       // Of what the keyboard leaves: the composer below stays on screen.
       constraints: BoxConstraints(
@@ -1456,6 +1472,8 @@ class _MenuCardState extends State<_MenuCard> {
                     style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                   ),
                 ),
+                if (widget.onScreen case final screen?)
+                  TextButton(key: const ValueKey('menu-screen'), onPressed: screen, child: const Text('Screen')),
                 if (window != null)
                   TextButton(
                     key: const ValueKey('menu-cancel'),
@@ -1463,11 +1481,25 @@ class _MenuCardState extends State<_MenuCard> {
                     child: _busy == -1
                         ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Text('Cancel'),
+                  )
+                else
+                  TextButton(
+                    key: const ValueKey('menu-hide'),
+                    onPressed: () => setState(() => _hidden = true),
+                    child: const Text('Hide'),
                   ),
               ],
             ),
           ),
-          if (ask.filter)
+          if (window == null)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 6),
+              child: Text(
+                'PocketTerm can’t press keys in this terminal. Pick on the computer.',
+                style: TextStyle(fontSize: 13, color: C.dim),
+              ),
+            ),
+          if (ask.filter && window != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
               child: TextField(
@@ -1499,7 +1531,7 @@ class _MenuCardState extends State<_MenuCard> {
                     shrinkWrap: true,
                     padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                     keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                    children: [for (final (i, item) in ask.items.indexed) _item(i, item, enabled: enabled)],
+                    children: [for (final (i, item) in ask.items.indexed) _item(i, item, enabled: picks)],
                   ),
           ),
         ],

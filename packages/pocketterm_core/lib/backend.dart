@@ -135,14 +135,15 @@ class Backend {
   /// GET /v1/health: `error` is null when all is well, else what's wrong,
   /// worded for the person. `clockOffset` is how far the server's clock is
   /// ahead of this device's (null when it didn't say); see [clockWarning].
-  Future<({String? error, Duration? clockOffset})> health() async {
+  /// The headers and then the body each have [wait] to arrive.
+  Future<({String? error, Duration? clockOffset})> health({Duration wait = const Duration(seconds: 10)}) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     ({String? error, Duration? clockOffset}) fail(String error) => (error: error, clockOffset: null);
     try {
       final sent = DateTime.now();
       final req = await client.getUrl(Uri.parse('$url/v1/health'));
-      final res = await req.close().timeout(const Duration(seconds: 10));
-      final body = await utf8.decodeStream(res);
+      final res = await req.close().timeout(wait);
+      final body = await utf8.decodeStream(res).timeout(wait);
       final received = DateTime.now();
       final status = res.statusCode;
       if (status >= 520 && status <= 530 && (res.headers.value('cf-ray') != null || _cloudflare(res))) {

@@ -115,6 +115,21 @@ void main() {
       expect(problem, contains("Couldn't reach"));
     });
 
+    test('a server that sends its headers and then stalls the body times out with a message', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((req) async {
+        req.response
+          ..contentLength = 100
+          ..write('{"pocketterm":');
+        await req.response.flush();
+      });
+      final health = await Backend(
+        url: 'http://127.0.0.1:${server.port}',
+      ).health(wait: const Duration(milliseconds: 300)).timeout(const Duration(seconds: 5));
+      expect(health.error, contains('took too long to answer'));
+    });
+
     /// A server on a free port that answers every request with [answer].
     Future<Backend> answering(void Function(HttpResponse res) answer) async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);

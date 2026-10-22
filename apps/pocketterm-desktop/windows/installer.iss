@@ -30,7 +30,10 @@ UninstallDisplayIcon={app}\PocketTerm.exe
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-CloseApplications=yes
+; A running PocketTerm stays in the tray when asked to close its window, so a polite
+; close leaves its files in use: force it (an update or uninstall while it runs); after
+; an update [Run] opens the new one.
+CloseApplications=force
 
 [Files]
 Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion

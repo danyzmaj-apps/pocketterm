@@ -551,14 +551,16 @@ String homeDir({Map<String, String>? env, bool? windows}) =>
     (env ?? Platform.environment)[(windows ?? Platform.isWindows) ? 'USERPROFILE' : 'HOME'] ?? '';
 
 /// An executable named [name] in the usual places (a GUI app's PATH is
-/// short), or in [extra]; null if none. On Windows: PATH (split on `;`),
-/// `<name>.exe` in any folder, then [extra], then `<name>.cmd` and
-/// `<name>.bat` (npm's shims; run them with [runsInShell]). Never the bare
-/// `<name>`, which on Windows is a script CreateProcess can't run.
+/// short), or in [extra]; null if none. On Windows: PATH (split on `;`, a
+/// quoted entry unquoted), `<name>.exe` in any folder, then [extra], then
+/// `<name>.cmd` and `<name>.bat` (npm's shims; run them through
+/// [windowsCommand]). Never the bare `<name>`, which on Windows is a script
+/// CreateProcess can't run.
 String? findExecutable(String name, {List<String> extra = const [], Map<String, String>? env, bool? windows}) {
   final path = (env ?? Platform.environment)['PATH'] ?? '';
-  final dirs = path.split(';').where((d) => d.isNotEmpty);
-  final candidates = (windows ?? Platform.isWindows)
+  final win = windows ?? Platform.isWindows;
+  final dirs = win ? windowsPathDirs(path) : const <String>[];
+  final candidates = win
       ? [
           for (final dir in dirs) p.join(dir, '$name.exe'),
           ...extra,
@@ -581,9 +583,47 @@ String? findExecutable(String name, {List<String> extra = const [], Map<String, 
   return null;
 }
 
-/// Whether [executable] is a Windows batch file (`.cmd`, `.bat`), which only
-/// runs through `cmd.exe` ([Process.run]'s `runInShell`).
-bool runsInShell(String executable) => RegExp(r'\.(cmd|bat)$', caseSensitive: false).hasMatch(executable);
+/// Whether Windows takes [name] (no folder parts) as a file or folder name:
+/// none of `< > " | ? *`, no dot or space at the end (Windows drops it, so
+/// the folder made isn't the one named), and not a device name (CON, PRN,
+/// AUX, NUL, COM1–9, LPT1–9), with or without an extension.
+bool windowsFileName(String name) =>
+    !name.contains(RegExp('[<>"|?*]')) &&
+    !name.endsWith('.') &&
+    !name.endsWith(' ') &&
+    !RegExp(r'^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$', caseSensitive: false).hasMatch(name);
+
+/// A Windows PATH's folders: split on `;`, each without the quotes an
+/// installer may have put around it, empty ones dropped.
+List<String> windowsPathDirs(String path) => [
+  for (final d in path.split(';'))
+    if (d.trim().replaceAll('"', '') case final dir when dir.isNotEmpty) dir,
+];
+
+/// A Windows PATH as a new login would have it: the system's folders
+/// ([machine]), then the user's ([user]), then those only this process has
+/// ([current]: what PocketTerm started with), each folder once (Windows
+/// compares them ignoring case). An app that installs itself and adds its
+/// folder (Claude Code, Node's npm) while PocketTerm runs is then found,
+/// and terminals PocketTerm starts find it too.
+String mergeWindowsPath({required String current, String? machine, String? user}) {
+  final seen = <String>{};
+  return [
+    for (final dir in [...windowsPathDirs(machine ?? ''), ...windowsPathDirs(user ?? ''), ...windowsPathDirs(current)])
+      if (seen.add(dir.toLowerCase().replaceFirst(RegExp(r'\\+$'), ''))) dir,
+  ].join(';');
+}
+
+/// The program and arguments that run [executable] with [arguments] on
+/// Windows. A batch file (`.cmd`, `.bat`: npm's `claude.cmd`) runs only
+/// through `cmd.exe`; `call` keeps cmd from stripping the quotes around a
+/// path with a space ("C:\Users\Jane Doe\...") when an argument is quoted
+/// too, which `runInShell` (`cmd /c "<exe>" "<arg>"`) gets wrong. `/d`:
+/// without the person's cmd AutoRun.
+(String, List<String>) windowsCommand(String executable, List<String> arguments) =>
+    RegExp(r'\.(cmd|bat)$', caseSensitive: false).hasMatch(executable)
+    ? ('cmd.exe', ['/d', '/c', 'call', executable, ...arguments])
+    : (executable, arguments);
 
 // ------------------------------------------------------------ AppleScript
 

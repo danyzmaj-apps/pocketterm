@@ -80,7 +80,7 @@ void main() {
   });
 
   test('WezTerm list: pane key with the GUI pid, folder from the file URL, program from the tty', () {
-    final w = parseWezTermList('1128', _wezList, Procs(parsePs(_psWezTerm))).single;
+    final w = parseWezTermList('1128', _wezList, procs: Procs(parsePs(_psWezTerm))).single;
     expect(
       (w.key, w.title, w.cwd, w.tty, w.program, w.focused, w.app),
       ('wezterm:1128/0', 'cap-wezterm', '/tmp/dzt/cap-wezterm', 'ttys008', 'claude', true, 'wezterm'),

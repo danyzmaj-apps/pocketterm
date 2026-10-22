@@ -191,6 +191,19 @@ void main() {
       expect(ran, isNot(contains('/bin/zsh')));
     });
 
+    test('on Windows claude installed with npm while PocketTerm runs is found on the PATH a new login has', () async {
+      final npm = '$home/AppData/Roaming/npm';
+      final exe = FakeClaude('$npm/claude.cmd');
+      File(exe.path).createSync(recursive: true);
+      var path = r'C:\Windows\system32';
+      final windows = Integrations(home: home, run: exe.run, windows: true, windowsPath: () => path);
+      expect((await windows.state(Agent.claude)).problem, "Claude Code isn't installed");
+      // npm's installer added its folder to the user's Path in the registry.
+      path = '$path;$npm';
+      expect(await windows.found(Agent.claude), isTrue);
+      expect((await windows.state(Agent.claude)).problem, isNull);
+    });
+
     test('a Claude Code older than mods is too old', () async {
       claude.version = '2.1.286 (Claude Code)';
       expect(

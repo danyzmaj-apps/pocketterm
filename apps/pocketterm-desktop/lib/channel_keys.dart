@@ -10,20 +10,39 @@ abstract interface class SecretStore {
 }
 
 /// The system's: the login Keychain on a Mac (no keychain entitlement
-/// needed, so any signing works), Credential Manager on Windows.
+/// needed, so any signing works); on Windows one file in the app's
+/// %APPDATA% folder, encrypted for this Windows user (DPAPI), so no size
+/// limit as in Credential Manager. Uninstalling leaves it.
 class SystemSecrets implements SecretStore {
-  static const _storage = FlutterSecureStorage(
+  /// [storage]: the system's if null; tests pass their own.
+  SystemSecrets([FlutterSecureStorage? storage]) : _storage = storage ?? _system;
+
+  static const _system = FlutterSecureStorage(
     mOptions: MacOsOptions(accountName: 'PocketTerm', usesDataProtectionKeychain: false),
   );
 
-  @override
-  Future<String?> read(String name) => _storage.read(key: name);
+  final FlutterSecureStorage _storage;
+
+  /// One operation at a time, across every SystemSecrets: on Windows each
+  /// write reads the whole file, changes it and writes it back, so two
+  /// writes at once (the device token and a channel key, at sign-in) would
+  /// keep only one, and a read during a write can fail.
+  static Future<void> _last = Future.value();
+
+  static Future<T> _serial<T>(Future<T> Function() op) {
+    final run = _last.then((_) => op());
+    _last = run.then<void>((_) {}, onError: (Object _) {});
+    return run;
+  }
 
   @override
-  Future<void> write(String name, String value) => _storage.write(key: name, value: value);
+  Future<String?> read(String name) => _serial(() => _storage.read(key: name));
 
   @override
-  Future<void> delete(String name) => _storage.delete(key: name);
+  Future<void> write(String name, String value) => _serial(() => _storage.write(key: name, value: value));
+
+  @override
+  Future<void> delete(String name) => _serial(() => _storage.delete(key: name));
 }
 
 /// This computer's sign-in on its server (the device token and what came

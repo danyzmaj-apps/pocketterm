@@ -140,8 +140,12 @@ class AppController extends Session {
     return name.length <= 80 ? name : name.substring(0, 80);
   }
 
-  /// This computer's terminals (on a Mac, kitty's sockets are in [kittyDir]).
-  late final Terminals terminals = Terminals.standard(kittyDir: kittyDir(Platform.environment));
+  /// This computer's terminals (on a Mac, kitty's sockets are in [kittyDir];
+  /// on Windows the WezTerm it starts gets the PATH a new login has).
+  late final Terminals terminals = Terminals.standard(
+    kittyDir: kittyDir(Platform.environment),
+    windowsPath: Platform.isWindows ? freshWindowsPath : null,
+  );
 
   /// Where kitty's sockets are: /tmp, or the directory `POCKETTERM_KITTY_DIR`
   /// names, so a second PocketTerm under test talks to a kitty of its own.

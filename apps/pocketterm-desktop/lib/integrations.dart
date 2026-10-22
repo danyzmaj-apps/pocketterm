@@ -6,7 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
-import 'package:pocketterm_core/terminal.dart' show findExecutable, homeDir, runsInShell;
+import 'package:pocketterm_core/terminal.dart' show findExecutable, homeDir, windowsCommand;
+import 'package:pocketterm_desktop/windows_host.dart' show freshWindowsPath;
 
 /// Runs [executable] with [arguments], as [Process.run] does.
 typedef Run = Future<ProcessResult> Function(String executable, List<String> arguments);
@@ -42,21 +43,31 @@ class IntegrationException implements Exception {
 class Integrations {
   /// [windows]: look for `claude` as on Windows (PATH, then the native
   /// installer's `claude.exe`; no login shell), else as the running platform.
-  Integrations({String? home, AssetBundle? bundle, Run? run, this._claudePaths, this._ompPaths, bool? windows})
-    : _windows = windows ?? Platform.isWindows,
-      home = home ?? homeDir(windows: windows),
-      _bundle = bundle ?? rootBundle,
-      _run = run ?? _process;
+  /// [windowsPath]: Windows' PATH to look in, as a new login has it
+  /// ([freshWindowsPath]: an agent installed while PocketTerm runs counts);
+  /// this process's PATH when not on Windows.
+  Integrations({
+    String? home,
+    AssetBundle? bundle,
+    Run? run,
+    this._claudePaths,
+    this._ompPaths,
+    bool? windows,
+    String Function()? windowsPath,
+  }) : _windows = windows ?? Platform.isWindows,
+       _windowsPath = windowsPath ?? (Platform.isWindows ? freshWindowsPath : () => Platform.environment['PATH'] ?? ''),
+       home = home ?? homeDir(windows: windows),
+       _bundle = bundle ?? rootBundle,
+       _run = run ?? _process;
 
   /// [Process.run], output read as UTF-8 (what claude writes; the default is
   /// the ANSI code page on Windows), an npm `claude.cmd` through cmd.exe.
-  static Future<ProcessResult> _process(String executable, List<String> arguments) => Process.run(
-    executable,
-    arguments,
-    runInShell: Platform.isWindows && runsInShell(executable),
-    stdoutEncoding: utf8,
-    stderrEncoding: utf8,
-  );
+  static Future<ProcessResult> _process(String executable, List<String> arguments) {
+    final (exe, args) = Platform.isWindows ? windowsCommand(executable, arguments) : (executable, arguments);
+    return Process.run(exe, args, stdoutEncoding: utf8, stderrEncoding: utf8);
+  }
+
+  final String Function() _windowsPath;
 
   final String home;
   final AssetBundle _bundle;
@@ -244,7 +255,7 @@ class Integrations {
   /// profile may print something first); a shell that doesn't answer within
   /// 10 s counts as not finding it.
   Future<String?> _find(String name, List<String> candidates) async {
-    if (_windows) return findExecutable(name, extra: candidates, windows: true);
+    if (_windows) return findExecutable(name, extra: candidates, windows: true, env: {'PATH': _windowsPath()});
     final path = candidates.where((c) => File(c).existsSync()).firstOrNull;
     if (path != null) return path;
     final ProcessResult r;

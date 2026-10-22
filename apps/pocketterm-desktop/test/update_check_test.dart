@@ -31,22 +31,46 @@ void main() {
 
   group('newer', () {
     const page = 'https://github.com/danyzmaj-apps/pocketterm/releases/tag/v0.6.0';
+    const assets = [
+      {'name': 'PocketTerm-0.6.0.dmg'},
+      {'name': 'PocketTerm-0.6.0-setup.exe'},
+    ];
 
     test('a higher tag, with or without its v, is the update', () {
       expect(
-        UpdateCheck.newer({'tag_name': 'v0.6.0', 'html_url': page}, '0.5.0'),
+        UpdateCheck.newer({'tag_name': 'v0.6.0', 'html_url': page, 'assets': assets}, '0.5.0'),
         UpdateInfo('0.6.0', Uri.parse(page)),
       );
-      expect(UpdateCheck.newer({'tag_name': '0.6.0', 'html_url': page}, '0.5.0')?.version, '0.6.0');
+      expect(UpdateCheck.newer({'tag_name': '0.6.0', 'html_url': page, 'assets': assets}, '0.5.0')?.version, '0.6.0');
     });
 
     test('the same, an older or an unreadable release is none', () {
-      expect(UpdateCheck.newer({'tag_name': 'v0.5.0', 'html_url': page}, '0.5.0'), isNull);
-      expect(UpdateCheck.newer({'tag_name': 'v0.4.9', 'html_url': page}, '0.5.0'), isNull);
-      expect(UpdateCheck.newer({'tag_name': 'nightly', 'html_url': page}, '0.5.0'), isNull);
-      expect(UpdateCheck.newer({'tag_name': 'v0.6.0'}, '0.5.0'), isNull);
-      expect(UpdateCheck.newer({'tag_name': 'v0.6.0', 'html_url': 'http://example.com/x'}, '0.5.0'), isNull);
+      expect(UpdateCheck.newer({'tag_name': 'v0.5.0', 'html_url': page, 'assets': assets}, '0.5.0'), isNull);
+      expect(UpdateCheck.newer({'tag_name': 'v0.4.9', 'html_url': page, 'assets': assets}, '0.5.0'), isNull);
+      expect(UpdateCheck.newer({'tag_name': 'nightly', 'html_url': page, 'assets': assets}, '0.5.0'), isNull);
+      expect(UpdateCheck.newer({'tag_name': 'v0.6.0', 'assets': assets}, '0.5.0'), isNull);
+      expect(
+        UpdateCheck.newer({'tag_name': 'v0.6.0', 'html_url': 'http://example.com/x', 'assets': assets}, '0.5.0'),
+        isNull,
+      );
       expect(UpdateCheck.newer(['v0.6.0'], '0.5.0'), isNull);
+    });
+
+    test('a newer release without its Windows installer yet is none until the installer is attached', () {
+      expect(
+        UpdateCheck.newer({
+          'tag_name': 'v0.6.0',
+          'html_url': page,
+          'assets': [
+            {'name': 'PocketTerm-0.6.0.dmg'},
+            {'name': 'appcast.xml'},
+          ],
+        }, '0.5.0'),
+        isNull,
+      );
+      expect(UpdateCheck.newer({'tag_name': 'v0.6.0', 'html_url': page, 'assets': const <Object>[]}, '0.5.0'), isNull);
+      expect(UpdateCheck.newer({'tag_name': 'v0.6.0', 'html_url': page}, '0.5.0'), isNull);
+      expect(UpdateCheck.newer({'tag_name': 'v0.6.0', 'html_url': page, 'assets': assets}, '0.5.0'), isNotNull);
     });
   });
 
@@ -62,6 +86,9 @@ void main() {
           jsonEncode({
             'tag_name': 'v0.6.0',
             'html_url': 'https://github.com/danyzmaj-apps/pocketterm/releases/tag/v0.6.0',
+            'assets': [
+              {'name': 'PocketTerm-0.6.0-setup.exe'},
+            ],
           }),
           200,
         );
@@ -82,7 +109,16 @@ void main() {
       var fail = false;
       final check = checker((_) async {
         if (fail) throw http.ClientException('offline');
-        return http.Response(jsonEncode({'tag_name': 'v0.6.0', 'html_url': 'https://github.com/x'}), 200);
+        return http.Response(
+          jsonEncode({
+            'tag_name': 'v0.6.0',
+            'html_url': 'https://github.com/x',
+            'assets': [
+              {'name': 'PocketTerm-0.6.0-setup.exe'},
+            ],
+          }),
+          200,
+        );
       });
       addTearDown(check.dispose);
       await check.check();

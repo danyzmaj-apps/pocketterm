@@ -67,13 +67,22 @@ class UpdateCheck extends ChangeNotifier {
   }
 
   /// [release] (GitHub's JSON for one) if its tag, without a leading `v`, is
-  /// a higher semantic version than [current] and it has an https page.
+  /// a higher semantic version than [current], it has an https page and its
+  /// Windows installer (`PocketTerm-<version>-setup.exe`) is on it: the Mac
+  /// publishes a release before the Windows build attaches its installer,
+  /// and an update offered then would lead to a page with nothing to run.
   @visibleForTesting
   static UpdateInfo? newer(Object? release, String current) {
     if (release case {'tag_name': final String tag, 'html_url': final String url}) {
       final version = tag.startsWith('v') ? tag.substring(1) : tag;
       final page = Uri.tryParse(url);
-      if ((compareVersions(version, current) ?? 0) > 0 && page != null && page.isScheme('https')) {
+      final installer = switch (release['assets']) {
+        final List<Object?> assets => assets.any(
+          (a) => a is Map && a['name'] is String && (a['name'] as String).toLowerCase().endsWith('-setup.exe'),
+        ),
+        _ => false,
+      };
+      if ((compareVersions(version, current) ?? 0) > 0 && page != null && page.isScheme('https') && installer) {
         return UpdateInfo(version, page);
       }
     }

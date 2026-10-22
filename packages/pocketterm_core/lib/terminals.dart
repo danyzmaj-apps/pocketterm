@@ -26,13 +26,14 @@ class Terminals {
   });
 
   /// The terminals of this computer: all four on a Mac (kitty's sockets in
-  /// [kittyDir]), WezTerm alone on Windows.
-  factory Terminals.standard({String kittyDir = '/tmp', String? home, bool? windows}) {
+  /// [kittyDir]), WezTerm alone on Windows ([windowsPath]: the PATH a new
+  /// login has, for the WezTerm it starts; see WezTerm).
+  factory Terminals.standard({String kittyDir = '/tmp', String? home, bool? windows, String Function()? windowsPath}) {
     final h = home ?? homeDir(windows: windows);
     if (windows ?? Platform.isWindows) {
       return Terminals(
         home: h,
-        wezterm: WezTerm(home: h, windows: true),
+        wezterm: WezTerm(home: h, windows: true, windowsPath: windowsPath),
       );
     }
     return Terminals(
@@ -316,7 +317,8 @@ class Terminals {
 
   /// A new project folder [name] under [root], which must be one of [roots]
   /// (the Mac's Project folders setting); its path. Only the folder is made.
-  String createProject(String root, String name, {required List<String> roots}) {
+  /// [windows]: also Windows' rules for names (the running platform's if null).
+  String createProject(String root, String name, {required List<String> roots, bool? windows}) {
     if (!roots.contains(root)) throw TerminalException('Not one of your project folders: $root');
     final n = name.trim();
     if (n.isEmpty ||
@@ -325,6 +327,12 @@ class Terminals {
         n.codeUnits.any((c) => c < 0x20 || c == 0x7f)) {
       throw const TerminalException(
         r'A project name can’t be empty, contain /, \, : or control characters, or start with a dot.',
+      );
+    }
+    if ((windows ?? Platform.isWindows) && !windowsFileName(n)) {
+      throw const TerminalException(
+        'Windows doesn’t allow that name: no < > " | ? *, no dot at the end, '
+        'and not a device name such as CON, NUL, COM1 or LPT1.',
       );
     }
     if (!Directory(root).existsSync()) throw TerminalException('No such folder: $root');

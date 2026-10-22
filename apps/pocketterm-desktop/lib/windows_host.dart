@@ -7,6 +7,7 @@ import 'package:ffi/ffi.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
+import 'package:pocketterm_core/terminal.dart' show mergeWindowsPath;
 import 'package:pocketterm_desktop/desktop_host.dart';
 import 'package:pocketterm_desktop/update_check.dart';
 import 'package:tray_manager/tray_manager.dart' as tray;
@@ -14,6 +15,31 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:win32/win32.dart';
 import 'package:win32_registry/win32_registry.dart';
 import 'package:window_manager/window_manager.dart';
+
+/// The PATH a new login would have now ([mergeWindowsPath]): the system's
+/// and the user's `Path` from the registry, expanded, then this process's
+/// own. An app installed while PocketTerm runs (Claude Code, Node) is on it;
+/// PocketTerm's own environment is the one Explorer gave it at start.
+String freshWindowsPath() {
+  String? read(RegistryHive hive, String path) {
+    try {
+      final key = Registry.openPath(hive, path: path);
+      try {
+        return key.getStringValue('Path', expandPaths: true);
+      } finally {
+        key.close();
+      }
+    } on WindowsException {
+      return null;
+    }
+  }
+
+  return mergeWindowsPath(
+    machine: read(RegistryHive.localMachine, r'SYSTEM\CurrentControlSet\Control\Session Manager\Environment'),
+    user: read(RegistryHive.currentUser, 'Environment'),
+    current: Platform.environment['PATH'] ?? '',
+  );
+}
 
 /// The Windows side: the tray item, the main window (closing hides it),
 /// launch at login (`--hidden`: the window stays hidden), the `pocketterm://`
@@ -36,6 +62,7 @@ class WindowsHost with WindowListener implements DesktopHost {
     await windowManager.setMinimumSize(const Size(480, 360));
     await windowManager.center();
     launchAtStartup.setup(appName: 'PocketTerm', appPath: '"${Platform.resolvedExecutable}"', args: ['--hidden']);
+    _ensureStartupApproved();
     _registerLink();
     _startTray();
     if (!_startedHidden()) await showMain();
@@ -173,6 +200,23 @@ class WindowsHost with WindowListener implements DesktopHost {
 
   @override
   Future<void> startDrag() => windowManager.startDragging();
+
+  /// launch_at_startup reads and writes `Explorer\StartupApproved\Run`
+  /// (Task Manager's Startup apps switch) and throws when that key is
+  /// missing, as on a profile where no app ever asked to start at login;
+  /// made here, empty, so the Launch at login switch works there too.
+  static void _ensureStartupApproved() {
+    try {
+      final user = Registry.currentUser;
+      try {
+        user.createKey(r'Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run').close();
+      } finally {
+        user.close();
+      }
+    } on WindowsException catch (e) {
+      debugPrint('PocketTerm: StartupApproved: $e');
+    }
+  }
 
   /// Points `pocketterm://` (the sign-in callback, session links) at this
   /// executable, unless it already is. The installer writes the same keys;

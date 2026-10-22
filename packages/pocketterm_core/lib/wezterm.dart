@@ -11,26 +11,39 @@ import 'package:pocketterm_core/terminal.dart';
 /// `wezterm:<gui pid>/<pane id>`.
 class WezTerm extends TerminalHost {
   /// [clock]: the time, for when a socket that stopped answering is asked again.
-  WezTerm({String? executable, String? socketDir, String? home, bool? windows, DateTime Function()? clock})
-    : this._(executable, socketDir, home, windows ?? Platform.isWindows, clock ?? DateTime.now);
+  /// [windowsPath]: on Windows, the PATH a new login would have
+  /// (mergeWindowsPath), to find wezterm and to hand the WezTerm it starts,
+  /// so a shell there finds what was installed while PocketTerm ran;
+  /// PocketTerm's own PATH if null.
+  WezTerm({
+    String? executable,
+    String? socketDir,
+    String? home,
+    bool? windows,
+    DateTime Function()? clock,
+    String Function()? windowsPath,
+  }) : this._(executable, socketDir, home, windows ?? Platform.isWindows, clock ?? DateTime.now, windowsPath);
 
-  WezTerm._(this._given, String? socketDir, String? home, this._windows, this._now)
+  WezTerm._(this._given, String? socketDir, String? home, this._windows, this._now, this._windowsPath)
     : _dir = socketDir ?? p.join(home ?? homeDir(windows: _windows), '.local', 'share', 'wezterm');
 
-  static String? _find({required bool windows}) => findExecutable(
+  String? _find() => findExecutable(
     'wezterm',
-    windows: windows,
-    extra: windows
+    windows: _windows,
+    env: _windows && _windowsPath != null ? {'PATH': _windowsPath()} : null,
+    extra: _windows
         ? ['${Platform.environment['ProgramFiles'] ?? r'C:\Program Files'}\\WezTerm\\wezterm.exe']
         : const ['/Applications/WezTerm.app/Contents/MacOS/wezterm'],
   );
+
+  final String Function()? _windowsPath;
 
   final String? _given;
   String? _found;
 
   /// Looked for again while it isn't found: WezTerm installed while
   /// PocketTerm runs (Settings or the setup checklist installs it) counts.
-  String? get _exe => _given ?? (_found ??= _find(windows: _windows));
+  String? get _exe => _given ?? (_found ??= _find());
 
   final String _dir;
   final bool _windows;
@@ -139,10 +152,49 @@ class WezTerm extends TerminalHost {
             )
           : TermStatus(id, label, TermState.missing);
     }
+    if (await _release() case final release? when release < minRelease) {
+      return TermStatus(
+        id,
+        label,
+        TermState.setup,
+        note:
+            'WezTerm $release is too old for PocketTerm: update it to $minRelease or later'
+            '${_windows ? ' (winget upgrade wez.wezterm)' : ''}',
+      );
+    }
     if (_sockets(procs).isEmpty) return TermStatus(id, label, TermState.idle, note: 'Not running');
     final n = (await windows(procs)).length;
     return TermStatus(id, label, TermState.ready, note: '$n window${n == 1 ? '' : 's'}');
   }
+
+  /// The oldest WezTerm release (its date) whose `wezterm cli` has all
+  /// PocketTerm uses: kill-pane came in 20230326-111934-3666303c.
+  static const minRelease = 20230326;
+
+  /// The release date of the installed wezterm, asked once per version of
+  /// the file (an update in place is asked again); null when it doesn't say.
+  Future<int?> _release() async {
+    final exe = _exe;
+    if (exe == null) return null;
+    final DateTime modified;
+    try {
+      modified = File(exe).statSync().modified;
+    } on FileSystemException {
+      return null;
+    }
+    if (_asked case (final e, final at, final release) when e == exe && at == modified) return release;
+    int? release;
+    try {
+      final r = await Process.run(exe, ['--version'], stdoutEncoding: utf8).timeout(const Duration(seconds: 5));
+      release = weztermRelease('${r.stdout}');
+    } on Object {
+      release = null;
+    }
+    _asked = (exe, modified, release);
+    return release;
+  }
+
+  (String, DateTime, int?)? _asked;
 
   @override
   Future<List<TermWindow>> windows(Procs procs) async {
@@ -154,7 +206,7 @@ class WezTerm extends TerminalHost {
       } on TerminalException {
         continue;
       }
-      out.addAll(parseWezTermList(pid, json, procs));
+      out.addAll(parseWezTermList(pid, json, procs: procs, windows: _windows));
     }
     // The foreground program's own folder, where the shell's report is older.
     final cwds = await Procs.cwds(windows: _windows, [
@@ -236,11 +288,13 @@ class WezTerm extends TerminalHost {
       if (_windows) {
         final exe = _exe;
         if (exe == null) throw const TerminalException('WezTerm is not installed.');
-        await Process.start(p.join(p.dirname(exe), 'wezterm-gui.exe'), [
-          'start',
-          '--cwd',
-          cwd,
-        ], mode: ProcessStartMode.detached);
+        await Process.start(
+          p.join(p.dirname(exe), 'wezterm-gui.exe'),
+          ['start', '--cwd', cwd],
+          // Its shells find what was installed since PocketTerm started.
+          environment: {if (_windowsPath case final path?) 'PATH': path()},
+          mode: ProcessStartMode.detached,
+        );
       } else {
         await Process.run('/usr/bin/open', ['-g', '-a', 'WezTerm']);
       }
@@ -274,8 +328,9 @@ class WezTerm extends TerminalHost {
 }
 
 /// `wezterm cli list --format json` (the GUI with pid [pid]) as windows. A
-/// pane with no tty (Windows) names its program by its title.
-List<TermWindow> parseWezTermList(String pid, String json, [Procs? procs]) => [
+/// pane with no tty (Windows) names its program by its title. [windows]:
+/// folders as Windows has them ([cwdOfUri]).
+List<TermWindow> parseWezTermList(String pid, String json, {Procs? procs, bool windows = false, String? localHost}) => [
   for (final p in jsonDecode(json) as List)
     () {
       final pane = p as Map;
@@ -287,7 +342,7 @@ List<TermWindow> parseWezTermList(String pid, String json, [Procs? procs]) => [
         key: 'wezterm:$pid/${pane['pane_id']}',
         title: title,
         tab: pane['tab_title'] as String? ?? '',
-        cwd: cwd != null && cwd.scheme == 'file' ? cwdOfUri(cwd) : '',
+        cwd: cwd != null && cwd.scheme == 'file' ? cwdOfUri(cwd, windows: windows, localHost: localHost) : '',
         program: fg?.program ?? (tty.isEmpty ? programOfTitle(title) : ''),
         focused: pane['is_active'] == true,
         app: 'wezterm',
@@ -297,9 +352,26 @@ List<TermWindow> parseWezTermList(String pid, String json, [Procs? procs]) => [
 ];
 
 /// A `file:` URI's folder: a Mac's path as is; `file:///C:/Users/x/` (any
-/// host dropped) as `C:\Users\x`, a drive's root as `C:\`.
-String cwdOfUri(Uri u) {
-  if (!RegExp('^/[A-Za-z]:/').hasMatch(u.path)) return u.path;
-  final path = Uri(path: u.path.substring(1)).toFilePath(windows: true);
-  return path.length > 3 && path.endsWith(r'\') ? path.substring(0, path.length - 1) : path;
+/// host dropped) as `C:\Users\x`, a drive's root as `C:\`. [windows]: a
+/// share's (`file://wsl.localhost/Ubuntu/home/x/`, `file://wsl$/…`,
+/// `file://server/share/`) as its UNC path (`\\wsl.localhost\Ubuntu\home\x`),
+/// unless its host is this computer ([localHost], else its name, or
+/// localhost): a WSL shell telling its own Linux folder, kept as is.
+String cwdOfUri(Uri u, {bool windows = false, String? localHost}) {
+  String trim(String path, int root) =>
+      path.length > root && path.endsWith(r'\') ? path.substring(0, path.length - 1) : path;
+  if (RegExp('^/[A-Za-z]:/').hasMatch(u.path)) return trim(Uri(path: u.path.substring(1)).toFilePath(windows: true), 3);
+  final host = u.host.toLowerCase();
+  final here = (localHost ?? Platform.localHostname).toLowerCase();
+  if (windows && host.isNotEmpty && host != 'localhost' && host != here && u.path.length > 1) {
+    return trim('\\\\$host${Uri(path: u.path).toFilePath(windows: true)}', 2);
+  }
+  return u.path;
 }
+
+/// The release date `wezterm --version` tells (`wezterm 20240203-110809-5046fc22`
+/// → 20240203); null for a build that tells none.
+int? weztermRelease(String version) => switch (RegExp(r'\b(\d{8})-\d{6}-[0-9a-f]+\b').firstMatch(version)) {
+  final m? => int.parse(m[1]!),
+  null => null,
+};

@@ -2,8 +2,25 @@
 # pocketterm://session?key=…) or on a terminal push (Android) opens it: that
 # session's page shows at once, and fills in once the computer answers.
 #   env: SESSION (regex: its title), REPLY (regex: a reply in it)
+# iOS asks 'Open in "PocketTerm"?' before a link opens the app from the Home
+# Screen; the flow answers Open, and leaves no such question behind, even when
+# it fails.
 appId: com.danyzmaj.pocketterm
+onFlowComplete:
+  - runFlow:
+      when:
+        visible: "Open in .PocketTerm.*"
+      commands:
+        - tapOn: "Cancel"
 ---
+- extendedWaitUntil:
+    visible: "(Open in .PocketTerm.*|\n?Back)"
+    timeout: 30000
+- runFlow:
+    when:
+      visible: "Open in .PocketTerm.*"
+    commands:
+      - tapOn: "Open"
 - extendedWaitUntil:
     visible: "\n?Back"
     timeout: 30000

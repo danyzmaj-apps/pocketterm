@@ -185,7 +185,8 @@ open_cold() {
     "$ADB" -s "$DEVICE" shell am force-stop "$APP_ID"
     sleep 1
     if [ "$how" = link ]; then
-      "$ADB" -s "$DEVICE" shell am start -a android.intent.action.VIEW -d "'$url'" "$APP_ID" >/dev/null
+      # -p: only this app takes the link, so no "Open with" chooser.
+      "$ADB" -s "$DEVICE" shell am start -a android.intent.action.VIEW -d "'$url'" -p "$APP_ID" >/dev/null
     else
       "$ADB" -s "$DEVICE" shell am start -n "$APP_ID/.MainActivity" --es com.danyzmaj.pocketterm.session "'$key'" >/dev/null
     fi

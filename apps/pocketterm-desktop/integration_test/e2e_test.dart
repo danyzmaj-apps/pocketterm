@@ -709,6 +709,12 @@ class _Run {
           : null;
     });
     if (c.phone) {
+      // The phone lists it by its title, or "omp" while it has none (the real omp names a session later).
+      final expectFile = File(p.join(c.artifacts, 'expect.json'));
+      final expected = jsonDecode(expectFile.readAsStringSync()) as Map<String, dynamic>;
+      final title = app.live[s.key]?.title ?? '';
+      (expected['realOmp'] as Map<String, dynamic>)['title'] = title.isNotEmpty ? title : Agent.omp.label;
+      expectFile.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(expected));
       final code = await handOff(c.phaseDir, 'real-omp', out: 'ready', timeout: const Duration(minutes: 15));
       expect(code, '0', reason: 'phone phase real-omp');
     } else {

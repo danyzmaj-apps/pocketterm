@@ -42,7 +42,7 @@ Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: recurs
 Name: "{autoprograms}\PocketTerm"; Filename: "{app}\PocketTerm.exe"
 
 [Registry]
-; pocketterm:// (sign-in callback, session links); the app rewrites it on start if the install moved.
+; pocketterm:// (setup links, session links); the app rewrites it on start if the install moved.
 Root: HKCU; Subkey: "Software\Classes\pocketterm"; ValueType: string; ValueName: ""; ValueData: "URL:PocketTerm"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\pocketterm"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
 Root: HKCU; Subkey: "Software\Classes\pocketterm\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\PocketTerm.exe"" ""%1"""

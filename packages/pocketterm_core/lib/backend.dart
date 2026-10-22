@@ -48,18 +48,13 @@ class Backend {
   }
 
   /// A `pocketterm://setup?url=…` link (its pairing code, if any, is
-  /// [pairingCode]'s; its setup token [setupToken]'s). A link from
-  /// PocketTerm 0.1 ([isOldLink]) isn't one: its URL is a Supabase project.
+  /// [pairingCode]'s; its setup token [setupToken]'s). A link carrying a
+  /// `key` isn't one.
   static Backend? fromLink(Uri uri) {
-    if (uri.scheme != 'pocketterm' || uri.host != 'setup' || isOldLink(uri)) return null;
+    if (uri.scheme != 'pocketterm' || uri.host != 'setup' || uri.queryParameters.containsKey('key')) return null;
     final url = uri.queryParameters['url'];
     return url == null ? null : parse(url).backend;
   }
-
-  /// A setup link from PocketTerm 0.1, which worked through a Supabase
-  /// project: it carries that project's `key`.
-  static bool isOldLink(Uri uri) =>
-      uri.scheme == 'pocketterm' && uri.host == 'setup' && uri.queryParameters.containsKey('key');
 
   /// The pairing code in a setup link (the computer's QR), if it has one:
   /// it signs a phone in.

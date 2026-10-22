@@ -12,7 +12,7 @@ class DataProtection extends StatelessWidget {
     (
       Icons.lock_outline,
       'Encrypted from end to end',
-      'Each computer makes its own key and keeps it in its Keychain (Credential Manager on Windows). A phone gets it '
+      'Each computer makes its own key and keeps it in its Keychain (on Windows, a file in %APPDATA% encrypted for your Windows account). A phone gets it '
           'only by scanning that computer’s QR code. Your sessions, prompts, screens, images and notification text '
           'travel sealed with it (AES-256-GCM), so nothing in between can read them.',
     ),

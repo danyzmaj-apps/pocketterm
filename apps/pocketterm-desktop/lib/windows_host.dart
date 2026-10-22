@@ -218,7 +218,7 @@ class WindowsHost with WindowListener implements DesktopHost {
     }
   }
 
-  /// Points `pocketterm://` (the sign-in callback, session links) at this
+  /// Points `pocketterm://` (setup links, session links) at this
   /// executable, unless it already is. The installer writes the same keys;
   /// this follows a moved install or a development build.
   static void _registerLink() {

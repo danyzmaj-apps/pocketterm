@@ -57,12 +57,6 @@ class _ScanPageState extends State<_ScanPage> {
     for (final raw in codes) {
       final link = Uri.tryParse(raw?.trim() ?? '');
       if (link == null) continue;
-      if (Backend.isOldLink(link)) {
-        problem =
-            'That code is from an older PocketTerm. Update PocketTerm on your computer, then scan the new code it '
-            'shows.';
-        continue;
-      }
       if (Backend.fromLink(link) == null) continue;
       final usable = widget.signedIn ? Backend.computerKey(link) != null : Backend.pairingCode(link) != null;
       if (usable) {

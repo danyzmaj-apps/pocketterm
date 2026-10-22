@@ -60,7 +60,7 @@ class Account {
 }
 
 /// Where a device keeps its sign-in (the device token and what came with
-/// it, one string): the Keychain or Credential Manager on a computer, the
+/// it, one string): the Keychain or a DPAPI-encrypted file in %APPDATA% on a computer, the
 /// phone's own secure storage (Native.deviceToken).
 abstract interface class DeviceTokens {
   Future<String?> read();

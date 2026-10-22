@@ -543,7 +543,9 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
           key: const ValueKey('check-installed'),
           state: state(0),
           title: state(0) == CheckState.done ? 'Tailscale is installed' : 'Install Tailscale',
-          note: 'Free for personal use.',
+          note:
+              'Tailscale’s Personal plan is free (up to 3 users, 100 devices). Sign in with a personal Google, Apple, '
+              'GitHub or Microsoft account; a work email domain may start a paid business trial instead.',
           actions: [
             if (commands.brew != null) ...[
               ConfirmedCommand(

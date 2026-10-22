@@ -46,15 +46,13 @@ void main() {
     expect(Backend.fromLink(Uri.parse('pocketterm://setup?code=K7QM')), isNull);
   });
 
-  test('a setup link from PocketTerm 0.1 (a Supabase project and its key) is told apart and never connects', () {
-    final old = Uri.parse(
+  test('a setup link carrying a key is not one and never connects', () {
+    final other = Uri.parse(
       'pocketterm://setup?url=https://abcd.supabase.co&key=sb_publishable_x&code=K7QM&d=abcd1234&k=AAAA',
     );
-    expect(Backend.isOldLink(old), isTrue);
-    expect(Backend.fromLink(old), isNull);
-    expect(Backend.pairingCode(old), isNull);
-    expect(Backend.computerKey(old), isNull);
-    expect(Backend.isOldLink(const Backend(url: 'https://pt.example.com').linkWithCode('K7QM')), isFalse);
+    expect(Backend.fromLink(other), isNull);
+    expect(Backend.pairingCode(other), isNull);
+    expect(Backend.computerKey(other), isNull);
   });
 
   test("a computer's setup token and a phone's code are read back; links without them have none", () {

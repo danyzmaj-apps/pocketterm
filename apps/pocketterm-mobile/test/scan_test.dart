@@ -56,10 +56,10 @@ void main() {
     expect(adding, [Uri.parse(_signIn)]);
   });
 
-  testWidgets("a code from PocketTerm 0.1 (a Supabase project) says to update the computer's app", (tester) async {
+  testWidgets('a setup code carrying a key is not a PocketTerm code', (tester) async {
     final popped = await openScanner(tester);
     await paste(tester, 'pocketterm://setup?url=https://abcd.supabase.co&key=sb_publishable_x&code=K7QM');
-    expect(find.textContaining('older PocketTerm'), findsOneWidget);
+    expect(find.textContaining("That's not a PocketTerm code"), findsOneWidget);
     expect(popped, isEmpty);
   });
 

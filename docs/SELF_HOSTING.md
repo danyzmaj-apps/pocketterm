@@ -11,6 +11,8 @@ The server runs in one of two places, and the desktop app sets up either:
 | Needs | [Tailscale](https://tailscale.com) on this computer and on your phone, signed in to the same account | A VPS with a public IP address and ports 80 and 443 open |
 | Good to know | This computer must stay awake for your phone to connect | No Tailscale, and several computers can share one server. Sessions still run on your computers, so a computer must be awake for its sessions |
 
+Tailscale's Personal plan is free (up to 3 users, 100 devices). Sign in with a personal Google, Apple, GitHub or Microsoft account; a work email domain may start a paid business trial instead.
+
 Servers are set up from a computer, never from a phone: the iPhone and Android apps only pair with a server that exists.
 
 ## The setup wizard

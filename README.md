@@ -48,6 +48,8 @@ The sessions run on your computer. The desktop app finds your coding sessions (t
 | How the phone gets there | [Tailscale](https://tailscale.com) on the computer and the phone, signed in to the same account | The internet, over HTTPS |
 | Good to know | This computer must stay awake for your phone to connect | Several computers share one server |
 
+Tailscale's Personal plan is free (up to 3 users, 100 devices). Sign in with a personal Google, Apple, GitHub or Microsoft account; a work email domain may start a paid business trial instead.
+
 Interactive diagrams of both setups: [docs/how-it-works.html](docs/how-it-works.html)
 
 ```mermaid

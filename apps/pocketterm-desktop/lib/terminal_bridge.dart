@@ -162,6 +162,10 @@ class TerminalBridge {
   /// Phones show this session now (said so within [_gone]).
   bool watching(String sessionKey) => _phones.values.any((p) => p.session == sessionKey);
 
+  /// How far a phone's clock is off this computer's while it's too far for
+  /// anything from it to be taken (more than 5 minutes); null otherwise.
+  Duration? get clockOff => _ch.clockOff;
+
   Future<void> start() async {
     _stopped = false;
     _ch.open();

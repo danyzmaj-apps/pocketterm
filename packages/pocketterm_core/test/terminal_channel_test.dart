@@ -213,6 +213,26 @@ void main() {
     expect(states, [true], reason: 'never dropped');
   });
 
+  test('a sender whose clock is far off is told apart: how far, until one of its messages opens again', () async {
+    final now = DateTime.now();
+    var skew = const Duration(minutes: 12);
+    final phone = ChannelSeal(key, _topic, clock: () => DateTime.now().add(skew));
+    final mac = ChannelSeal(key, _topic, clock: DateTime.now);
+    expect(await mac.open('hello', await phone.seal('hello', {'from': 'p'})), isNull);
+    expect(mac.clockOff!.inMinutes, 12);
+    skew = const Duration(minutes: -30);
+    expect(await mac.open('hello', await phone.seal('hello', {'from': 'p'})), isNull);
+    expect(mac.clockOff!.inMinutes, -30);
+    skew = Duration.zero;
+    expect(await mac.open('hello', await phone.seal('hello', {'from': 'p'})), {'from': 'p'});
+    expect(mac.clockOff, isNull);
+    // A message from before the receiver started is old, not off.
+    final early = ChannelSeal(key, _topic, clock: () => now.subtract(const Duration(seconds: 30)));
+    final late = ChannelSeal(key, _topic, clock: DateTime.now);
+    expect(await late.open('hello', await early.seal('hello', {})), isNull);
+    expect(late.clockOff, isNull);
+  });
+
   test('a close for a revoked device ends the sign-in, and nothing joins again', () async {
     await setUpServer();
     var ended = false;

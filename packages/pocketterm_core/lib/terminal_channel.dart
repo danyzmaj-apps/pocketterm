@@ -46,15 +46,31 @@ class ChannelSeal {
     'seq': ++_seq,
   }, channelAad(topic, event));
 
+  /// How far the other side's clock is ahead of this one (behind: negative),
+  /// as the last message dropped for its time showed; null once a message
+  /// opens. The guard drops every message more than its window off, so
+  /// with a clock that wrong nothing gets through at all.
+  Duration? get clockOff => _clockOff;
+  Duration? _clockOff;
+
   /// What [wire] (an [event] off the topic) says: the payload [seal] put in;
   /// null when it's dropped.
   Future<Map<String, dynamic>?> open(String event, Map<String, dynamic> wire) async {
     final (:message, :drop) = await openEnvelope(key, wire, channelAad(topic, event));
     final why = drop ?? _guard.check(message!);
+    if (message?['ts'] case final int ts when why == 'time') {
+      final off = Duration(milliseconds: ts - _clock().millisecondsSinceEpoch);
+      // A message from before this app started is old, not off.
+      if (off.abs() > _guard.window) {
+        _clockOff = off;
+        if (_logged.add('clock')) debugPrint("PocketTerm: $name: the other side's clock is off by ${off.inSeconds} s");
+      }
+    }
     if (why != null) {
       if (_logged.add('$event $why')) debugPrint('PocketTerm: $name: dropped $event ($why); more alike go unlogged');
       return null;
     }
+    _clockOff = null;
     final payload = message!['m'];
     if (payload is! Map) {
       if (_logged.add('$event shape')) debugPrint('PocketTerm: $name: dropped $event (no payload)');
@@ -131,6 +147,10 @@ class TerminalChannel {
   int _gen = 0;
 
   bool get joined => _joined;
+
+  /// How far the other side's clock is off this one's, while it's too far
+  /// for its messages to be taken ([ChannelSeal.clockOff]).
+  Duration? get clockOff => _seal.clockOff;
 
   /// The last try to connect got no connection to the server (offline, DNS,
   /// TLS, a timeout), as opposed to one still on its way; false again once a

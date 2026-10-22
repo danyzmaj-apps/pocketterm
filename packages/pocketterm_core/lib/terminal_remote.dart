@@ -217,6 +217,12 @@ class TerminalRemote extends ChangeNotifier {
 
   bool get online => link == TerminalLink.online;
 
+  /// How far the computer's clock is off this phone's while it's too far for
+  /// anything from it to be taken (more than 5 minutes: both should set the
+  /// time automatically); null otherwise. Then the computer reads as
+  /// offline, though it's there.
+  Duration? get clockOff => _transmit == null ? _ch.clockOff : null;
+
   TermWindow? window(String key) => windows.where((w) => w.key == key).firstOrNull;
   LiveSummary? session(String key) => sessions.where((s) => s.key == key).firstOrNull;
   TermScreen? screen(String window) => _screens[window];

@@ -130,14 +130,13 @@ return out''';
     final all = parseGhosttyList(await _osa(_list));
     final listed = {for (final w in all) w.key};
     _ttys.removeWhere((key, _) => !listed.contains(key));
-    final front = {
+    final front = <String, Proc>{
       for (final w in all)
-        if (_ttys[w.key] case final tty?)
-          if (procs.foreground(tty) case final p?) w.key: p,
+        if (_ttys[w.key] case final tty?) w.key: ?procs.foreground(tty),
     };
     final cwds = await Procs.cwds([
       for (final w in all)
-        if (w.cwd.isEmpty && front[w.key] != null) front[w.key]!.pid,
+        if (w.cwd.isEmpty) ?front[w.key]?.pid,
     ]);
     return [
       for (final w in all)

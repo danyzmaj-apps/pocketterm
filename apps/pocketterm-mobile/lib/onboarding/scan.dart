@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:pocketterm_core/backend.dart';
+import 'package:pocketterm_core/native.dart';
 import 'package:pocketterm_core/ui.dart';
+import 'package:pocketterm_mobile/chrome.dart' show isIos;
 import 'package:pocketterm_mobile/e2e_hooks.dart';
 
 /// Opens the camera to read the code the computer shows (Settings → Add a
@@ -54,7 +56,14 @@ class _ScanPageState extends State<_ScanPage> {
     String? problem;
     for (final raw in codes) {
       final link = Uri.tryParse(raw?.trim() ?? '');
-      if (link == null || Backend.fromLink(link) == null) continue;
+      if (link == null) continue;
+      if (Backend.isOldLink(link)) {
+        problem =
+            'That code is from an older PocketTerm. Update PocketTerm on your computer, then scan the new code it '
+            'shows.';
+        continue;
+      }
+      if (Backend.fromLink(link) == null) continue;
       final usable = widget.signedIn ? Backend.computerKey(link) != null : Backend.pairingCode(link) != null;
       if (usable) {
         _done = true;
@@ -231,24 +240,52 @@ class _PasteCodeState extends State<_PasteCode> {
   );
 }
 
+/// Why the camera shows nothing: not allowed (with the way to Settings), no
+/// camera at all (an iPad or phone without one, the Simulator), or it
+/// failed to start.
 class _CameraProblem extends StatelessWidget {
   const _CameraProblem(this.error);
   final MobileScannerException error;
 
   @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: Colors.black,
-    child: Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Text(
-          error.errorCode == MobileScannerErrorCode.permissionDenied
-              ? 'PocketTerm needs the camera to read the code. Allow it in Settings → PocketTerm → Camera.'
-              : "The camera didn't start (${error.errorCode.name}). Close this and try again.",
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.white, height: 1.5),
+  Widget build(BuildContext context) {
+    final denied = error.errorCode == MobileScannerErrorCode.permissionDenied;
+    return ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                switch (error.errorCode) {
+                  MobileScannerErrorCode.permissionDenied =>
+                    isIos
+                        ? 'PocketTerm needs the camera to read the code. Allow it in Settings \u2192 PocketTerm '
+                              '\u2192 Camera.'
+                        : 'PocketTerm needs the camera to read the code. Allow it in Settings \u2192 Apps '
+                              '\u2192 PocketTerm \u2192 Permissions.',
+                  MobileScannerErrorCode.unsupported =>
+                    "This device has no camera PocketTerm can use, so it can't read the code. Connect with a "
+                        'phone that has one, or close this and try the demo.',
+                  final code => "The camera didn't start (${code.name}). Close this and try again.",
+                },
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, height: 1.5),
+              ),
+              if (denied) ...[
+                const SizedBox(height: 16),
+                FilledButton(
+                  key: const ValueKey('camera-settings'),
+                  onPressed: () => unawaited(Native.openSettings()),
+                  child: const Text('Open Settings'),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }

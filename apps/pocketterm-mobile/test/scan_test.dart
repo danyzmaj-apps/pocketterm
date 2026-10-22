@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_mobile/onboarding/scan.dart';
 
@@ -53,5 +54,38 @@ void main() {
     expect(find.textContaining('That code has no key for a computer'), findsOneWidget);
     await paste(tester, _signIn);
     expect(adding, [Uri.parse(_signIn)]);
+  });
+
+  testWidgets("a code from PocketTerm 0.1 (a Supabase project) says to update the computer's app", (tester) async {
+    final popped = await openScanner(tester);
+    await paste(tester, 'pocketterm://setup?url=https://abcd.supabase.co&key=sb_publishable_x&code=K7QM');
+    expect(find.textContaining('older PocketTerm'), findsOneWidget);
+    expect(popped, isEmpty);
+  });
+
+  testWidgets('a camera the person refused says where to allow it and opens Settings', (tester) async {
+    final native = <MethodCall>[];
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      ..setMockMethodCallHandler(const MethodChannel('dev.steenbakker.mobile_scanner/scanner/method'), (call) async {
+        return switch (call.method) {
+          'state' => 2, // denied
+          'request' => false,
+          _ => null,
+        };
+      })
+      ..setMockMethodCallHandler(const MethodChannel('pocketterm/native'), (call) async {
+        native.add(call);
+        return null;
+      });
+    addTearDown(() {
+      messenger
+        ..setMockMethodCallHandler(const MethodChannel('dev.steenbakker.mobile_scanner/scanner/method'), null)
+        ..setMockMethodCallHandler(const MethodChannel('pocketterm/native'), null);
+    });
+    await openScanner(tester);
+    expect(find.textContaining('needs the camera'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('camera-settings')));
+    expect(native.map((c) => c.method), ['openSettings']);
+    expect(native.single.arguments, {'notifications': false});
   });
 }

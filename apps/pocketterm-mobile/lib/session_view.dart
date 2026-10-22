@@ -209,7 +209,7 @@ class _SessionPageState extends State<SessionPage> {
   /// Why [agent]'s slash commands can't be sent from here.
   static String _noCommands(Agent agent) =>
       'Slash commands are typed into ${agent.label}’s terminal window, and PocketTerm can’t reach this one: it isn’t in '
-      'kitty, tmux, WezTerm, iTerm2, Terminal or Ghostty. Run them on the computer.';
+      'kitty, tmux, WezTerm or Ghostty. Run them on the computer.';
 
   Future<void> _close(TermWindow w) async {
     setState(() => _closeSent = true);

@@ -76,14 +76,12 @@ String termLabel(String app) => switch (app) {
   'kitty' => 'kitty',
   'tmux' => 'tmux',
   'wezterm' => 'WezTerm',
-  'iterm' => 'iTerm2',
-  'terminal' => 'Terminal',
   'ghostty' => 'Ghostty',
   _ => app,
 };
 
-/// Which terminal [w] is in: "iTerm2", or "tmux · iTerm2" for a tmux pane
-/// shown in iTerm2.
+/// Which terminal [w] is in: "WezTerm", or "tmux · Ghostty" for a tmux pane
+/// shown in Ghostty.
 String termBadge(TermWindow w) => w.app == 'tmux' && w.via.isNotEmpty ? 'tmux · ${w.via}' : termLabel(w.app);
 
 /// A small rounded label on a list row: a window's terminal ([termBadge]), or that it shows only as a screen.

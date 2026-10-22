@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/ghostty.dart';
@@ -8,6 +9,10 @@ import 'package:pocketterm_core/kitty.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/tmux.dart';
 import 'package:pocketterm_core/wezterm.dart';
+
+/// [Terminals.tieGhostty]'s answer: Ghostty window key → the tty of the tmux
+/// client it runs, and what was left that it couldn't tell apart.
+typedef TieGhostty = ({Map<String, String> ttys, String untold});
 
 /// Every terminal on this computer as one (lib/terminal.dart): their windows
 /// merged (a terminal window showing tmux gives way to the tmux pane, which
@@ -82,7 +87,9 @@ class Terminals {
   bool can(String key, TermCap cap) => capsOf(key).contains(cap);
 
   /// Every window of every terminal. A terminal window attached to tmux is
-  /// left out for its tmux pane, which names it as [TermWindow.via].
+  /// left out for its tmux pane, which names it as [TermWindow.via]; a
+  /// Ghostty window, which tells no tty, once [tieGhostty] tells which
+  /// tmux client it runs (its tty is then remembered).
   Future<List<TermWindow>> windows() async {
     final procs = await snapshot();
     final problems = <String, String>{};
@@ -94,8 +101,93 @@ class Terminals {
         }),
     ]);
     this.problems = problems;
-    return merge(hosts, lists, tmux?.clients ?? const {}, _shows);
+    final clients = tmux?.clients ?? const <String, TmuxClient>{};
+    final shows = {..._shows};
+    if (ghostty case final ghostty? when clients.isNotEmpty) {
+      final windows = lists[hosts.indexOf(ghostty)];
+      if (windows.any((w) => w.tty.isEmpty)) {
+        final tie = tieGhostty(
+          windows: windows,
+          clients: clients,
+          surfaces: ghostty.surfaceTtys(procs),
+          panes: lists[hosts.indexOf(tmux!)],
+        );
+        for (final MapEntry(key: window, value: tty) in tie.ttys.entries) {
+          ghostty.learn(window, tty);
+          shows[window] = clients[tty]!.pane;
+        }
+        if (tie.untold.isNotEmpty && _untold.add(tie.untold)) {
+          debugPrint('PocketTerm: Ghostty windows in tmux not told apart, listed apart: ${tie.untold}');
+        }
+      }
+    }
+    return merge(hosts, lists, {for (final MapEntry(:key, :value) in clients.entries) key: value.pane}, shows);
   }
+
+  /// What [tieGhostty] couldn't tell apart, as logged (once each).
+  final _untold = <String>{};
+
+  /// Which tmux client each of Ghostty's [windows] whose tty it doesn't
+  /// tell runs (a window the person opened, its command tmux): of the
+  /// [clients] on Ghostty's terminals ([surfaces]) not known as another
+  /// window's, the one giving that window its title (tmux's `set-titles`,
+  /// which PocketTerm's Ghostty line turns on, the session named in it);
+  /// else, when every such terminal runs a client, the one whose pane
+  /// ([panes]) is in the window's folder; else the one left when one window
+  /// and one terminal are. Only a match that's the only one either way
+  /// counts: `ttys`, window key → the client's tty. `untold`: the windows
+  /// and clients left that might belong together (empty: none).
+  static TieGhostty tieGhostty({
+    required List<TermWindow> windows,
+    required Map<String, TmuxClient> clients,
+    required Set<String> surfaces,
+    required List<TermWindow> panes,
+  }) {
+    final open = [
+      for (final w in windows)
+        if (w.tty.isEmpty) w,
+    ];
+    // Each window whose tty isn't known on one of these.
+    final free = surfaces.difference({for (final w in windows) w.tty});
+    final on = {
+      for (final MapEntry(key: tty, value: c) in clients.entries)
+        if (free.contains(tty)) tty: c,
+    };
+    final ttys = <String, String>{};
+    void tieWhere(bool Function(TermWindow w, TmuxClient c) match) {
+      for (final MapEntry(key: tty, value: c) in on.entries.toList()) {
+        final ws = open.where((w) => match(w, c)).toList();
+        if (ws.length != 1) continue;
+        final w = ws.single;
+        if (on.values.where((c) => match(w, c)).length != 1) continue;
+        ttys[w.key] = tty;
+        open.remove(w);
+        free.remove(tty);
+        on.remove(tty);
+      }
+    }
+
+    tieWhere((w, c) => c.title.isNotEmpty && w.title == c.title);
+    // A window running no tmux may be in any folder.
+    if (on.length == free.length) {
+      final cwds = {for (final pane in panes) pane.key: pane.cwd};
+      tieWhere((w, c) => _sameFolder(w.cwd, cwds[c.pane] ?? ''));
+    }
+    if (open.length == 1 && free.length == 1 && on.containsKey(free.single)) {
+      ttys[open.single.key] = free.single;
+      open.clear();
+      on.clear();
+    }
+    final untold = open.isEmpty || on.isEmpty
+        ? ''
+        : '${[for (final w in open) w.key].join(', ')} / ${[for (final tty in on.keys) tty].join(', ')}';
+    return (ttys: ttys, untold: untold);
+  }
+
+  /// Whether [a] and [b] are one folder as a terminal and tmux tell it
+  /// (`/private/tmp` is `/tmp`); never for an empty one.
+  static bool _sameFolder(String a, String b) =>
+      a.isNotEmpty && b.isNotEmpty && (a == b || '/private$a' == b || a == '/private$b');
 
   /// [lists] (one per host of [hosts]) as one list: a window whose tty is a
   /// tmux client's in [clients] (tty → pane key), or which [shows] a pane,
@@ -197,14 +289,17 @@ class Terminals {
     await pressKeys(key, [name]);
   }
 
-  /// Closes window [key]; for a tmux pane PocketTerm opened a terminal window to
-  /// show, that window too keeping the focus where it is (Ghostty comes to the
+  /// Closes window [key]; for a tmux pane a terminal window shows (one
+  /// PocketTerm opened to show it, or a Ghostty window tied to its client),
+  /// that window too keeping the focus where it is (Ghostty comes to the
   /// front as it closes it).
   Future<void> close(String key) async {
-    final guis = [
+    final guis = {
       for (final MapEntry(key: gui, value: pane) in _shows.entries)
         if (pane == key) gui,
-    ];
+      for (final MapEntry(key: tty, value: c) in tmux?.clients.entries ?? const <MapEntry<String, TmuxClient>>[])
+        if (c.pane == key) ?ghostty?.byTty(tty),
+    }.toList();
     if (guis.isEmpty) return await _host(key).close(key);
     await keepFront(() async {
       await _host(key).close(key);

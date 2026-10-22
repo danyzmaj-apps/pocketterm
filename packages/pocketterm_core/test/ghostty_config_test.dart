@@ -30,10 +30,11 @@ void main() {
     expect(config.read(), (state: GhosttyCommandState.ours, command: GhosttyConfig.line(tmux).substring(10)));
   });
 
-  test('the line runs the absolute tmux in a session per window that ends with it', () {
+  test('the line runs the absolute tmux in a session per window that ends with it and names it in the title', () {
     expect(
       GhosttyConfig.line(tmux),
-      r'command = /opt/homebrew/bin/tmux new-session \; set-option destroy-unattached on',
+      r'command = /opt/homebrew/bin/tmux new-session \; set-option destroy-unattached on'
+      r" \; set-option set-titles on \; set-option set-titles-string '#T (tmux #S)'",
     );
     expect(GhosttyConfig.line('/Users/a b/tmux'), startsWith("command = '/Users/a b/tmux' new-session"));
   });
@@ -102,6 +103,18 @@ void main() {
     expect(config.read(), (state: GhosttyCommandState.ours, command: '/usr/local/bin/tmux new-session'));
     config.remove();
     expect(File(xdg).readAsStringSync(), '');
+  });
+
+  test("Remove takes the line an earlier PocketTerm wrote (without tmux's titles) too", () {
+    File(xdg)
+      ..createSync(recursive: true)
+      ..writeAsStringSync(
+        'a = 1\n${GhosttyConfig.marker}\n'
+        'command = /opt/homebrew/bin/tmux new-session \\; set-option destroy-unattached on\n',
+      );
+    expect(config.read().state, GhosttyCommandState.ours);
+    config.remove();
+    expect(File(xdg).readAsStringSync(), 'a = 1\n');
   });
 
   test('writes through a symlinked config to its target', () {

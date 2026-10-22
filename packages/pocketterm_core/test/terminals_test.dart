@@ -69,10 +69,10 @@ void main() {
       expect(panes.map((w) => (w.key, w.cwd)), [('tmux:edge/1', '/tmp/ptx/tab\tdir\nnl'), ('tmux:edge/2', '/tmp')]);
     });
 
-    test('list-clients: client tty → the pane it shows', () {
-      expect(parseTmuxClients('default', '/dev/ttys009\t%0\n/dev/ttys011\t%14\n\n'), {
-        'ttys009': 'tmux:default/0',
-        'ttys011': 'tmux:default/14',
+    test('list-clients: client tty → the pane it shows and the title tmux gives its terminal', () {
+      expect(parseTmuxClients('default', '/dev/ttys009\x1f%0\x1f\x1e\n/dev/ttys011\x1f%14\x1f~ (tmux 3)\x1e\n'), {
+        'ttys009': (pane: 'tmux:default/0', title: ''),
+        'ttys011': (pane: 'tmux:default/14', title: '~ (tmux 3)'),
       });
     });
 
@@ -160,6 +160,129 @@ void main() {
         {'ghostty:G1': 'tmux:default/4'},
       );
       expect(merged.map((w) => (w.key, w.via)), [('tmux:default/4', 'Ghostty'), ('ghostty:G2', '')]);
+    });
+  });
+
+  group('Ghostty windows running tmux (its config line): one row each', () {
+    const app = '/nonexistent-pocketterm/Ghostty.app';
+    // As a real Ghostty 1.3.1 with the line runs it: each terminal's login
+    // (a child of Ghostty, or orphaned) execs tmux's client on its tty; the
+    // server, detached, runs the panes' shells on ttys of their own.
+    const client = '-/opt/homebrew/bin/tmux new-session ; set-option destroy-unattached on';
+    const login = '/usr/bin/login -flp me /bin/bash --noprofile --norc -c exec -l $client';
+    String ps(List<String> clientTtys, {List<String> plainTtys = const []}) => [
+      '  500     1   500     0 ??       S    $app/Contents/MacOS/ghostty',
+      '  600     1   600     0 ??       Ss   $client',
+      for (final (i, tty) in clientTtys.indexed) ...[
+        '  ${700 + i * 10}   500   ${700 + i * 10}   ${700 + i * 10} $tty  Ss+  $login',
+        '  ${701 + i * 10}   ${700 + i * 10}   ${700 + i * 10}   ${700 + i * 10} $tty  S+   $client',
+      ],
+      for (final (i, tty) in plainTtys.indexed) '  ${900 + i}   888   ${900 + i}   ${900 + i} $tty  Ss+  -zsh',
+      '  610   600   610   610 ttys014  Ss+  -zsh',
+      '  620   600   620   620 ttys015  Ss+  -zsh',
+    ].join('\n');
+    const g1 = 'E7AD8A26-8A2F-4A2E-B8AA-AB5575C50B75';
+    const g2 = 'F1AD8A26-8A2F-4A2E-B8AA-AB5575C50B75';
+    String ghosttyList(List<(String id, String title, String cwd)> ws) =>
+        '${[for (final (id, title, cwd) in ws) '$id\x1f$title\x1f$cwd\x1f$title\x1ffalse\x1e\n'].join()}front\x1ffalse';
+    final panes = parseTmuxPanes(
+      'default',
+      '%0\x1f/dev/ttys014\x1fzsh\x1f/Users/me/a\x1fa\x1fzsh\x1f3\x1f1\x1f1\x1f1\x1e\n'
+          '%1\x1f/dev/ttys015\x1fzsh\x1f/Users/me/b\x1fb\x1fzsh\x1f4\x1f1\x1f1\x1f1\x1e\n',
+    );
+    TieGhostty tie(String ps, String list, String clients) => Terminals.tieGhostty(
+      windows: parseGhosttyList(list),
+      clients: parseTmuxClients('default', clients),
+      surfaces: ghosttySurfaceTtys(Procs(parsePs(ps)), 500),
+      panes: panes,
+    );
+    // Ties [ttys], nothing left untold.
+    void expectTied(TieGhostty tie, Map<String, String> ttys) {
+      expect(tie.ttys, ttys);
+      expect(tie.untold, '');
+    }
+
+    test('one window and one client: it shows that pane, and its tty is learnt', () async {
+      final ghostty = _ListedGhostty(parseGhosttyList(ghosttyList([(g1, '👻', '')])));
+      final terms = Terminals(
+        home: '/nonexistent-pocketterm',
+        tmux: _ListedTmux(panes.sublist(0, 1), parseTmuxClients('default', '/dev/ttys013\x1f%0\x1f\x1e\n')),
+        ghostty: ghostty,
+        snapshot: () async => Procs(parsePs(ps(['ttys013']))),
+      );
+      expect((await terms.windows()).map((w) => (w.key, w.app, w.via)), [('tmux:default/0', 'tmux', 'Ghostty')]);
+      expect(ghostty.byTty('ttys013'), 'ghostty:$g1', reason: 'what closes it with its pane');
+    });
+
+    test("two windows and two clients: by the title tmux gives each (PocketTerm's line), else by folder", () {
+      const clients = '/dev/ttys013\x1f%0\x1fa (tmux 3)\x1e\n/dev/ttys016\x1f%1\x1fb (tmux 4)\x1e\n';
+      final titled = tie(
+        ps(['ttys013', 'ttys016']),
+        ghosttyList([(g1, 'b (tmux 4)', ''), (g2, 'a (tmux 3)', '')]),
+        clients,
+      );
+      expectTied(titled, {'ghostty:$g1': 'ttys016', 'ghostty:$g2': 'ttys013'});
+      // The line without titles, where Ghostty tells each window's folder.
+      final byFolder = tie(
+        ps(['ttys013', 'ttys016']),
+        ghosttyList([(g1, '👻', '/Users/me/b'), (g2, '👻', '/Users/me/a')]),
+        '/dev/ttys013\x1f%0\x1f\x1e\n/dev/ttys016\x1f%1\x1f\x1e\n',
+      );
+      expectTied(byFolder, {'ghostty:$g1': 'ttys016', 'ghostty:$g2': 'ttys013'});
+    });
+
+    test('what can be told two ways stays two rows, said once in the log', () {
+      const untitled = '/dev/ttys013\x1f%0\x1f\x1e\n/dev/ttys016\x1f%1\x1f\x1e\n';
+      final same = tie(ps(['ttys013', 'ttys016']), ghosttyList([(g1, '👻', ''), (g2, '👻', '')]), untitled);
+      expect(same.ttys, isEmpty);
+      expect(same.untold, 'ghostty:$g1, ghostty:$g2 / ttys013, ttys016');
+      // Both in one folder, or both titled alike.
+      expect(
+        tie(
+          ps(['ttys013', 'ttys016']),
+          ghosttyList([(g1, '👻', '/Users/me/a'), (g2, '👻', '/Users/me/a')]),
+          '/dev/ttys013\x1f%0\x1f\x1e\n/dev/ttys016\x1f%0\x1f\x1e\n',
+        ).ttys,
+        isEmpty,
+      );
+      // A plain window in the pane's folder beside the tmux one Ghostty tells
+      // no folder for: the folder could be the plain one's, so neither.
+      final plain = tie(
+        ps(['ttys013'], plainTtys: ['ttys020']),
+        ghosttyList([(g1, 'zsh', '/Users/me/a'), (g2, '👻', '')]),
+        '/dev/ttys013\x1f%0\x1f\x1e\n',
+      );
+      expect(plain.ttys, isEmpty);
+      expect(plain.untold, isNotEmpty);
+    });
+
+    test('a Ghostty window running no tmux is left alone, and windows whose tty is known count out', () {
+      // Its client runs in kitty, not in Ghostty.
+      final alone = tie(
+        ps([], plainTtys: ['ttys020']),
+        ghosttyList([(g1, 'zsh', '/Users/me/a')]),
+        '/dev/ttys030\x1f%0\x1f\x1e\n',
+      );
+      expectTied(alone, const {});
+      // PocketTerm's own window (tty known) beside one the person opened.
+      final known = Terminals.tieGhostty(
+        windows: [
+          ...parseGhosttyList(ghosttyList([(g1, '👻', '')])),
+          const TermWindow(
+            key: 'ghostty:$g2',
+            title: '👻',
+            tab: '',
+            cwd: '',
+            program: '',
+            app: 'ghostty',
+            tty: 'ttys016',
+          ),
+        ],
+        clients: parseTmuxClients('default', '/dev/ttys013\x1f%0\x1f\x1e\n/dev/ttys016\x1f%1\x1f\x1e\n'),
+        surfaces: ghosttySurfaceTtys(Procs(parsePs(ps(['ttys013', 'ttys016']))), 500),
+        panes: panes,
+      );
+      expectTied(known, {'ghostty:$g1': 'ttys013'});
     });
   });
 
@@ -390,4 +513,17 @@ class _ListedGhostty extends Ghostty {
 
   @override
   Future<List<TermWindow>> windows(Procs procs) async => listed;
+}
+
+/// tmux listing these panes, attached by these clients.
+class _ListedTmux extends Tmux {
+  _ListedTmux(this.listed, this.attached) : super(executable: '/nonexistent-pocketterm/tmux', socketDirs: const []);
+  final List<TermWindow> listed;
+  final Map<String, TmuxClient> attached;
+
+  @override
+  Future<List<TermWindow>> windows(Procs procs) async {
+    clients = attached;
+    return listed;
+  }
 }

@@ -41,9 +41,9 @@ class Tmux extends TerminalHost {
   /// directory not scanned.
   final _known = <String, String>{};
 
-  /// The clients attached on the last [windows]: their tty → the pane key
-  /// they show, so a terminal window showing tmux can give way to its pane.
-  Map<String, String> clients = const {};
+  /// The clients attached on the last [windows], by tty, so a terminal
+  /// window showing tmux can give way to its pane.
+  Map<String, TmuxClient> clients = const {};
 
   static List<String> _defaultDirs(Map<String, String> env) {
     final tmp = env['TMUX_TMPDIR'];
@@ -175,6 +175,11 @@ class Tmux extends TerminalHost {
       '#{pane_id}\x1f#{pane_tty}\x1f#{pane_current_command}\x1f#{pane_current_path}\x1f#{pane_title}\x1f'
       '#{window_name}\x1f#{session_name}\x1f#{pane_active}\x1f#{window_active}\x1f#{session_attached}\x1e';
 
+  /// A client a record like a pane: its tty, its pane, and the title tmux
+  /// gives its terminal (`set-titles-string` as tmux expands it for that
+  /// client), empty while `set-titles` is off.
+  static const _clientFormat = '#{client_tty}\x1f#{pane_id}\x1f#{?set-titles,#{T:set-titles-string},}\x1e';
+
   @override
   Future<TermStatus> status(Procs procs) async {
     if (!installed) {
@@ -198,11 +203,11 @@ class Tmux extends TerminalHost {
   Future<List<TermWindow>> windows(Procs procs) async {
     if (!installed) return const [];
     final out = <TermWindow>[];
-    final clients = <String, String>{};
+    final clients = <String, TmuxClient>{};
     for (final MapEntry(key: name, value: path) in _sockets().entries) {
       try {
         out.addAll(parseTmuxPanes(name, await _run(path, ['list-panes', '-a', '-F', _format]), procs));
-        final list = await _run(path, ['list-clients', '-F', '#{client_tty}\t#{pane_id}']);
+        final list = await _run(path, ['list-clients', '-F', _clientFormat]);
         clients.addAll(parseTmuxClients(name, list));
       } on TerminalException {
         // A socket left behind by a server that has gone.
@@ -333,11 +338,16 @@ List<TermWindow> parseTmuxPanes(String socket, String out, [Procs? procs]) => [
       }(),
 ];
 
-/// `list-clients -F '#{client_tty}\t#{pane_id}'` as client tty → pane key.
-Map<String, String> parseTmuxClients(String socket, String out) => {
-  for (final line in out.split('\n'))
-    if (line.split('\t') case [final tty, final pane] when pane.startsWith('%'))
-      tty.replaceFirst('/dev/', ''): 'tmux:$socket/${pane.substring(1)}',
+/// A tmux client: the pane key it shows, and the title it gives the terminal
+/// it runs in (empty: none).
+typedef TmuxClient = ({String pane, String title});
+
+/// `list-clients -F Tmux._clientFormat` output (server [socket]) as client
+/// tty → [TmuxClient].
+Map<String, TmuxClient> parseTmuxClients(String socket, String out) => {
+  for (final record in out.split('\x1e\n'))
+    if (record.split('\x1f') case [final tty, final pane, final title] when pane.startsWith('%'))
+      tty.replaceFirst('/dev/', ''): (pane: 'tmux:$socket/${pane.substring(1)}', title: cleanTitle(title)),
 };
 
 /// kitty's key names as tmux's `send-keys` runs: tmux's names where it has

@@ -183,13 +183,14 @@ return out''';
   }
 
   /// Ghostty tells no tty, so the ones of windows PocketTerm opened (and of
-  /// windows an agent named its tty in) are kept here: key → `ttys012`.
+  /// windows an agent named its tty in, or tied to their tmux client) are
+  /// kept here: key → `ttys012`.
   final _ttys = <String, String>{};
 
   /// The ttys of Ghostty's terminals now ([ghosttySurfaceTtys]).
-  Set<String> _surfaceTtys(Procs procs) => ghosttySurfaceTtys(procs, procs.pidOf('$appPath/Contents/MacOS/'));
+  Set<String> surfaceTtys(Procs procs) => ghosttySurfaceTtys(procs, procs.pidOf('$appPath/Contents/MacOS/'));
 
-  /// [key]'s tty is [tty] (an agent there said so).
+  /// [key]'s tty is [tty] (an agent there said so, or its tmux client runs there).
   void learn(String key, String tty) => _ttys[key] = tty.replaceFirst('/dev/', '');
 
   /// The window on [tty], when it's one whose tty is known.
@@ -237,7 +238,7 @@ return out''';
   @override
   Future<String> launch(String cwd, {List<String>? command}) async {
     if (!Directory(cwd).existsSync()) throw TerminalException('No such folder: $cwd');
-    final before = _surfaceTtys(await Procs.snapshot());
+    final before = surfaceTtys(await Procs.snapshot());
     final out = await keepFront(
       () => _osa(
         '''
@@ -269,7 +270,7 @@ end run''',
     // meanwhile adds one too.
     for (var i = 0; i < 50; i++) {
       final procs = await Procs.snapshot();
-      final added = _surfaceTtys(procs).difference(before).difference(_ttys.values.toSet());
+      final added = surfaceTtys(procs).difference(before).difference(_ttys.values.toSet());
       final tty = added.isEmpty
           ? null
           : ghosttyNewTty(

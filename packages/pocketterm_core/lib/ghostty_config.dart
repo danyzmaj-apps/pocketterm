@@ -48,8 +48,12 @@ class GhosttyConfig {
   /// The line for [tmux] (an absolute path: Ghostty may not have Homebrew on
   /// its PATH). Ghostty runs it through `/bin/sh -c`; every window gets a new
   /// session (none shared, so windows don't mirror each other), which ends
-  /// when its window closes rather than pile up detached.
-  static String line(String tmux) => 'command = ${_word(tmux)} new-session \\; set-option destroy-unattached on';
+  /// when its window closes rather than pile up detached, and titles its
+  /// window with its pane's title and its own name (`~ (tmux 3)`), which
+  /// ties the window to its session (Terminals.tieGhostty).
+  static String line(String tmux) =>
+      'command = ${_word(tmux)} new-session \\; set-option destroy-unattached on'
+      r" \; set-option set-titles on \; set-option set-titles-string '#T (tmux #S)'";
 
   static String _word(String s) => RegExp(r'^[A-Za-z0-9_./+-]+$').hasMatch(s) ? s : shellQuote(s);
 

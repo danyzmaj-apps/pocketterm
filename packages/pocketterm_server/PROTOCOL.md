@@ -1,7 +1,7 @@
 # PocketTerm server protocol, version 1
 
 The PocketTerm server serves one owner: their computers (role `desktop`) and their phones (role `phone`).
-It relays what the apps send without reading it: live channel payloads, images and notification text are
+It relays what the apps send without reading it: live channel payloads, images and files and notification text are
 end-to-end encrypted by the apps (see the envelope in `pocketterm_core/lib/e2e.dart`).
 
 Everything lives under `<url>/v1/`, where `<url>` is the server's public URL (`https://pt.example.com`,
@@ -173,7 +173,8 @@ phone.
 
 The client picks the path (a UUID v4 in the apps; any `[A-Za-z0-9-]{1,64}`), so it can seal the bytes with the
 path in the AAD before uploading. The body is the raw bytes (any `content-type`; the apps send AES-GCM sealed
-images as `application/octet-stream`), at most 20971520 bytes (20 MiB), else 413.
+images and files as `application/octet-stream`; a file's name travels only in the sealed prompt), at most 20971520
+bytes (20 MiB), else 413.
 
 201 `{"path": "<path>"}`. 409 `conflict` when that path already holds a blob. 400 for a bad path.
 

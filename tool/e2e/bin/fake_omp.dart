@@ -232,12 +232,24 @@ class FakeOmp {
         'file': file.path,
       });
     }
-    log('prompt', {'text': text, 'source': source, 'images': described});
+    // Files named as @path (or @"path"), read in as omp does at rest.
+    final files = [
+      for (final m in RegExp(r'''(?:^|[\s(\[{<"'`])@(?:"([^"]+)"|'([^']+)'|([^\s@]+))''').allMatches(text))
+        if (File(m[1] ?? m[2] ?? m[3]!) case final f when f.existsSync())
+          {
+            'path': f.path,
+            'name': p.basename(f.path),
+            'bytes': f.lengthSync(),
+            'sha256': sha256.convert(f.readAsBytesSync()).toString(),
+          },
+    ];
+    log('prompt', {'text': text, 'source': source, 'images': described, 'files': files});
     _put({'id': _itemId(), 'k': 'user', 't': text, if (images.isNotEmpty) 'im': images.length});
     _setBusy(true);
     await Future<void>.delayed(const Duration(milliseconds: 400));
     final reply = [
       for (final d in described) 'fake image: ${d['bytes']} bytes ${d['mime']}',
+      for (final f in files) 'fake file: ${f['name']} ${f['bytes']} bytes',
       if (text.trim().isNotEmpty) 'fake reply: ${text.trim()}',
     ].join('\n');
     await _say(reply.isEmpty ? 'fake reply: (nothing)' : reply);

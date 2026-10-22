@@ -1,0 +1,76 @@
+# A document from the phone's files (run.sh puts pocketterm-e2e.txt in the
+# Simulator's Files, On My iPhone, or the emulator's Download folder) goes
+# with a prompt; the agent gets it as a file on the computer, named @path.
+#   env: SESSION (regex), FILE_PROMPT
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: "Prompt omp…"
+    timeout: 15000
+- tapOn: "Attach images or files"
+- tapOn: "Choose from Files"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      # The document picker opens on Recents or Browse; the file is in On My iPhone.
+      - extendedWaitUntil:
+          visible: "(Recents|Browse|On My iPhone)"
+          timeout: 15000
+      - takeScreenshot: picker
+      - runFlow:
+          when:
+            visible: "Browse"
+          commands:
+            - tapOn: "Browse"
+      - runFlow:
+          when:
+            notVisible: "pocketterm-e2e(\\.txt)?"
+          commands:
+            - tapOn: "On My iPhone"
+      - tapOn: "pocketterm-e2e(\\.txt)?"
+      # Picking several at once: the pick still needs Open.
+      - runFlow:
+          when:
+            visible: "Open"
+          commands:
+            - tapOn: "Open"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      # The system's file picker (DocumentsUI); the file is in Downloads.
+      - extendedWaitUntil:
+          visible: ".*(Recent|Downloads|Files).*"
+          timeout: 15000
+      - takeScreenshot: picker
+      - runFlow:
+          when:
+            notVisible: "pocketterm-e2e.txt"
+          commands:
+            - tapOn: "Show roots"
+            - tapOn: "Downloads"
+      - tapOn: "pocketterm-e2e.txt"
+      # Picking several at once: a tap selects, Select takes them.
+      - runFlow:
+          when:
+            visible: "Select"
+          commands:
+            - tapOn: "Select"
+- extendedWaitUntil:
+    visible: "Remove pocketterm-e2e.txt"
+    timeout: 15000
+- takeScreenshot: attached
+- tapOn: "Prompt omp…"
+- inputText: ${FILE_PROMPT}
+- tapOn: "Send"
+- extendedWaitUntil:
+    visible: ".*fake file: pocketterm-e2e.txt .*"
+    timeout: 30000
+- takeScreenshot: received
+- runFlow: sub/back.yaml

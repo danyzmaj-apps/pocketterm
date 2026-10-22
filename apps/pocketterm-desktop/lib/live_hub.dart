@@ -8,6 +8,8 @@ import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/terminal.dart';
+import 'package:pocketterm_core/terminal_remote.dart';
+import 'package:pocketterm_desktop/prompt_files.dart';
 
 /// One extension's connection, whatever carries it (lib/local_api.dart): a
 /// WebSocket (omp) or HTTP long polls (Claude Code).
@@ -146,8 +148,10 @@ class LiveAsked extends LiveEvent {
 /// passes them on to the phone.
 class LiveHub {
   /// [locate]: where a session runs (Terminals.locate); [windowOfTerm] by
-  /// default.
-  LiveHub({Locate? locate}) : _locate = locate ?? _byTerm;
+  /// default. [files]: where files sent with prompts go.
+  LiveHub({Locate? locate, PromptFiles? files}) : _locate = locate ?? _byTerm, _files = files ?? PromptFiles() {
+    unawaited(_files.prune());
+  }
 
   static Future<String?> _byTerm(
     Map<String, dynamic>? term, {
@@ -158,6 +162,7 @@ class LiveHub {
   }) async => windowOfTerm(term);
 
   final Locate _locate;
+  final PromptFiles _files;
   final _byKey = <String, LiveSession>{};
 
   /// Transcript changes, per session.
@@ -404,24 +409,31 @@ class LiveHub {
   /// for it; the ones older than a day go when more come.
   static final _imageDir = Directory(p.join(Directory.systemTemp.path, 'pocketterm-images'));
 
-  /// Sends [text] (and [images]) as the person's prompt. While omp works it
-  /// steers the run, or waits for the run to end with [followUp]; Claude
-  /// Code always waits, and gets the images as files.
+  /// Sends [text] (and [images] and [files]) as the person's prompt. While
+  /// omp works it steers the run, or waits for the run to end with
+  /// [followUp]; Claude Code always waits, and gets the images as files.
+  /// [files] are saved on this computer ([PromptFiles]) and named in the
+  /// text as `@path`, as one would at the computer: omp reads them in when
+  /// it isn't working, else the agent opens them; Claude Code's extension
+  /// lets it read them without asking.
   Future<void> prompt(
     String key,
     String text, {
     List<({Uint8List bytes, String mimeType})> images = const [],
+    List<PromptFile> files = const [],
     bool followUp = false,
   }) async {
     final s = _session(key);
     final steers = s.agent.steers;
+    final saved = await _files.save(files);
     await s._request('prompt', {
-      'text': text,
+      'text': withMentions(text, saved),
       'images': [
         if (steers)
           for (final i in images) {'data': base64Encode(i.bytes), 'mimeType': i.mimeType},
       ],
       if (!steers) 'files': await _saveImages(images),
+      if (!steers && saved.isNotEmpty) 'docs': saved,
       'deliver': followUp || !steers ? 'followUp' : 'steer',
     }, const Duration(seconds: 15));
   }

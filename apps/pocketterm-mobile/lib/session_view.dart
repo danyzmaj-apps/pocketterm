@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -137,6 +138,7 @@ class _SessionPageState extends State<SessionPage> {
 
   Future<void> _attach(String from) async {
     if (from == 'photos') return await _attachments.pick();
+    if (from == 'files') return await _attachments.addFiles(await openFiles());
     if (!await _attachments.paste() && mounted) {
       termToast(context, 'There is no image on the clipboard.', above: _composerKey);
     }
@@ -146,12 +148,12 @@ class _SessionPageState extends State<SessionPage> {
     final typed = _field.text;
     final text = typed.trim();
     if ((text.isEmpty && _attachments.isEmpty) || _sending) return;
-    final images = List.of(_attachments.images);
+    final attached = List.of(_attachments.items);
     // A slash command is typed into the agent's window, where its editor
     // reads it; sent as a prompt, the agent would take it for chat.
     final command = text.startsWith('/');
-    if (command && images.isNotEmpty) {
-      return termToast(context, "Slash commands can't take images.", above: _composerKey);
+    if (command && attached.isNotEmpty) {
+      return termToast(context, "Slash commands can't take images or files.", above: _composerKey);
     }
     if (command && !_can(_windowKey(remote.session(key)), TermCap.line)) {
       return termToast(context, _noCommands(_agent(remote.session(key))), above: _composerKey);
@@ -160,7 +162,19 @@ class _SessionPageState extends State<SessionPage> {
     try {
       final queue = busy && (_followUp || !_agent(remote.session(key)).steers);
       final before = remote.session(key)?.id;
-      await remote.prompt(key, text, images: [for (final i in images) i.bytes], followUp: queue);
+      await remote.prompt(
+        key,
+        text,
+        images: [
+          for (final a in attached)
+            if (a is ChatImage) a.bytes,
+        ],
+        files: [
+          for (final a in attached)
+            if (a is ChatFile) (name: a.name, mime: a.mime, bytes: a.bytes),
+        ],
+        followUp: queue,
+      );
       final s = remote.session(key);
       final window = s?.window;
       if (command && window != null) unawaited(_menuOrScreen(window, before));
@@ -172,10 +186,7 @@ class _SessionPageState extends State<SessionPage> {
       // typed or attached meanwhile is the next prompt.
       final now = _field.text;
       _field.text = now.startsWith(typed) ? now.substring(typed.length).trimLeft() : now;
-      for (final i in images) {
-        final at = _attachments.images.indexOf(i);
-        if (at >= 0) _attachments.removeAt(at);
-      }
+      _attachments.removeSent(attached);
       _atBottom = true;
     } on Object catch (e) {
       if (mounted) termToast(context, e, above: _composerKey);
@@ -627,17 +638,15 @@ class _SessionPageState extends State<SessionPage> {
               children: [
                 TextFieldTapRegion(
                   child: PopupMenuButton<String>(
-                    tooltip: 'Attach images',
+                    tooltip: 'Attach images or files',
                     enabled: online && _attachments.room > 0,
-                    icon: Icon(
-                      Icons.add_photo_alternate_outlined,
-                      color: online && _attachments.room > 0 ? C.dim : C.dim2,
-                    ),
+                    icon: Icon(Icons.attach_file, color: online && _attachments.room > 0 ? C.dim : C.dim2),
                     color: C.bar,
                     onSelected: (from) => unawaited(_attach(from)),
                     itemBuilder: (_) => const [
                       PopupMenuItem(value: 'paste', child: Text('Paste image')),
                       PopupMenuItem(value: 'photos', child: Text('Choose from Photos')),
+                      PopupMenuItem(value: 'files', child: Text('Choose from Files')),
                     ],
                   ),
                 ),

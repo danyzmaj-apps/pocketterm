@@ -11,7 +11,7 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     visible: "Prompt omp…"
     timeout: 15000
-- tapOn: "Attach images"
+- tapOn: "Attach images( or files)?"
 - tapOn: "Choose from Photos"
 - runFlow:
     when:

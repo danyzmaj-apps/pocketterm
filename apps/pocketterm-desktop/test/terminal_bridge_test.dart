@@ -149,7 +149,8 @@ void main() {
     );
   });
 
-  test("a phone's image is stored sealed, and only this computer's key opens it, for its own path", () async {
+  test("a phone's image or file is stored sealed, and only this computer's key opens it, for its own path; a file's "
+      'name and type go only in the prompt', () async {
     final dir = Directory.systemTemp.createTempSync('pocketterm_image');
     addTearDown(() => dir.deleteSync(recursive: true));
     final key = ChannelKey.generate();
@@ -170,20 +171,38 @@ void main() {
       },
     )..handle('state', {'windows': const <Object>[], 'sessions': const <Object>[]});
     final png = Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 1, 2, 3]);
+    final pdf = Uint8List.fromList('%PDF-1.7 quarterly numbers'.codeUnits);
 
-    await phone.prompt('kitty-1/2', 'look', images: [png]);
+    await phone.prompt(
+      'kitty-1/2',
+      'look',
+      images: [png],
+      files: [(name: 'Q3 report.pdf', mime: 'application/pdf', bytes: pdf)],
+    );
 
     final path = (runs.single['images'] as List).single as String;
     expect(PocketTermServerClient.isBlobPath(path), isTrue);
     final sealed = stored[path]!;
     expect(sealed, isNot(containsAllInOrder(png)), reason: 'Storage never holds the image itself');
-    expect(await TerminalBridge.openImage(key, path, sealed), png);
+    expect(await TerminalBridge.openBlob(key, path, sealed), png);
     expect(
-      (await TerminalBridge.image(await TerminalBridge.openImage(key, path, sealed), macos: false)).mimeType,
+      (await TerminalBridge.image(await TerminalBridge.openBlob(key, path, sealed), macos: false)).mimeType,
       'image/png',
     );
-    await expectLater(TerminalBridge.openImage(ChannelKey.generate(), path, sealed), throwsA(isA<LiveException>()));
-    await expectLater(TerminalBridge.openImage(key, 'another', sealed), throwsA(isA<LiveException>()));
+    await expectLater(TerminalBridge.openBlob(ChannelKey.generate(), path, sealed), throwsA(isA<LiveException>()));
+    await expectLater(TerminalBridge.openBlob(key, 'another', sealed), throwsA(isA<LiveException>()));
+
+    final file = (runs.single['files'] as List).single as Map<String, dynamic>;
+    expect(file['name'], 'Q3 report.pdf');
+    expect(file['mime'], 'application/pdf');
+    final filePath = file['path'] as String;
+    expect(PocketTermServerClient.isBlobPath(filePath), isTrue);
+    expect(filePath, isNot(path));
+    final sealedFile = stored[filePath]!;
+    expect(sealedFile, isNot(containsAllInOrder(pdf)), reason: 'Storage never holds the file itself');
+    expect(sealedFile, isNot(containsAllInOrder('Q3 report'.codeUnits)), reason: 'nor its name');
+    expect(await TerminalBridge.openBlob(key, filePath, sealedFile), pdf);
+    await expectLater(TerminalBridge.openBlob(key, path, sealedFile), throwsA(isA<LiveException>()));
   });
 
   test("a followed session's update goes sealed for Android; iPhones get only its state", () async {

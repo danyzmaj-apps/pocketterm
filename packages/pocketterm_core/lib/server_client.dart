@@ -271,7 +271,7 @@ class PocketTermServerClient {
 
   Future<void> deleteDesktop(String id) => _json('DELETE', '/v1/desktops/$id');
 
-  /// A new path for an image: the phone seals it for this path first.
+  /// A new path for an image or file: the phone seals it for this path first.
   String newBlobPath() => const Uuid().v4();
 
   /// [path] can be one of [newBlobPath]'s.
@@ -284,7 +284,7 @@ class PocketTermServerClient {
   /// reason: sent, the server would cut it off and the reason would be lost.
   Future<void> putBlob(String path, Uint8List bytes) async {
     if (bytes.length > maxBlobBytes) {
-      throw const ServerException(413, 'too_large', 'That image is too large: the most is 20 MB.');
+      throw const ServerException(413, 'too_large', 'That file is too large: the most is 20 MB.');
     }
     await _json('PUT', '/v1/blobs/$path', bytes: bytes);
   }

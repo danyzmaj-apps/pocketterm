@@ -28,7 +28,7 @@ PocketTerm is a desktop app (macOS menu bar, Windows tray) and a phone app (iPho
 ## What it does
 
 - **Your sessions, by project.** omp and Claude Code sessions grouped by project, then every other terminal window. Sort projects by name or recent activity, tap a project's heading to fold it, long-press it for a new session there or to fold the others.
-- **Conversations.** Each session reads as a conversation: streamed Markdown answers, tool calls as cards. Prompt (with images), steer or queue, stop a run, and type `/` for slash commands.
+- **Conversations.** Each session reads as a conversation: streamed Markdown answers, tool calls as cards. Prompt with up to 10 images and files (photos, the clipboard, documents from the phone's files, up to 20 MB each), steer or queue, stop a run, and type `/` for slash commands. A file reaches the agent as you'd give it at the computer: saved there and named in the prompt as `@path`.
 - **Screens.** Every other terminal window is a live screen you can type and press keys in.
 - **Approvals and questions.** Answer the agent's questions, approve tool calls and review plans with a tap.
 - **Notifications, if you want them.** A push when a run finishes or the agent needs you. A Live Activity on iPhone and an ongoing notification on Android for the sessions you follow.
@@ -71,7 +71,7 @@ flowchart LR
 ```
 
 - **The PocketTerm server** pairs your phones, keeps the list of your computers, passes the live channel between a computer and its phones and sends pushes. It only ever sees ciphertext.
-- **End-to-end encryption.** Each computer has its own key, which reaches a phone only in that computer's QR code. Sessions, screens, prompts, images and notification text are sealed with it on one end and opened on the other.
+- **End-to-end encryption.** Each computer has its own key, which reaches a phone only in that computer's QR code. Sessions, screens, prompts, images, files and notification text are sealed with it on one end and opened on the other.
 - **Pushes** are sealed by the computer and reach Apple or Google through PocketTerm's push relay, which can't read them.
 
 The computer has to be awake, with PocketTerm running and **Terminal from phone** on. While that switch is on, PocketTerm keeps the computer from idle sleep; a closed lid (without an external display) or a shut-down computer ends it. A push goes out only when nobody has touched the computer for 60 seconds.
@@ -173,8 +173,8 @@ Who can see what in detail: [apps/pocketterm-relay/SECURITY.md](apps/pocketterm-
 ## Security and privacy
 
 - **Your server.** Every user runs their own PocketTerm server; nothing is shared between users. It keeps your devices (only the SHA-256 of each one's token), your computers' names, pairing codes for 10 minutes and your phones' push tokens.
-- **End-to-end encrypted.** Sessions, screens, prompts, images and notification text are sealed (AES-256-GCM) with a key per computer that never goes to a server: a phone gets it only by scanning that computer's QR code, so treat the QR as a secret. **Reset key** (Settings → Phone) locks out every phone, a lost one included; the others scan again.
-- **Nothing stored in the clear.** Sessions and screens pass through the server as ciphertext and aren't kept. Images you send wait sealed on the server until the computer downloads them, at most an hour.
+- **End-to-end encrypted.** Sessions, screens, prompts, images, files and notification text are sealed (AES-256-GCM) with a key per computer that never goes to a server: a phone gets it only by scanning that computer's QR code, so treat the QR as a secret. **Reset key** (Settings → Phone) locks out every phone, a lost one included; the others scan again.
+- **Nothing stored in the clear.** Sessions and screens pass through the server as ciphertext and aren't kept. Images and files you send wait sealed on the server until the computer downloads them, at most an hour; a file's name travels only inside the sealed prompt. On the computer, files wait for the agent in the temp folder's `pocketterm-files` (`$TMPDIR` on a Mac, `%TEMP%` on Windows), private to your user, and go after a day.
 - **Tailscale** (On this computer) sees which of your devices connect and when, not what they send.
 - **Local only.** The desktop app's API listens on `127.0.0.1` behind a random token.
 - **Leaving.** **Sign out** on a computer and **Leave this server** on a phone end that device's sign-in and remove its keys. **Erase this server's data** on a computer that runs the server signs every device out and deletes what the server keeps.

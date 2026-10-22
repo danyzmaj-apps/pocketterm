@@ -5,13 +5,17 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/ghostty.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
+import 'package:pocketterm_desktop/prompt_files.dart';
 
 /// An omp extension's side of the socket.
 class _Ext {
@@ -385,6 +389,72 @@ void main() {
     final abort = await ext.request();
     ext.send({'t': 'reply', 'req': abort['req'], 'error': 'Nothing to stop.'});
     await expectLater(failing, throwsA(isA<LiveException>().having((e) => e.message, 'message', 'Nothing to stop.')));
+  });
+
+  group('a prompt with files', () {
+    late Directory dir;
+    final png = Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 1]);
+    final files = [
+      (name: 'notes.txt', mime: 'text/plain', bytes: Uint8List.fromList('the notes'.codeUnits)),
+      (name: '../my plan.md', mime: 'text/markdown', bytes: Uint8List.fromList('# plan'.codeUnits)),
+    ];
+
+    setUp(() {
+      dir = Directory.systemTemp.createTempSync('pocketterm_hub_files');
+      hub = LiveHub(files: PromptFiles(dir));
+    });
+    tearDown(() => dir.deleteSync(recursive: true));
+
+    /// The paths [text] names as @path or @"path".
+    List<String> mentioned(String text) => [
+      for (final m in RegExp(r'@(?:"([^"]+)"|(\S+))').allMatches(text)) m[1] ?? m[2]!,
+    ];
+
+    test('omp gets them named in the text as @path, saved on this computer, and the images inline', () async {
+      final ext = await connect();
+      ext.hello();
+      await until(() => hub['kitty-1/7'] != null);
+      final done = hub.prompt('kitty-1/7', 'read these', images: [(bytes: png, mimeType: 'image/png')], files: files);
+      final req = await ext.request();
+      ext.send({'t': 'reply', 'req': req['req']});
+      await done;
+
+      final text = req['text'] as String;
+      expect(text, startsWith('read these\n\n@'));
+      final paths = mentioned(text);
+      expect(paths.map(p.basename), ['notes.txt', 'my plan.md']);
+      expect(text, contains('@"${paths.last}"'), reason: 'a path with a space is quoted');
+      expect(paths.map((f) => File(f).readAsStringSync()), ['the notes', '# plan']);
+      for (final f in paths) {
+        expect(p.isWithin(dir.path, f), isTrue, reason: f);
+      }
+      expect((req['images'] as List).single, {'data': base64Encode(png), 'mimeType': 'image/png'});
+      expect(req.containsKey('docs'), isFalse);
+    });
+
+    test('Claude Code gets them named in the text, and their paths to read without asking', () async {
+      final ext = await connect();
+      ext.send({
+        't': 'hello',
+        'v': 1,
+        'agent': 'claude',
+        'session': {'id': 'c1', 'title': '', 'cwd': '/Users/me/Dev/pocketterm'},
+        'window': 'kitty-1/7',
+        'items': const <Object>[],
+      });
+      await until(() => hub['kitty-1/7']?.agent == Agent.claude);
+      final done = hub.prompt('kitty-1/7', '', images: [(bytes: png, mimeType: 'image/png')], files: files);
+      final req = await ext.request();
+      ext.send({'t': 'reply', 'req': req['req']});
+      await done;
+
+      final docs = (req['docs'] as List).cast<String>();
+      expect(mentioned(req['text'] as String), docs, reason: 'nothing but the mentions, with no words');
+      expect(docs.map(p.basename), ['notes.txt', 'my plan.md']);
+      expect(req['images'], isEmpty);
+      expect(File((req['files'] as List).single as String).readAsBytesSync(), png, reason: 'the image, from disk');
+      expect(req['deliver'], 'followUp');
+    });
   });
 
   test('older items arrive as ops above the oldest', () async {

@@ -6,22 +6,53 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pasteboard/pasteboard.dart';
+import 'package:pocketterm_core/e2e.dart';
+import 'package:pocketterm_core/file_types.dart';
+import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/ui.dart';
 
-/// How many images one message to a session takes.
-const _maxChatImages = 4;
+/// How many images and files one message to a session takes.
+const maxChatAttachments = 10;
+
+/// The largest file a message takes: sealed, it's the most the server holds
+/// (20 MB).
+const int maxChatFileBytes = PocketTermServerClient.maxBlobBytes - sealedOverhead;
 
 /// The longest side an image is sent at: plenty for reading a screenshot,
 /// and it keeps uploads and the model's image tokens small.
 const maxImageSide = 2048;
 
+/// Something a message takes along: a [ChatImage] or a [ChatFile].
+sealed class ChatAttachment {
+  const ChatAttachment();
+}
+
 /// An image about to be sent: its bytes and their type.
-class ChatImage {
+class ChatImage extends ChatAttachment {
   const ChatImage(this.bytes, this.mime);
   final Uint8List bytes;
 
   /// image/png, image/jpeg, image/gif or image/webp.
   final String mime;
+}
+
+/// A file about to be sent as it is (a document, an archive): the agent
+/// gets it under [name], as a file on the computer.
+class ChatFile extends ChatAttachment {
+  const ChatFile(this.name, this.bytes, this.mime);
+  final String name;
+  final Uint8List bytes;
+  final String mime;
+}
+
+/// Picked files with these extensions go as images, scaled down like photos.
+const _imageExtensions = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif', 'tif', 'tiff', 'bmp'};
+
+/// [bytes] for people: `512 bytes`, `3.4 KB`, `12.0 MB`.
+String formatBytes(int bytes) {
+  if (bytes < 1024) return '$bytes bytes';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
 }
 
 /// [raw] as an image to send: kept as it is when it's a PNG, JPEG, GIF or
@@ -92,33 +123,74 @@ Future<List<Uint8List>> _pickImages({required int limit}) async {
   return [for (final f in picked) await f.readAsBytes()];
 }
 
-/// The images a composer holds until the message is sent; each loads
-/// through [prepareChatImage]. Errors (not an image, too many) go to
-/// [problem] for the composer to show.
+/// The images and files a composer holds until the message is sent, at most
+/// [maxChatAttachments], in the order they came. Images load through
+/// [prepareChatImage]; files go as they are, up to [maxChatFileBytes] each.
+/// Errors (not an image, too many, too large) go to [problem] for the
+/// composer to show.
 class ChatAttachments extends ChangeNotifier {
-  final List<ChatImage> images = [];
+  final List<ChatAttachment> items = [];
   String? problem;
 
-  bool get isEmpty => images.isEmpty;
-  int get room => _maxChatImages - images.length;
+  bool get isEmpty => items.isEmpty;
+  int get room => maxChatAttachments - items.length;
+
+  static const _tooMany = 'At most $maxChatAttachments images and files per message.';
 
   Future<void> addAll(List<Uint8List> raws) async {
     problem = null;
     var skipped = 0;
     for (final raw in raws) {
       if (room <= 0) {
-        problem = 'At most $_maxChatImages images per message.';
+        problem = _tooMany;
         break;
       }
       final image = await prepareChatImage(raw);
       if (image == null) {
         skipped++;
       } else {
-        images.add(image);
+        items.add(image);
       }
     }
     if (skipped > 0) {
       problem ??= skipped == 1 ? "That isn't an image PocketTerm can read." : "$skipped files aren't images.";
+    }
+    notifyListeners();
+  }
+
+  /// Adds files picked from the phone's files. Images among them (by their
+  /// extension or their first bytes) go as images; a file over
+  /// [maxChatFileBytes] is left out, and said so.
+  Future<void> addFiles(List<XFile> files) async {
+    problem = null;
+    final tooLarge = <String>[];
+    for (final f in files) {
+      if (room <= 0) {
+        problem = _tooMany;
+        break;
+      }
+      final name = f.name.isNotEmpty ? f.name : 'file';
+      final named = _imageExtensions.contains(fileExtension(name));
+      if (!named && await f.length() > maxChatFileBytes) {
+        tooLarge.add(name);
+        continue;
+      }
+      final bytes = await f.readAsBytes();
+      final image = named || sniffImageType(bytes) != null ? await prepareChatImage(bytes) : null;
+      if (image != null) {
+        items.add(image);
+      } else if (bytes.length > maxChatFileBytes) {
+        tooLarge.add(name);
+      } else {
+        final mime = f.mimeType;
+        items.add(ChatFile(name, bytes, mime == null || mime.isEmpty ? fileMime(name) : mime));
+      }
+    }
+    if (tooLarge.isNotEmpty) {
+      const most = 'files can be up to ${maxChatFileBytes ~/ (1000 * 1000)} MB';
+      problem ??= tooLarge.length == 1
+          ? '"${tooLarge.single}" is too large: $most.'
+          : '${tooLarge.length} files are too large: $most.';
     }
     notifyListeners();
   }
@@ -135,13 +207,21 @@ class ChatAttachments extends ChangeNotifier {
   Future<void> pick() async => await addAll(await _pickImages(limit: room));
 
   void removeAt(int i) {
-    images.removeAt(i);
+    items.removeAt(i);
     problem = null;
+    notifyListeners();
+  }
+
+  /// Takes out [sent] (the ones a message took), keeping what came since.
+  void removeSent(Iterable<ChatAttachment> sent) {
+    final gone = Set<ChatAttachment>.identity()..addAll(sent);
+    items.removeWhere(gone.contains);
     notifyListeners();
   }
 }
 
-/// The composer's pending images, each with a ✕; nothing when empty.
+/// The composer's pending images and files, each with a ✕: a thumbnail per
+/// image, a chip with its name and size per file; nothing when empty.
 /// It grows and shrinks smoothly, and [top] spaces it from what sits above
 /// only while it shows something.
 class AttachmentStrip extends StatelessWidget {
@@ -154,13 +234,13 @@ class AttachmentStrip extends StatelessWidget {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: attachments,
     builder: (context, _) {
-      final images = attachments.images;
+      final items = attachments.items;
       final problem = attachments.problem;
       return AnimatedSize(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
         alignment: Alignment.topCenter,
-        child: images.isEmpty && problem == null
+        child: items.isEmpty && problem == null
             ? const SizedBox(width: double.infinity)
             : Padding(
                 padding: EdgeInsets.only(top: top, bottom: 10),
@@ -168,17 +248,24 @@ class AttachmentStrip extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (images.isNotEmpty)
+                    if (items.isNotEmpty)
                       // 2 plus each thumbnail's 6pt corner room: 8 between them.
                       Wrap(
                         spacing: 2,
                         runSpacing: 2,
                         children: [
-                          for (final (i, image) in images.indexed)
+                          for (final (i, item) in items.indexed)
                             _Removable(
-                              key: ObjectKey(image),
+                              key: ObjectKey(item),
+                              label: switch (item) {
+                                ChatImage() => 'Remove image',
+                                ChatFile(:final name) => 'Remove $name',
+                              },
                               onRemove: () => attachments.removeAt(i),
-                              child: _Thumb(bytes: image.bytes, size: size),
+                              child: switch (item) {
+                                ChatImage(:final bytes) => _Thumb(bytes: bytes, size: size),
+                                final ChatFile file => _FileChip(file: file, height: size),
+                              },
                             ),
                         ],
                       ),
@@ -195,11 +282,12 @@ class AttachmentStrip extends StatelessWidget {
   );
 }
 
-/// A thumbnail with its ✕ dot on the corner. The dot is 20pt but a 40pt
-/// square catches the tap, and the corner room keeps both inside the Stack,
-/// which only hit-tests within its own size.
+/// A thumbnail or chip with its ✕ dot on the corner. The dot is 20pt but a
+/// 40pt square catches the tap, and the corner room keeps both inside the
+/// Stack, which only hit-tests within its own size.
 class _Removable extends StatelessWidget {
-  const _Removable({required this.onRemove, required this.child, super.key});
+  const _Removable({required this.label, required this.onRemove, required this.child, super.key});
+  final String label;
   final VoidCallback onRemove;
   final Widget child;
 
@@ -212,7 +300,7 @@ class _Removable extends StatelessWidget {
         right: 0,
         child: Semantics(
           button: true,
-          label: 'Remove image',
+          label: label,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: onRemove,
@@ -256,6 +344,48 @@ class _Thumb extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Image.memory(bytes, fit: BoxFit.cover, cacheWidth: (size * 3).round(), gaplessPlayback: true),
+    ),
+  );
+}
+
+/// A file as the composer holds it: an icon, its name and its size.
+class _FileChip extends StatelessWidget {
+  const _FileChip({required this.file, required this.height});
+  final ChatFile file;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: height,
+    constraints: const BoxConstraints(maxWidth: 200),
+    padding: const EdgeInsets.only(left: 10, right: 14),
+    decoration: BoxDecoration(
+      color: C.field,
+      border: Border.all(color: C.line),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.insert_drive_file_outlined, size: 20, color: C.dim),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                file.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13, color: C.text),
+              ),
+              const SizedBox(height: 2),
+              Text(formatBytes(file.bytes.length), style: const TextStyle(fontSize: 11, color: C.dim)),
+            ],
+          ),
+        ),
+      ],
     ),
   );
 }

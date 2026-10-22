@@ -69,6 +69,10 @@ final Uint8List _png = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
 );
 
+/// A document the stand-in phone sends, with a name that needs quoting.
+const _docName = 'notes from the phone.txt';
+final Uint8List _doc = utf8.encode('PocketTerm e2e notes\n');
+
 class _Run {
   _Run(this.tester, this.c) : report = Report(c), owned = Owned(c.owned);
 
@@ -549,6 +553,10 @@ class _Run {
       await until('chat at rest', () => r.session(chat)?.busy == false);
       await r.prompt(chat, 'what is in this image $t', images: [_png]);
     });
+    await act('file', () async {
+      await until('chat at rest', () => r.session(chat)?.busy == false);
+      await r.prompt(chat, 'what is in this file $t', files: [(name: _docName, mime: 'text/plain', bytes: _doc)]);
+    });
     await act('new session', () async {
       final launched = await r.launch(dir('newsess'), startAgent: true);
       report.log('phone launched $launched');
@@ -656,6 +664,17 @@ class _Run {
       final image = (e['images'] as List).first as Map<String, dynamic>;
       expect(image['decoded'], isTrue, reason: 'PNG or JPEG bytes, not sealed ones: $image');
       expect(image['bytes'] as int, greaterThan(0));
+    });
+    await report.step('phone: a document arrives decrypted at the agent, named as @path', () async {
+      final e = await until(
+        'file prompt',
+        () => prompts('chat').where((e) => (e['files'] as List? ?? const []).isNotEmpty).firstOrNull,
+      );
+      final file = (e['files'] as List).single as Map<String, dynamic>;
+      expect(file['name'], _docName);
+      expect(file['bytes'], _doc.length, reason: 'the bytes, not sealed ones: $file');
+      expect(File(file['path'] as String).readAsBytesSync(), _doc);
+      expect(e['text'] as String, contains('@"${file['path']}"'), reason: 'a name with spaces is quoted');
     });
     await report.step('phone: new session (+) opens in $t', () async {
       final s = await until('a session in ${name('newsess')}', () {

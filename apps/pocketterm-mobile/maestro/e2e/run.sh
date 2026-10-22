@@ -133,8 +133,12 @@ fi
 
 # An E2E debug build (pasted codes, tips start seen: lib/e2e_hooks.dart) of
 # HEAD, built and installed once per run; a photo in the library for
-# image.yaml.
+# image.yaml, and a document in the phone's files for file.yaml (simctl
+# addmedia takes photos only: on iOS it goes straight into the Files app's
+# On My iPhone storage, on Android into Download).
 FIXTURE="$APP/assets/icon/ios.png"
+DOC_FIXTURE="$OUT/pocketterm-e2e.txt"
+printf 'A document from the phone, for the PocketTerm E2E run.\n' >"$DOC_FIXTURE"
 if [ "$PHASE" = main ] && [ $BUILD = 1 ]; then
   HEAD_SHA=$(git -C "$REPO" rev-parse HEAD)
   if [ -e "$PHONE_SRC/.git" ]; then
@@ -159,10 +163,21 @@ fi
 if [ "$PHASE" = main ]; then
   if [ "$PLATFORM" = ios ]; then
     xcrun simctl addmedia "$DEVICE" "$FIXTURE"
+    local_storage=$(xcrun simctl get_app_container "$DEVICE" com.apple.DocumentsApp groups 2>/dev/null |
+      awk -F'\t' '$1 == "group.com.apple.FileProvider.LocalStorage" {print $2}')
+    if [ -n "$local_storage" ]; then
+      mkdir -p "$local_storage/File Provider Storage"
+      cp "$DOC_FIXTURE" "$local_storage/File Provider Storage/"
+    else
+      echo "no Files storage on $DEVICE: file.yaml will not find its document" | tee -a "$SUMMARY"
+    fi
   else
     "$ADB" -s "$DEVICE" push "$FIXTURE" /sdcard/Pictures/pocketterm-e2e.png >/dev/null
     "$ADB" -s "$DEVICE" shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
       -d file:///sdcard/Pictures/pocketterm-e2e.png >/dev/null
+    "$ADB" -s "$DEVICE" push "$DOC_FIXTURE" /sdcard/Download/pocketterm-e2e.txt >/dev/null
+    "$ADB" -s "$DEVICE" shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
+      -d file:///sdcard/Download/pocketterm-e2e.txt >/dev/null
   fi
 fi
 
@@ -330,6 +345,7 @@ case $PHASE in
     flow slash-new slash_new.yaml -e SESSION="$SESSION_0_RE"
     flow screen screen.yaml -e WINDOW="$SCREEN_WINDOW_RE" -e SCREEN="$SCREEN"
     flow image image.yaml -e SESSION="$SESSION_0_RE" -e IMAGE_PROMPT="what is in this image $TERMINAL_ID"
+    flow file file.yaml -e SESSION="$SESSION_0_RE" -e FILE_PROMPT="what is in this file $TERMINAL_ID"
     flow new-session new_session.yaml -e PROJECT="$NEW_SESSION_PROJECT_RE"
     flow switch-continue switch.yaml -e WINDOW=".*$SWITCH_CONTINUE_RE" -e HOW="Restart and continue"
     flow switch-restart switch.yaml -e WINDOW=".*$SWITCH_RESTART_RE" -e HOW="Just restart"

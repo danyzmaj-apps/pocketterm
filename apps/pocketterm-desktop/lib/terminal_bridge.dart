@@ -671,7 +671,8 @@ class TerminalBridge {
     unawaited(_poll(windows: const {'launch', 'create', 'close', 'switch'}.contains(p['op'])));
   }
 
-  /// The phone's prompt, with its images fetched from Storage (and deleted).
+  /// The phone's prompt, with its images and files fetched from Storage
+  /// (and deleted).
   Future<void> _prompt(Map<String, dynamic> p) async {
     // The agent's own commands (/resume, /model …) are read by its editor,
     // not the model: type them into its window like the person would, and
@@ -679,41 +680,54 @@ class TerminalBridge {
     final text = (p['text'] as String? ?? '').trim();
     final key = p['session'] as String;
     final window = _hub[key]?.window;
-    if (text.startsWith('/') && (p['images'] as List? ?? const []).isEmpty) {
+    final paths = (p['images'] as List? ?? const []).cast<String>();
+    final files = [
+      for (final f in p['files'] as List? ?? const [])
+        if (f case {'path': final String path, 'name': final String name})
+          (path: path, name: name, mime: f['mime'] is String ? f['mime'] as String : '')
+        else
+          throw const LiveException('Bad file.'),
+    ];
+    final blobs = [...paths, for (final f in files) f.path];
+    if (text.startsWith('/') && blobs.isEmpty) {
       // Sent as a prompt instead, the agent would take it for chat.
       if (cantCommand(_terms, window) case final why?) throw LiveException(why);
       await _terms.send(window!, text, enter: true);
       unawaited(_followMenus(key));
       return;
     }
-    final paths = (p['images'] as List? ?? const []).cast<String>();
-    for (final path in paths) {
-      if (!PocketTermServerClient.isBlobPath(path)) throw const LiveException('Bad image path.');
+    for (final path in blobs) {
+      if (!PocketTermServerClient.isBlobPath(path)) throw const LiveException('Bad image or file path.');
     }
     try {
-      final images = [for (final path in paths) await image(await openImage(_key, path, await _server.getBlob(path)))];
+      final images = [for (final path in paths) await image(await openBlob(_key, path, await _server.getBlob(path)))];
+      final opened = [
+        for (final f in files)
+          (name: f.name, mime: f.mime, bytes: await openBlob(_key, f.path, await _server.getBlob(f.path))),
+      ];
       await _hub.prompt(
         p['session'] as String,
         p['text'] as String? ?? '',
         images: images,
+        files: opened,
         followUp: p['deliver'] == 'followUp',
       );
     } finally {
       // The server drops one once it's downloaded; one that didn't come down goes too.
-      for (final path in paths) {
+      for (final path in blobs) {
         unawaited(
-          _server.deleteBlob(path).then((_) {}, onError: (Object e) => debugPrint('PocketTerm: image cleanup: $e')),
+          _server.deleteBlob(path).then((_) {}, onError: (Object e) => debugPrint('PocketTerm: blob cleanup: $e')),
         );
       }
     }
   }
 
-  /// A phone's image as stored at [path], opened with [key] (the phone
-  /// sealed it for that path: packages/pocketterm_core/lib/terminal_remote.dart).
+  /// A phone's image or file as stored at [path], opened with [key] (the
+  /// phone sealed it for that path: packages/pocketterm_core/lib/terminal_remote.dart).
   @visibleForTesting
-  static Future<Uint8List> openImage(ChannelKey key, String path, Uint8List sealed) async =>
+  static Future<Uint8List> openBlob(ChannelKey key, String path, Uint8List sealed) async =>
       await openBytes(key, sealed, imageAad(path)) ??
-      (throw const LiveException("The image didn't open: it wasn't sealed with this computer's key."));
+      (throw const LiveException("The image or file didn't open: it wasn't sealed with this computer's key."));
 
   /// PNG and JPEG go as they are; on a Mac anything else (HEIC from Photos)
   /// becomes PNG first, which every model reads. Elsewhere (no `sips`) only

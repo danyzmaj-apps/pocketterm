@@ -391,7 +391,7 @@ void main() {
         await tester.enterText(find.byKey(const ValueKey('session-input')), '$_long\n$_long');
         await tester.pump(const Duration(milliseconds: 500));
         clean(tester, 'session, keyboard up');
-        for (final label in ['Send', 'Attach images']) {
+        for (final label in ['Send', 'Attach images or files']) {
           expect(find.byTooltip(label), findsOneWidget, reason: label);
         }
         await finish(tester);

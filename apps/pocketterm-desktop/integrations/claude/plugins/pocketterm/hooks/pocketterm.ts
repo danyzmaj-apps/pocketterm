@@ -20,9 +20,9 @@ import {
 // PocketTerm (github.com/danyzmaj-apps/pocketterm) for Claude Code, the twin of its omp extension: this session goes
 // to the phone through PocketTerm. The transcript as items, the answer as it's written, whether Claude is busy, and
 // the questions, approvals and plan reviews it waits on (answered on the phone by keys PocketTerm types into this
-// terminal window). From the phone you can prompt (with images), stop, and page back through older history. The
-// protocol is described in packages/pocketterm_core/lib/live.dart; mods have no WebSocket, so it goes over HTTP long
-// polls (POST /v1/live/http).
+// terminal window). From the phone you can prompt (with images and files), stop, and page back through older history.
+// The protocol is described in packages/pocketterm_core/lib/live.dart; mods have no WebSocket, so it goes over HTTP
+// long polls (POST /v1/live/http).
 //
 // Only an interactive session talks, and only to PocketTerm's local API on 127.0.0.1 (port and token from
 // ~/.config/pocketterm/cli.json, or the file POCKETTERM_CLI_JSON names), once whatever answers at that port has proved it
@@ -67,7 +67,7 @@ const streams = new Map<string, Stream>();
 const tools = new Map<string, Item>();
 // What Claude waits on, in the order its dialogs come: the first is on screen.
 const asks: Ask[] = [];
-// Images the Mac saved for phone prompts, which Read may open without asking.
+// Images and files the Mac saved for phone prompts, which Read may open without asking.
 const files = new Set<string>();
 // The plan file plan mode writes, whose heading names the plan review.
 let planPath: string | undefined;
@@ -320,7 +320,9 @@ async function onFrame($: EngineInterface, msg: Frame): Promise<void> {
 			const text = typeof msg.text === "string" ? msg.text : "";
 			const paths = (Array.isArray(msg.files) ? msg.files : []).filter((f): f is string => typeof f === "string");
 			if (!text.trim() && paths.length === 0) return reply({ error: "Nothing to send." });
-			for (const p of paths) files.add(p);
+			// Files the text names as @path: a mod's prompt doesn't read mentions in, so Claude opens them with Read.
+			const docs = (Array.isArray(msg.docs) ? msg.docs : []).filter((f): f is string => typeof f === "string");
+			for (const p of [...paths, ...docs]) files.add(p);
 			// Claude Code can't steer a run: a prompt waits for it to end.
 			submit($, promptText(text, paths));
 			return reply();
@@ -563,9 +565,9 @@ export function register(on: On): void {
 		const decided = await next(e);
 		if (!active || decided.decision !== "ask" || decided.decider !== undefined) return decided;
 		const input = e.input as { file_path?: unknown; plan?: unknown } | undefined;
-		// An image from the phone, which PocketTerm saved for this session.
+		// An image or file from the phone, which PocketTerm saved for this session.
 		if (e.tool === "Read" && typeof input?.file_path === "string" && files.has(input.file_path)) {
-			return { decision: "allow", reason: "An image sent from the phone through PocketTerm" };
+			return { decision: "allow", reason: "Sent from the phone through PocketTerm" };
 		}
 		if (!e.tool_use_id) return decided;
 		let title = typeof input?.plan === "string" ? planTitle(input.plan) : "";

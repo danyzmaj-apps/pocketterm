@@ -51,9 +51,13 @@ class TermScreen {
 /// What goes out on the topic; tests pass their own.
 typedef TerminalSend = void Function(String event, Map<String, dynamic> payload);
 
-/// Where images go on their way to the computer (the server's blobs,
-/// sealed); tests pass their own.
+/// Where images and files go on their way to the computer (the server's
+/// blobs, sealed); tests pass their own.
 typedef ImageUpload = Future<void> Function(String path, Uint8List sealed);
+
+/// A file a prompt takes along, as it is: its name and type go inside the
+/// sealed request, its bytes sealed in a blob.
+typedef PromptFile = ({String name, String mime, Uint8List bytes});
 
 class _Watch {
   _Watch({this.session, this.window});
@@ -631,14 +635,31 @@ class TerminalRemote extends ChangeNotifier {
   ({String what, String id, DateTime at})? _unanswered;
   static const _sameFor = Duration(minutes: 2);
 
-  /// Prompts [session] with [text] and [images] (image files: PNG, JPEG),
-  /// which pass through the server sealed with [key]. While omp works the
-  /// prompt steers it, or waits for the turn to end if [followUp]; Claude
-  /// Code always waits.
-  Future<void> prompt(String session, String text, {List<Uint8List> images = const [], bool followUp = false}) async {
+  /// Prompts [session] with [text], [images] (image files: PNG, JPEG) and
+  /// [files] (any file, as it is). Their bytes pass through the server
+  /// sealed with [key]; a file's name and type go inside the sealed request.
+  /// While omp works the prompt steers it, or waits for the turn to end if
+  /// [followUp]; Claude Code always waits.
+  Future<void> prompt(
+    String session,
+    String text, {
+    List<Uint8List> images = const [],
+    List<PromptFile> files = const [],
+    bool followUp = false,
+  }) async {
     if (!online) throw const TerminalException('The computer is not answering.');
     final what = sha1
-        .convert(utf8.encode(jsonEncode([session, text, followUp, for (final i in images) '${sha1.convert(i)}'])))
+        .convert(
+          utf8.encode(
+            jsonEncode([
+              session,
+              text,
+              followUp,
+              for (final i in images) '${sha1.convert(i)}',
+              for (final f in files) [f.name, f.mime, '${sha1.convert(f.bytes)}'],
+            ]),
+          ),
+        )
         .toString();
     final now = DateTime.now();
     final again = switch (_unanswered) {
@@ -648,30 +669,47 @@ class TerminalRemote extends ChangeNotifier {
     final id = again?.id ?? const Uuid().v4();
     final upload = _uploadImage ?? _server.putBlob;
     final paths = <String>[];
+    final sent = <Map<String, String>>[];
     void forget() {
-      for (final path in paths) {
+      for (final path in [...paths, for (final f in sent) f['path']!]) {
         unawaited(_server.deleteBlob(path).then((_) {}, onError: (Object e) => debugPrint('$e')));
       }
     }
 
+    Future<String> sealed(Uint8List bytes) async {
+      final path = _server.newBlobPath();
+      await upload(path, await sealBytes(key, bytes, imageAad(path)));
+      return path;
+    }
+
     try {
       for (final bytes in images) {
-        final path = _server.newBlobPath();
-        await upload(path, await sealBytes(key, bytes, imageAad(path)));
-        paths.add(path);
+        paths.add(await sealed(bytes));
+      }
+      for (final f in files) {
+        sent.add({'path': await sealed(f.bytes), 'name': f.name, 'mime': f.mime});
       }
     } on Object catch (e) {
       forget();
-      throw TerminalException("The image didn't upload: $e");
+      throw TerminalException("The ${paths.length < images.length ? 'image' : 'file'} didn't upload: $e");
     }
+    final bytes = [...images, for (final f in files) f.bytes].fold(0, (n, b) => n + b.length);
     try {
       final reply = await _run(
-        {'op': 'prompt', 'session': session, 'text': text, 'images': paths, 'deliver': followUp ? 'followUp' : 'steer'},
-        wait: paths.isEmpty ? answerWait : answerWait * 3,
+        {
+          'op': 'prompt',
+          'session': session,
+          'text': text,
+          'images': paths,
+          if (sent.isNotEmpty) 'files': sent,
+          'deliver': followUp ? 'followUp' : 'steer',
+        },
+        // The computer downloads them first: a second more for each MB.
+        wait: bytes == 0 ? answerWait : answerWait * 3 + Duration(seconds: bytes >> 20),
         id: id,
       );
       _unanswered = null;
-      // The computer had it already, with the images sent the first time.
+      // The computer had it already, with the images and files sent the first time.
       if (reply['repeat'] == true) forget();
     } on TerminalException catch (e) {
       _unanswered = e is _NoAnswer ? (what: what, id: id, at: again?.at ?? now) : null;

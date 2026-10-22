@@ -63,7 +63,9 @@ class ChannelKey {
 /// The additional data of a live channel [event] on [topic].
 String channelAad(String topic, String event) => 'pocketterm/v1|$topic|$event';
 
-/// The additional data of an image stored at [path].
+/// The additional data of an image, or a file a prompt takes, stored at
+/// [path] (the same for both: the file's name and type travel in the
+/// sealed prompt).
 String imageAad(String path) => 'pocketterm/v1|image|$path';
 
 /// The additional data of a push from computer [desktopId].
@@ -94,6 +96,9 @@ Future<String> _tag(ChannelKey key, String what, int length) async {
 
 const _nonceLength = 12;
 const _tagLength = 16;
+
+/// What sealing adds to the bytes: the nonce and the tag.
+const int sealedOverhead = _nonceLength + _tagLength;
 
 // Looked up on each use: cryptography_flutter puts the operating system's
 // AES-GCM in place when the app starts.

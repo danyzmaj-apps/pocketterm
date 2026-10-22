@@ -61,9 +61,12 @@ import 'package:pocketterm_core/agent.dart';
 //   ext → Mac  ask    {ask?}   the agent waits for an answer (null: not anymore): LiveAsk.toJson; a plan
 //                     review comes without options, which the Mac reads off the agent's screen
 //   ext → Mac  reply  {req, error?, items?, older?}
-//   Mac → ext  prompt {req, text, images: [{data, mimeType}], files?: [path], deliver?: steer | followUp}
+//   Mac → ext  prompt {req, text, images: [{data, mimeType}], files?: [path], docs?: [path],
+//                     deliver?: steer | followUp}
 //                     files: the images saved on this Mac instead, for an agent that reads them from disk
-//                     (Claude Code); an agent that can't steer queues every prompt for the run's end
+//                     (Claude Code); docs: the files sent with the prompt, saved on this Mac and named in text as
+//                     @path, which that agent may read without asking; an agent that can't steer queues every
+//                     prompt for the run's end
 //   Mac → ext  abort  {req}
 //   Mac → ext  older  {req, limit}   items before the oldest one sent
 

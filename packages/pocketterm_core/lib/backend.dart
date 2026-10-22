@@ -123,33 +123,108 @@ class Backend {
   /// The protocol version this app speaks (GET /v1/health).
   static const protocol = 1;
 
+  /// The oldest PocketTerm server this app works with (GET /v1/health's
+  /// `version`).
+  static const minServer = '0.1.0';
+
+  /// How far this device's clock may be off the server's before
+  /// [clockWarning] speaks up: each side drops sealed messages more than 5
+  /// minutes off its own clock, so two devices each within 2 minutes stay
+  /// within reach of each other.
+  static const clockTolerance = Duration(minutes: 2);
+
   /// Asks the server for its health: reachable, a PocketTerm server, one
   /// this app speaks to. Null when all is well, else what's wrong.
-  Future<String?> check() async {
+  Future<String?> check() async => (await health()).error;
+
+  /// GET /v1/health: `error` is null when all is well, else what's wrong,
+  /// worded for the person. `clockOffset` is how far the server's clock is
+  /// ahead of this device's (null when it didn't say); see [clockWarning].
+  Future<({String? error, Duration? clockOffset})> health() async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    ({String? error, Duration? clockOffset}) fail(String error) => (error: error, clockOffset: null);
     try {
+      final sent = DateTime.now();
       final req = await client.getUrl(Uri.parse('$url/v1/health'));
       final res = await req.close().timeout(const Duration(seconds: 10));
       final body = await utf8.decodeStream(res);
-      if (res.statusCode == 404) return 'No PocketTerm server answers at this URL.';
-      if (res.statusCode != 200) return 'The server answered with an error (${res.statusCode}).';
+      final received = DateTime.now();
+      final status = res.statusCode;
+      if (status >= 520 && status <= 530 && (res.headers.value('cf-ray') != null || _cloudflare(res))) {
+        return fail(
+          "Cloudflare answers for $host but can't reach your server ($status). Turn the orange cloud off for "
+          'this name (DNS only), or set SSL/TLS to Full (strict) in Cloudflare.',
+        );
+      }
+      if (status == 502 || status == 503 || status == 504) {
+        return fail(
+          "$host answers, but the PocketTerm server behind it doesn't ($status). On a VPS, check that it runs: "
+          '`docker compose ps` and `docker compose logs server`.',
+        );
+      }
+      if (status == 404) return fail('No PocketTerm server answers at this URL.');
+      if (status != 200) return fail('The server answered with an error ($status).');
       final health = jsonDecode(body);
       final version = health is Map ? health['pocketterm'] : null;
-      if (version is! int) return 'No PocketTerm server answers at this URL.';
-      if (version > protocol) return 'Your server is newer than this app. Update PocketTerm, then retry.';
-      return null;
+      if (version is! int) return fail('No PocketTerm server answers at this URL.');
+      if (version > protocol) return fail('Your server is newer than this app. Update PocketTerm, then retry.');
+      final serverVersion = (health as Map)['version'];
+      if (serverVersion is String && _olderThan(serverVersion, minServer)) {
+        return fail(
+          'Your server runs PocketTerm server $serverVersion; this app needs $minServer or newer. Update the '
+          'server (on a VPS: `docker compose pull && docker compose up -d`; built into PocketTerm on a computer: '
+          'update PocketTerm there), then retry.',
+        );
+      }
+      final time = DateTime.tryParse(health['time'] as String? ?? '');
+      // The server read its clock about halfway through the round trip.
+      final here = sent.add(received.difference(sent) ~/ 2);
+      return (error: null, clockOffset: time?.difference(here));
     } on HandshakeException {
-      return "Couldn't make a secure connection to $host.";
+      return fail(
+        "Couldn't make a secure connection to $host: its HTTPS certificate isn't valid or isn't there yet. A new "
+        'server takes a minute to get one; on a VPS, `docker compose logs caddy` says what went wrong.',
+      );
+    } on RedirectException {
+      return fail(
+        '$host keeps redirecting to itself. If it is behind Cloudflare, set SSL/TLS to Full (strict) in '
+        'Cloudflare.',
+      );
     } on IOException {
       // Refused, reset, or closed mid-answer (HttpException), e.g. a captive portal or a proxy.
-      return onTailnet ? unreachable : "Couldn't reach $host. Check the URL and your connection.";
+      return fail(onTailnet ? unreachable : "Couldn't reach $host. Check the URL and your connection.");
     } on TimeoutException {
-      return '$host took too long to answer.';
+      return fail('$host took too long to answer.');
     } on FormatException {
-      return 'No PocketTerm server answers at this URL.';
+      return fail('No PocketTerm server answers at this URL.');
     } finally {
       client.close(force: true);
     }
+  }
+
+  /// What to tell the person when this device's clock is [offset] off the
+  /// server's by more than [clockTolerance]; null when it's close enough or
+  /// unknown.
+  static String? clockWarning(Duration? offset) {
+    if (offset == null || offset.abs() <= clockTolerance) return null;
+    final minutes = (offset.inSeconds.abs() / 60).round();
+    return "This device's clock is $minutes minutes ${offset.isNegative ? 'ahead of' : 'behind'} the server's, so "
+        "its messages to your other devices are dropped. Turn on Set time automatically in this device's date and "
+        'time settings.';
+  }
+
+  static bool _cloudflare(HttpClientResponse res) => res.headers.value('server')?.toLowerCase() == 'cloudflare';
+
+  /// Whether version [a] (`1.2.3`) comes before [b].
+  static bool _olderThan(String a, String b) {
+    List<int> parts(String v) => [for (final p in v.split('-').first.split('.')) int.tryParse(p) ?? 0];
+    final x = parts(a);
+    final y = parts(b);
+    for (var i = 0; i < 3; i++) {
+      final d = (i < x.length ? x[i] : 0) - (i < y.length ? y[i] : 0);
+      if (d != 0) return d < 0;
+    }
+    return false;
   }
 
   /// The server this device was connected to, if any. One saved by an app

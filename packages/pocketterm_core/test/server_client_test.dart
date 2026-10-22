@@ -105,6 +105,15 @@ void main() {
     await expectLater(mac.getBlob(unused), throwsA(isA<ServerException>()));
   });
 
+  test('an image over the limit is refused with its reason, not as a lost connection', () async {
+    final path = phone.newBlobPath();
+    await expectLater(
+      phone.putBlob(path, Uint8List(PocketTermServerClient.maxBlobBytes + 1)),
+      throwsA(isA<ServerException>().having((e) => e.status, 'status', 413)),
+    );
+    await expectLater(mac.getBlob(path), throwsA(isA<ServerException>().having((e) => e.status, 'status', 404)));
+  });
+
   test('a computer lists itself for the phones and takes itself off', () async {
     await mac.putDesktop('abcd1234', name: 'MacBook Pro', platform: 'macos');
     final rows = await phone.desktops();

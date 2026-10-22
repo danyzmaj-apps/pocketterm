@@ -255,7 +255,17 @@ class PocketTermServerClient {
   /// [path] can be one of [newBlobPath]'s.
   static bool isBlobPath(String path) => RegExp(r'^[A-Za-z0-9-]{1,64}$').hasMatch(path);
 
-  Future<void> putBlob(String path, Uint8List bytes) => _json('PUT', '/v1/blobs/$path', bytes: bytes);
+  /// The most a blob may hold (the server's limit, 20 MiB).
+  static const int maxBlobBytes = 20 * 1024 * 1024;
+
+  /// Uploads [bytes] to [path]. One over [maxBlobBytes] fails here, with the
+  /// reason: sent, the server would cut it off and the reason would be lost.
+  Future<void> putBlob(String path, Uint8List bytes) async {
+    if (bytes.length > maxBlobBytes) {
+      throw const ServerException(413, 'too_large', 'That image is too large: the most is 20 MB.');
+    }
+    await _json('PUT', '/v1/blobs/$path', bytes: bytes);
+  }
 
   /// The blob at [path]; the server deletes it once sent.
   Future<Uint8List> getBlob(String path) async => (await _send('GET', '/v1/blobs/$path')).bytes;

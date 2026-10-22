@@ -1,6 +1,7 @@
 # A session that asks before running a command: the answer goes from the
-# phone and the agent carries on.
-#   env: SESSION (regex), ANSWER
+# phone and the agent carries on. Where the terminal can't show its screen
+# (Ghostty), the phone is told to answer on the computer instead (THEN).
+#   env: SESSION (regex), ANSWER, THEN (regex)
 appId: com.danyzmaj.pocketterm
 ---
 - runFlow: sub/home.yaml
@@ -14,7 +15,7 @@ appId: com.danyzmaj.pocketterm
 - takeScreenshot: asking
 - tapOn: ${ANSWER}
 - extendedWaitUntil:
-    visible: "approved"
+    visible: ${THEN}
     timeout: 20000
 - takeScreenshot: answered
 - tapOn: "Back"

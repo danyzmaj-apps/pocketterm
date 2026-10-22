@@ -204,8 +204,10 @@ case $PHASE in
     if [ -n "$LOCKED_COMPUTER" ]; then
       flow computers computers.yaml -e LOCKED_COMPUTER_RE="$LOCKED_COMPUTER_RE"
     fi
-    # Answered first: the other sessions are idle, this one is asking.
-    flow approval approval.yaml -e SESSION="$APPROVAL_SESSION_RE" -e ANSWER="$APPROVAL_ANSWER"
+    # Answered first: the other sessions are idle, this one is asking. Ghostty
+    # can't show its screen, which answering reads: the phone says so.
+    if [ "$TERMINAL_ID" = ghostty ]; then THEN=".*Ghostty can.t show its screen.*"; else THEN=approved; fi
+    flow approval approval.yaml -e SESSION="$APPROVAL_SESSION_RE" -e ANSWER="$APPROVAL_ANSWER" -e THEN="$THEN"
     for ((i = 0; i < SESSION_COUNT; i++)); do
       t=SESSION_${i}_RE
       flow "conversation-$i" conversation.yaml -e SESSION="${!t}" -e PROMPT="$(prompt $i)" \

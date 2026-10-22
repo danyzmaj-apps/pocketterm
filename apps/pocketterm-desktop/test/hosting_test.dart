@@ -63,6 +63,11 @@ void main() {
         r'D:\Program Files\Tailscale\tailscale.exe',
       );
       expect(Tailscale.findCli(env: {'PATH': '/usr/bin'}, exists: (_) => false, windows: false), isNull);
+      // A smoke run's stand-in, before the real app's.
+      expect(
+        Tailscale.findCli(env: {'POCKETTERM_TAILSCALE': '/tmp/fake-tailscale'}, exists: (f) => f == Tailscale.macCli),
+        '/tmp/fake-tailscale',
+      );
     });
 
     test('not installed, its service not running, signed out, running', () async {

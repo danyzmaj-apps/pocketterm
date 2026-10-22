@@ -127,6 +127,21 @@ void main() {
       expect(log.items.map((i) => i.id), ['3', '4', '5']);
     });
 
+    test('past its cap the phone drops the oldest items too, but keeps earlier messages it pages in', () {
+      final log = LiveLog([for (var i = 0; i < 3; i++) _text('$i', '$i')], older: false, cap: 5);
+      final view = LiveView(epoch: log.epoch, cap: 3)
+        ..catchUp(epoch: log.epoch, seq: log.seq, reset: true, items: log.items, last: true);
+      expect(view.older, isFalse);
+      _follow(log, [log.upsert(_text('3', '3')), log.upsert(_text('4', '4'))], view: view);
+      expect(view.items.map((i) => i.id), ['2', '3', '4']);
+      expect(view.older, isTrue, reason: 'the Mac has the rest');
+
+      _follow(log, log.addOlder([_text('a', 'a')], more: false), view: view);
+      expect(view.items.map((i) => i.id).first, 'a', reason: 'asked for, so it stays');
+      _follow(log, [log.upsert(_text('5', '5'))], view: view);
+      expect(view.items.map((i) => i.id), ['3', '4', '5']);
+    });
+
     test('the disk cache keeps the newest items and remembers the rest are on the Mac', () {
       final log = LiveLog([for (var i = 0; i < 10; i++) _text('$i', '$i')], older: false);
       final view = LiveView(epoch: log.epoch)

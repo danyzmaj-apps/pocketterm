@@ -363,12 +363,19 @@ class LiveLog {
 }
 
 /// The phone's copy of one session's transcript, kept up with [LiveLog]'s
-/// ops and catch-ups, and cached on disk between launches.
+/// ops and catch-ups, and cached on disk between launches. Like [LiveLog],
+/// it keeps at most [cap] items: the oldest go as newer ones come (and
+/// [older] turns true, the Mac may still have them).
 class LiveView {
-  LiveView({required this.epoch, this.seq = 0, this.older = false, Iterable<LiveItem> items = const []}) {
-    for (final i in items) {
-      _byId[i.id] = i;
-    }
+  LiveView({
+    required this.epoch,
+    this.seq = 0,
+    this.older = false,
+    this.cap = 3000,
+    Iterable<LiveItem> items = const [],
+  }) {
+    items.forEach(_put);
+    _trim();
   }
 
   factory LiveView.fromJson(Map<String, dynamic> j) => LiveView(
@@ -383,6 +390,28 @@ class LiveView {
   bool older;
   final _byId = <String, LiveItem>{};
   List<LiveItem>? _sorted;
+  final int cap;
+
+  /// The newest item's order: one past it grows the transcript, one before
+  /// it is an earlier message paged in (kept, though past [cap]).
+  int? _newest;
+
+  void _put(LiveItem i) {
+    _byId[i.id] = i;
+    if (_newest case final n? when n >= i.order) return;
+    _newest = i.order;
+  }
+
+  /// Past [cap]: the oldest go.
+  void _trim() {
+    if (_byId.length <= cap) return;
+    final all = items;
+    for (final i in all.take(all.length - cap)) {
+      _byId.remove(i.id);
+    }
+    _sorted = null;
+    older = true;
+  }
 
   /// Oldest first.
   List<LiveItem> get items => _sorted ??= _byId.values.toList()..sort((a, b) => a.order.compareTo(b.order));
@@ -391,13 +420,15 @@ class LiveView {
   /// up with a sync then). Ops already seen are skipped.
   bool apply(String epoch, List<LiveOp> ops) {
     if (epoch != this.epoch) return false;
+    var grew = false;
     for (final op in ops) {
       if (op.seq <= seq) continue;
       if (op.seq != seq + 1) return false;
       final item = op.item;
       if (item != null) {
         final old = _byId[item.id];
-        _byId[item.id] = item;
+        if (old == null && (_newest == null || item.order > _newest!)) grew = true;
+        _put(item);
         // The sorted list holds the old object: swap it in place, or sort again.
         final at = old == null || old.order != item.order ? -1 : _sorted?.indexOf(old) ?? -1;
         if (at >= 0) {
@@ -412,6 +443,7 @@ class LiveView {
       }
       seq = op.seq;
     }
+    if (grew) _trim();
     return true;
   }
 
@@ -429,14 +461,14 @@ class LiveView {
       this.epoch = epoch;
       this.seq = 0;
       _byId.clear();
+      _newest = null;
     } else if (epoch != this.epoch) {
       return;
     }
-    for (final i in items) {
-      _byId[i.id] = i;
-    }
+    items.forEach(_put);
     _sorted = null;
     if (older != null) this.older = older;
+    _trim();
     if (last && seq > this.seq) this.seq = seq;
   }
 

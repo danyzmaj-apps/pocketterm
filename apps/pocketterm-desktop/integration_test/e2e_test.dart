@@ -23,6 +23,7 @@ import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_desktop/integrations.dart';
+import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:pocketterm_desktop/local_api.dart';
 import 'package:pocketterm_desktop/main_window.dart';
 import 'package:pocketterm_e2e/e2e.dart';
@@ -657,27 +658,34 @@ class _Run {
 
   static const _omp = '/opt/homebrew/bin/omp';
 
-  /// The real omp, once: with the owner's own omp set-up (its home) but
-  /// only the extension this run installed, sessions kept in the run's
-  /// folder, no title generation (nothing here calls a model). A `!` shell
-  /// command typed at the computer gives it a transcript; the phone's `/new`
-  /// then starts a fresh session in the same window.
+  /// The real omp, once, as the owner runs it but in the throwaway home: it
+  /// finds the extension where this run's Get ready installed it
+  /// (~/.omp/agent/extensions), no setup wizard, no model (nothing here
+  /// calls one), sessions kept in the run's folder, no title generation. A
+  /// `!` shell command typed at the computer gives it a transcript; the
+  /// phone's `/new` then starts a fresh session in the same window.
   Future<void> _realOmp() async {
-    final ext = p.join(c.home, '.omp', 'agent', 'extensions', 'pocketterm-live.ts');
-    final real = Platform.environment['HOME']!;
     final sessions = p.join(c.work, 'omp-sessions');
     String q(String s) => "'${s.replaceAll("'", r"'\''")}'";
-    await _open(
-      'realomp',
-      autorun:
-          'env HOME=${q(real)} $_omp --no-extensions -e ${q(ext)} --session-dir ${q(sessions)} '
-          '--no-title --no-lsp --no-skills --no-rules',
-    );
-    final s = await until(
-      'real omp reports',
-      () => app.live.sessions.where((s) => s.cwd == dir('realomp') && s.window != null).firstOrNull,
-      timeout: const Duration(seconds: 60),
-    );
+    await _open('realomp', autorun: 'OMP_SKIP_SETUP=1 $_omp --session-dir ${q(sessions)} --no-title --no-lsp');
+    bool here(String cwd) => _isDir(cwd, 'realomp');
+    final LiveSession s;
+    try {
+      s = await until(
+        'real omp reports',
+        () => app.live.sessions.where((s) => here(s.cwd) && s.window != null).firstOrNull,
+        timeout: const Duration(seconds: 60),
+      );
+    } on TimeoutException {
+      for (final x in app.live.sessions) {
+        report.log('real omp: live ${x.key} ${x.agent.name} window=${x.window} cwd=${x.cwd}');
+      }
+      for (final w in await app.terminals.windows()) {
+        if (!here(w.cwd)) continue;
+        report.log('real omp: window ${w.key} ${w.program}\n${await app.terminals.plainScreen(w.key)}');
+      }
+      rethrow;
+    }
     expect(ours(s.window!), isTrue, reason: 'real omp placed in ${s.window}');
     await Future<void>.delayed(const Duration(seconds: 2));
     await app.terminals.send(s.window!, '!echo e2e-real', enter: true);
@@ -692,18 +700,27 @@ class _Run {
       expect(code, '0', reason: 'phone phase real-omp');
     } else {
       final r = phone!.remote;
-      final key = await until(
-        'the phone lists real omp',
-        () => r.sessions.where((x) => x.cwd == dir('realomp')).firstOrNull?.key,
-      );
+      final key = await until('the phone lists real omp', () => r.sessions.where((x) => here(x.cwd)).firstOrNull?.key);
       await r.prompt(key, '/new');
     }
     final after = await until('real omp on a new session', () {
-      final now = app.live.sessions.where((x) => x.cwd == dir('realomp')).toList();
+      final now = app.live.sessions.where((x) => here(x.cwd)).toList();
       return now.length == 1 && now.single.id != before ? now.single : null;
     });
     expect(after.key, s.key, reason: 'the same window, the same session key');
     expect(after.log.items.any((i) => '${i.args}${i.output}${i.text}'.contains('e2e-real')), isFalse);
+  }
+
+  /// Whether [cwd], as an agent reports it, is project [what]'s folder. The
+  /// real omp drops macOS's /private: the run's /private/tmp/… is /tmp/… to it.
+  bool _isDir(String cwd, String what) {
+    final d = dir(what);
+    if (cwd == d) return true;
+    try {
+      return Directory(cwd).resolveSymbolicLinksSync() == d;
+    } on FileSystemException {
+      return false;
+    }
   }
 
   Future<void> _revoke() async {

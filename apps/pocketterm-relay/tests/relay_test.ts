@@ -82,7 +82,8 @@ Deno.test("a Live Activity push carries only a state rebuilt from checked fields
   assertEquals(rest, {});
   assertEquals(aps["content-state"], { state: "needs", since, kind: "approval" });
   assertEquals(aps.event, "update");
-  assert(aps["stale-date"] > now());
+  // Stale 3 minutes on: a computer that stops sending leaves no activity claiming it's still working.
+  assert(Math.abs(aps["stale-date"] - (now() + 180)) <= 2);
   assertEquals(aps.alert, undefined);
 });
 
@@ -125,6 +126,14 @@ Deno.test("malformed pushes are refused before anything reaches Apple or Google"
       kind: "activity",
       session: "not a key",
       state: { state: "done", since: now() },
+    },
+    { platform: "android", token: "f".repeat(160), kind: "activity", enc: "c2VhbGVk" }, // whose key opens it?
+    {
+      platform: "android",
+      token: "f".repeat(160),
+      kind: "activity",
+      session: "k3x9m2qa/s1",
+      state: { state: "working", since: now() }, // in the clear
     },
     "a string",
     [1, 2],
@@ -190,26 +199,36 @@ Deno.test("an Android push goes to FCM as a data-only message", async () => {
   });
 
   network(() => json({ name: "sent" }));
-  const since = now() - 60;
-  const followed = {
+  const sealedActivity = {
     platform: "android",
     token: "e".repeat(160),
     kind: "activity",
-    session: "k3x9m2qa/s1",
-    state: { state: "needs", since, kind: "question", title: "secret project" },
+    enc: "c2VhbGVk",
+    desktop: "k3x9m2qa",
     collapse: "k3x9m2qa/s1",
   };
-  assertEquals((await relay(post(followed))).status, 200);
+  assertEquals((await relay(post(sealedActivity))).status, 200);
   assertEquals(JSON.parse(sent[0].body).message, {
     token: "e".repeat(160),
-    data: { kind: "activity", session: "k3x9m2qa/s1", state: "needs", since: String(since * 1000), akind: "question" },
+    data: { kind: "activity", enc: "c2VhbGVk", d: "k3x9m2qa" },
     android: { priority: "high", collapse_key: "k3x9m2qa/s1", ttl: "3600s" },
   });
 
   network(() => json({ name: "sent" }));
-  const sealedActivity = { ...followed, state: undefined, session: undefined, enc: "c2VhbGVk", desktop: "k3x9m2qa" };
-  assertEquals((await relay(post(sealedActivity))).status, 200);
-  assertEquals(JSON.parse(sent[0].body).message.data, { kind: "activity", enc: "c2VhbGVk", d: "k3x9m2qa" });
+  const since = now() - 60;
+  const end = {
+    platform: "android",
+    token: "e".repeat(160),
+    kind: "activity",
+    session: "k3x9m2qa/s1",
+    state: { state: "ended", since, title: "secret project" },
+    collapse: "k3x9m2qa/s1",
+  };
+  assertEquals((await relay(post(end))).status, 200);
+  assertEquals(
+    JSON.parse(sent[0].body).message.data,
+    { kind: "activity", session: "k3x9m2qa/s1", state: "ended", since: String(since * 1000) },
+  );
 
   network(() => json({ error: { status: "NOT_FOUND", message: "Requested entity was not found." } }, 404));
   assertEquals(

@@ -26,9 +26,14 @@ What's inside the seal (the server builds it; see
 - iPhone Live Activity:
   `{"token", "kind": "liveactivity", "event": "update"|"end", "state": {"state", "since", "kind"?}}`
 - Android alert: `{"platform": "android", "token", "kind": "terminal", "enc", "desktop"?, "collapse"?}`
-- Android coding session: `{"platform": "android", "token", "kind": "activity", "session", "state": {…}, "collapse"?}`
+- Android coding session: `{"platform": "android", "token", "kind": "activity", "enc", "desktop", "collapse"?}`, or its
+  end in plain text:
+  `{"platform": "android", "token", "kind": "activity", "session", "state": {"state": "ended", "since"}, "collapse"?}`
+- iPhone Live Activities go stale 3 minutes after an update (`stale-date`) and leave the Lock Screen 10 minutes after
+  their end (`dismissal-date`).
 
-`enc` is the notification, sealed on your computer with its channel key; the relay passes it to the phone as it is.
+`enc` is the notification (or an Android session's state), sealed on your computer with its channel key; the relay
+passes it to the phone as it is.
 
 ## Sealed requests (v1)
 

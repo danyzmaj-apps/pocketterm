@@ -38,6 +38,9 @@ const _activityKinds = ['question', 'approval', 'plan'];
 final _desktopId = RegExp(r'^[a-z0-9]{8}$');
 final _blobPath = RegExp(r'^[A-Za-z0-9-]{1,64}$');
 final _sessionKey = RegExp(r'^[\w.:/-]{1,64}$');
+
+/// A session as phones and the push endpoints name it: `<desktop id>/<key>` (lib/live.dart's routedKey).
+final _routedKey = RegExp(r'^[a-z0-9]{8}/[\w.:/-]{1,55}$');
 final _fcmToken = RegExp(r'^[A-Za-z0-9_:\-]{100,4096}$');
 
 /// The relay takes at most 3000 base64 characters (FCM's 4 KB of data in all).
@@ -89,9 +92,8 @@ class PocketTermServer {
       clock ?? DateTime.now,
       trustProxy,
     ).._log = log;
-    server
-      .._sweep()
-      .._sweeper = Timer.periodic(const Duration(minutes: 1), (_) => server._sweep());
+    server._sweeper = Timer.periodic(const Duration(minutes: 1), (_) => unawaited(server.sweep()));
+    unawaited(server.sweep());
     http.listen((req) => unawaited(server._handle(req)));
     return server;
   }
@@ -144,8 +146,10 @@ class PocketTermServer {
 
   Directory get _blobs => Directory('${_dir.path}/blobs');
 
-  /// Forgets blobs past [blobTtl] (and half-written ones), expired pairing codes and old redeem failures.
-  void _sweep() {
+  /// The minute's housekeeping, also run at start: forgets blobs past [blobTtl] (and half-written ones), expired
+  /// pairing codes and old redeem failures, and ends the Live Activities of every computer that hasn't checked in
+  /// for [Desktop.activitiesFor].
+  Future<void> sweep() async {
     final now = _now();
     try {
       for (final f in _blobs.listSync().whereType<File>()) {
@@ -160,6 +164,14 @@ class PocketTermServer {
     _failures
       ..forEach((_, times) => times.removeWhere((t) => now.difference(t) >= redeemWindow))
       ..removeWhere((_, times) => times.isEmpty);
+    final silent = {
+      for (final t in _store.activityTokens)
+        if (_store.desktops[t.desktop] case final d when d == null || now.difference(d.seen) >= Desktop.activitiesFor)
+          t.desktop,
+    };
+    for (final id in silent) {
+      await _endActivities(id);
+    }
   }
 
   Future<void> _handle(HttpRequest req) async {
@@ -234,7 +246,7 @@ class PocketTermServer {
         final target = id == 'me' ? me.id : id;
         if (target != me.id) _desktopOnly(me);
         if (!_store.devices.containsKey(target)) throw _Fail(404, 'not_found', 'No such device.');
-        _dropDevice(target);
+        await _dropDevice(target);
         return await _json(req, 200, {'ok': true});
       case ['erase']:
         only('POST');
@@ -370,14 +382,23 @@ class PocketTermServer {
     return {'token': token, 'device': device.toApi()};
   }
 
-  /// Signs device [id] out for good: its token, its push and activity tokens and its sockets.
-  void _dropDevice(String id) {
+  /// Signs device [id] out for good: its token, its push and activity tokens and its sockets. A computer's
+  /// desktops go from the list too (nothing checks them in any more), their Live Activities ended.
+  Future<void> _dropDevice(String id) async {
+    final desktops = [
+      for (final d in _store.desktops.values)
+        if (d.device == id) d.id,
+    ];
     _store
       ..devices.remove(id)
+      ..desktops.removeWhere((_, d) => d.device == id)
       ..pushTokens.removeWhere((_, t) => t.device == id)
       ..activityTokens.removeWhere((t) => t.device == id)
       ..save();
     _hub.closeDevice(id);
+    for (final d in desktops) {
+      await _endActivities(d);
+    }
   }
 
   /// Erases everything the owner has here: every device (the caller too), computer, pairing code, push and
@@ -413,6 +434,7 @@ class PocketTermServer {
           name: _clip(name, 80),
           platform: _platform(body, _desktopPlatforms),
           seen: _now(),
+          device: me.id,
         );
         _store
           ..desktops[id] = desktop
@@ -420,6 +442,7 @@ class PocketTermServer {
         return await _json(req, 200, desktop.toApi(_now()));
       case 'DELETE':
         if (_store.desktops.remove(id) != null) _store.save();
+        await _endActivities(id);
         return await _json(req, 200, {'ok': true});
       default:
         throw _Fail(405, 'method_not_allowed', '${req.uri.path} takes PUT or DELETE.');
@@ -514,13 +537,12 @@ class PocketTermServer {
           ..save();
         return {'ok': true};
       case 'unregister':
-        if (token is String) {
-          _store
-            ..pushTokens.remove(token)
-            // An Android phone's sessions follow its device token.
-            ..activityTokens.removeWhere((t) => t.token == token)
-            ..save();
-        }
+        // Turning notifications off: the token (all of this phone's without one) and every Live Activity this
+        // phone follows. An Android phone's sessions follow its device token, so a token also takes those.
+        _store
+          ..pushTokens.removeWhere((t, p) => token is String ? t == token : p.device == device)
+          ..activityTokens.removeWhere((t) => t.device == device || t.token == token)
+          ..save();
         return {'ok': true};
       case 'notify':
         final desktop = body['desktop'];
@@ -537,17 +559,14 @@ class PocketTermServer {
         } else if (!_apnsToken(token, 400)) {
           throw _bad("token must be the activity's push token (hex).");
         }
-        if (!_isSessionKey(session)) throw _bad('session must be a coding session key.');
+        if (session is! String || !_routedKey.hasMatch(session)) {
+          throw _bad('session must be a routed session key, <desktop id>/<key>.');
+        }
         // An iPhone's activity follows one session for good.
         _store.activityTokens.removeWhere((t) => t.token == token && (t.session == session || platform == 'ios'));
         _store
           ..activityTokens.add(
-            ActivityToken(
-              token: token! as String,
-              session: session! as String,
-              platform: platform as String,
-              device: device,
-            ),
+            ActivityToken(token: token! as String, session: session, platform: platform as String, device: device),
           )
           ..save();
         return {'ok': true};
@@ -563,12 +582,34 @@ class PocketTermServer {
         return {'ok': true};
       case 'activity':
         final session = body['session'];
-        if (!_isSessionKey(session)) throw _bad('session must be a coding session key.');
+        if (session is! String || !_routedKey.hasMatch(session)) {
+          throw _bad('session must be a routed session key, <desktop id>/<key>.');
+        }
         final state = body['state'];
         if (!_activityStates.contains(state)) throw _bad('state must be ${_activityStates.join(', ')}.');
         final kind = body['kind'];
         if (kind != null && !_activityKinds.contains(kind)) throw _bad('kind must be ${_activityKinds.join(', ')}.');
-        return {'sent': await _activity(session! as String, state as String, kind as String?)};
+        final desktop = body['desktop'];
+        if (desktop != null && (desktop is! String || !session.startsWith('$desktop/'))) {
+          throw _bad("desktop must be the id of the session's computer.");
+        }
+        final enc = body['enc'];
+        if (enc != null && (desktop == null || !_sealed(enc))) {
+          throw _bad('enc must be the sealed state, base64, at most $_maxEnc, with desktop.');
+        }
+        final live = {
+          'state': state,
+          'since': _now().millisecondsSinceEpoch ~/ 1000,
+          if (state == 'needs' && kind != null) 'kind': kind,
+        };
+        final tokens = _store.activityTokens.where((t) => t.session == session).toList();
+        // An ended activity takes no more pushes.
+        if (state == 'ended') {
+          _store
+            ..activityTokens.removeWhere((t) => t.session == session)
+            ..save();
+        }
+        return {'sent': await _sendActivity(tokens, live, enc as String?)};
       default:
         throw _Fail(404, 'not_found', 'No such endpoint.');
     }
@@ -598,27 +639,49 @@ class PocketTermServer {
     return sent;
   }
 
-  /// Moves every Live Activity of coding [session] to [state] (ended: ends them).
-  Future<int> _activity(String session, String state, String? kind) async {
-    final live = {
-      'state': state,
-      'since': _now().millisecondsSinceEpoch ~/ 1000,
-      if (state == 'needs' && kind != null) 'kind': kind,
-    };
+  /// Ends every Live Activity following a session of computer [desktop] and forgets their tokens: it signed out,
+  /// was removed, or stopped checking in.
+  Future<void> _endActivities(String desktop) async {
+    final tokens = _store.activityTokens.where((t) => t.desktop == desktop).toList();
+    if (tokens.isEmpty) return;
+    _store
+      ..activityTokens.removeWhere((t) => t.desktop == desktop)
+      ..save();
+    await _sendActivity(tokens, {'state': 'ended', 'since': _now().millisecondsSinceEpoch ~/ 1000}, null);
+  }
+
+  /// Moves the Live Activities of [tokens] to [live] (ended: ends them). An iPhone gets the state itself (Apple
+  /// can't hand a Live Activity push to code that would decrypt it); an Android phone gets [enc], the state the
+  /// computer sealed, or nothing without it, except an end, which says nothing and goes plain.
+  Future<int> _sendActivity(List<ActivityToken> tokens, Map<String, dynamic> live, String? enc) async {
+    final ended = live['state'] == 'ended';
     var sent = 0;
-    for (final t in _store.activityTokens.where((t) => t.session == session).toList()) {
-      final status = await _relay.post(
-        t.platform == 'android'
-            ? {
-                'platform': 'android',
-                'token': t.token,
-                'kind': 'activity',
-                'session': session,
-                'state': live,
-                'collapse': session,
-              }
-            : {'token': t.token, 'kind': 'liveactivity', 'event': state == 'ended' ? 'end' : 'update', 'state': live},
-      );
+    for (final t in tokens) {
+      final Map<String, dynamic> push;
+      if (t.platform != 'android') {
+        push = {'token': t.token, 'kind': 'liveactivity', 'event': ended ? 'end' : 'update', 'state': live};
+      } else if (ended) {
+        push = {
+          'platform': 'android',
+          'token': t.token,
+          'kind': 'activity',
+          'session': t.session,
+          'state': live,
+          'collapse': t.session,
+        };
+      } else if (enc != null) {
+        push = {
+          'platform': 'android',
+          'token': t.token,
+          'kind': 'activity',
+          'enc': enc,
+          'desktop': t.desktop,
+          'collapse': t.session,
+        };
+      } else {
+        continue;
+      }
+      final status = await _relay.post(push);
       // An Android token is the phone's: gone, it follows no session any more.
       if (status == 410) {
         _store
@@ -627,12 +690,6 @@ class PocketTermServer {
       } else if (status != null && status >= 200 && status < 300) {
         sent++;
       }
-    }
-    // An ended activity takes no more pushes.
-    if (state == 'ended') {
-      _store
-        ..activityTokens.removeWhere((t) => t.session == session)
-        ..save();
     }
     return sent;
   }

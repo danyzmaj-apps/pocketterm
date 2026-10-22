@@ -131,14 +131,15 @@ key per-server state on it.
 ### `PUT /v1/desktops/:id` (desktop)
 
 Request `{"name": "MacBook Pro", "platform": "macos"}`. Creates or replaces the computer `:id`
-(`[a-z0-9]{8}`) and stamps its `seen_at` with the server's time. Call it on start and every 60 seconds.
+(`[a-z0-9]{8}`) and stamps its `seen_at` with the server's time. Call it on start and every 60 seconds: after 3
+minutes without it, the server ends the Live Activities of that computer's sessions (below).
 
 200 `<Desktop>`. 400 for a bad id, name or platform. 403 for a phone.
 
 ### `DELETE /v1/desktops/:id`
 
-Removes the computer from the list (sign out on that computer, or a phone forgetting it).
-200 `{"ok": true}`, also when it wasn't there.
+Removes the computer from the list (sign out on that computer, or a phone forgetting it) and ends the Live
+Activities of its sessions. 200 `{"ok": true}`, also when it wasn't there.
 
 ### `GET /v1/devices`
 
@@ -147,7 +148,8 @@ Removes the computer from the list (sign out on that computer, or a phone forget
 ### `DELETE /v1/devices/me`
 
 Leave: the caller's token stops working, its push and Live Activity tokens are forgotten and its WebSockets
-close with code 4003. 200 `{"ok": true}`.
+close with code 4003. A computer's desktops (the ones it last `PUT`) leave the list too and their sessions' Live
+Activities end. 200 `{"ok": true}`.
 
 ### `DELETE /v1/devices/:id` (desktop)
 
@@ -187,11 +189,11 @@ which holds the APNs key and the Firebase service account) and forgets a token w
 | Endpoint                             | Request                                                       | 200                 |
 |--------------------------------------|---------------------------------------------------------------|---------------------|
 | `POST /v1/push/register`             | `{"token", "label"?, "platform"?}`                            | `{"ok": true}`      |
-| `POST /v1/push/unregister`           | `{"token"}`                                                   | `{"ok": true}`      |
+| `POST /v1/push/unregister`           | `{"token"?}`                                                  | `{"ok": true}`      |
 | `POST /v1/push/notify`               | `{"desktop", "enc", "collapse"?}`                             | `{"sent": <count>}` |
 | `POST /v1/push/activity_register`    | `{"token", "session", "platform"?}`                           | `{"ok": true}`      |
 | `POST /v1/push/activity_end`         | `{"token", "session"?}`                                       | `{"ok": true}`      |
-| `POST /v1/push/activity`             | `{"session", "state", "kind"?}`                               | `{"sent": <count>}` |
+| `POST /v1/push/activity`             | `{"session", "state", "kind"?, "desktop"?, "enc"?}`           | `{"sent": <count>}` |
 
 - `token`: iOS, the APNs device token in hex (64 to 200 characters; a Live Activity's up to 400); Android, the
   FCM registration token (`[A-Za-z0-9_:-]{100,4096}`). Registering a token again replaces its row.
@@ -199,12 +201,24 @@ which holds the APNs key and the Firebase service account) and forgets a token w
 - `desktop`: the computer's 8-character id. `enc`: base64 of nonce 12 ‖ ciphertext ‖ tag 16 (AES-256-GCM with the
   computer's channel key over `{title, body, session?, state?}`, AAD `pocketterm/v1|push|<desktop>`), at most 3000
   characters, more than 28 bytes decoded.
-- `session` / `collapse`: a coding session key, `[\w.:/-]{1,64}`.
+- `collapse`: a coding session key, `[\w.:/-]{1,64}`. `session` (activity_register, activity): the routed session key
+  `<desktop id>/<key>`, at most 64 characters; `activity_end` takes any session key.
 - `state`: `working` | `needs` | `done` | `ended`; `kind` (with `needs` only): `question` | `approval` | `plan`.
-- `unregister` also ends every Live Activity that token follows (an Android phone's sessions use its FCM token).
+- `unregister` is how a phone turns notifications off: it forgets `token` (without one, every push token this phone
+  registered) and every Live Activity token this phone registered, plus any following sessions with `token` (an
+  Android phone's sessions use its FCM token). Afterwards nothing reaches the phone until it registers again.
 - `activity_register` for iOS moves the token to this session (an iPhone's activity follows one session).
 - `activity_end` without `session` ends every session the token follows.
-- `activity` with `ended` forgets every token of that session after sending.
+- `activity`: iPhones get `state` and `kind` (Apple shows a Live Activity push without the app, so it can't be
+  encrypted). Android phones get only `enc`: the computer's channel-key AES-256-GCM seal of
+  `{"session", "state", "since", "kind"?}` with AAD `pocketterm/v1|activity|<desktop>`, same layout and limits as a
+  notification's `enc`. `enc` needs `desktop`, and `session` must start with `<desktop>/`. Without `enc`, Android phones
+  get nothing for that update. `ended` reaches Android phones as a plain end (below), then every token of that session
+  is forgotten.
+- Ending by the server: when a computer hasn't `PUT /v1/desktops/:id` for 3 minutes (checked every minute), is
+  removed with `DELETE /v1/desktops/:id`, or its device leaves or is revoked, the server sends an end to every Live
+  Activity following one of its sessions (session keys starting with `<desktop id>/`) and forgets those tokens. A
+  token following a computer that never checked in counts as silent.
 
 What reaches the relay: one POST per phone, its JSON body sealed to the relay's X25519 public key (`PUSH_RELAY_KEY`, by
 default the publisher's relay's): `{"v": 1, "epk", "n", "c"}`, a fresh ephemeral X25519 key, HKDF-SHA256 (salt `epk ‖
@@ -214,8 +228,13 @@ relay public key`, info `pocketterm-relay/v1`) and AES-256-GCM (`c` is the ciphe
 - notify, iOS: `{"token", "kind": "terminal", "enc", "desktop", "collapse"?}`
 - notify, Android: `{"platform": "android", "token", "kind": "terminal", "enc", "desktop", "collapse"?}`
 - activity, iOS: `{"token", "kind": "liveactivity", "event": "update" | "end", "state": {"state", "since", "kind"?}}`
-- activity, Android: `{"platform": "android", "token", "kind": "activity", "session", "state": {"state", "since",
-  "kind"?}, "collapse": <session>}`
+- activity, Android: `{"platform": "android", "token", "kind": "activity", "enc", "desktop", "collapse": <session>}`;
+  the relay hands the phone FCM data `{"kind": "activity", "enc", "d": <desktop>}`
+- end, Android: `{"platform": "android", "token", "kind": "activity", "session", "state": {"state": "ended",
+  "since"}, "collapse": <session>}`; FCM data `{"kind": "activity", "session", "state": "ended", "since": <ms>}`
+
+An iPhone's Live Activity update goes stale 3 minutes after it was sent (`stale-date`); an ended one leaves the Lock
+Screen 10 minutes later (`dismissal-date`).
 
 `since` is seconds since the epoch.
 

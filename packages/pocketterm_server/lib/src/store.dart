@@ -50,13 +50,14 @@ class Device {
 
 /// A computer as phones list it.
 class Desktop {
-  Desktop({required this.id, required this.name, required this.platform, required this.seen});
+  Desktop({required this.id, required this.name, required this.platform, required this.seen, this.device});
 
   factory Desktop.fromJson(Map<String, dynamic> j) => Desktop(
     id: j['id'] as String,
     name: j['name'] as String,
     platform: j['platform'] as String,
     seen: DateTime.parse(j['seen_at'] as String),
+    device: j['device'] as String?,
   );
 
   final String id;
@@ -64,14 +65,22 @@ class Desktop {
   final String platform;
   final DateTime seen;
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'platform': platform, 'seen_at': iso(seen)};
+  /// The desktop device that last checked it in (null in a state file from before it was kept).
+  final String? device;
+
+  Map<String, dynamic> get _row => {'id': id, 'name': name, 'platform': platform, 'seen_at': iso(seen)};
+
+  Map<String, dynamic> toJson() => {..._row, 'device': ?device};
 
   /// What clients see: online when it checked in within [onlineFor] of [now] (the server's clock, so a phone's
   /// wrong clock doesn't matter).
-  Map<String, dynamic> toApi(DateTime now) => {...toJson(), 'online': now.difference(seen) < onlineFor};
+  Map<String, dynamic> toApi(DateTime now) => {..._row, 'online': now.difference(seen) < onlineFor};
 
   /// A computer stamps its row every 60 seconds; two missed stamps and a margin mean it's offline.
   static const onlineFor = Duration(seconds: 150);
+
+  /// After this long without a check-in, the server ends the Live Activities of its sessions.
+  static const activitiesFor = Duration(minutes: 3);
 }
 
 /// A single-use pairing code, by its SHA-256.
@@ -124,6 +133,9 @@ class ActivityToken {
   final String session;
   final String platform;
   final String device;
+
+  /// The computer whose session it follows: [session] is `<desktop id>/<key>`.
+  String get desktop => session.split('/').first;
 
   Map<String, dynamic> toJson() => {'token': token, 'session': session, 'platform': platform, 'device': device};
 }

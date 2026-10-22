@@ -17,9 +17,10 @@
 //   {"platform": "android", "token": FCM registration token,
 //    "kind": "terminal", "enc": base64, "desktop"?: computer id, "collapse"?: string}
 //   {"platform": "android", "token": FCM registration token,
-//    "kind": "activity", "session": coding session key, "state": {as above}, "collapse"?: string}
-//   {"platform": "android", "token": FCM registration token,
 //    "kind": "activity", "enc": base64 (the state, sealed by the computer), "desktop": computer id, "collapse"?: string}
+//   {"platform": "android", "token": FCM registration token,
+//    "kind": "activity", "session": coding session key, "state": {"state": "ended", "since"}, "collapse"?: string}
+//    (an end, which the server sends when the computer has gone quiet and can't seal it)
 //   → 200 sent · 410 the phone is gone (uninstalled, signed out): forget it ·
 //     429 over a rate limit (Retry-After) · 501 FCM not configured here · 4xx/5xx otherwise
 //
@@ -34,10 +35,11 @@
 // device token, and fewer still for a caller whose tokens keep turning out
 // unknown or malformed.
 //
-// A Live Activity push (a coding session on the Lock Screen, or Android's
-// ongoing notification for it) can't be encrypted: the iPhone's notification
-// extension never sees it. So it carries only a state, rebuilt here from
-// checked fields, never anything passed through.
+// An iPhone's Live Activity push (a coding session on the Lock Screen) can't
+// be encrypted: the iPhone's notification extension never sees it. So it
+// carries only a state, rebuilt here from checked fields, never anything
+// passed through. An Android phone's comes sealed by the computer, except a
+// plain end, which says nothing but that the session is over.
 //
 // Stores nothing; never logs a token, an address or a body.
 
@@ -172,6 +174,7 @@ export function relay(config: Config): Push {
       // A followed session's state, sealed by the computer like an alert: the phone opens it with that computer's key.
       const sealed = sealedAlert(body);
       if (typeof sealed === "string") return json(400, { error: sealed });
+      if (!sealed.d) return json(400, { error: "desktop must be the computer id whose key opens enc" });
       data = { kind: "activity", ...sealed };
     } else if (body.kind === "activity") {
       if (typeof body.session !== "string" || !/^[\w.:/-]{1,64}$/.test(body.session)) {
@@ -179,14 +182,10 @@ export function relay(config: Config): Push {
       }
       const s = activityState(body.state);
       if (typeof s === "string") return json(400, { error: s });
+      // Anything but an end goes sealed (enc).
+      if (s.state !== "ended") return json(400, { error: "an Android session update must be sealed (enc)" });
       // FCM data is strings only; the app takes since in ms.
-      data = {
-        kind: "activity",
-        session: body.session,
-        state: s.state,
-        since: String(s.since * 1000),
-        ...(s.kind ? { akind: s.kind } : {}),
-      };
+      data = { kind: "activity", session: body.session, state: s.state, since: String(s.since * 1000) };
     } else {
       return json(400, { error: "kind must be terminal or activity" });
     }

@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/server_client.dart';
@@ -17,9 +20,18 @@ class SystemSecrets implements SecretStore {
   /// [storage]: the system's if null; tests pass their own.
   SystemSecrets([FlutterSecureStorage? storage]) : _storage = storage ?? _system;
 
-  static const _system = FlutterSecureStorage(
-    mOptions: MacOsOptions(accountName: 'PocketTerm', usesDataProtectionKeychain: false),
+  static final _system = FlutterSecureStorage(
+    mOptions: MacOsOptions(accountName: keychainService(Platform.environment), usesDataProtectionKeychain: false),
   );
+
+  /// The Keychain items' service: `PocketTerm`, or `PocketTerm.<profile>`
+  /// for a throwaway `POCKETTERM_PROFILE` (tool/smoke: an installed copy
+  /// tried out without touching the person's sign-in).
+  @visibleForTesting
+  static String keychainService(Map<String, String> env) => switch (env['POCKETTERM_PROFILE']) {
+    final profile? when profile.isNotEmpty => 'PocketTerm.$profile',
+    _ => 'PocketTerm',
+  };
 
   final FlutterSecureStorage _storage;
 

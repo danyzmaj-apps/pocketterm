@@ -58,6 +58,12 @@ class _OneFile extends FlutterSecureStorage {
 }
 
 void main() {
+  test("a throwaway profile keeps its secrets apart from the person's", () {
+    expect(SystemSecrets.keychainService(const {}), 'PocketTerm');
+    expect(SystemSecrets.keychainService(const {'POCKETTERM_PROFILE': ''}), 'PocketTerm');
+    expect(SystemSecrets.keychainService(const {'POCKETTERM_PROFILE': 'smoke-1'}), 'PocketTerm.smoke-1');
+  });
+
   test('writes at once from the device token and the channel keys all stay (one file on Windows)', () async {
     final storage = _OneFile();
     final tokens = SecretDeviceTokens(SystemSecrets(storage));

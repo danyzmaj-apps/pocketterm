@@ -120,7 +120,7 @@ class Tmux extends TerminalHost {
     return out;
   }
 
-  /// What tmux says when it isn't installed.
+  /// What tmux says when it isn't installed, as an error and as its status.
   static const notInstalled =
       'tmux is not installed. Install it with Homebrew (brew install tmux) or MacPorts (sudo port install tmux).';
 
@@ -182,14 +182,7 @@ class Tmux extends TerminalHost {
 
   @override
   Future<TermStatus> status(Procs procs) async {
-    if (!installed) {
-      return TermStatus(
-        id,
-        label,
-        TermState.missing,
-        note: 'Install tmux for full control (Homebrew: brew install tmux, or MacPorts: sudo port install tmux)',
-      );
-    }
+    if (!installed) return TermStatus(id, label, TermState.missing, note: notInstalled);
     final n = (await windows(procs)).length;
     return TermStatus(
       id,

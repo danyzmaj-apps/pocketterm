@@ -6,24 +6,29 @@ import 'package:pocketterm_core/terminals.dart';
 /// A Mac terminal's one-click fix ([TermStatus.fix]), as Settings and the
 /// setup checklist offer it: kitty's lines added to kitty.conf, or System
 /// Settings opened where Automation is allowed. Returns what to tell the
-/// person next. WezTerm's install (Windows) is `WezTermSetup`'s.
-Future<String> fixTerminal(Terminals terminals, TermStatus s) async {
+/// person next, and whether the fix failed (its button stays to try again).
+/// WezTerm's install (Windows) is `WezTermSetup`'s.
+Future<({String note, bool failed})> fixTerminal(Terminals terminals, TermStatus s) async {
   switch (s.fix) {
     case TermFix.kittyConfig:
       try {
         await terminals.kitty?.configure();
-        return 'Added to kitty.conf (the old one is kitty.conf.pocketterm-backup). '
-            'Quit and reopen kitty to let PocketTerm in.';
+        return (
+          note:
+              'Added to kitty.conf (the old one is kitty.conf.pocketterm-backup). '
+              'Quit and reopen kitty to let PocketTerm in.',
+          failed: false,
+        );
       } on Object catch (e) {
-        return "Couldn't change kitty.conf: $e";
+        return (note: "Couldn't change kitty.conf: $e", failed: true);
       }
     case TermFix.automation:
       await Process.run('/usr/bin/open', [
         'x-apple.systempreferences:com.apple.preference.security?Privacy_Automation',
       ]);
-      return 'Turn on ${s.label} under PocketTerm, then come back here.';
+      return (note: 'Turn on ${s.label} under PocketTerm, then come back here.', failed: false);
     case TermFix.install || null:
-      return '';
+      return (note: '', failed: false);
   }
 }
 

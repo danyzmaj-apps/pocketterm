@@ -59,6 +59,24 @@ class _GhosttyMac extends Terminals {
   Future<List<TermWindow>> windows() async => const [];
 }
 
+/// A Mac with kitty, kept in [home], which says [now].
+class _KittyMac extends Terminals {
+  _KittyMac(String home, this.now)
+    : super(
+        home: home,
+        kitty: Kitty(socketDir: home, home: home),
+        recency: () async => const [],
+        snapshot: () async => Procs(const []),
+      );
+  List<TermStatus> now;
+
+  @override
+  Future<List<TermStatus>> statuses() async => now;
+
+  @override
+  Future<List<TermWindow>> windows() async => const [];
+}
+
 void main() {
   late String home;
   late FakeApp app;
@@ -148,6 +166,42 @@ void main() {
     await tester.pumpAndSettle();
     expect(app.terminalApp, 'wezterm');
     expect(find.text('Always WezTerm'), findsOneWidget);
+  });
+
+  testWidgets("kitty's Set up stays after it fails, and its note gives way once kitty's status moves on", (
+    tester,
+  ) async {
+    // A file where kitty's config folder goes: kitty.conf can't be written.
+    File('$home/.config').createSync();
+    const needs = TermStatus('kitty', 'kitty', TermState.setup, note: 'not let in', fix: TermFix.kittyConfig);
+    final mac = _KittyMac(home, [needs]);
+    await pumpSettings(tester, terminals: mac);
+    await tester.tap(find.byKey(const ValueKey('settings-tab-terminals')));
+    await tester.pumpAndSettle();
+    final setUp = find.byKey(const ValueKey('settings-fix-kitty'));
+    expect(setUp, findsOneWidget);
+
+    await tester.runAsync(() => tester.tap(setUp));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+    expect(find.textContaining("Couldn't change kitty.conf"), findsOneWidget);
+    expect(setUp, findsOneWidget, reason: 'a failed fix can be tried again');
+    expect(dot('terminals'), findsOneWidget);
+
+    // Tried again once kitty.conf can be written: done, and the note goes once kitty no longer needs the fix.
+    File('$home/.config').deleteSync();
+    await tester.runAsync(() => tester.tap(setUp));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+    expect(File('$home/.config/kitty/kitty.conf').existsSync(), isTrue);
+    expect(find.textContaining('Added to kitty.conf'), findsOneWidget);
+    expect(setUp, findsNothing);
+
+    mac.now = [const TermStatus('kitty', 'kitty', TermState.setup, note: 'Restart kitty')];
+    app.mainShown.value++;
+    await tester.pumpAndSettle();
+    expect(find.textContaining('kitty.conf'), findsNothing);
+    expect(find.textContaining('Restart kitty'), findsOneWidget);
   });
 
   group('Ghostty: start new windows in tmux', () {

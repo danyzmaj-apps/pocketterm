@@ -117,8 +117,10 @@ class _SettingsPageState extends State<SettingsPage> {
   List<TermStatus>? _terminals;
   int _windowCount = 0;
 
-  /// What a one-click fix did, by terminal id.
-  final _fixed = <String, String>{};
+  /// What a one-click fix said, by terminal id, with the fix it was for and
+  /// whether it failed: shown until the terminal's status no longer carries
+  /// that fix, then the live status speaks.
+  final _fixed = <String, ({TermFix? fix, String note, bool failed})>{};
 
   /// Agents PocketTerm is going into, and how it went in each since the window was last shown.
   final _installing = <Agent>{};
@@ -247,6 +249,9 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!mounted) return;
     setState(() {
       _terminals = statuses;
+      for (final t in statuses) {
+        if (_fixed[t.id] case final f? when f.fix != t.fix) _fixed.remove(t.id);
+      }
       _ghosttyCommand = ghosttyCommand;
       if (upgraded) _ghosttyUpgraded = true;
       _windowCount = windows.length;
@@ -271,7 +276,8 @@ class _SettingsPageState extends State<SettingsPage> {
       unawaited(_wezterm?.install());
       return;
     }
-    _fixed[s.id] = await fixTerminal(app.terminals, s);
+    final (:note, :failed) = await fixTerminal(app.terminals, s);
+    _fixed[s.id] = (fix: s.fix, note: note, failed: failed);
     if (mounted) setState(() {});
     await _checkTerminals();
   }
@@ -295,7 +301,11 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// [s]'s one-click fix, as its card and the status bar offer it.
   Widget _fixButton(TermStatus s) => switch (s.fix) {
-    TermFix.kittyConfig when _fixed[s.id] == null => _button('Set up', () => unawaited(_fix(s))),
+    TermFix.kittyConfig when _fixed[s.id] == null || _fixed[s.id]!.failed => _button(
+      'Set up',
+      () => unawaited(_fix(s)),
+      key: ValueKey('settings-fix-${s.id}'),
+    ),
     TermFix.automation => _button('Allow…', () => unawaited(_fix(s))),
     TermFix.install when _wezterm == null => const SizedBox.shrink(),
     TermFix.install when _wezterm!.state == WezTermSetupState.missing => _button('Install', () => unawaited(_fix(s))),
@@ -776,13 +786,11 @@ class _SettingsPageState extends State<SettingsPage> {
     final installing = s.fix == TermFix.install ? _wezterm?.note : null;
     final note =
         installing ??
-        _fixed[s.id] ??
+        _fixed[s.id]?.note ??
         (s.state == TermState.missing || s.note.isEmpty || s.note == state
             ? (s.note.isEmpty ? state : s.note)
             : '$state · ${s.note}');
-    final attention =
-        _fixed[s.id] == null &&
-        (s.state == TermState.setup || (s.fix == TermFix.install && s.state == TermState.missing));
+    final attention = s.state == TermState.setup || (s.fix == TermFix.install && s.state == TermState.missing);
     return _card(
       key: ValueKey('settings-terminal-${s.id}'),
       title: s.label,
@@ -1026,7 +1034,7 @@ class _SettingsPageState extends State<SettingsPage> {
         tab: _Tab.terminals,
         short: '${s.label} needs setup',
         // Their notes name the terminal already.
-        text: _fixed[s.id] ?? (s.note.isEmpty ? '${s.label} needs setup' : s.note),
+        text: _fixed[s.id]?.note ?? (s.note.isEmpty ? '${s.label} needs setup' : s.note),
         action: _fixButton(s),
       ));
     }

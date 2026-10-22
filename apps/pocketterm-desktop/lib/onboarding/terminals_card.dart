@@ -48,10 +48,10 @@ class MacTerminalsCard extends StatefulWidget {
 class _MacTerminalsCardState extends State<MacTerminalsCard> {
   List<TermStatus>? _statuses;
 
-  /// What a fix told the person, by terminal, with the fix it was for: shown
-  /// until a status no longer carries that fix (permission given, kitty.conf
-  /// set), then the live status speaks.
-  final _fixed = <String, (TermFix?, String)>{};
+  /// What a fix told the person, by terminal, with the fix it was for and
+  /// whether it failed: shown until a status no longer carries that fix
+  /// (permission given, kitty.conf set), then the live status speaks.
+  final _fixed = <String, ({TermFix? fix, String note, bool failed})>{};
   Timer? _timer;
 
   /// Ghostty's config (new windows in tmux), where Ghostty can be.
@@ -90,7 +90,7 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
       _statuses = s;
       _ghosttyCommand = _ghosttyConfig?.read();
       for (final t in s) {
-        if (_fixed[t.id] case (final fix, _) when fix != t.fix) _fixed.remove(t.id);
+        if (_fixed[t.id] case final f? when f.fix != t.fix) _fixed.remove(t.id);
       }
     });
     widget.onStatuses?.call(s);
@@ -110,9 +110,9 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
   }
 
   Future<void> _fix(TermStatus s) async {
-    final note = await fixTerminal(widget.terminals, s);
+    final (:note, :failed) = await fixTerminal(widget.terminals, s);
     if (!mounted) return;
-    setState(() => _fixed[s.id] = (s.fix, note));
+    setState(() => _fixed[s.id] = (fix: s.fix, note: note, failed: failed));
     await _look();
   }
 
@@ -227,7 +227,7 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
 
   Widget _row(TermStatus s) {
     final ok = s.state == TermState.ready || s.state == TermState.idle;
-    final note = _fixed[s.id]?.$2 ?? (s.state == TermState.setup ? s.note : (ok ? 'Ready' : s.note));
+    final note = _fixed[s.id]?.note ?? (s.state == TermState.setup ? s.note : (ok ? 'Ready' : s.note));
     return Padding(
       key: ValueKey('terminal-${s.id}'),
       padding: const EdgeInsets.only(top: 12),
@@ -249,7 +249,7 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
             ),
           ),
           if (s.fix case TermFix.kittyConfig || TermFix.automation
-              when _fixed[s.id] == null || s.fix == TermFix.automation)
+              when _fixed[s.id] == null || _fixed[s.id]!.failed || s.fix == TermFix.automation)
             TextButton(
               key: ValueKey('terminal-fix-${s.id}'),
               onPressed: () => unawaited(_fix(s)),

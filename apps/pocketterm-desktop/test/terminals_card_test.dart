@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/ghostty.dart';
 import 'package:pocketterm_core/ghostty_config.dart';
+import 'package:pocketterm_core/kitty.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/tmux.dart';
@@ -16,7 +17,7 @@ import 'app_fakes.dart';
 
 /// A Mac whose terminals say [now].
 class _Mac extends Terminals {
-  _Mac(this.now, {super.home = '/nonexistent-pocketterm', super.tmux, super.ghostty})
+  _Mac(this.now, {super.home = '/nonexistent-pocketterm', super.kitty, super.tmux, super.ghostty})
     : super(recency: () async => const [], snapshot: () async => Procs(const []));
   List<TermStatus> now;
 
@@ -97,6 +98,26 @@ void main() {
     await tester.pump();
     expect(find.textContaining('kitty.conf'), findsNothing);
     expect(find.text('Restart kitty'), findsOneWidget);
+  });
+
+  testWidgets('a kitty Set up that fails says why and stays to try again', (tester) async {
+    final home = Directory.systemTemp.createTempSync('pocketterm-kitty').resolveSymbolicLinksSync();
+    addTearDown(() => Directory(home).deleteSync(recursive: true));
+    // A file where kitty's config folder goes: kitty.conf can't be written.
+    File('$home/.config').createSync();
+    final mac = _Mac(
+      [const TermStatus('kitty', 'kitty', TermState.setup, note: 'not let in', fix: TermFix.kittyConfig)],
+      home: home,
+      kitty: Kitty(socketDir: home, home: home),
+    );
+    await pump(tester, mac);
+
+    await tester.runAsync(() => tester.tap(find.text('Set up')));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump();
+    expect(find.textContaining("Couldn't change kitty.conf"), findsOneWidget);
+    expect(find.text('Set up'), findsOneWidget);
   });
 
   testWidgets('with Homebrew, tmux installs from the card: the command shown first, run only on Run', (tester) async {

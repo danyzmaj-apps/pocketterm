@@ -59,6 +59,15 @@ void main() {
       expect(parseLsofCwd(out), {98234: '/private/tmp/dzt/cap-terminal', 1129: '/Users/me/Dev/x y'});
       expect(parseLsofCwd(''), isEmpty);
     });
+
+    test('utf8Locale adds a UTF-8 LC_CTYPE only when the first locale set is none (Finder sets none)', () {
+      const add = {'LC_CTYPE': 'UTF-8'};
+      expect(utf8Locale(const {}), add);
+      expect(utf8Locale(const {'LANG': ''}), add);
+      expect(utf8Locale(const {'LANG': 'C'}), add);
+      expect(utf8Locale(const {'LANG': 'hr_HR.UTF-8'}), isEmpty);
+      expect(utf8Locale(const {'LANG': 'C', 'LC_CTYPE': 'de_DE.utf8'}), isEmpty);
+    });
   });
 
   group('keys', () {

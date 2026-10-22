@@ -100,6 +100,38 @@ void main() {
       expect(await tmux.windows(Procs(const [])), isEmpty);
       await expectLater(tmux.type(key, 'x'), throwsA(_gone));
     });
+
+    group('when PocketTerm has no locale (started from Finder or the Dock)', () {
+      /// tmux as such an app runs it: without the LANG and LC_ALL of the
+      /// terminal these tests run in (LC_CTYPE only as PocketTerm hands it
+      /// over), its default server in [dir].
+      String noLocaleTmux() {
+        final wrapper = File('${dir.path}/tmux-no-locale')
+          ..writeAsStringSync('#!/bin/sh\nexport TMUX_TMPDIR=${dir.path}\nunset LANG LC_ALL\nexec $exe "\$@"\n');
+        Process.runSync('/bin/chmod', ['+x', wrapper.path]);
+        return wrapper.path;
+      }
+
+      test("a pane in a folder named in other letters is listed with that folder, not with _'s", () async {
+        final named = Directory('${dir.path}/Projekt čćž 日本')..createSync();
+        server('edge', ['sleep', '60'], cwd: named.path);
+        final panes = await Tmux(
+          executable: noLocaleTmux(),
+          socketDirs: [dir.path],
+          env: const {},
+        ).windows(Procs(const []));
+        expect(panes.map((w) => w.cwd), [named.resolveSymbolicLinksSync()]);
+      });
+
+      test('the shells of a server it starts have a UTF-8 locale', () async {
+        final out = File('${dir.path}/locale');
+        final tmux = Tmux(executable: noLocaleTmux(), socketDirs: [dir.path], env: const {});
+        await tmux.launch(dir.path, command: ['/bin/sh', '-c', 'locale > ${out.path}; sleep 60']);
+        servers.add(Process.runSync(noLocaleTmux(), ['display', '-p', '#{socket_path}']).stdout.toString().trim());
+        await until(() => out.existsSync() && out.lengthSync() > 0);
+        expect(out.readAsStringSync(), contains('LC_CTYPE="UTF-8"'));
+      });
+    });
   });
 
   group('a tmux that misbehaves', () {

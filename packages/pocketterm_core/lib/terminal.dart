@@ -544,7 +544,10 @@ class Procs {
         final r = await Process.run('tasklist', ['/fo', 'csv', '/nh']);
         return Procs(parseTasklist(r.stdout as String));
       }
-      final r = await Process.run('/bin/ps', ['-Ao', 'pid=,ppid=,pgid=,tpgid=,tty=,stat=,args=']);
+      final r = await Process.run('/bin/ps', [
+        '-Ao',
+        'pid=,ppid=,pgid=,tpgid=,tty=,stat=,args=',
+      ], environment: utf8Output);
       return Procs(parsePs(r.stdout as String));
     } on ProcessException {
       return Procs(const []);
@@ -578,7 +581,14 @@ class Procs {
     final list = pids.toSet();
     if (list.isEmpty) return const {};
     try {
-      final r = await Process.run('/usr/sbin/lsof', ['-a', '-d', 'cwd', '-Fpn', '-p', list.join(',')]);
+      final r = await Process.run('/usr/sbin/lsof', [
+        '-a',
+        '-d',
+        'cwd',
+        '-Fpn',
+        '-p',
+        list.join(','),
+      ], environment: utf8Output);
       return parseLsofCwd(r.stdout as String);
     } on ProcessException {
       return const {};
@@ -625,6 +635,24 @@ Map<int, String> parseLsofCwd(String out) {
     if (l.startsWith('n') && pid != null) cwds[pid] = l.substring(1);
   }
   return cwds;
+}
+
+/// For a program whose output PocketTerm reads (`ps`, `lsof`): UTF-8,
+/// whatever locale PocketTerm has. An app started from Finder or the Dock
+/// has none (no `LANG`), and then `ps` writes a name's other letters as
+/// `M-` escapes and `lsof` as `\xNN`.
+const utf8Output = {'LC_ALL': 'en_US.UTF-8'};
+
+/// What a program PocketTerm starts for the person (a tmux server, and so
+/// every shell in it) needs besides [env] to read and write UTF-8:
+/// `LC_CTYPE=UTF-8` when [env] (this process's when null) has no UTF-8
+/// locale, as an app started from Finder or the Dock has none; else nothing.
+Map<String, String> utf8Locale([Map<String, String>? env]) {
+  final e = env ?? Platform.environment;
+  final locale = [e['LC_ALL'], e['LC_CTYPE'], e['LANG']].where((v) => v != null && v.isNotEmpty).firstOrNull;
+  return locale != null && RegExp('utf-?8', caseSensitive: false).hasMatch(locale)
+      ? const {}
+      : const {'LC_CTYPE': 'UTF-8'};
 }
 
 /// The home folder: `USERPROFILE` on Windows, else `HOME`; empty if unset.

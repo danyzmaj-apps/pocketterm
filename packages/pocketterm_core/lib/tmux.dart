@@ -16,7 +16,9 @@ class Tmux extends TerminalHost {
   final String? _fixedExe;
   final List<String>? _fixedDirs;
 
-  /// The environment to look tmux up in; this process's when null.
+  /// The environment PocketTerm runs in: where tmux is looked up, and
+  /// whether a server it starts needs a UTF-8 locale ([utf8Locale]); this
+  /// process's when null.
   final Map<String, String>? env;
 
   /// How long one tmux command may take.
@@ -128,12 +130,15 @@ class Tmux extends TerminalHost {
 
   /// tmux with [args] on server [socket]; killed when it hasn't answered
   /// within [timeout] (a server that hangs leaves no client behind each look).
+  /// `-u`: names and folders come back in UTF-8 even when PocketTerm has no
+  /// UTF-8 locale (started from Finder or the Dock), not with `_` for each
+  /// other letter.
   Future<String> _run(String socket, List<String> args) async {
     final exe = _exe;
     if (exe == null) throw const TerminalException(notInstalled);
     final Process p;
     try {
-      p = await Process.start(exe, ['-S', socket, ...args]);
+      p = await Process.start(exe, ['-u', '-S', socket, ...args]);
     } on ProcessException catch (e) {
       throw TerminalException('tmux: ${e.message}');
     }
@@ -260,7 +265,9 @@ class Tmux extends TerminalHost {
   }
 
   /// A detached session of its own on the default server (started if none
-  /// runs): a terminal app then shows it with `tmux attach` ([attach]).
+  /// runs): a terminal app then shows it with `tmux attach` ([attach]). A
+  /// server started here keeps PocketTerm's environment for every shell in
+  /// it, so it gets a UTF-8 locale should PocketTerm have none.
   @override
   Future<String> launch(String cwd, {List<String>? command}) async {
     if (!Directory(cwd).existsSync()) throw TerminalException('No such folder: $cwd');
@@ -268,6 +275,7 @@ class Tmux extends TerminalHost {
     if (exe == null) throw const TerminalException(notInstalled);
     final session = 'pt-${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}';
     final r = await Process.run(exe, [
+      '-u',
       'new-session',
       '-d',
       '-s',
@@ -278,7 +286,7 @@ class Tmux extends TerminalHost {
       '-F',
       '#{socket_path}\t#{pane_id}',
       ...?command,
-    ]);
+    ], environment: utf8Locale(env));
     if (r.exitCode != 0) throw TerminalException('tmux: ${'${r.stderr}'.trim()}');
     final [path, pane] = (r.stdout as String).trim().split('\t');
     learn(path);

@@ -1,8 +1,11 @@
 # The computer removed this phone: it lands on the setup screen, saying why,
-# with the computer's key gone.
+# with the computer's key gone. The app is brought back as it was (the
+# person opening it again), not restarted: the reason is for the moment the
+# sign-in ends, and a restart after that starts plain.
 appId: com.danyzmaj.pocketterm
 ---
-- launchApp
+- launchApp:
+    stopApp: false
 - extendedWaitUntil:
     visible: "Your sign-in ended on the server.*"
     timeout: 60000

@@ -10,9 +10,9 @@ appId: com.danyzmaj.pocketterm
     timeout: 60000
 - tapOn: ${COMPUTER}
 - extendedWaitUntil:
-    visible: "Online"
+    visible: "${COMPUTER_RE}\nOnline"
     timeout: 90000
-- tapOn: ${COMPUTER}
+- tapOn: "${COMPUTER_RE}\nOnline"
 - extendedWaitUntil:
     visible: "${OLD_SESSION}\n.*"
     timeout: 60000

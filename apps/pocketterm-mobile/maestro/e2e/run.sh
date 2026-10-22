@@ -167,12 +167,14 @@ re_escape() { python3 -c 'import re,sys;print(re.escape(sys.argv[1]))' "$1"; }
 
 # ------------------------------------------------------------------- flows
 
-FAILED=0
-# flow <name> <file> [-e K=V ...]: one Maestro run; the phase stops at the first failure.
+FAILED=0 STOP=0 CRITICAL=1
+# flow <name> <file> [-e K=V ...]: one Maestro run. A failure while CRITICAL
+# (setting up: the scenarios after need it) stops the phase; a scenario's
+# failure doesn't stop the next, which starts from the session list anyway.
 flow() {
   local name=$1 file=$2
   shift 2
-  if [ $FAILED = 1 ] || { [ -n "$ONLY" ] && [[ ",$ONLY," != *",$name,"* ]]; }; then return; fi
+  if [ $STOP = 1 ] || { [ -n "$ONLY" ] && [[ ",$ONLY," != *",$name,"* ]]; }; then return; fi
   local dir="$OUT/$name"
   mkdir -p "$dir"
   local started=$SECONDS
@@ -184,6 +186,7 @@ flow() {
   else
     printf 'FAIL  %-24s %4ss  %s\n' "$name" $((SECONDS - started)) "$dir/maestro.log" | tee -a "$SUMMARY"
     FAILED=1
+    STOP=$CRITICAL
   fi
 }
 
@@ -198,6 +201,9 @@ case $PHASE in
     flow pair-accept pair.yaml -e LINK="$LINK" -e PUSH=accept
     flow tips tips_home.yaml -e SESSION="$SESSION_0_RE"
     flow sign-out signout.yaml
+    # The tips flow turned every tip back on; a fresh install again (signed
+    # out already) starts them seen, so none covers what the scenarios tap.
+    flow fresh-again fresh.yaml
     flow demo ../demo.yaml
     flow pair-decline pair.yaml -e LINK="$LINK2" -e PUSH=decline
     flow push-toggle push_toggle.yaml
@@ -207,6 +213,7 @@ case $PHASE in
     # Answered first: the other sessions are idle, this one is asking. Ghostty
     # can't show its screen, which answering reads: the phone says so.
     if [ "$TERMINAL_ID" = ghostty ]; then THEN=".*Ghostty can.t show its screen.*"; else THEN=approved; fi
+    CRITICAL=0
     flow approval approval.yaml -e SESSION="$APPROVAL_SESSION_RE" -e ANSWER="$APPROVAL_ANSWER" -e THEN="$THEN"
     for ((i = 0; i < SESSION_COUNT; i++)); do
       t=SESSION_${i}_RE

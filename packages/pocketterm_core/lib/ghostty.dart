@@ -272,7 +272,12 @@ end run''',
       final added = _surfaceTtys(procs).difference(before).difference(_ttys.values.toSet());
       final tty = added.isEmpty
           ? null
-          : ghosttyNewTty(added, procs, await Procs.cwds(procs.all.where((p) => added.contains(p.tty)).map((p) => p.pid)), cwd);
+          : ghosttyNewTty(
+              added,
+              procs,
+              await Procs.cwds(procs.all.where((p) => added.contains(p.tty)).map((p) => p.pid)),
+              cwd,
+            );
       if (tty != null) {
         _ttys[key] = tty;
         break;

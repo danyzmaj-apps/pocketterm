@@ -47,6 +47,25 @@ void main() {
     expect(await g.byFolder(real.resolveSymbolicLinksSync(), procs), _key);
   });
 
+  test('an agent whose Ghostty window tells no folder (opened with a command): the one titled for its session', () async {
+    const other = 'ghostty:0B9E2E2E-67BF-48C7-8D0A-83F3FA5B8074';
+    const shell = 'ghostty:1C9E2E2E-67BF-48C7-8D0A-83F3FA5B8074';
+    final g = ghostty(
+      ['0'],
+      [
+        "printf '${_key.substring(8)}\\037π > endme\\037\\037t\\037true\\036\\n"
+            "${other.substring(8)}\\037π > chat\\037\\037t\\037false\\036\\n"
+            "${shell.substring(8)}\\037zsh\\037/somewhere/else\\037t\\037false\\036\\nfront\\037true'",
+      ],
+    );
+    final procs = Procs([
+      Proc(pid: 1, ppid: 0, pgid: 1, tpgid: -1, tty: '', stat: 'S', args: '${app.path}/Contents/MacOS/ghostty'),
+    ]);
+    expect(await g.byFolder('/p/endme', procs, tty: '/dev/ttys040'), _key);
+    expect(await g.byFolder('/p/endme', procs, claimed: {_key}), isNull, reason: 'its window is taken');
+    expect(await g.byFolder('/p/nothere', procs), isNull, reason: 'no window titled for it');
+  });
+
   test("a window Ghostty tells no folder for (opened with a command) has its program's, where its tty is known", () async {
     final dir = Directory('${app.path}/project')..createSync();
     final sleep = await Process.start('/bin/sleep', ['30'], workingDirectory: dir.path);

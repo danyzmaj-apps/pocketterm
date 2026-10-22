@@ -267,7 +267,7 @@ end run''',
     // Its tty: the one new among Ghostty's terminals (not known as another
     // window's) whose processes are in [cwd]; another window starting
     // meanwhile adds one too.
-    for (var i = 0; i < 20; i++) {
+    for (var i = 0; i < 50; i++) {
       final procs = await Procs.snapshot();
       final added = _surfaceTtys(procs).difference(before).difference(_ttys.values.toSet());
       final tty = added.isEmpty
@@ -288,7 +288,10 @@ end run''',
   /// an agent the real one); else, of those not [claimed] by other sessions
   /// and not known to be on another tty, the one left, or the one whose
   /// title is the session's (what [agent] sets: its [title], or the folder's
-  /// name while it has none). More than one: null.
+  /// name while it has none). None there: the one whose title is the
+  /// session's among those Ghostty tells no folder for (opened with a
+  /// command, or before their shell's first prompt) and whose tty isn't
+  /// known. More than one: null.
   Future<String?> byFolder(
     String cwd,
     Procs procs, {
@@ -313,11 +316,16 @@ end run''',
           w,
     ];
     if (here.length == 1) return here.single.key;
+    final name = title.trim().isNotEmpty ? title.trim() : p.basename(cwd);
+    bool named(TermWindow w) => !claimed.contains(w.key) && agent.sessionOfTitle(w.title) == name;
+    if (here.isEmpty) {
+      final folderless = all.where((w) => w.cwd.isEmpty && w.tty.isEmpty && named(w)).toList();
+      return folderless.length == 1 ? folderless.single.key : null;
+    }
     final open = here.where((w) => !claimed.contains(w.key)).toList();
     if (open.length == 1) return open.single.key;
-    final name = title.trim().isNotEmpty ? title.trim() : p.basename(cwd);
-    final named = open.where((w) => agent.sessionOfTitle(w.title) == name).toList();
-    return named.length == 1 ? named.single.key : null;
+    final titled = open.where(named).toList();
+    return titled.length == 1 ? titled.single.key : null;
   }
 
   /// [path] with its symlinks resolved; as is when it can't be.

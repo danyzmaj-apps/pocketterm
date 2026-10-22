@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
+import 'package:pocketterm_desktop/test_hooks.dart';
 
 /// Starts a program, as [Process.start] does; tests hand in a fake.
 typedef StartProcess = Future<Process> Function(String executable, List<String> arguments);
@@ -147,16 +148,21 @@ class Tailscale {
   /// Where to get Tailscale for Windows by hand.
   static final Uri windowsDownload = Uri.parse('https://tailscale.com/download/windows');
 
-  /// The CLI: `POCKETTERM_TAILSCALE` when set (tool/smoke: a stand-in, so a
-  /// throwaway copy never changes the Mac's Serve settings), the app's own
-  /// on a Mac or Windows, else `tailscale` on the PATH (a GUI app's PATH is
-  /// short, so Homebrew's folders too: the open source build). Null when
-  /// Tailscale isn't installed.
-  static String? findCli({Map<String, String>? env, bool Function(String path)? exists, bool? windows}) {
+  /// The CLI: `POCKETTERM_TAILSCALE` when set in a test build ([testHooks];
+  /// tool/smoke: a stand-in, so a throwaway copy never changes the Mac's
+  /// Serve settings), the app's own on a Mac or Windows, else `tailscale` on
+  /// the PATH (a GUI app's PATH is short, so Homebrew's folders too: the
+  /// open source build). Null when Tailscale isn't installed.
+  static String? findCli({
+    Map<String, String>? env,
+    Map<String, String>? hooks,
+    bool Function(String path)? exists,
+    bool? windows,
+  }) {
     final isFile = exists ?? (String path) => File(path).existsSync();
     final win = windows ?? Platform.isWindows;
     final vars = env ?? Platform.environment;
-    if (vars['POCKETTERM_TAILSCALE'] case final standIn? when standIn.isNotEmpty) return standIn;
+    if ((hooks ?? testHooks())['POCKETTERM_TAILSCALE'] case final standIn? when standIn.isNotEmpty) return standIn;
     final app = win ? windowsCli(vars['ProgramFiles'] ?? r'C:\Program Files') : macCli;
     if (isFile(app)) return app;
     final dirs = [

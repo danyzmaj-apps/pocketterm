@@ -11,6 +11,7 @@ import 'package:pocketterm_core/session.dart';
 import 'package:pocketterm_desktop/hosting/built_in_server.dart';
 import 'package:pocketterm_desktop/hosting/tailscale.dart';
 import 'package:pocketterm_desktop/main_window.dart';
+import 'package:pocketterm_desktop/test_hooks.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_fakes.dart';
@@ -64,12 +65,19 @@ void main() {
         r'D:\Program Files\Tailscale\tailscale.exe',
       );
       expect(Tailscale.findCli(env: {'PATH': '/usr/bin'}, exists: (_) => false, windows: false), isNull);
-      // A smoke run's stand-in, before the real app's.
+      // A smoke run's stand-in, before the real app's, in a build for tool/smoke.
       expect(
-        Tailscale.findCli(env: {'POCKETTERM_TAILSCALE': '/tmp/fake-tailscale'}, exists: (f) => f == Tailscale.macCli),
+        Tailscale.findCli(hooks: {'POCKETTERM_TAILSCALE': '/tmp/fake-tailscale'}, exists: (f) => f == Tailscale.macCli),
         '/tmp/fake-tailscale',
       );
     });
+
+    test('a build not made for tool/smoke (as released) ignores POCKETTERM_TAILSCALE', () {
+      expect(
+        Tailscale.findCli(env: {'POCKETTERM_TAILSCALE': '/tmp/fake-tailscale'}, exists: (f) => f == Tailscale.macCli),
+        Tailscale.macCli,
+      );
+    }, skip: testBuild);
 
     test('not installed, its service not running, signed out, running', () async {
       final fake = FakeTailscale();

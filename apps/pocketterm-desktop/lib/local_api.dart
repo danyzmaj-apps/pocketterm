@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/terminal.dart' show homeDir;
 import 'package:pocketterm_desktop/live_hub.dart';
+import 'package:pocketterm_desktop/test_hooks.dart';
 
 /// The terminal's way in (the live sessions of omp and Claude Code): HTTP
 /// on 127.0.0.1 at a random port, guarded by a random token. Both are
@@ -29,7 +30,7 @@ class LocalApi {
   /// keeps it private), else the running platform's.
   LocalApi(this._live, {File? file, bool? windows})
     : file = file ?? _defaultFile(windows: windows),
-      _ownFolder = file == null && !_named(Platform.environment),
+      _ownFolder = file == null && !_named(testHooks()),
       _windows = windows ?? Platform.isWindows;
 
   final LiveHub _live;
@@ -68,11 +69,11 @@ class LocalApi {
   static bool _named(Map<String, String> env) => env['POCKETTERM_CLI_JSON']?.isNotEmpty ?? false;
 
   static File _defaultFile({bool? windows}) {
-    final env = Platform.environment;
+    final hooks = testHooks();
     return File(
-      _named(env)
-          ? env['POCKETTERM_CLI_JSON']!
-          : p.join(homeDir(env: env, windows: windows), '.config', 'pocketterm', 'cli.json'),
+      _named(hooks)
+          ? hooks['POCKETTERM_CLI_JSON']!
+          : p.join(homeDir(env: Platform.environment, windows: windows), '.config', 'pocketterm', 'cli.json'),
     );
   }
 

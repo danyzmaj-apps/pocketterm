@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/server_client.dart';
+import 'package:pocketterm_desktop/test_hooks.dart';
 
 /// Where secrets are kept; tests pass their own.
 abstract interface class SecretStore {
@@ -15,14 +14,14 @@ abstract interface class SecretStore {
 /// needed, so any signing works); on Windows one file in the app's
 /// %APPDATA% folder, encrypted for this Windows user (DPAPI), so no size
 /// limit as in Credential Manager. Uninstalling leaves it. A throwaway
-/// `POCKETTERM_PROFILE` (tool/smoke: an installed copy tried out) keeps
-/// them in memory instead and never reaches the Keychain.
+/// `POCKETTERM_PROFILE` (tool/smoke: a test build tried out as installed)
+/// keeps them in memory instead and never reaches the Keychain.
 class SystemSecrets implements SecretStore {
-  /// [storage]: the system's if null; tests pass their own. [env]: this
-  /// process's environment if null.
+  /// [storage]: the system's if null; tests pass their own. [env]: where
+  /// `POCKETTERM_PROFILE` is read, [testHooks] if null.
   SystemSecrets([FlutterSecureStorage? storage, Map<String, String>? env])
     : _storage = storage ?? _system,
-      _memory = (env ?? Platform.environment)['POCKETTERM_PROFILE']?.isNotEmpty ?? false ? _profile : null;
+      _memory = (env ?? testHooks())['POCKETTERM_PROFILE']?.isNotEmpty ?? false ? _profile : null;
 
   static const _system = FlutterSecureStorage(
     mOptions: MacOsOptions(accountName: 'PocketTerm', usesDataProtectionKeychain: false),

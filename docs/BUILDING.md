@@ -51,12 +51,12 @@ A free Apple ID can build and run the Mac app for yourself. Notarized releases n
 
 ### Running a second PocketTerm for testing
 
-A debug build next to the PocketTerm you use shares more than its code. Built with the same bundle id, it reads and writes the same preferences (server, account, this computer's id), and by default both write `~/.config/pocketterm/cli.json` (the terminal API's port and token) and talk to the kitty behind `/tmp/kitty*`. To keep a test run apart:
+A debug build next to the PocketTerm you use shares more than its code. Built with the same bundle id, it reads and writes the same preferences (server, account, this computer's id), and by default both write `~/.config/pocketterm/cli.json` (the terminal API's port and token) and talk to the kitty behind `/tmp/kitty*`. To keep a test run apart, build it as a test build (`POCKETTERM_SMOKE`; only such a build reads the variables below, a released one ignores them):
 
 ```sh
 # in apps/pocketterm-desktop
 mkdir -p /tmp/pocketterm-e2e
-POCKETTERM_CLI_JSON=/tmp/pocketterm-e2e/cli.json POCKETTERM_KITTY_DIR=/tmp/pocketterm-e2e fvm flutter run -d macos
+POCKETTERM_CLI_JSON=/tmp/pocketterm-e2e/cli.json POCKETTERM_KITTY_DIR=/tmp/pocketterm-e2e fvm flutter run -d macos --dart-define=POCKETTERM_SMOKE=true
 ```
 
 - `POCKETTERM_CLI_JSON`: the file it writes its port and token to. omp's extension and the Claude Code plugin read the same variable, so start the omp or `claude` you test with under it too.

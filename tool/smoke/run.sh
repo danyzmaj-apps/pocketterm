@@ -1,13 +1,13 @@
 #!/bin/bash
-# The installed-app smoke: a release build of PocketTerm, copied to a
-# throwaway place as its own app (bundle id <id>.smoke, ad-hoc signed), started
+# The installed-app smoke: a release build of PocketTerm made for tests
+# (POCKETTERM_SMOKE), copied to a throwaway place as its own app (bundle id <id>.smoke, ad-hoc signed), started
 # by Launch Services (`open -n -a`, as from Finder: no TERM, no locale,
 # launchd's PATH) with a throwaway home, tmux, kitty socket folder and Keychain
 # namespace (POCKETTERM_PROFILE), and driven through macOS accessibility
 # (tool/smoke/ax.swift). The person's data, terminals, tmux and Serve settings
 # stay as they are.
 #
-#   tool/smoke/run.sh prepare [<PocketTerm.app>]   copy + throwaway home (default: the release build)
+#   tool/smoke/run.sh prepare                      release build with POCKETTERM_SMOKE + copy + throwaway home
 #   tool/smoke/run.sh launch [--real-tailscale]    start it; Tailscale is a stand-in (fake_tailscale.sh)
 #                                                  unless --real-tailscale (then never press Start while
 #                                                  `tailscale serve status` serves anything)
@@ -34,7 +34,10 @@ pid() { /usr/bin/pgrep -f "^$app/Contents/MacOS/" | head -1; }
 
 case "${1:-}" in
   prepare)
-    src=${2:-$repo/apps/pocketterm-desktop/build/macos/Build/Products/Release/PocketTerm.app}
+    # Only a build with POCKETTERM_SMOKE honours the stand-ins below (apps/pocketterm-desktop/lib/test_hooks.dart):
+    # a released PocketTerm ignores them and would use the person's Keychain and Tailscale.
+    (cd "$repo/apps/pocketterm-desktop" && fvm flutter build macos --release --dart-define=POCKETTERM_SMOKE=true)
+    src=$repo/apps/pocketterm-desktop/build/macos/Build/Products/Release/PocketTerm.app
     rm -rf "$SMOKE"
     mkdir -p "$SHOTS" "$SMOKE/t" "$SMOKE/k" "$home/.config" "$home/.local/bin" "$home/Projects/smoke é漢"
     chmod 700 "$SMOKE/t" "$SMOKE/k"

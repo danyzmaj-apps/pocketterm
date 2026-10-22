@@ -87,8 +87,12 @@ The desktop app's API (`apps/pocketterm-desktop/lib/local_api.dart`) listens on 
 
 ## Where the server listens
 
-- **On this computer:** the built-in server listens on `127.0.0.1`. `tailscale serve` publishes it at `https://<computer>.<tailnet>.ts.net` to the owner's tailnet only; Funnel is never used.
+- **On this computer:** the built-in server listens on `127.0.0.1`. `tailscale serve` publishes it at `https://<computer>.<tailnet>.ts.net` to the owner's tailnet only; Funnel is never used. PocketTerm changes Tailscale's Serve settings only after reading them (`tailscale serve status`): it never replaces or removes what something else serves on port 443, and changes nothing while they can't be read.
 - **On my own server:** only Caddy is published (ports 80 and 443, Let's Encrypt certificate); the server's port 47900 stays on Docker's network. The server image has no shell and runs as user 65532. The compose file comes from the release tag matching the app and pins the server image of the same version.
+
+## Test builds
+
+tool/smoke and tool/e2e build the desktop app with `--dart-define=POCKETTERM_SMOKE=true` (`apps/pocketterm-desktop/lib/test_hooks.dart`). Only such a build reads the environment variables that point it at stand-ins: `POCKETTERM_TAILSCALE` (another program run as the Tailscale CLI), `POCKETTERM_CLI_JSON` (another file for the local API's port and token), `POCKETTERM_KITTY_DIR` (another folder of kitty sockets) and `POCKETTERM_PROFILE` (secrets kept in memory instead of the Keychain, the accessibility tree always on). A released build ignores them. The Mac app's window code still reads `POCKETTERM_PROFILE` to announce its accessibility tree, which only asks macOS to read the window as VoiceOver would.
 
 ## Updates
 

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -8,13 +7,14 @@ import 'package:pocketterm_desktop/controller.dart';
 import 'package:pocketterm_desktop/desktop_host.dart';
 import 'package:pocketterm_desktop/local_api.dart';
 import 'package:pocketterm_desktop/main_window.dart';
+import 'package:pocketterm_desktop/test_hooks.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // A throwaway profile (tool/smoke) is driven through macOS accessibility:
   // its whole tree, whether or not an assistive app asked yet.
-  if (Platform.environment['POCKETTERM_PROFILE']?.isNotEmpty ?? false) SemanticsBinding.instance.ensureSemantics();
+  if (testHooks()['POCKETTERM_PROFILE']?.isNotEmpty ?? false) SemanticsBinding.instance.ensureSemantics();
   final prefs = await SharedPreferences.getInstance();
   final host = DesktopHost();
   final app = AppController(prefs, await host.deviceName(), host);

@@ -21,6 +21,7 @@ import 'package:pocketterm_desktop/hosting/tailscale.dart';
 import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:pocketterm_desktop/terminal_bridge.dart';
+import 'package:pocketterm_desktop/test_hooks.dart';
 import 'package:pocketterm_desktop/update_check.dart';
 import 'package:pocketterm_desktop/windows_host.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -147,12 +148,13 @@ class AppController extends Session {
   /// This computer's terminals (on a Mac, kitty's sockets are in [kittyDir];
   /// on Windows the WezTerm it starts gets the PATH a new login has).
   late final Terminals terminals = Terminals.standard(
-    kittyDir: kittyDir(Platform.environment),
+    kittyDir: kittyDir(testHooks()),
     windowsPath: Platform.isWindows ? freshWindowsPath : null,
   );
 
   /// Where kitty's sockets are: /tmp, or the directory `POCKETTERM_KITTY_DIR`
-  /// names, so a second PocketTerm under test talks to a kitty of its own.
+  /// names in a test build ([testHooks]), so a second PocketTerm under test
+  /// talks to a kitty of its own.
   @visibleForTesting
   static String kittyDir(Map<String, String> env) {
     final dir = env['POCKETTERM_KITTY_DIR'];

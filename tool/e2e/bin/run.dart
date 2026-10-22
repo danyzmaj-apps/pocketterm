@@ -364,7 +364,16 @@ Future<Map<String, String>> _runTerminal(
     // launchd's PATH), with only what `flutter test` needs besides.
     desktop = await Process.start(
       _which('fvm'),
-      ['flutter', 'test', 'integration_test/e2e_test.dart', '-d', 'macos', '--dart-define=E2E_CONFIG=$configPath'],
+      [
+        'flutter',
+        'test',
+        'integration_test/e2e_test.dart',
+        '-d',
+        'macos',
+        '--dart-define=E2E_CONFIG=$configPath',
+        // A test build: it honours the POCKETTERM_* stand-ins (lib/test_hooks.dart), a released one doesn't.
+        '--dart-define=POCKETTERM_SMOKE=true',
+      ],
       workingDirectory: p.join(repo, 'apps', 'pocketterm-desktop'),
       environment: launchServicesEnv(
         tools: [_flutterTools(work)],

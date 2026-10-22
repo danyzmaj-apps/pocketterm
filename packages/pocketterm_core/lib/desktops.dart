@@ -70,13 +70,32 @@ class Desktops extends ChangeNotifier {
 
   Desktop? get selected => all.where((d) => d.id == _selectedId).firstOrNull;
 
-  /// Fetches the list; on failure the last one stays.
+  /// Why the last [refresh] got no list (the server can't be reached, say);
+  /// null once one came.
+  String? error;
+
+  /// Fetches the list; on failure the last one stays, and [error] says why.
+  /// One that comes back after [dispose] (signed out meanwhile) is dropped:
+  /// it would keep the old server's computers for the next sign-in.
   Future<void> refresh() async {
     try {
-      apply(await _server.desktops());
+      final rows = await _server.desktops();
+      if (!_disposed) apply(rows);
     } on Object catch (e) {
       debugPrint('PocketTerm: computers: $e');
+      final why = e is ServerException ? e.message : '$e';
+      if (_disposed || why == error) return;
+      error = why;
+      notifyListeners();
     }
+  }
+
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 
   /// The rows from the server, newest seen first.
@@ -85,6 +104,7 @@ class Desktops extends ChangeNotifier {
     final now = DateTime.now();
     all = [for (final r in rows) Desktop.fromJson(r)].where((d) => now.difference(d.seenAt) < keepFor).toList();
     loaded = true;
+    error = null;
     _pick();
     onChanged?.call(all, _selectedId);
     notifyListeners();

@@ -325,7 +325,7 @@ class PocketTermServerClient {
       res = (status: answer.statusCode, bytes: b.takeBytes());
     } on Object catch (e) {
       debugPrint('PocketTerm: $method $path: $e');
-      throw ServerException(0, 'offline', "Couldn't reach ${backend.host}. Check your connection.");
+      throw ServerException(0, 'offline', backend.unreachable);
     }
     if (res.status < 400) return res;
     var code = 'internal';

@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/desktops.dart';
 import 'package:pocketterm_core/server_client.dart';
+
+import 'own_server.dart';
 
 void main() {
   final client = PocketTermServerClient(const Backend(url: 'http://localhost:1'), tokens: MemoryDeviceTokens());
@@ -59,5 +63,53 @@ void main() {
   test('online means seen within two and a half minutes', () {
     expect(Desktop.fromJson(row('aaaaaaaa', const Duration(seconds: 140))).online, isTrue);
     expect(Desktop.fromJson(row('aaaaaaaa', const Duration(seconds: 160))).online, isFalse);
+  });
+
+  test('a server that stops answering keeps the list there is and says why, until a list comes', () async {
+    final own = await OwnServer.start();
+    final phone = await own.phone(await own.desktop());
+    final cached = Desktop.fromJson(row('bbbbbbbb', const Duration(minutes: 5)));
+    final d = Desktops(phone, cached: [cached], saved: 'bbbbbbbb');
+    var told = 0;
+    d.addListener(() => told++);
+    await own.stop();
+    await d.refresh();
+    expect(d.error, phone.backend.unreachable);
+    expect(d.selected, cached);
+    expect(told, 1);
+    await d.refresh();
+    expect(told, 1, reason: 'the same problem again is no news');
+    d.apply([row('aaaaaaaa', Duration.zero)]);
+    expect(d.error, isNull);
+  });
+
+  test("a list that comes after the phone left the server isn't kept for the next sign-in", () async {
+    final own = await OwnServer.start();
+    addTearDown(own.stop);
+    final phone = await own.phone(await own.desktop());
+    final kept = <List<Desktop>>[];
+    final d = Desktops(phone, onChanged: (all, _) => kept.add(all));
+    final refreshed = d.refresh();
+    d.dispose();
+    await refreshed;
+    expect(kept, isEmpty);
+  });
+
+  test('a Tailscale address that gets no answer says to connect Tailscale on this device', () async {
+    const tailnet = Backend(url: 'https://my-mac.tail1234.ts.net');
+    expect(tailnet.onTailnet, isTrue);
+    expect(tailnet.unreachable, contains('open Tailscale on this device'));
+    const vps = Backend(url: 'https://pocketterm.example.com');
+    expect(vps.onTailnet, isFalse);
+    expect(vps.unreachable, isNot(contains('Tailscale')));
+    // Nothing listens there: the client's offline answer is the backend's.
+    final closed = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final port = closed.port;
+    await closed.close();
+    final client = PocketTermServerClient(Backend(url: 'http://127.0.0.1:$port'), tokens: MemoryDeviceTokens());
+    await expectLater(
+      client.redeemCode('K7QM', label: 'iPhone', platform: 'ios'),
+      throwsA(isA<ServerException>().having((e) => e.message, 'message', client.backend.unreachable)),
+    );
   });
 }

@@ -48,12 +48,18 @@ class Backend {
   }
 
   /// A `pocketterm://setup?url=…` link (its pairing code, if any, is
-  /// [pairingCode]'s; its setup token [setupToken]'s).
+  /// [pairingCode]'s; its setup token [setupToken]'s). A link from
+  /// PocketTerm 0.1 ([isOldLink]) isn't one: its URL is a Supabase project.
   static Backend? fromLink(Uri uri) {
-    if (uri.scheme != 'pocketterm' || uri.host != 'setup') return null;
+    if (uri.scheme != 'pocketterm' || uri.host != 'setup' || isOldLink(uri)) return null;
     final url = uri.queryParameters['url'];
     return url == null ? null : parse(url).backend;
   }
+
+  /// A setup link from PocketTerm 0.1, which worked through a Supabase
+  /// project: it carries that project's `key`.
+  static bool isOldLink(Uri uri) =>
+      uri.scheme == 'pocketterm' && uri.host == 'setup' && uri.queryParameters.containsKey('key');
 
   /// The pairing code in a setup link (the computer's QR), if it has one:
   /// it signs a phone in.
@@ -98,6 +104,16 @@ class Backend {
   /// The host, for display.
   String get host => Uri.parse(url).host;
 
+  /// Reached through Tailscale (`tailscale serve` on a computer): only a
+  /// device on that tailnet, with Tailscale on, can reach it.
+  bool get onTailnet => host.endsWith('.ts.net');
+
+  /// Why this device gets no answer from the server, worded for the person:
+  /// a Tailscale address needs Tailscale on here.
+  String get unreachable => onTailnet
+      ? "Can't reach $host. It's on your tailnet: open Tailscale on this device and connect."
+      : "Can't reach $host. Check your connection.";
+
   /// Plain http only to this machine (a computer reaching the server built
   /// into it); everything else, Tailscale included (`tailscale serve` gives
   /// it a ts.net certificate), needs https.
@@ -126,7 +142,7 @@ class Backend {
       return "Couldn't make a secure connection to $host.";
     } on IOException {
       // Refused, reset, or closed mid-answer (HttpException), e.g. a captive portal or a proxy.
-      return "Couldn't reach $host. Check the URL and your connection.";
+      return onTailnet ? unreachable : "Couldn't reach $host. Check the URL and your connection.";
     } on TimeoutException {
       return '$host took too long to answer.';
     } on FormatException {

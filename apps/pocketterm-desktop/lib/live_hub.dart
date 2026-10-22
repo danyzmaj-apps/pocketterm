@@ -148,9 +148,15 @@ class LiveAsked extends LiveEvent {
 /// passes them on to the phone.
 class LiveHub {
   /// [locate]: where a session runs (Terminals.locate); [windowOfTerm] by
-  /// default. [files]: where files sent with prompts go.
-  LiveHub({Locate? locate, PromptFiles? files}) : _locate = locate ?? _byTerm, _files = files ?? PromptFiles() {
+  /// default. [files]: where files sent with prompts go; [images]: where
+  /// images for an agent that reads them from disk go. The ones older than
+  /// a day go now, and when more come.
+  LiveHub({Locate? locate, PromptFiles? files, Directory? images})
+    : _locate = locate ?? _byTerm,
+      _files = files ?? PromptFiles(),
+      _imageDir = images ?? Directory(p.join(Directory.systemTemp.path, 'pocketterm-images')) {
     unawaited(_files.prune());
+    _pruneImages();
   }
 
   static Future<String?> _byTerm(
@@ -406,8 +412,8 @@ class LiveHub {
   }
 
   /// Where images for an agent that reads them from disk (Claude Code) wait
-  /// for it; the ones older than a day go when more come.
-  static final _imageDir = Directory(p.join(Directory.systemTemp.path, 'pocketterm-images'));
+  /// for it (`pocketterm-images` in the temp folder by default).
+  final Directory _imageDir;
 
   /// Sends [text] (and [images] and [files]) as the person's prompt. While
   /// omp works it steers the run, or waits for the run to end with
@@ -438,7 +444,7 @@ class LiveHub {
     }, const Duration(seconds: 15));
   }
 
-  static Future<List<String>> _saveImages(List<({Uint8List bytes, String mimeType})> images) async {
+  Future<List<String>> _saveImages(List<({Uint8List bytes, String mimeType})> images) async {
     if (images.isEmpty) return const [];
     final dir = _imageDir;
     if (!dir.existsSync()) {
@@ -446,10 +452,7 @@ class LiveHub {
       // Private to this user; Windows' per-user temp folder already is.
       if (!Platform.isWindows) await Process.run('/bin/chmod', ['700', dir.path]);
     }
-    final dayAgo = DateTime.now().subtract(const Duration(days: 1));
-    for (final f in dir.listSync().whereType<File>()) {
-      if (f.statSync().modified.isBefore(dayAgo)) f.deleteSync();
-    }
+    _pruneImages();
     final random = Random.secure();
     return [
       for (final i in images)
@@ -461,6 +464,19 @@ class LiveHub {
           ),
         )..writeAsBytesSync(i.bytes)).path,
     ];
+  }
+
+  /// Deletes the images older than [PromptFiles.keep].
+  void _pruneImages() {
+    if (!_imageDir.existsSync()) return;
+    final before = DateTime.now().subtract(PromptFiles.keep);
+    for (final f in _imageDir.listSync().whereType<File>()) {
+      try {
+        if (f.statSync().modified.isBefore(before)) f.deleteSync();
+      } on FileSystemException catch (e) {
+        debugPrint('PocketTerm: image cleanup: $e');
+      }
+    }
   }
 
   /// Esc: stops what the agent is doing.

@@ -69,7 +69,7 @@ Code: `packages/pocketterm_core/lib/e2e.dart`.
 
 - A phone sends up to 10 images and files per message, each up to 20 MB (the server's 20 MiB blob limit less the sealing). Images are scaled to at most 2048 px.
 - Each file's bytes are sealed with the computer's key, with the blob path as additional data. The file name and type travel only inside the sealed prompt. The server sees a blob of some size and deletes it once downloaded, or after an hour if nobody downloads it.
-- The computer saves each prompt's files in a folder of its own, `pocketterm-files/<12 random characters>/` in the user's temp folder (`$TMPDIR` on a Mac, where the folder is mode 700; the per-user `%TEMP%` on Windows). Folders older than a day are deleted when PocketTerm starts and when new files arrive. Images for Claude Code go to `pocketterm-images/` in the same temp folder and are likewise deleted after a day, when new ones arrive.
+- The computer saves each prompt's files in a folder of its own, `pocketterm-files/<12 random characters>/` in the user's temp folder (`$TMPDIR` on a Mac, where the folder is mode 700; the per-user `%TEMP%` on Windows). Images for Claude Code go to `pocketterm-images/` in the same temp folder. Both are deleted once older than a day, when PocketTerm starts and when new ones arrive.
 - File names are reduced to their last path component, stripped of control characters, `<>:"|?*` and trailing dots and spaces, kept off Windows device names and capped at 120 characters. Nothing is overwritten: a clash becomes `name (2).ext`. The prompt names each file as `@path`; the Claude Code plugin lets Claude read these files without asking.
 
 ## Push notifications
@@ -100,4 +100,4 @@ Mac updates are accepted only when signed with the project's Sparkle EdDSA key, 
 - **Metadata.** The server, the relay, Apple, Google and the network see when messages and pushes are sent and how big they are.
 - **The relay is open.** It can't tell callers apart, since self-hosted servers hold no publisher credentials. Anyone who knows a phone's push token can make it show a generic "PocketTerm" alert, or move or end one of its Live Activities, within the relay's rate limits.
 - **Secrets on the server.** Whoever can read the server's data folder can read the setup token and sign in a computer: list and revoke devices or erase the server's data, but not read sessions.
-- **The computer.** Received files stay in the temp folder for up to a day, readable by the computer's user and its coding agents. On Windows, the local API token file relies on the user profile's default permissions.
+- **The computer.** Received files stay in the temp folder, readable by the computer's user and its coding agents, until they are older than a day and PocketTerm starts or receives new ones. On Windows, the local API token file relies on the user profile's default permissions.

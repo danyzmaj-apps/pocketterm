@@ -455,6 +455,25 @@ void main() {
       expect(File((req['files'] as List).single as String).readAsBytesSync(), png, reason: 'the image, from disk');
       expect(req['deliver'], 'followUp');
     });
+
+    test('images and files older than a day go when PocketTerm starts; newer ones stay', () async {
+      final images = Directory(p.join(dir.path, 'images'))..createSync();
+      final files = Directory(p.join(dir.path, 'files'))..createSync();
+      final old = DateTime.now().subtract(const Duration(days: 2));
+      final oldImage = File(p.join(images.path, 'old.png'))
+        ..writeAsBytesSync(png)
+        ..setLastModifiedSync(old);
+      final newImage = File(p.join(images.path, 'new.png'))..writeAsBytesSync(png);
+      final oldFolder = Directory(p.join(files.path, 'old'))..createSync();
+      File(p.join(oldFolder.path, 'notes.txt')).writeAsStringSync('the notes');
+      await Process.run('/usr/bin/touch', ['-t', '200001010000', oldFolder.path]);
+
+      LiveHub(files: PromptFiles(files), images: images);
+      await until(() => !oldFolder.existsSync());
+      expect(oldImage.existsSync(), isFalse);
+      expect(newImage.existsSync(), isTrue);
+      expect(oldFolder.existsSync(), isFalse);
+    });
   });
 
   test('older items arrive as ops above the oldest', () async {

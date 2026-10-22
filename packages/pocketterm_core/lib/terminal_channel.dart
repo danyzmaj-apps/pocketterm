@@ -147,6 +147,10 @@ class TerminalChannel {
     _drop();
   }
 
+  /// The largest frame the server takes (packages/pocketterm_server/PROTOCOL.md); a larger one would close the
+  /// socket, and every message after it would be lost until the next join.
+  static const maxFrameBytes = 256 * 1024;
+
   /// Drops [event] if the channel isn't joined: whoever waits on an answer
   /// times out, and the other side catches up after the next join. A
   /// message too big for the server fails with a [TerminalException] and
@@ -156,10 +160,6 @@ class TerminalChannel {
     final out = _outbox.then((_) async {
       final sealed = await _seal.seal(event, payload);
       final ws = _ws;
-  /// The largest frame the server takes (packages/pocketterm_server/PROTOCOL.md); a larger one would close the
-  /// socket, and every message after it would be lost until the next join.
-  static const maxFrameBytes = 256 * 1024;
-
       if (ws == null || !_joined) return;
       // Sealed, it's all ASCII: its length is its size in bytes.
       final frame = jsonEncode({'t': 'send', 'topic': topic, 'event': event, 'payload': sealed});

@@ -565,17 +565,13 @@ class AppController extends Session {
     super.dispose();
   }
 
-  /// The first sign-in on this computer turns on Terminal from phone and
-  /// Launch at login (what PocketTerm is for); after that they stay as the
-  /// user leaves them.
+  /// The first sign-in on this computer turns on Terminal from phone (what
+  /// PocketTerm is for); after that it stays as the user leaves it. Launch
+  /// at login stays off until the user turns it on (Settings → Account): a
+  /// login item is the person's to add.
   @override
   Future<void> onSignedIn(Account user) async {
     if (_prefs.getBool(_firstSignInKey) ?? false) return await _startBridge();
-    try {
-      await setLaunchAtLogin(on: true);
-    } on Object catch (e) {
-      debugPrint('PocketTerm: launch at login not turned on: $e');
-    }
     try {
       await setTerminal(on: true);
     } finally {

@@ -10,7 +10,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_desktop/controller.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_fakes.dart';
 
@@ -97,20 +96,18 @@ void main() {
   });
 
   group('the first sign-in on this computer', () {
-    testWidgets('turns on Terminal from phone and Launch at login, once', (tester) async {
+    testWidgets('turns on Terminal from phone, once, and never adds a login item on its own', (tester) async {
       final app = await FakeApp.create();
       await app.signedIn();
       expect(app.terminalOn, isTrue);
-      expect(app.launchAtLogin, isTrue);
-      expect(app.host.loginItem, isTrue);
+      expect(app.host.loginItem, isFalse);
+      expect(app.host.calls, isNot(contains('setLaunchAtLogin(true)')));
 
-      // Turned off again, they stay off at the next sign-in.
+      // Turned off again, it stays off at the next sign-in.
       await app.setTerminal(on: false);
-      await app.setLaunchAtLogin(on: false);
       app.host.calls.clear();
       await app.signedIn();
       expect(app.terminalOn, isFalse);
-      expect(app.host.loginItem, isFalse);
       expect(app.host.calls, isEmpty);
     });
 
@@ -119,15 +116,6 @@ void main() {
       await app.signedIn();
       expect(app.terminalOn, isFalse);
       expect(app.host.calls, isEmpty);
-    });
-
-    testWidgets('Launch at login refused still turns on Terminal from phone', (tester) async {
-      final app = await FakeApp.create();
-      app.host.loginItemRefused = 'Operation not permitted';
-      await app.signedIn();
-      expect(app.terminalOn, isTrue);
-      expect(app.launchAtLogin, isFalse);
-      expect((await SharedPreferences.getInstance()).getBool('first_sign_in_done'), isTrue);
     });
   });
 

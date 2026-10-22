@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/server_client.dart';
@@ -48,6 +49,27 @@ abstract class Session extends ChangeNotifier {
   StreamSubscription<void>? _ended;
 
   String? authError;
+
+  /// The link whose sign-in failed only because the Keychain couldn't keep
+  /// it ([keychainProblem]): [retry] tries it again.
+  Uri? retryLink;
+
+  /// What a sign-in says when the Keychain (locked, or missing) didn't let
+  /// PocketTerm keep it.
+  static const keychainProblem =
+      'PocketTerm can\u2019t use your keychain (it may be locked or missing). Unlock it in Keychain Access, then '
+      'try again.';
+
+  /// The Keychain's own error (flutter_secure_storage's "Unexpected security
+  /// result code", e.g. -60006 when its dialog was cancelled, -25308 locked).
+  @visibleForTesting
+  static bool keychainFailure(PlatformException e) => '${e.code} ${e.message}'.contains('security result code');
+
+  /// Signs in again with [retryLink].
+  Future<void> retry() async {
+    final link = retryLink;
+    if (link != null) await connectLink(link);
+  }
 
   /// Why the last sign-in is gone, once it is (signed out here, the server
   /// ended it); null after a sign-in. The phone shows it on its scan screen.
@@ -156,6 +178,7 @@ abstract class Session extends ChangeNotifier {
       await connect(backend);
     }
     authError = null;
+    retryLink = null;
     notifyListeners();
     try {
       final s = server!;
@@ -177,7 +200,12 @@ abstract class Session extends ChangeNotifier {
         _ => e.message,
       };
     } on Object catch (e) {
-      authError = 'Sign-in failed: $e';
+      if (e is PlatformException && keychainFailure(e)) {
+        authError = keychainProblem;
+        retryLink = uri;
+      } else {
+        authError = 'Sign-in failed: $e';
+      }
     }
     notifyListeners();
   }

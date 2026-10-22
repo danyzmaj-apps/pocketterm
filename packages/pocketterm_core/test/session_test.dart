@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
@@ -56,6 +57,20 @@ class _LinkSession extends _Device {
   }
 }
 
+/// A Keychain that refuses until [locked] is turned off, as a locked or
+/// missing one does.
+class _LockedKeychain extends MemoryDeviceTokens {
+  bool locked = true;
+
+  @override
+  Future<void> write(String? value) async {
+    if (locked) {
+      throw PlatformException(code: 'Unexpected security result code', message: 'Code: -25308, Message: locked');
+    }
+    await super.write(value);
+  }
+}
+
 void main() {
   late OwnServer own;
   late _Device mac;
@@ -96,6 +111,22 @@ void main() {
     await third.connectLink(link);
     expect(third.user, isNull);
     expect(third.authError, contains('used'));
+  });
+
+  test('a Keychain that refuses the sign-in says so plainly, and Try again signs in once it lets', () async {
+    final keychain = _LockedKeychain();
+    final other = _Device('Mac mini', tokens: keychain);
+    addTearDown(other.disconnect);
+    await other.connectLink(own.setupLink);
+    expect(other.user, isNull);
+    expect(other.authError, Session.keychainProblem);
+    expect(other.retryLink, own.setupLink);
+
+    keychain.locked = false;
+    await other.retry();
+    expect(other.authError, isNull);
+    expect(other.user?.device.label, 'Mac mini');
+    expect(other.retryLink, isNull);
   });
 
   test("a link not from the scanner signs a phone in but never gives it a computer's key", () async {

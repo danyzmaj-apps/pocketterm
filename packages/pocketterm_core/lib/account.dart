@@ -51,6 +51,10 @@ class SignInPage extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12, color: session.authError == null ? C.dim2 : const Color(0xFFFCA5A5)),
           ),
+          if (session.retryLink != null) ...[
+            const SizedBox(height: 12),
+            FilledButton(onPressed: () => unawaited(session.retry()), child: const Text('Try again')),
+          ],
           const SizedBox(height: 20),
           TextButton(
             onPressed: () => unawaited(session.disconnect()),

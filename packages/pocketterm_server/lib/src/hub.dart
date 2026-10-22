@@ -8,6 +8,9 @@ const int maxFrameBytes = 256 * 1024;
 /// How many topics one socket may join.
 const maxTopicsPerSocket = 32;
 
+/// How many WebSockets one device may have open at once (a phone opens one per computer it shows).
+const maxSocketsPerDevice = 64;
+
 /// How often the server pings every socket (a socket whose pong is missing by the next ping is closed).
 const pingInterval = Duration(seconds: 25);
 
@@ -36,6 +39,9 @@ class _Socket {
 class Hub {
   final Set<_Socket> _sockets = {};
   final Map<String, Set<_Socket>> _topics = {};
+
+  /// How many sockets device [device] has open.
+  int socketsOf(String device) => _sockets.where((s) => s.device == device).length;
 
   /// Serves [ws], opened by device [device], until it closes.
   void add(WebSocket ws, String device) {

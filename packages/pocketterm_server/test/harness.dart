@@ -52,11 +52,13 @@ Future<List<int>> openSealed(SimpleKeyPair relay, Map<String, dynamic> sealed) a
 }
 
 /// A push relay with its own key pair that opens what it's sent, records it, and answers each token with
-/// [statusFor] (default 200). A body it can't open answers 400 and is recorded as `{'unopened': true}`.
+/// the next of its [script] statuses, else [statusFor] (default 200); a 429 says Retry-After 1. A body it can't
+/// open answers 400 and is recorded as `{'unopened': true}`. While [hang] it answers nothing.
 class FakeRelay {
   FakeRelay._(this._http, this.keyPair) {
     _http.listen((req) async {
       final sealed = jsonDecode(await utf8.decodeStream(req)) as Map<String, dynamic>;
+      if (hang) return;
       Map<String, dynamic> body;
       try {
         body = jsonDecode(utf8.decode(await openSealed(keyPair, sealed))) as Map<String, dynamic>;
@@ -66,8 +68,13 @@ class FakeRelay {
         await req.response.close();
         return;
       }
-      received.add(body);
-      req.response.statusCode = statusFor[body['token']] ?? 200;
+      kids.add(sealed['kid'] as String?);
+      final scripted = script[body['token']];
+      final status = scripted != null && scripted.isNotEmpty ? scripted.removeAt(0) : statusFor[body['token']] ?? 200;
+      if (status < 300) received.add(body);
+      attempts.add(body);
+      req.response.statusCode = status;
+      if (status == 429) req.response.headers.set('retry-after', '1');
       await req.response.close();
     });
   }
@@ -77,8 +84,18 @@ class FakeRelay {
 
   final HttpServer _http;
   final SimpleKeyPair keyPair;
+
+  /// What it delivered (answered 2xx).
   final List<Map<String, dynamic>> received = [];
+
+  /// Every request it opened, whatever it answered.
+  final List<Map<String, dynamic>> attempts = [];
+
+  /// The key id of every request it opened.
+  final List<String?> kids = [];
   final Map<String, int> statusFor = {};
+  final Map<String, List<int>> script = {};
+  bool hang = false;
 
   Uri get url => Uri.parse('http://127.0.0.1:${_http.port}/relay');
 
@@ -106,8 +123,9 @@ class Harness {
   bool _running = false;
 
   /// Stops the server if it runs and starts a new one on the same data directory.
-  Future<void> restart({bool trustLoopbackProxy = false}) async {
+  Future<void> restart({bool trustLoopbackProxy = false, void Function(String)? log}) async {
     if (_running) await server.stop();
+    _running = false;
     server = await PocketTermServer.start(
       dataDir: dir,
       address: InternetAddress.loopbackIPv4,
@@ -117,8 +135,16 @@ class Harness {
       relayKey: await relay.publicKey,
       clock: () => now,
       trustLoopbackProxy: trustLoopbackProxy,
+      relayRetry: const Duration(milliseconds: 20),
+      log: log,
     );
     _running = true;
+  }
+
+  /// The minute's housekeeping, and the pushes it queued.
+  Future<void> sweep() async {
+    await server.sweep();
+    await server.pushesDone();
   }
 
   Future<void> close() async {
@@ -151,6 +177,8 @@ class Harness {
     }
     final res = await req.close();
     final out = await res.fold<List<int>>([], (all, chunk) => all..addAll(chunk));
+    // What the relay is sent happens after the answer: tests look at it once it's done.
+    if (!relay.hang) await server.pushesDone();
     return Res(res.statusCode, res.headers, out);
   }
 

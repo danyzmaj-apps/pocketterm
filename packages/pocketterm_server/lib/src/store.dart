@@ -142,28 +142,104 @@ class ActivityToken {
 
 String iso(DateTime t) => t.toUtc().toIso8601String();
 
-/// Everything the server keeps but blobs: one JSON file (state.json) in the data directory, rewritten
-/// atomically (a temporary file, flushed, then renamed over it) after every change. The setup token sits in
-/// its own file (setup-token) so `pocketterm-server setup-link --new` can replace it while the server runs.
-class Store {
-  Store._(this.dir, this.serverId);
+/// The data directory couldn't be written (a full disk, a read-only or not-owned folder): what was being saved
+/// wasn't. [message] names the file and the system's reason.
+class StorageException implements Exception {
+  StorageException(this.message);
 
-  /// The store in [dir], made (with a new server id) when there is none. A state file that can't be read
-  /// throws rather than being replaced: it holds every device's sign-in.
-  factory Store.open(Directory dir) {
-    dir.createSync(recursive: true);
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// Everything the server keeps but blobs: one JSON file (state.json) in the data directory, rewritten
+/// atomically after every change: written whole to state.json.tmp and flushed, the previous state.json renamed to
+/// state.json.bak, then the new one renamed into place. The setup token sits in its own file (setup-token) so
+/// `pocketterm-server setup-link --new` can replace it while the server runs. One server at a time holds the
+/// directory (a lock on its `.lock` file).
+class Store {
+  Store._(this.dir, this.serverId, this._lock);
+
+  /// The store in [dir], made (with a new server id) when there is none. A state.json that can't be read is
+  /// never replaced by an empty one: the previous one (state.json.bak) takes its place when it reads, the bad
+  /// one kept beside it as state.json.corrupt-<time>; otherwise this throws and leaves both as they are.
+  /// Throws [StorageException] when [dir] can't be written or another server holds it.
+  factory Store.open(Directory dir, {void Function(String message)? log}) {
+    final RandomAccessFile lock;
+    try {
+      dir.createSync(recursive: true);
+      lock = File('${dir.path}/.lock').openSync(mode: FileMode.append);
+    } on FileSystemException catch (e) {
+      throw StorageException(
+        "Can't write to the data folder ${dir.absolute.path} (${e.osError?.message ?? e.message}). The server "
+        'needs to own it; in Docker it runs as user 65532: `chown -R 65532:65532 <folder>` for a folder you mount.',
+      );
+    }
+    try {
+      lock.lockSync();
+    } on FileSystemException {
+      lock.closeSync();
+      throw StorageException('Another PocketTerm server is using ${dir.absolute.path}. Stop it first.');
+    }
+    try {
+      return _load(dir, lock, log)..save();
+    } on Object {
+      lock.closeSync();
+      rethrow;
+    }
+  }
+
+  static Store _load(Directory dir, RandomAccessFile lock, void Function(String)? log) {
     final file = File('${dir.path}/$_stateFile');
+    final backup = File('${dir.path}/$_stateFile.bak');
+    final pending = File('${dir.path}/$_stateFile.tmp');
     if (!file.existsSync()) {
-      final store = Store._(dir, newId())..save();
+      // A save stopped between its two renames: the new state is whole in .tmp, the one before in .bak.
+      for (final f in [pending, backup]) {
+        if (!f.existsSync()) continue;
+        try {
+          final store = _read(f, dir, lock);
+          log?.call('${file.path} was missing: started from ${f.path}.');
+          return store;
+        } on Object catch (e) {
+          log?.call("${f.path} doesn't read either: $e");
+        }
+      }
+      if (backup.existsSync()) {
+        throw StorageException(
+          "${file.path} is missing and ${backup.path} doesn't read. Restore the data folder from a backup, or "
+          'remove ${backup.path} to start over (every device then signs in again).',
+        );
+      }
+      return Store._(dir, newId(), lock);
+    }
+    try {
+      return _read(file, dir, lock);
+    } on Object catch (e) {
+      final Store store;
+      try {
+        store = _read(backup, dir, lock);
+      } on Object {
+        throw StorageException(
+          "${file.path} doesn't read ($e) and there is no usable ${backup.path}. It is left as it is: restore it "
+          'from a backup, or move it away to start over (every device then signs in again).',
+        );
+      }
+      final kept = '${file.path}.corrupt-${DateTime.now().millisecondsSinceEpoch}';
+      file.renameSync(kept);
+      log?.call(
+        "${file.path} doesn't read ($e): kept it as $kept and started from ${backup.path}, the state before the "
+        'last change. A device signed in by that change signs in again.',
+      );
       return store;
     }
-    final Map<String, dynamic> j;
-    try {
-      j = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-    } on FormatException catch (e) {
-      throw StateError('${file.path} is not valid JSON ($e). Restore it from a backup or move it away.');
-    }
-    final store = Store._(dir, j['server_id'] as String);
+  }
+
+  /// The store saved in [file]; throws when it isn't one (bad JSON, a missing or mistyped field).
+  static Store _read(File file, Directory dir, RandomAccessFile lock) {
+    final j = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+    final store = Store._(dir, j['server_id'] as String, lock);
     List<Map<String, dynamic>> rows(String key) => [
       for (final r in (j[key] as List<dynamic>? ?? const [])) r as Map<String, dynamic>,
     ];
@@ -191,6 +267,7 @@ class Store {
   static const _setupFile = 'setup-token';
 
   final Directory dir;
+  final RandomAccessFile _lock;
 
   /// Made once with the data directory; clients key per-server state on it.
   final String serverId;
@@ -208,9 +285,15 @@ class Store {
     return null;
   }
 
+  /// Writes state.json; throws [StorageException] when it can't (what's in memory stays, saved by the next
+  /// save that works).
   void save() {
-    _writeAtomically(File('${dir.path}/$_stateFile'), const JsonEncoder.withIndent(' ').convert(_toJson()));
+    final file = File('${dir.path}/$_stateFile');
+    _writeAtomically(file, const JsonEncoder.withIndent(' ').convert(_toJson()), backup: true);
   }
+
+  /// Lets another server open [dir].
+  void close() => _lock.closeSync();
 
   Map<String, dynamic> _toJson() => {
     'version': 1,
@@ -243,16 +326,27 @@ class Store {
     return token;
   }
 
-  static void _writeAtomically(File file, String content) {
+  /// [content] into [file] whole or not at all; with [backup], the file it replaces becomes `<file>.bak`.
+  static void _writeAtomically(File file, String content, {bool backup = false}) {
     final tmp = File('${file.path}.tmp');
-    final raf = tmp.openSync(mode: FileMode.write);
     try {
-      raf
-        ..writeStringSync(content)
-        ..flushSync();
-    } finally {
-      raf.closeSync();
+      final raf = tmp.openSync(mode: FileMode.write);
+      try {
+        raf
+          ..writeStringSync(content)
+          ..flushSync();
+      } finally {
+        raf.closeSync();
+      }
+      if (backup && file.existsSync()) file.renameSync('${file.path}.bak');
+      tmp.renameSync(file.path);
+    } on FileSystemException catch (e) {
+      try {
+        if (tmp.existsSync()) tmp.deleteSync();
+      } on FileSystemException {
+        // Gone with the rest of the folder.
+      }
+      throw StorageException("Couldn't save ${file.path}: ${e.osError?.message ?? e.message}.");
     }
-    tmp.renameSync(file.path);
   }
 }

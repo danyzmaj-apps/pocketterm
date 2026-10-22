@@ -30,12 +30,14 @@ Every error is an HTTP status of 400 or more with this body:
 | 400    | `invalid_code`       | a setup token or pairing code that doesn't work (any reason, same answer) |
 | 401    | `unauthorized`       | no `Authorization` header, or the token is unknown or revoked             |
 | 403    | `forbidden`          | the device's role can't do this (a phone making a pairing code)           |
-| 404    | `not_found`          | no such endpoint, device or blob (a blob that ran out or was downloaded)  |
+| 404    | `not_found`          | no such endpoint (the message names the server's version), device or blob |
 | 405    | `method_not_allowed` | the endpoint exists, the method doesn't                                   |
 | 409    | `conflict`           | a blob path that is already taken                                         |
+| 409    | `push_off`           | `activity_register` from a phone with no push token (notifications off)   |
 | 413    | `too_large`          | a body over its limit                                                     |
-| 429    | `rate_limited`       | too many failed redeems from this address; `Retry-After` gives seconds    |
+| 429    | `rate_limited`       | too many failed redeems from this address, or too many WebSockets for one device; `Retry-After` gives seconds |
 | 500    | `internal`           | a bug on the server                                                       |
+| 507    | `storage`            | the data directory can't be written (a full disk, a folder it doesn't own); nothing was saved |
 
 ## Objects
 
@@ -88,7 +90,10 @@ pocketterm://setup?url=<public url>&code=<pairing code>&d=<desktop id>&k=<base64
 
 ### `GET /v1/health`
 
-200 `{"pocketterm": 1, "version": "0.1.0"}`. `pocketterm` is this protocol's version.
+200 `{"pocketterm": 1, "version": "0.1.0", "time": "<the server's clock, ISO 8601>"}`. `pocketterm` is this
+protocol's version; an app refuses a newer one ("update the app") and a `version` older than it needs ("update the
+server"). `time` lets an app tell the person their clock is off: sealed live messages more than 5 minutes off the
+receiver's clock are dropped, so the apps warn past 2 minutes.
 
 ### `POST /v1/setup/redeem` (no token)
 
@@ -116,7 +121,8 @@ Both redeem endpoints share one counter per caller address: after 10 failed rede
 `bad_request`) within 10 minutes, every redeem from that address gets 429 `rate_limited` with `Retry-After`
 until the oldest failure is 10 minutes old, right code or not. Successful redeems don't count. The address is
 the TCP peer's, or with `--trust-proxy` the last address in `X-Forwarded-For` (what Caddy or the nearest proxy
-puts there).
+puts there). An IPv6 address counts by its /64 (an IPv4-mapped one as the IPv4 address). The counters live in
+memory: restarting the server clears a lockout.
 
 ### `GET /v1/me`
 
@@ -186,6 +192,12 @@ The server forwards to the push relay (`PUSH_RELAY_URL`, by default the publishe
 which holds the APNs key and the Firebase service account) and forgets a token when the relay answers 410. Every push body may carry
 `"platform": "ios" | "android"` (default `ios`); any other value is 400.
 
+Pushes go out in the background: no request waits on the relay, and `sent` counts the pushes queued, not delivered.
+A relay that can't be reached, answers 5xx or 429 is tried again after 2, 4, 8 … seconds (429: its `Retry-After`), up to
+5 tries within 2 minutes; other answers are final. At most 500 wait (the oldest go first past that), 4 at a time, and a
+newer push for the same phone and session (or `collapse`) replaces one still waiting and never overtakes one on its way.
+A server stopping gives what's on its way 3 seconds; what still waits is dropped.
+
 | Endpoint                             | Request                                                       | 200                 |
 |--------------------------------------|---------------------------------------------------------------|---------------------|
 | `POST /v1/push/register`             | `{"token", "label"?, "platform"?}`                            | `{"ok": true}`      |
@@ -196,7 +208,9 @@ which holds the APNs key and the Firebase service account) and forgets a token w
 | `POST /v1/push/activity`             | `{"session", "state", "kind"?, "desktop"?, "enc"?}`           | `{"sent": <count>}` |
 
 - `token`: iOS, the APNs device token in hex (64 to 200 characters; a Live Activity's up to 400); Android, the
-  FCM registration token (`[A-Za-z0-9_:-]{100,4096}`). Registering a token again replaces its row.
+  FCM registration token (`[A-Za-z0-9_:-]{100,4096}`). Registering a token again replaces its row; a phone has one
+  push token, so registering a new one (Apple or Google replaced it) forgets the phone's old one, and on Android the
+  sessions the old one followed move to the new one.
 - `label`: at most 80 characters.
 - `desktop`: the computer's 8-character id. `enc`: base64 of nonce 12 ‖ ciphertext ‖ tag 16 (AES-256-GCM with the
   computer's channel key over `{title, body, session?, state?}`, AAD `pocketterm/v1|push|<desktop>`), at most 3000
@@ -207,7 +221,8 @@ which holds the APNs key and the Firebase service account) and forgets a token w
 - `unregister` is how a phone turns notifications off: it forgets `token` (without one, every push token this phone
   registered) and every Live Activity token this phone registered, plus any following sessions with `token` (an
   Android phone's sessions use its FCM token). Afterwards nothing reaches the phone until it registers again.
-- `activity_register` for iOS moves the token to this session (an iPhone's activity follows one session).
+- `activity_register` for iOS moves the token to this session (an iPhone's activity follows one session). It needs
+  the phone to have a push token (notifications on), else 409 `push_off`.
 - `activity_end` without `session` ends every session the token follows.
 - `activity`: iPhones get `state` and `kind` (Apple shows a Live Activity push without the app, so it can't be
   encrypted). Android phones get only `enc`: the computer's channel-key AES-256-GCM seal of
@@ -218,11 +233,14 @@ which holds the APNs key and the Firebase service account) and forgets a token w
 - Ending by the server: when a computer hasn't `PUT /v1/desktops/:id` for 3 minutes (checked every minute), is
   removed with `DELETE /v1/desktops/:id`, or its device leaves or is revoked, the server sends an end to every Live
   Activity following one of its sessions (session keys starting with `<desktop id>/`) and forgets those tokens. A
-  token following a computer that never checked in counts as silent.
+  token following a computer that never checked in counts as silent. A phone that leaves or is revoked has its own
+  Live Activities ended the same way, and `POST /v1/erase` ends every one before forgetting them.
 
 What reaches the relay: one POST per phone, its JSON body sealed to the relay's X25519 public key (`PUSH_RELAY_KEY`, by
-default the publisher's relay's): `{"v": 1, "epk", "n", "c"}`, a fresh ephemeral X25519 key, HKDF-SHA256 (salt `epk ‖
-relay public key`, info `pocketterm-relay/v1`) and AES-256-GCM (`c` is the ciphertext then the tag); see
+default the publisher's relay's): `{"v": 1, "kid", "epk", "n", "c"}`, a fresh ephemeral X25519 key, HKDF-SHA256 (salt
+`epk ‖ relay public key`, info `pocketterm-relay/v1`) and AES-256-GCM (`c` is the ciphertext then the tag). `kid` is the
+first 11 characters of the relay public key's base64: a relay holding a new key and the previous one opens each request
+with the one it names (one without `kid` is tried with each); see
 `apps/pocketterm-relay/README.md`. Sealed inside:
 
 - notify, iOS: `{"token", "kind": "terminal", "enc", "desktop", "collapse"?}`
@@ -241,8 +259,9 @@ Screen 10 minutes later (`dismissal-date`).
 ## WebSocket: the live channel
 
 `GET /v1/ws` with `Authorization: Bearer <device token>` upgrades to a WebSocket (401 `unauthorized` before the
-upgrade otherwise). Every frame is a text frame holding one JSON object with a `t` field. A topic is a computer's
-id (any `[A-Za-z0-9_.:-]{1,128}` is accepted); an event is `[A-Za-z0-9_.:-]{1,64}`.
+upgrade otherwise; 429 `rate_limited` when the device has 64 open already). Every frame is a text frame holding one
+JSON object with a `t` field. A topic is a computer's id (any `[A-Za-z0-9_.:-]{1,128}` is accepted); an event is
+`[A-Za-z0-9_.:-]{1,64}`.
 
 Client to server:
 
@@ -277,6 +296,10 @@ Limits and keepalive:
 - The server sends a WebSocket ping control frame every 25 seconds and closes a socket whose pong hasn't arrived
   by the next ping. Clients may also send `{"t": "ping"}` (answered `{"t": "pong"}`) to notice a dead link on
   their side; every 25 seconds, giving up after 2 missed pongs, is a good default.
+- A client that stops reading gets its pings only behind what is already queued for it, so it misses its pong and
+  is closed the same way: what the server buffers for a slow or stuck client is bounded by about 50 seconds of
+  messages.
+- Proxies that close idle WebSockets (Cloudflare after 100 seconds) see traffic at least every 25 seconds both ways.
 
 Close codes from the server: 1001 the server is stopping, 1009 frame too large, 4003 the device was revoked or
 left (don't reconnect with that token).

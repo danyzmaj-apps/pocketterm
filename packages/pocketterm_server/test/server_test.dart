@@ -363,6 +363,11 @@ void main() {
     final iosToken = 'ab' * 32;
     final androidToken = 'f' * 120;
 
+    Future<void> optIn(String phoneToken) async {
+      final res = await h.call('POST', '/v1/push/register', token: phoneToken, body: {'token': 'ee' * 32});
+      expect(res.status, 200);
+    }
+
     test('a notification goes to every phone through the relay, and a gone phone is forgotten', () async {
       final mac = await h.desktop();
       final phone = await h.phone(mac.token);
@@ -375,10 +380,11 @@ void main() {
         )).status,
         200,
       );
+      final pixel = await h.phone(mac.token, 'Pixel');
       await h.call(
         'POST',
         '/v1/push/register',
-        token: phone.token,
+        token: pixel.token,
         body: {'token': androidToken, 'platform': 'android'},
       );
 
@@ -390,9 +396,10 @@ void main() {
         token: mac.token,
         body: {'desktop': 'aaaa1111', 'enc': enc, 'collapse': 'kitty-1/2'},
       );
-      expect(first.map['sent'], 1);
+      // Queued for both phones; the relay says the iPhone is gone.
+      expect(first.map['sent'], 2);
       expect(
-        h.relay.received,
+        h.relay.attempts,
         unorderedEquals([
           {'token': iosToken, 'kind': 'terminal', 'enc': enc, 'desktop': 'aaaa1111', 'collapse': 'kitty-1/2'},
           {
@@ -435,6 +442,7 @@ void main() {
     test('iPhones get the state, Android phones the sealed state, until the session ends', () async {
       final mac = await h.desktop();
       final phone = await h.phone(mac.token);
+      await optIn(phone.token);
       final activity = 'cd' * 80;
       await h.call(
         'POST',
@@ -546,6 +554,7 @@ void main() {
     test('a computer silent for 3 minutes has its Live Activities ended', () async {
       final mac = await h.desktop();
       final phone = await h.phone(mac.token);
+      await optIn(phone.token);
       final quiet = 'c1' * 80;
       final busy = 'c2' * 80;
       final start = h.now;
@@ -556,12 +565,12 @@ void main() {
       await follow(phone.token, 'bbbb2222/s1', busy);
 
       h.now = start.add(const Duration(minutes: 2, seconds: 59));
-      await h.server.sweep();
+      await h.sweep();
       expect(h.relay.received, isEmpty);
 
       await h.call('PUT', '/v1/desktops/bbbb2222', token: mac.token, body: {'name': 'Busy', 'platform': 'macos'});
       h.now = start.add(const Duration(minutes: 3));
-      await h.server.sweep();
+      await h.sweep();
       final ended = {'state': 'ended', 'since': h.now.millisecondsSinceEpoch ~/ 1000};
       expect(
         h.relay.received,
@@ -579,7 +588,7 @@ void main() {
       );
 
       h.relay.received.clear();
-      await h.server.sweep();
+      await h.sweep();
       expect(h.relay.received, isEmpty);
       expect(await sentTo(mac.token, 'aaaa1111/s1'), 0);
       expect(await sentTo(mac.token, 'bbbb2222/s1'), 1);
@@ -589,6 +598,7 @@ void main() {
       final mac = await h.desktop();
       final other = await h.desktop('Other');
       final phone = await h.phone(mac.token);
+      await optIn(phone.token);
       await h.call('PUT', '/v1/desktops/aaaa1111', token: mac.token, body: {'name': 'Mac', 'platform': 'macos'});
       await h.call('PUT', '/v1/desktops/bbbb2222', token: other.token, body: {'name': 'Other', 'platform': 'macos'});
       await follow(phone.token, 'aaaa1111/s1', 'c1' * 80);

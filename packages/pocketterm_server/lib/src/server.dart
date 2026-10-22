@@ -58,6 +58,17 @@ class _Fail implements Exception {
 
 _Fail _bad(String message) => _Fail(400, 'bad_request', message);
 
+/// What the redeem throttle counts [address] as: itself, an IPv4-mapped IPv6 address as its IPv4 one, any other
+/// IPv6 address as its /64 (`2001:db8:1:2::/64`).
+String callerKey(String address) {
+  final ip = InternetAddress.tryParse(address);
+  if (ip == null || ip.type != InternetAddressType.IPv6) return address;
+  final b = ip.rawAddress;
+  if (b.sublist(0, 10).every((x) => x == 0) && b[10] == 0xff && b[11] == 0xff) return b.sublist(12).join('.');
+  final groups = [for (var i = 0; i < 8; i += 2) ((b[i] << 8) | b[i + 1]).toRadixString(16)];
+  return '${groups.join(':')}::/64';
+}
+
 /// PocketTerm's own server for one owner: devices, pairing, desktops, blobs, push forwarding and the live
 /// channel over WebSocket. Everything it keeps lives in one data directory. See PROTOCOL.md.
 class PocketTermServer {
@@ -65,19 +76,28 @@ class PocketTermServer {
     this._dir,
     this._http,
     this._store,
-    this._relay,
     this.publicUrl,
     this._now,
     this._trustProxy,
     this._trustLoopbackProxy,
-  );
+    this._log,
+    Uri relay,
+    List<int> relayKey,
+    Duration relayRetry,
+  ) {
+    _relay = Relay(relay, relayKey, log: _log, onGone: _gone, firstRetry: relayRetry);
+  }
 
   /// Starts serving on [address]:[port] (0 picks a free port; see [port]). [publicUrl] is the address phones
   /// and computers reach it at, put in setup links. [relay] is the push relay and [relayKey] its X25519 public
   /// key, which every push is sealed to (default: the publisher's relay and key).
   /// With [trustProxy], the caller's address for rate limits is the last one in X-Forwarded-For (set it only
   /// behind a reverse proxy). With [trustLoopbackProxy], it is trusted only from a loopback peer: for a server on
-  /// 127.0.0.1 that `tailscale serve` publishes, so each tailnet caller gets its own throttle. [clock] stands in for the time in tests.
+  /// 127.0.0.1 that `tailscale serve` publishes, so each tailnet caller gets its own throttle. [clock] stands in
+  /// for the time and [relayRetry] for the relay's first retry wait in tests.
+  ///
+  /// Throws [StorageException] when [dataDir] can't be written, is held by another server or its state.json
+  /// doesn't read (see [Store.open]).
   static Future<PocketTermServer> start({
     required Directory dataDir,
     required InternetAddress address,
@@ -89,21 +109,31 @@ class PocketTermServer {
     bool trustLoopbackProxy = false,
     void Function(String message)? log,
     DateTime Function()? clock,
+    Duration relayRetry = const Duration(seconds: 2),
   }) async {
-    final store = Store.open(dataDir);
-    Store.setupToken(dataDir);
-    Directory('${dataDir.path}/blobs').createSync(recursive: true);
-    final http = await HttpServer.bind(address, port);
+    final store = Store.open(dataDir, log: log);
+    final HttpServer http;
+    try {
+      Store.setupToken(dataDir);
+      Directory('${dataDir.path}/blobs').createSync(recursive: true);
+      http = await HttpServer.bind(address, port);
+    } on Object {
+      store.close();
+      rethrow;
+    }
     final server = PocketTermServer._(
       dataDir,
       http,
       store,
-      Relay(relay ?? defaultRelay, relayKey ?? parseRelayKey(defaultRelayKey)!, log: log),
       publicUrl,
       clock ?? DateTime.now,
       trustProxy,
       trustLoopbackProxy,
-    ).._log = log;
+      log,
+      relay ?? defaultRelay,
+      relayKey ?? parseRelayKey(defaultRelayKey)!,
+      relayRetry,
+    );
     server._sweeper = Timer.periodic(const Duration(minutes: 1), (_) => unawaited(server.sweep()));
     unawaited(server.sweep());
     http.listen((req) => unawaited(server._handle(req)));
@@ -125,13 +155,13 @@ class PocketTermServer {
   final Directory _dir;
   final HttpServer _http;
   final Store _store;
-  final Relay _relay;
+  late final Relay _relay;
   final Hub _hub = Hub();
   final DateTime Function() _now;
   final bool _trustProxy;
   final bool _trustLoopbackProxy;
   final Map<String, List<DateTime>> _failures = {};
-  void Function(String)? _log;
+  final void Function(String)? _log;
   Timer? _sweeper;
 
   /// What setup links point phones and computers at.
@@ -149,15 +179,35 @@ class PocketTermServer {
   /// Replaces the setup token and returns the new setup link.
   Uri newSetupToken() => setupLinkFor(_dir, publicUrl, replace: true);
 
-  /// Stops serving: closes every WebSocket (1001) and the listener.
+  /// Stops serving: closes every WebSocket (1001) and the listener, gives pushes on their way a few seconds,
+  /// and lets go of the data directory. Stopping again does nothing.
   Future<void> stop() async {
+    if (_stopped) return;
+    _stopped = true;
     _sweeper?.cancel();
     await _hub.closeAll();
     await _http.close(force: true);
+    await _relay.idle(timeout: const Duration(seconds: 3));
     _relay.close();
+    _store.close();
   }
 
+  var _stopped = false;
+
+  /// Completes once every push queued so far has been answered by the relay or given up on (tests).
+  Future<void> pushesDone() => _relay.idle();
+
   Directory get _blobs => Directory('${_dir.path}/blobs');
+
+  /// Saves the store, or logs why it couldn't: for changes nobody waits on (a seen stamp, housekeeping), which
+  /// the next save that works keeps.
+  void _trySave() {
+    try {
+      _store.save();
+    } on StorageException catch (e) {
+      _log?.call('$e');
+    }
+  }
 
   /// The minute's housekeeping, also run at start: forgets blobs past [blobTtl] (and half-written ones), expired
   /// pairing codes and old redeem failures, and ends the Live Activities of every computer that hasn't checked in
@@ -173,18 +223,16 @@ class PocketTermServer {
     }
     final before = _store.pairingCodes.length;
     _store.pairingCodes.removeWhere((_, c) => !c.expires.isAfter(now));
-    if (_store.pairingCodes.length != before) _store.save();
+    if (_store.pairingCodes.length != before) _trySave();
     _failures
       ..forEach((_, times) => times.removeWhere((t) => now.difference(t) >= redeemWindow))
       ..removeWhere((_, times) => times.isEmpty);
-    final silent = {
-      for (final t in _store.activityTokens)
-        if (_store.desktops[t.desktop] case final d when d == null || now.difference(d.seen) >= Desktop.activitiesFor)
-          t.desktop,
-    };
-    for (final id in silent) {
-      await _endActivities(id);
+    bool silent(String desktop) {
+      final d = _store.desktops[desktop];
+      return d == null || now.difference(d.seen) >= Desktop.activitiesFor;
     }
+
+    _store.activityTokens.map((t) => t.desktop).where(silent).toSet().forEach(_endActivities);
   }
 
   Future<void> _handle(HttpRequest req) async {
@@ -193,6 +241,18 @@ class PocketTermServer {
     } on _Fail catch (e) {
       if (e.retryAfter != null) req.response.headers.set('retry-after', '${e.retryAfter!.inSeconds + 1}');
       await _json(req, e.status, {'error': e.code, 'message': e.message});
+    } on StorageException catch (e) {
+      _log?.call('${req.method} ${req.uri.path}: $e');
+      try {
+        await _json(req, 507, {
+          'error': 'storage',
+          'message':
+              "The server couldn't save this: its disk may be full or its data folder isn't writable. Its log "
+              'says which.',
+        });
+      } on Object {
+        // The answer had already started.
+      }
     } on Object catch (e, st) {
       _log?.call('${req.method} ${req.uri.path}: $e\n$st');
       try {
@@ -205,7 +265,7 @@ class PocketTermServer {
 
   Future<void> _route(HttpRequest req) async {
     final p = req.uri.pathSegments;
-    if (p.length < 2 || p[0] != 'v1') throw _Fail(404, 'not_found', 'No such endpoint.');
+    if (p.length < 2 || p[0] != 'v1') throw _unknown();
     final m = req.method;
     void only(String method) {
       if (m != method) throw _Fail(405, 'method_not_allowed', '${req.uri.path} takes $method.');
@@ -214,7 +274,13 @@ class PocketTermServer {
     switch (p.sublist(1)) {
       case ['health']:
         only('GET');
-        return await _json(req, 200, {'pocketterm': protocolVersion, 'version': serverVersion});
+        // time: the server's clock, so an app can tell its own is off (sealed messages more than 5 minutes off
+        // are dropped).
+        return await _json(req, 200, {
+          'pocketterm': protocolVersion,
+          'version': serverVersion,
+          'time': iso(DateTime.now()),
+        });
       case ['setup', 'redeem']:
         only('POST');
         return await _redeem(req, _setupRedeem);
@@ -259,7 +325,7 @@ class PocketTermServer {
         final target = id == 'me' ? me.id : id;
         if (target != me.id) _desktopOnly(me);
         if (!_store.devices.containsKey(target)) throw _Fail(404, 'not_found', 'No such device.');
-        await _dropDevice(target);
+        _dropDevice(target);
         return await _json(req, 200, {'ok': true});
       case ['erase']:
         only('POST');
@@ -276,15 +342,32 @@ class PocketTermServer {
         only('GET');
         final me = _auth(req);
         if (!WebSocketTransformer.isUpgradeRequest(req)) throw _bad('Expected a WebSocket upgrade.');
+        if (_hub.socketsOf(me.id) >= maxSocketsPerDevice) {
+          throw _Fail(
+            429,
+            'rate_limited',
+            'This device has $maxSocketsPerDevice live connections open already. Close the app on it and open '
+                'it again.',
+            retryAfter: const Duration(seconds: 30),
+          );
+        }
         final ws = await WebSocketTransformer.upgrade(req);
         // Revoked while upgrading.
         if (!_store.devices.containsKey(me.id)) return await ws.close(closeRevoked, 'revoked');
         _hub.add(ws, me.id);
         return;
       default:
-        throw _Fail(404, 'not_found', 'No such endpoint.');
+        throw _unknown();
     }
   }
+
+  /// An endpoint this server doesn't have: likely an app newer than the server.
+  static _Fail _unknown() => _Fail(
+    404,
+    'not_found',
+    'No such endpoint on this server (PocketTerm server $serverVersion). If the app is newer than the server, '
+        'update the server.',
+  );
 
   // Devices and redeeming.
 
@@ -298,7 +381,7 @@ class PocketTermServer {
     final now = _now();
     if (now.difference(device.seen) >= const Duration(minutes: 1)) {
       device.seen = now;
-      _store.save();
+      _trySave();
     }
     return device;
   }
@@ -309,14 +392,16 @@ class PocketTermServer {
   }
 
   /// Who sent [req], for the redeem throttle: the TCP peer, or behind a trusted proxy the address it put last
-  /// in X-Forwarded-For (with trustLoopbackProxy, only when the TCP peer is loopback).
+  /// in X-Forwarded-For (with trustLoopbackProxy, only when the TCP peer is loopback). An IPv6 caller counts by
+  /// its /64: one machine or home gets a whole /64, so its addresses would otherwise be fresh counters.
   String _caller(HttpRequest req) {
     final peer = req.connectionInfo?.remoteAddress;
+    var caller = peer?.address ?? '';
     if (_trustProxy || (_trustLoopbackProxy && peer != null && peer.isLoopback)) {
       final forwarded = req.headers['x-forwarded-for']?.join(',').split(',').last.trim() ?? '';
-      if (forwarded.isNotEmpty) return forwarded;
+      if (forwarded.isNotEmpty) caller = forwarded;
     }
-    return peer?.address ?? '';
+    return callerKey(caller);
   }
 
   /// Runs [redeem] under the throttle: an address with [maxRedeemFailures] failures in [redeemWindow] waits,
@@ -326,11 +411,13 @@ class PocketTermServer {
     final now = _now();
     final times = (_failures[ip] ??= [])..removeWhere((t) => now.difference(t) >= redeemWindow);
     if (times.length >= maxRedeemFailures) {
+      final wait = redeemWindow - now.difference(times.first);
+      final minutes = (wait.inSeconds / 60).ceil();
       throw _Fail(
         429,
         'rate_limited',
-        'Too many tries. Wait a few minutes, then try again.',
-        retryAfter: redeemWindow - now.difference(times.first),
+        'Too many tries from this network. Wait $minutes minute${minutes == 1 ? '' : 's'}, then try again.',
+        retryAfter: wait,
       );
     }
     try {
@@ -348,8 +435,9 @@ class PocketTermServer {
       throw _Fail(
         400,
         'invalid_code',
-        "That setup link doesn't work: it may have been replaced. Run `pocketterm-server setup-link` on the "
-            'server for the current one.',
+        "That setup link doesn't work: it was replaced by a newer one. Get the current one with "
+            '`pocketterm-server setup-link` on your server, or Add a computer in PocketTerm on the computer that '
+            'hosts it.',
       );
     }
     return _newDevice('desktop', _label(body), platform);
@@ -390,19 +478,26 @@ class PocketTermServer {
       created: now,
       seen: now,
     );
-    _store
-      ..devices[id] = device
-      ..save();
+    _store.devices[id] = device;
+    try {
+      _store.save();
+    } on StorageException {
+      // Nobody will ever hold its token.
+      _store.devices.remove(id);
+      rethrow;
+    }
     return {'token': token, 'device': device.toApi()};
   }
 
   /// Signs device [id] out for good: its token, its push and activity tokens and its sockets. A computer's
-  /// desktops go from the list too (nothing checks them in any more), their Live Activities ended.
-  Future<void> _dropDevice(String id) async {
+  /// desktops go from the list too (nothing checks them in any more); their Live Activities, and a phone's own,
+  /// are ended.
+  void _dropDevice(String id) {
     final desktops = [
       for (final d in _store.desktops.values)
         if (d.device == id) d.id,
     ];
+    final own = _store.activityTokens.where((t) => t.device == id).toList();
     _store
       ..devices.remove(id)
       ..desktops.removeWhere((_, d) => d.device == id)
@@ -410,15 +505,16 @@ class PocketTermServer {
       ..activityTokens.removeWhere((t) => t.device == id)
       ..save();
     _hub.closeDevice(id);
-    for (final d in desktops) {
-      await _endActivities(d);
-    }
+    _sendActivity(own, _ended(), null);
+    desktops.forEach(_endActivities);
   }
 
   /// Erases everything the owner has here: every device (the caller too), computer, pairing code, push and
   /// activity token and blob; every socket closes with 4003. The setup token and the server id stay, so
   /// computers can set up again with the same link.
   Future<void> _erase() async {
+    // The phones' Live Activities end first: nothing would end them afterwards.
+    _store.activityTokens.map((t) => t.desktop).toSet().forEach(_endActivities);
     _store
       ..devices.clear()
       ..desktops.clear()
@@ -462,7 +558,7 @@ class PocketTermServer {
           throw _Fail(403, 'forbidden', 'Only the computer that added it can remove it.');
         }
         if (_store.desktops.remove(id) != null) _store.save();
-        await _endActivities(id);
+        _endActivities(id);
         return await _json(req, 200, {'ok': true});
       default:
         throw _Fail(405, 'method_not_allowed', '${req.uri.path} takes PUT or DELETE.');
@@ -480,35 +576,44 @@ class PocketTermServer {
         if (file.existsSync()) throw _Fail(409, 'conflict', 'That blob path is taken.');
         if (req.contentLength > maxBlobBytes) {
           req.response.persistentConnection = false;
-          throw _Fail(413, 'too_large', 'A blob is at most $maxBlobBytes bytes.');
+          throw _tooLargeBlob();
         }
         final part = File('${_blobs.path}/.$path.${newId(8)}.part');
-        final sink = part.openWrite();
         var size = 0;
         var tooLarge = false;
         try {
-          await for (final chunk in req) {
-            size += chunk.length;
-            if (size > maxBlobBytes) {
-              tooLarge = true;
-              break;
+          final sink = part.openWrite();
+          try {
+            await for (final chunk in req) {
+              size += chunk.length;
+              if (size > maxBlobBytes) {
+                tooLarge = true;
+                break;
+              }
+              sink.add(chunk);
             }
-            sink.add(chunk);
+          } finally {
+            await sink.close();
           }
-        } finally {
-          await sink.close();
+          if (!tooLarge && !file.existsSync()) part.renameSync(file.path);
+        } on Object catch (e) {
+          // A full disk, or the phone gone mid-upload: nothing half-written stays.
+          _deleteQuietly(part);
+          if (e is FileSystemException) {
+            throw StorageException("Couldn't save an image: ${e.osError?.message ?? e.message}.");
+          }
+          rethrow;
         }
         if (tooLarge) {
-          part.deleteSync();
+          _deleteQuietly(part);
           req.response.persistentConnection = false;
-          throw _Fail(413, 'too_large', 'A blob is at most $maxBlobBytes bytes.');
+          throw _tooLargeBlob();
         }
-        // Checked again: another upload to the same path may have finished meanwhile.
-        if (file.existsSync()) {
-          part.deleteSync();
+        // Another upload to the same path finished meanwhile.
+        if (part.existsSync()) {
+          _deleteQuietly(part);
           throw _Fail(409, 'conflict', 'That blob path is taken.');
         }
-        part.renameSync(file.path);
         return await _json(req, 201, {'path': path});
       case 'GET':
         if (!file.existsSync()) throw _Fail(404, 'not_found', 'No such blob: it ran out or was downloaded.');
@@ -547,6 +652,23 @@ class PocketTermServer {
     switch (action) {
       case 'register':
         _pushToken(token, platform as String);
+        // A phone has one push token: a new one (Apple or Google replaced it) takes the old one's place, and on
+        // Android the sessions it follows move with it.
+        final old = [
+          for (final p in _store.pushTokens.values)
+            if (p.device == device && p.token != token) p.token,
+        ];
+        _store.pushTokens.removeWhere((t, _) => old.contains(t));
+        for (final (i, a) in _store.activityTokens.indexed.toList()) {
+          if (a.device == device && a.platform == 'android' && old.contains(a.token)) {
+            _store.activityTokens[i] = ActivityToken(
+              token: token as String,
+              session: a.session,
+              platform: a.platform,
+              device: device,
+            );
+          }
+        }
         _store
           ..pushTokens[token as String] = PushToken(
             token: token,
@@ -571,7 +693,7 @@ class PocketTermServer {
         if (!_sealed(enc)) throw _bad('enc must be the sealed notification, base64, at most $_maxEnc.');
         final collapse = body['collapse'];
         if (collapse != null && !_isSessionKey(collapse)) throw _bad('collapse must be a coding session key.');
-        return {'sent': await _notify(desktop, enc! as String, collapse as String?)};
+        return {'sent': _notify(desktop, enc! as String, collapse as String?)};
       case 'activity_register':
         final session = body['session'];
         if (platform == 'android') {
@@ -581,6 +703,11 @@ class PocketTermServer {
         }
         if (session is! String || !_routedKey.hasMatch(session)) {
           throw _bad('session must be a routed session key, <desktop id>/<key>.');
+        }
+        // Only a phone that turned notifications on (and so registered its push token) follows sessions: one that
+        // turned them off gets nothing through the relay.
+        if (!_store.pushTokens.values.any((p) => p.device == device)) {
+          throw _Fail(409, 'push_off', 'Notifications are off on this phone: turn them on to follow a session.');
         }
         // An iPhone's activity follows one session for good.
         _store.activityTokens.removeWhere((t) => t.token == token && (t.session == session || platform == 'ios'));
@@ -629,17 +756,17 @@ class PocketTermServer {
             ..activityTokens.removeWhere((t) => t.session == session)
             ..save();
         }
-        return {'sent': await _sendActivity(tokens, live, enc as String?)};
+        return {'sent': _sendActivity(tokens, live, enc as String?)};
       default:
-        throw _Fail(404, 'not_found', 'No such endpoint.');
+        throw _unknown();
     }
   }
 
-  /// Sends [enc], sealed on computer [desktop], to every phone; forgets the ones Apple or Google say are gone.
-  Future<int> _notify(String desktop, String enc, String? collapse) async {
-    var sent = 0;
-    for (final t in _store.pushTokens.values.toList()) {
-      final status = await _relay.post({
+  /// Queues [enc], sealed on computer [desktop], for every phone; the number of phones.
+  int _notify(String desktop, String enc, String? collapse) {
+    final tokens = _store.pushTokens.values.toList();
+    for (final t in tokens) {
+      _relay.send({
         if (t.platform == 'android') 'platform': 'android',
         'token': t.token,
         'kind': 'terminal',
@@ -647,33 +774,38 @@ class PocketTermServer {
         'desktop': desktop,
         // Lets a newer push for the same coding session replace an older one.
         'collapse': ?collapse,
-      });
-      if (status == 410) {
-        _store
-          ..pushTokens.remove(t.token)
-          ..save();
-      } else if (status != null && status >= 200 && status < 300) {
-        sent++;
-      }
+      }, key: collapse == null ? null : 'n|${t.token}|$collapse');
     }
-    return sent;
+    return tokens.length;
   }
+
+  /// The relay says [token]'s phone is gone: it gets nothing more (an Android phone's token is also the one its
+  /// followed sessions use).
+  void _gone(String token) {
+    final before = _store.pushTokens.length + _store.activityTokens.length;
+    _store
+      ..pushTokens.remove(token)
+      ..activityTokens.removeWhere((a) => a.token == token);
+    if (_store.pushTokens.length + _store.activityTokens.length != before) _trySave();
+  }
+
+  Map<String, dynamic> _ended() => {'state': 'ended', 'since': _now().millisecondsSinceEpoch ~/ 1000};
 
   /// Ends every Live Activity following a session of computer [desktop] and forgets their tokens: it signed out,
   /// was removed, or stopped checking in.
-  Future<void> _endActivities(String desktop) async {
+  void _endActivities(String desktop) {
     final tokens = _store.activityTokens.where((t) => t.desktop == desktop).toList();
     if (tokens.isEmpty) return;
-    _store
-      ..activityTokens.removeWhere((t) => t.desktop == desktop)
-      ..save();
-    await _sendActivity(tokens, {'state': 'ended', 'since': _now().millisecondsSinceEpoch ~/ 1000}, null);
+    _store.activityTokens.removeWhere((t) => t.desktop == desktop);
+    _trySave();
+    _sendActivity(tokens, _ended(), null);
   }
 
-  /// Moves the Live Activities of [tokens] to [live] (ended: ends them). An iPhone gets the state itself (Apple
-  /// can't hand a Live Activity push to code that would decrypt it); an Android phone gets [enc], the state the
-  /// computer sealed, or nothing without it, except an end, which says nothing and goes plain.
-  Future<int> _sendActivity(List<ActivityToken> tokens, Map<String, dynamic> live, String? enc) async {
+  /// Queues the move of the Live Activities of [tokens] to [live] (ended: ends them); the number queued. An
+  /// iPhone gets the state itself (Apple can't hand a Live Activity push to code that would decrypt it); an
+  /// Android phone gets [enc], the state the computer sealed, or nothing without it, except an end, which says
+  /// nothing and goes plain.
+  int _sendActivity(List<ActivityToken> tokens, Map<String, dynamic> live, String? enc) {
     final ended = live['state'] == 'ended';
     var sent = 0;
     for (final t in tokens) {
@@ -701,17 +833,22 @@ class PocketTermServer {
       } else {
         continue;
       }
-      final status = await _relay.post(push);
-      // An Android token is the phone's: gone, it follows no session any more.
-      if (status == 410) {
-        _store
-          ..activityTokens.removeWhere((a) => a.token == t.token)
-          ..save();
-      } else if (status != null && status >= 200 && status < 300) {
-        sent++;
-      }
+      // A newer state for the same session replaces one still waiting, and never overtakes one on its way.
+      _relay.send(push, key: 'a|${t.token}|${t.session}');
+      sent++;
     }
     return sent;
+  }
+
+  static _Fail _tooLargeBlob() =>
+      _Fail(413, 'too_large', 'That image is too large: the most is ${maxBlobBytes ~/ (1024 * 1024)} MB.');
+
+  void _deleteQuietly(File f) {
+    try {
+      if (f.existsSync()) f.deleteSync();
+    } on FileSystemException catch (e) {
+      _log?.call('$e');
+    }
   }
 
   void _pushToken(Object? token, String platform) {

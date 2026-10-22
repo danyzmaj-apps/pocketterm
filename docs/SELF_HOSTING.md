@@ -203,6 +203,16 @@ PUSH_RELAY_KEY=<the relay's public key, base64; the relay logs it at start>
 | Phone: "That code doesn't work" | It ran out (10 minutes) or was used already: make a new one (**Settings → Add a phone…**). |
 | Phone: "Too many tries" | Ten wrong codes from one place in ten minutes: wait a few minutes, then use a fresh code. |
 | Phone: "<computer> isn't answering" | That computer is asleep, off, or PocketTerm isn't running there, or **Terminal from phone** (**Settings → Phone**) is off. |
+| Phone: "Can't reach <name>.ts.net. It's on your tailnet…" | The server is built into a computer and reached through Tailscale. Install Tailscale on the phone, sign in to the same account and connect. If that computer was renamed in Tailscale, its address changed: on the phone, **Account → Leave this server**, then scan its new code. |
+| Phone: "Can't reach <host>. Check your connection." | The phone has no route to the server (offline, captive Wi-Fi not signed in, server down). PocketTerm tries again by itself; coming back to the app retries at once. |
+| Phone: "This phone's clock and <computer>'s differ by …" | Set the time automatically on the phone (iPhone: Settings → General → Date & Time → Set Automatically; Android: Date & time → Set automatically) and on the computer. |
+| Phone: Notifications says "On, but notifications are off for PocketTerm in this phone's Settings" | They were turned off in the phone's Settings after you said yes. Tap **Open Settings** and allow them. |
+| Phone: "Your iPhone shows only a few Live Activities at once" | iOS limits Live Activities per app and in all. Stop following another session (or end one on the Lock Screen), then follow again. |
+| Phone: "That code is for a computer on <host>, and this phone is on …" | A phone uses one server at a time. **Account → Leave this server**, then scan the code again. |
+| Phone: "That code is from an older PocketTerm" | The computer still runs 0.1 (Supabase). Update PocketTerm on the computer and scan the new code. Updating the phone from 0.1 clears its old setup and starts at the scan screen. |
+| Phone: the camera needs permission, or there is no camera | Tap **Open Settings** and allow Camera. A phone or iPad without a camera can't scan a code: use one that has one (the demo works without). |
+| Android: notifications late or missing | Some Android makers stop apps in the background. Let PocketTerm run unrestricted (Settings → Apps → PocketTerm → Battery → Unrestricted). |
+| Phone: signed out while offline | The phone forgets its keys and sign-in at once; the server lists it until you remove it on the computer (**Settings → Phone**). |
 | Terminal: "PocketTerm may not control Ghostty" | Allow it in System Settings → Privacy & Security → Automation → PocketTerm. |
 | Terminal: kitty windows don't show | **Settings → Terminals → Set up**, then restart kitty. |
 | Terminal: Ghostty shows no screen, or the phone can't answer | Install tmux (`brew install tmux`, or `sudo port install tmux` with MacPorts): sessions the phone starts in Ghostty run in tmux. For windows you open yourself, **Settings → Terminals → Start new windows in tmux**. |

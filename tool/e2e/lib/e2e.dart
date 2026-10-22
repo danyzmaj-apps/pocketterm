@@ -54,8 +54,12 @@ class E2eConfig {
   /// short): the home, the projects, the sockets.
   final String work;
 
+  /// The server's URL, or `builtin`: the desktop's own ("On this
+  /// computer"), which makes its links itself ([setupLink] is empty).
   final String serverUrl;
   final String setupLink;
+
+  bool get builtIn => serverUrl == 'builtin';
 
   /// Whether the phone's phases run (else the desktop goes on alone).
   final bool phone;

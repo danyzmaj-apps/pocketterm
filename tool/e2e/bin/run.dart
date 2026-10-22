@@ -5,15 +5,24 @@
 // in build/e2e/<stamp>/.
 //
 //   dart run tool/e2e/bin/run.dart [--terminal kitty|ghostty|wezterm|all]
-//       [--server local|<https url> --setup-link <link>] [--no-phone]
-//       [--platform ios|android [--avd <name>]] [--phone-only <flow>,…]
-//       [--from-head] [--artifacts <dir>]
+//       [--server local|builtin|<https url> (--setup-link <link> |
+//        --setup-link-file <file>) [--server-stop-cmd <sh> --server-start-cmd <sh>]]
+//       [--no-phone] [--platform ios|android [--avd <name>]]
+//       [--phone-only <flow>,…] [--from-head] [--artifacts <dir>]
 //
 // --from-head runs what's committed: a detached worktree of HEAD in /tmp
 // (others' uncommitted edits stay out), artifacts still in this checkout's
 // build/e2e. --artifacts: where the stamped run folders go. --avd: the
 // Android emulator the phone phases boot when none is running. --phone-only:
 // just these phone flows (the phone run.sh's --only).
+//
+// --server builtin: the desktop's own "On this computer" server, published
+// by `tailscale serve` (Tailscale must be running with HTTPS on and serve
+// nothing yet; whatever serves after the run is removed). --server <url>:
+// a server elsewhere; its setup link best from a file (it stays off the
+// command line and out of the artifacts). --server-stop-cmd and
+// --server-start-cmd (sh -c) stop and start it for the server restart,
+// e.g. `ssh host docker stop <container>`.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -30,6 +39,12 @@ Future<void> main(List<String> args) async {
   Directory(root).createSync(recursive: true);
   final terminals = opts['terminal'] == 'all' ? terminalIds : [opts['terminal']!];
   stdout.writeln('PocketTerm e2e $stamp: ${terminals.join(', ')} → $root');
+  if (opts['server'] == 'builtin') {
+    if (await _tailscaleServes() case final serves?) {
+      stderr.writeln('--server builtin needs `tailscale serve` to serve nothing yet; it serves:\n$serves');
+      exit(1);
+    }
+  }
 
   final interrupted = Completer<void>();
   final sigint = ProcessSignal.sigint.watch().listen((_) {
@@ -111,6 +126,9 @@ Map<String, String> _parse(List<String> args) {
     switch (args[i]) {
       case '--terminal' || '--server' || '--setup-link' || '--platform' || '--artifacts' || '--avd' || '--phone-only':
         o[args[i].substring(2)] = args[++i];
+      case '--setup-link-file' || '--server-stop-cmd' || '--server-start-cmd':
+        o[args[i].substring(2)] = args[++i];
+        if (args[i - 1] == '--setup-link-file') o['setup-link'] = File(args[i]).readAsStringSync().trim();
       case '--no-phone':
         o['phone'] = 'no';
       case '--from-head':
@@ -124,8 +142,12 @@ Map<String, String> _parse(List<String> args) {
     stderr.writeln('--terminal: one of ${terminalIds.join(', ')} or all');
     exit(64);
   }
-  if (o['server'] != 'local' && o['setup-link'] == null) {
-    stderr.writeln('--server <url> needs --setup-link <the server’s setup link>');
+  if (o['server'] != 'local' && o['server'] != 'builtin' && o['setup-link'] == null) {
+    stderr.writeln('--server <url> needs --setup-link-file <file> (or --setup-link <link>)');
+    exit(64);
+  }
+  if ((o['server-stop-cmd'] == null) != (o['server-start-cmd'] == null)) {
+    stderr.writeln('--server-stop-cmd and --server-start-cmd go together');
     exit(64);
   }
   return o;
@@ -182,6 +204,15 @@ Future<int> _freePort() async {
   final port = s.port;
   await s.close();
   return port;
+}
+
+const _tailscale = '/Applications/Tailscale.app/Contents/MacOS/Tailscale';
+
+/// What `tailscale serve status` lists; null when it serves nothing.
+Future<String?> _tailscaleServes() async {
+  final r = await Process.run(_tailscale, ['serve', 'status']);
+  final out = '${r.stdout}${r.stderr}'.trim();
+  return out.contains('No serve config') ? null : out;
 }
 
 /// The local server for one terminal's run, restartable on the same port
@@ -282,6 +313,10 @@ Future<Map<String, String>> _runTerminal(
       await server.start();
       setupLink = server.setupLink!;
       serverUrl = server.url;
+    } else if (opts['server'] == 'builtin') {
+      // The desktop starts it ("On this computer") and makes its links.
+      setupLink = '';
+      serverUrl = 'builtin';
     } else {
       setupLink = opts['setup-link']!;
       serverUrl = opts['server']!;
@@ -339,6 +374,15 @@ Future<Map<String, String>> _runTerminal(
         var answer = 'ok';
         try {
           switch (what) {
+            case 'server-stop' || 'server-start' when server == null:
+              final cmd = opts[what == 'server-stop' ? 'server-stop-cmd' : 'server-start-cmd'];
+              if (cmd == null) {
+                answer = 'no way to $what this server: --server-stop-cmd / --server-start-cmd';
+                break;
+              }
+              stdout.writeln('  server: $what (command)');
+              final r = await Process.run('/bin/sh', ['-c', cmd]);
+              if (r.exitCode != 0) answer = 'failed: exit ${r.exitCode} ${r.stderr}'.trim();
             case 'server-stop':
               stdout.writeln('  server: stopping');
               await server?.stop();
@@ -390,6 +434,21 @@ Future<Map<String, String>> _runTerminal(
     if (stopped.isNotEmpty) stdout.writeln('  stopped: ${stopped.join(', ')}');
     await server?.stop();
     _keepLogs(work, artifacts);
+    // Another server's setup link stays out of the artifacts.
+    final config = File(p.join(artifacts, 'config.json'));
+    if (opts['server'] != 'local' && config.existsSync()) {
+      final j = jsonDecode(config.readAsStringSync()) as Map<String, dynamic>;
+      config.writeAsStringSync(const JsonEncoder.withIndent('  ').convert({...j, 'setupLink': '(removed)'}));
+    }
+    // The built-in server unpublishes itself when it stops; should the app
+    // have died first, what it left in Tailscale goes (nothing served before).
+    if (opts['server'] == 'builtin') {
+      if (await _tailscaleServes() case final left?) {
+        stdout.writeln('  tailscale serve left behind, removing:\n$left');
+        await Process.run(_tailscale, ['serve', 'reset']);
+      }
+      stdout.writeln('  tailscale serve: ${await _tailscaleServes() ?? 'No serve config'}');
+    }
   }
   return results;
 }

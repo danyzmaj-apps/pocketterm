@@ -69,6 +69,12 @@ class _Run {
   late final Throwaway term = Throwaway.of(c.terminal, c, owned);
   StandInPhone? phone;
 
+  /// The spare computer (_handOff), signed in until the end.
+  PocketTermServerClient? _spare;
+
+  /// The phones on the server before this run's paired.
+  Set<String> _phonesBefore = const {};
+
   String get t => c.terminal;
   String name(String what) => '$t-$what';
   String dir(String what) => c.project(name(what));
@@ -90,8 +96,16 @@ class _Run {
     await _launch();
 
     await report.step('terminals: throwaway windows open', _openEarlyWindows, critical: true);
-    await report.step('setup: On this computer shows Tailscale as it is', _thisComputer);
-    await report.step('setup: own server, paste link', _ownServer, critical: true);
+    if (c.builtIn) {
+      await report.step(
+        'setup: On this computer starts its server, Tailscale serves it',
+        _thisComputer,
+        critical: true,
+      );
+    } else {
+      await report.step('setup: On this computer shows Tailscale as it is', _thisComputer);
+      await report.step('setup: own server, paste link', _ownServer, critical: true);
+    }
     await _getReady();
     await report.step('windows: sessions in their own windows', _sessionsLocated, critical: true);
     await report.step('windows: plain shell is a screen', _shellIsScreen);
@@ -123,6 +137,20 @@ class _Run {
   Future<void> end() async {
     phone?.dispose();
     await report.shot('end');
+    // What the run signed in leaves the server (it may be shared): its
+    // phones should a failure have kept them, the spare computer, then this one.
+    try {
+      if (_spare != null && app.user != null) {
+        for (final d in await app.serverDevices()) {
+          if (d.role == DeviceRole.phone && !_phonesBefore.contains(d.id)) await app.server!.revokeDevice(d.id);
+        }
+      }
+      await _spare?.leave();
+      _spare?.close();
+      if (app.user != null) await app.server?.leave();
+    } on Object catch (e) {
+      report.log('end: leaving the server: $e');
+    }
     try {
       await tester.pumpWidget(const SizedBox());
       await api?.stop();
@@ -269,8 +297,21 @@ class _Run {
     final start = tester.widget<FilledButton>(_key('setup-start-server'));
     expect(start.onPressed != null, firstTodo < 0, reason: 'Start is on only when every check is done');
     await report.shot('setup-this-computer');
-    await _tap(find.text('Back'));
-    await _see(_key('setup-own-server'));
+    if (!c.builtIn) {
+      await _tap(find.text('Back'));
+      await _see(_key('setup-own-server'));
+      return;
+    }
+    // Start: the server runs here, Tailscale publishes it, this computer signs in on 127.0.0.1.
+    await _tap(_key('setup-start-server'));
+    await until('signed in', () => app.user != null, timeout: const Duration(seconds: 60));
+    final url = await until('Tailscale serves it', () => app.hosting?.publicUrl, timeout: const Duration(seconds: 60));
+    report.log('built-in server ${app.hosting!.port} at $url');
+    final health = await HttpClient().getUrl(url.resolve('/v1/health')).then((r) => r.close());
+    expect(health.statusCode, 200, reason: '$url/v1/health through tailscale serve');
+    await _see(find.text('Get this computer ready'));
+    expect(app.terminalOn, isTrue, reason: 'the first sign-in turns Terminal from phone on');
+    expect(await app.host.launchAtLogin(), isTrue, reason: 'the first sign-in asks for launch at login');
   }
 
   Future<void> _ownServer() async {
@@ -389,13 +430,17 @@ class _Run {
     File(p.join(c.artifacts, 'phone-link.txt')).writeAsStringSync('${links[0]}\n');
     File(p.join(c.artifacts, 'phone-link-2.txt')).writeAsStringSync('${links[1]}\n');
     File(p.join(c.artifacts, 'desktop-id.txt')).writeAsStringSync('${app.desktopId(app.user!.id)}\n');
+    // Phones signed in before this run's (another run's on a shared server) aren't revoked.
+    _phonesBefore = {
+      for (final d in await app.serverDevices())
+        if (d.role == DeviceRole.phone) d.id,
+    };
     // A second computer on the same server that no phone link names: the
-    // phone lists it locked.
-    final setup = Uri.parse(c.setupLink);
-    final spare = PocketTermServerClient(Backend.fromLink(setup)!, tokens: MemoryDeviceTokens());
+    // phone lists it locked. It leaves the server at the end.
+    final setup = c.builtIn ? app.computerSetupLink()! : Uri.parse(c.setupLink);
+    final spare = _spare = PocketTermServerClient(Backend.fromLink(setup)!, tokens: MemoryDeviceTokens());
     await spare.redeemSetup(Backend.setupToken(setup)!, label: 'Spare Mac $t', platform: 'macos');
     await spare.putDesktop('spare${t.substring(0, 3)}', name: 'Spare Mac $t', platform: 'macos');
-    spare.close();
     final windows = await app.terminals.windows();
     final shell = windows.firstWhere((w) => w.cwd == dir('shell'));
     final host = await app.terminals.opensIn(app.terminalApp);
@@ -662,9 +707,20 @@ class _Run {
   }
 
   Future<void> _serverRestart() async {
-    expect(await handOff(c.rpcDir, 'server-stop', out: 'req', timeout: const Duration(seconds: 30)), 'ok');
-    await Future<void>.delayed(const Duration(seconds: 3));
-    expect(await handOff(c.rpcDir, 'server-start', out: 'req', timeout: const Duration(seconds: 60)), 'ok');
+    if (c.builtIn) {
+      // It runs in this app: stopped (Tailscale stops serving it) and started on the same port and data.
+      final h = app.hosting!;
+      final port = h.port;
+      await h.stop();
+      await Future<void>.delayed(const Duration(seconds: 3));
+      await h.start(port: port);
+      expect(h.port, port, reason: 'the same port again');
+      await until('Tailscale serves it again', () => h.publicUrl, timeout: const Duration(seconds: 60));
+    } else {
+      expect(await handOff(c.rpcDir, 'server-stop', out: 'req', timeout: const Duration(seconds: 60)), 'ok');
+      await Future<void>.delayed(const Duration(seconds: 3));
+      expect(await handOff(c.rpcDir, 'server-start', out: 'req', timeout: const Duration(seconds: 90)), 'ok');
+    }
     await until('desktop back on the server', () async {
       try {
         return (await app.serverDevices()).isNotEmpty;
@@ -787,12 +843,16 @@ class _Run {
   }
 
   Future<void> _revoke() async {
-    final phones = (await app.serverDevices()).where((d) => d.role == DeviceRole.phone).toList();
+    final phones = [
+      for (final d in await app.serverDevices())
+        if (d.role == DeviceRole.phone && !_phonesBefore.contains(d.id)) d,
+    ];
     expect(phones, isNotEmpty, reason: 'a phone signed in');
     for (final d in phones) {
       await app.server!.revokeDevice(d.id);
     }
-    expect((await app.serverDevices()).where((d) => d.role == DeviceRole.phone), isEmpty);
+    final left = {for (final d in await app.serverDevices()) d.id};
+    expect(phones.where((d) => left.contains(d.id)), isEmpty);
     if (c.phone) {
       final code = await handOff(c.phaseDir, 'revoke', out: 'ready', timeout: const Duration(minutes: 10));
       expect(code, '0', reason: 'phone phase revoke');

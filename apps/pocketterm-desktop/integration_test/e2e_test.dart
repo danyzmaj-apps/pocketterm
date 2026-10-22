@@ -459,7 +459,12 @@ class _Run {
     await act('approval', () async {
       final approve = sessionOf('approve');
       final ask = await until('the approval on the phone', () => r.session(approve)?.ask);
-      await r.answer(approve, ask, approve: true);
+      if (t != 'ghostty') return await r.answer(approve, ask, approve: true);
+      // Answering reads the screen, which Ghostty can't show: the phone is told to answer on the computer.
+      await expectLater(
+        r.answer(approve, ask, approve: true),
+        throwsA(predicate((e) => '$e'.contains("Ghostty can't show its screen, so answer this on the computer"))),
+      );
     });
     await act('keys', () async {
       final shell = windowOf('shell');
@@ -508,13 +513,21 @@ class _Run {
       await until('prompt in chat', () => prompts('chat').any((e) => '${e['text']}'.startsWith('hello from phone')));
       expect(prompts('chat').where((e) => '${e['text']}'.startsWith('hello from phone')).length, 1);
     });
-    await report.step('phone: approval answered', () async {
-      final answered = await until(
-        'approval answered',
-        () => log('approve').where((e) => e['event'] == 'answered').firstOrNull,
-      );
-      expect(answered['approve'], isTrue);
-    });
+    await report.step(
+      t == 'ghostty' ? 'phone: approval left to the computer (Ghostty has no screen to read)' : 'phone: approval answered',
+      () async {
+        if (t == 'ghostty') {
+          expect(log('approve').where((e) => e['event'] == 'answered'), isEmpty);
+          // Answered on the computer, so the run carries on.
+          await app.terminals.pressKeys(app.live.sessions.firstWhere((s) => s.cwd == dir('approve')).window!, ['enter']);
+        }
+        final answered = await until(
+          'approval answered',
+          () => log('approve').where((e) => e['event'] == 'answered').firstOrNull,
+        );
+        expect(answered['approve'], isTrue);
+      },
+    );
     await report.step('phone: keys reach the window', () async {
       final typed = await until('typed in the shell', () {
         final l = typedLog(c, name('shell'));

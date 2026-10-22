@@ -4,18 +4,28 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/ui.dart';
+import 'package:pocketterm_mobile/e2e_hooks.dart';
 
 /// Opens the camera to read the code the computer shows (Settings → Add a
 /// phone…): a setup link with a sign-in code in it or, when
 /// [signedIn] (a phone adding a computer's key), with that computer's key.
-/// Pops with that link, or null when cancelled.
-Future<Uri?> scanSetupCode(BuildContext context, {bool signedIn = false}) =>
-    Navigator.of(context)
-        .push<Uri>(MaterialPageRoute(fullscreenDialog: true, builder: (_) => _ScanPage(signedIn: signedIn)));
+/// Pops with that link, or null when cancelled. [pasteCode]: a field takes
+/// the link too, as if the camera had read it (E2E debug builds only).
+Future<Uri?> scanSetupCode(
+  BuildContext context, {
+  bool signedIn = false,
+  @visibleForTesting bool pasteCode = e2eBuild,
+}) => Navigator.of(context).push<Uri>(
+  MaterialPageRoute(
+    fullscreenDialog: true,
+    builder: (_) => _ScanPage(signedIn: signedIn, pasteCode: pasteCode),
+  ),
+);
 
 class _ScanPage extends StatefulWidget {
-  const _ScanPage({required this.signedIn});
+  const _ScanPage({required this.signedIn, required this.pasteCode});
   final bool signedIn;
+  final bool pasteCode;
 
   @override
   State<_ScanPage> createState() => _ScanPageState();
@@ -34,11 +44,15 @@ class _ScanPageState extends State<_ScanPage> {
     super.dispose();
   }
 
-  void _onDetect(BarcodeCapture capture) {
+  void _onDetect(BarcodeCapture capture) => _read([for (final code in capture.barcodes) code.rawValue]);
+
+  /// What the camera (or, in debug builds, [_PasteCode]) read: the first
+  /// usable PocketTerm link pops; otherwise says why none was.
+  void _read(Iterable<String?> codes) {
     if (_done) return;
     String? problem;
-    for (final code in capture.barcodes) {
-      final link = Uri.tryParse(code.rawValue ?? '');
+    for (final raw in codes) {
+      final link = Uri.tryParse(raw?.trim() ?? '');
       if (link == null || Backend.fromLink(link) == null) continue;
       final usable = widget.signedIn ? Backend.computerKey(link) != null : Backend.pairingCode(link) != null;
       if (usable) {
@@ -129,6 +143,21 @@ class _ScanPageState extends State<_ScanPage> {
                     ],
                   ),
           ),
+          // The Simulator and emulators have no camera: E2E debug builds take
+          // the link a code holds, as if the camera had read it (maestro/e2e).
+          // Release and profile builds don't have it.
+          if (widget.pasteCode)
+            SafeArea(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                // Why a code didn't work shows under the square, unless the camera's problem took the screen.
+                child: ValueListenableBuilder(
+                  valueListenable: _camera,
+                  builder: (context, state, _) =>
+                      _PasteCode(problem: state.error != null ? _notOurs : null, onCode: (code) => _read([code])),
+                ),
+              ),
+            ),
           SafeArea(
             child: Align(
               alignment: Alignment.topLeft,
@@ -144,6 +173,60 @@ class _ScanPageState extends State<_ScanPage> {
       ),
     );
   }
+}
+
+/// Debug builds only: a code's link, pasted instead of scanned.
+class _PasteCode extends StatefulWidget {
+  const _PasteCode({required this.onCode, this.problem});
+  final ValueChanged<String> onCode;
+  final String? problem;
+
+  @override
+  State<_PasteCode> createState() => _PasteCodeState();
+}
+
+class _PasteCodeState extends State<_PasteCode> {
+  final _text = TextEditingController();
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(16),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.problem case final problem?)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(problem, style: const TextStyle(color: C.warn)),
+          ),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                key: const ValueKey('paste-code'),
+                controller: _text,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(hintText: 'Paste a code (debug)', isDense: true),
+                onSubmitted: widget.onCode,
+              ),
+            ),
+            TextButton(
+              key: const ValueKey('paste-code-use'),
+              onPressed: () => widget.onCode(_text.text),
+              child: const Text('Use'),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
 }
 
 class _CameraProblem extends StatelessWidget {

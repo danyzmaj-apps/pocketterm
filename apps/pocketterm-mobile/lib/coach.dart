@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
+import 'package:pocketterm_mobile/e2e_hooks.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// The first-use tips, in the order they show: the switch tour first, then the list's, then the conversation page's.
@@ -43,9 +44,14 @@ enum Tip {
   };
 }
 
-/// Which tips this install has seen, kept in [SharedPreferences] (per phone, not per account).
+/// Which tips this install has seen, kept in [SharedPreferences] (per phone, not per account). With `startSeen` a
+/// fresh install starts with every tip seen, so the end-to-end flows aren't held up by them (E2E debug builds only),
+/// until Show tips again.
 class CoachController extends ChangeNotifier {
-  CoachController(this._prefs) : _seen = {...?_prefs.getStringList(seenKey)};
+  CoachController(this._prefs, {@visibleForTesting bool startSeen = e2eBuild})
+    : _seen = {
+        ...?_prefs.getStringList(seenKey) ?? (startSeen ? [for (final t in Tip.values) t.id] : null),
+      };
 
   static const seenKey = 'pocketterm_tips_seen';
 
@@ -73,7 +79,8 @@ class CoachController extends ChangeNotifier {
   Future<void> reset() async {
     _seen.clear();
     notifyListeners();
-    await _prefs.remove(seenKey);
+    // Kept empty rather than removed: a fresh install's tips are the only ones [CoachController.new] marks seen.
+    await _prefs.setStringList(seenKey, const []);
   }
 }
 

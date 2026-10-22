@@ -5,9 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/desktops.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
+import 'package:pocketterm_mobile/coach.dart';
 import 'package:pocketterm_mobile/mobile.dart';
 import 'package:pocketterm_mobile/session_view.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'screenshots/fakes.dart';
 
@@ -213,5 +215,25 @@ void main() {
     await settle(tester);
     expect(find.byType(SessionPage), findsOneWidget);
     remote.flush();
+  });
+
+  // E2E debug builds start with every tip seen so the flows aren't held up; Show tips again brings them back, also
+  // after the app restarts, as on any phone.
+  test('tips seen from the start stay gone until Show tips again', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final first = CoachController(prefs, startSeen: true);
+    expect(Tip.values.where(first.seen), Tip.values);
+    expect(Tip.values.where(CoachController(prefs, startSeen: true).seen), Tip.values);
+
+    await first.reset();
+    expect(Tip.values.where(first.seen), isEmpty);
+    final relaunched = CoachController(prefs, startSeen: true);
+    expect(Tip.values.where(relaunched.seen), isEmpty);
+    await relaunched.markSeen(Tip.slash);
+    expect(Tip.values.where(CoachController(prefs, startSeen: true).seen), [Tip.slash]);
+
+    SharedPreferences.setMockInitialValues({});
+    expect(Tip.values.where(CoachController(await SharedPreferences.getInstance()).seen), isEmpty);
   });
 }

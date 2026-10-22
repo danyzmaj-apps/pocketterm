@@ -97,6 +97,16 @@ void main() {
     flush();
   });
 
+  // The avatar's letter isn't read with the button: a server at 127.0.0.1 made it "1, Account".
+  testWidgets('the account button reads as Account', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await pumpHome(tester);
+    final button = tester.getSemantics(find.byTooltip('Account'));
+    expect((button.tooltip, button.label), ('Account', ''));
+    semantics.dispose();
+    flush();
+  });
+
   testWidgets("a computer whose code wasn't scanned stays locked until it is; a link not scanned brings no key", (
     tester,
   ) async {

@@ -652,7 +652,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   IconButton(
                     tooltip: 'Account',
                     onPressed: () => unawaited(_openAccount()),
-                    icon: Avatar(name: widget.session.userName, size: 30),
+                    // Reads as Account, not as the avatar's letter too ("1, Account" for 127.0.0.1).
+                    icon: ExcludeSemantics(child: Avatar(name: widget.session.userName, size: 30)),
                   ),
               ],
             ),

@@ -1,0 +1,45 @@
+# A slash command with a picker: /model, completed from the slash list and
+# sent, shows the agent's model picker as a card once the computer read it
+# off the screen; a model tapped there is picked and the card goes.
+#   env: SESSION (regex)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: "(Prompt omp…|\nSend)"
+    timeout: 15000
+- runFlow: sub/prompt.yaml
+- inputText: "/mo"
+- extendedWaitUntil:
+    visible: "/model.*"
+    timeout: 10000
+- takeScreenshot: commands
+- tapOn: "/model.*"
+- tapOn: "\n?Send"
+- extendedWaitUntil:
+    visible: "Select a model"
+    timeout: 15000
+    optional: true
+# A picker the computer didn't read in time opens the screen instead; the
+# card still comes on the conversation under it.
+- runFlow:
+    when:
+      visible: "(Type a line…|\nSend \\(types it, then Enter\\))"
+    commands:
+      - runFlow: sub/back.yaml
+- extendedWaitUntil:
+    visible: "Select a model"
+    timeout: 15000
+- assertVisible: "fake-model(\n.*)?"
+- assertVisible: "fake-model-slow(\n.*)?"
+- takeScreenshot: picker
+- tapOn: "fake-model-fast(\n.*)?"
+- extendedWaitUntil:
+    notVisible: "Select a model"
+    timeout: 15000
+- takeScreenshot: picked
+- runFlow: sub/back.yaml

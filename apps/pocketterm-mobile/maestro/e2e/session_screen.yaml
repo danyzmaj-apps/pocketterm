@@ -1,0 +1,27 @@
+# A conversation's Screen button opens its terminal window's screen page
+# (keys and a line to type); Back returns to the conversation.
+#   env: SESSION (regex: a session whose terminal can share its screen)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: "(Prompt omp…|\nSend)"
+    timeout: 15000
+# Below Android 9 a button's tooltip is read after a line break.
+- tapOn: "\n?Screen"
+# Below Android 9 the field's hint isn't read: there its Send.
+- extendedWaitUntil:
+    visible: "(Type a line…|\nSend \\(types it, then Enter\\))"
+    timeout: 15000
+- assertVisible: "Esc"
+- takeScreenshot: screen
+- runFlow: sub/back.yaml
+- extendedWaitUntil:
+    visible: "(Prompt omp…|\nSend)"
+    timeout: 15000
+- takeScreenshot: conversation
+- runFlow: sub/back.yaml

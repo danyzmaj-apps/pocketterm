@@ -1,0 +1,30 @@
+# The agent asks a question with options: they show as chips, Green is
+# picked and answered from the phone, and the agent gets that answer.
+#   env: SESSION (regex), PROMPT
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: "(Prompt omp…|\nSend)"
+    timeout: 15000
+- runFlow: sub/prompt.yaml
+- inputText: ${PROMPT}
+- tapOn: "\n?Send"
+- extendedWaitUntil:
+    visible: "Which color should the e2e button be\\?"
+    timeout: 20000
+- assertVisible: "Red"
+- assertVisible: "Green"
+- assertVisible: "Blue"
+- takeScreenshot: asking
+- tapOn: "Green"
+- tapOn: "Answer"
+- extendedWaitUntil:
+    visible: ".*fake answer: Green.*"
+    timeout: 30000
+- takeScreenshot: answered
+- runFlow: sub/back.yaml

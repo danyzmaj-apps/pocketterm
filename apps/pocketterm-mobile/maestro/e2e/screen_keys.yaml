@@ -1,0 +1,46 @@
+# A plain shell window's other keys: Tab, Enter (⏎) and Ctrl-C (^C) from the
+# key bar (the desktop checks the shell got them), and wrapping its lines
+# turned off and on again where the screen is shown. Where the terminal can't
+# share its screen (Ghostty), the phone says so and nothing on it is checked.
+#   env: WINDOW (regex), SCREEN (yes: the screen is shown)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${WINDOW}
+# Below Android 9 the field's hint isn't read: there its Send.
+- extendedWaitUntil:
+    visible: "(Type a line…|\nSend \\(types it, then Enter\\))"
+    timeout: 15000
+- runFlow:
+    when:
+      true: ${SCREEN != 'yes'}
+    commands:
+      - assertVisible: ".* can't share its screen\\."
+- takeScreenshot: screen
+- tapOn: "Tab"
+- tapOn: "⏎"
+- tapOn: "\\^C"
+- runFlow:
+    when:
+      true: ${SCREEN == 'yes'}
+    commands:
+      # The shell's prompt (folder $) still shows: the keys didn't end it.
+      - extendedWaitUntil:
+          visible: ".*\\$.*"
+          timeout: 10000
+      # A shell's lines start wrapped. Below Android 9 a button's tooltip is
+      # read after a line break.
+      - tapOn: "\n?Don.t wrap lines"
+      - extendedWaitUntil:
+          visible: "\n?Wrap lines"
+          timeout: 5000
+      - takeScreenshot: unwrapped
+      - tapOn: "\n?Wrap lines"
+      - extendedWaitUntil:
+          visible: "\n?Don.t wrap lines"
+          timeout: 5000
+- takeScreenshot: keys
+- runFlow: sub/back.yaml

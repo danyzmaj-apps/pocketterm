@@ -258,8 +258,8 @@ Future<void> _quitApp(int pid) async {
 // ---------------------------------------------------------------- the home
 
 /// The throwaway home: a zsh that puts the fake omp first on its PATH, names
-/// its windows `shell <folder>`, writes each command run and each Esc and
-/// arrow key it gets to `<typedLogs>/<folder>.log`, and runs a folder's
+/// its windows `shell <folder>`, writes each command run and each Esc, arrow,
+/// Tab, Enter and Ctrl+C key it gets to `<typedLogs>/<folder>.log`, and runs a folder's
 /// `.e2e-autorun` once when it starts there; the terminals' configs.
 void writeHome(E2eConfig c) {
   for (final d in [c.home, c.projects, c.kittyDir, c.typedLogs, c.bin, c.phaseDir, c.rpcDir, c.screenshots]) {
@@ -291,11 +291,16 @@ e2e-down() { e2e-key down; zle down-line-or-history }
 e2e-left() { e2e-key left; zle backward-char }
 e2e-right() { e2e-key right; zle forward-char }
 e2e-esc() { e2e-key esc }
+e2e-tab() { e2e-key tab; zle expand-or-complete }
+e2e-enter() { e2e-key enter; zle accept-line }
 zle -N e2e-up; zle -N e2e-down; zle -N e2e-left; zle -N e2e-right; zle -N e2e-esc
+zle -N e2e-tab; zle -N e2e-enter
 bindkey -e
 bindkey '^[[A' e2e-up '^[OA' e2e-up '^[[B' e2e-down '^[OB' e2e-down
 bindkey '^[[D' e2e-left '^[OD' e2e-left '^[[C' e2e-right '^[OC' e2e-right
-bindkey '^[' e2e-esc
+bindkey '^[' e2e-esc '^I' e2e-tab '^M' e2e-enter
+# Ctrl+C at the prompt: logged, then the line goes as zsh's own would.
+TRAPINT() { e2e-key ctrl+c; return \$(( 128 + \$1 )) }
 if [[ -f .e2e-autorun ]]; then
   __e2e=\$(<.e2e-autorun); rm -f .e2e-autorun; eval "\$__e2e"
 fi

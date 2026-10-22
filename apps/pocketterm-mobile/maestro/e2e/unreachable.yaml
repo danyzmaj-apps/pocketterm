@@ -1,0 +1,22 @@
+# While the server is down (run.sh's server-down phase): the app, opened on
+# the list, says it can't reach the server and offers Retry; Retry tries
+# again and, the server still down, says so again.
+appId: com.danyzmaj.pocketterm
+---
+- launchApp
+# Backend.unreachable, at the top of the list or in its place; "Updated …"
+# before it when there is an older list to show.
+- extendedWaitUntil:
+    visible: "(Updated .* · )?(Can.t|Couldn.t) reach .*"
+    timeout: 90000
+- assertVisible: "Retry"
+- takeScreenshot: unreachable
+- tapOn: "Retry"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "(Updated .* · )?(Can.t|Couldn.t) reach .*"
+    timeout: 60000
+- extendedWaitUntil:
+    visible: "Retry"
+    timeout: 60000
+- takeScreenshot: still-unreachable

@@ -4,7 +4,8 @@
 # dir's phone-link.txt, phone-link-2.txt and expect.json; writes screenshots,
 # Maestro's reports and a summary to <run dir>/phone/<platform>/<phase>/.
 #
-#   run.sh --run-dir build/e2e/<ts> [--platform ios|android] [--phase main|server-restart|desktop-restart|real-omp|revoke]
+#   run.sh --run-dir build/e2e/<ts> [--platform ios|android]
+#          [--phase main|server-restart|desktop-restart|real-omp|revoke|server-down|computer-off]
 #          [--only <flow>[,<flow>…]] [--device <id>] [--avd <name>] [--no-build]
 #
 # The app is built from HEAD in a detached git worktree ($PHONE_SRC, default
@@ -70,6 +71,10 @@ v = {
   "NEW_SESSION_PROJECT": e.get("newSessionProject", ""),
   "END_SESSION": e.get("endSession", ""),
   "REAL_OMP": (e.get("realOmp") or {}).get("title", ""),
+  "ASK_SESSION": e.get("askSession", ""),
+  "CLOSE_WINDOW": e.get("closeWindow", ""),
+  "NEW_SHELL_PROJECT": e.get("newShellProject", ""),
+  "NEW_PROJECT_NAME": e.get("newProjectName", ""),
 }
 for i, x in enumerate(s):
   v[f"SESSION_{i}"] = x.get("title", "")
@@ -133,15 +138,26 @@ fi
 
 # An E2E debug build (pasted codes, tips start seen: lib/e2e_hooks.dart) of
 # HEAD, built and installed once per run; a photo in the library for
-# image.yaml, and a document in the phone's files for file.yaml (simctl
-# addmedia takes photos only: on iOS it goes straight into the Files app's
-# On My iPhone storage, on Android into Download). The document is the one
-# the desktop's stand-in phone sends (integration_test/e2e_test.dart checks
-# it arrives as it was), its name with spaces, so its @path is quoted.
+# image.yaml and ten more for attach_limit.yaml (each its own size, so none
+# is the same as another), and documents in the phone's files (simctl
+# addmedia takes photos only: on iOS they go straight into the Files app's
+# On My iPhone storage, on Android into Download): one for file.yaml, and a
+# 21 MB one, over what a message takes, for too_large.yaml. The first is the
+# one the desktop's stand-in phone sends (integration_test/e2e_test.dart
+# checks it arrives as it was), its name with spaces, so its @path is quoted.
 FIXTURE="$APP/assets/icon/ios.png"
 DOC_NAME="notes from the phone.txt"
 DOC_FIXTURE="$OUT/$DOC_NAME"
 printf 'PocketTerm e2e notes\n' >"$DOC_FIXTURE"
+BIG_NAME="too big for the phone.bin"
+BIG_FIXTURE="$OUT/$BIG_NAME"
+PHOTOS=()
+if [ "$PHASE" = main ]; then
+  dd if=/dev/zero of="$BIG_FIXTURE" bs=1048576 count=21 2>/dev/null
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    sips -Z $((200 + i * 20)) "$FIXTURE" --out "$OUT/photo-$i.png" >/dev/null && PHOTOS+=("$OUT/photo-$i.png")
+  done
+fi
 if [ "$PHASE" = main ] && [ $BUILD = 1 ]; then
   HEAD_SHA=$(git -C "$REPO" rev-parse HEAD)
   if [ -e "$PHONE_SRC/.git" ]; then
@@ -170,22 +186,28 @@ if [ "$PHASE" = main ] && [ $BUILD = 1 ]; then
 fi
 if [ "$PHASE" = main ]; then
   if [ "$PLATFORM" = ios ]; then
-    xcrun simctl addmedia "$DEVICE" "$FIXTURE"
+    xcrun simctl addmedia "$DEVICE" "${PHOTOS[@]}" "$FIXTURE"
     local_storage=$(xcrun simctl get_app_container "$DEVICE" com.apple.DocumentsApp groups 2>/dev/null |
       awk -F'\t' '$1 == "group.com.apple.FileProvider.LocalStorage" {print $2}')
     if [ -n "$local_storage" ]; then
       mkdir -p "$local_storage/File Provider Storage"
-      cp "$DOC_FIXTURE" "$local_storage/File Provider Storage/"
+      cp "$DOC_FIXTURE" "$BIG_FIXTURE" "$local_storage/File Provider Storage/"
     else
-      echo "no Files storage on $DEVICE: file.yaml will not find its document" | tee -a "$SUMMARY"
+      echo "no Files storage on $DEVICE: file.yaml and too_large.yaml will not find their documents" | tee -a "$SUMMARY"
     fi
   else
-    "$ADB" -s "$DEVICE" push "$FIXTURE" /sdcard/Pictures/pocketterm-e2e.png >/dev/null
-    "$ADB" -s "$DEVICE" shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
-      -d file:///sdcard/Pictures/pocketterm-e2e.png >/dev/null
-    "$ADB" -s "$DEVICE" push "$DOC_FIXTURE" "/sdcard/Download/$DOC_NAME" >/dev/null
-    "$ADB" -s "$DEVICE" shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
-      -d "file:///sdcard/Download/${DOC_NAME// /%20}" >/dev/null
+    for f in "${PHOTOS[@]}" "$FIXTURE"; do
+      n="pocketterm-e2e-$(basename "$f")"
+      "$ADB" -s "$DEVICE" push "$f" "/sdcard/Pictures/$n" >/dev/null
+      "$ADB" -s "$DEVICE" shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
+        -d "file:///sdcard/Pictures/$n" >/dev/null
+    done
+    for f in "$DOC_FIXTURE" "$BIG_FIXTURE"; do
+      n=$(basename "$f")
+      "$ADB" -s "$DEVICE" push "$f" "/sdcard/Download/$n" >/dev/null
+      "$ADB" -s "$DEVICE" shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
+        -d "file:///sdcard/Download/${n// /%20}" >/dev/null
+    done
   fi
 fi
 
@@ -355,6 +377,26 @@ case $PHASE in
     flow image image.yaml -e SESSION="$SESSION_0_RE" -e IMAGE_PROMPT="what is in this image $TERMINAL_ID"
     flow file file.yaml -e SESSION="$SESSION_0_RE" -e FILE_PROMPT="what is in this file $TERMINAL_ID"
     flow new-session new_session.yaml -e PROJECT="$NEW_SESSION_PROJECT_RE"
+    # On the session new-session started (where the phone opened it, so its
+    # screen can be read: in tmux under Ghostty), each prompt different.
+    flow steer-queue steer_queue.yaml -e SESSION="$ASK_SESSION_RE" -e SLOW="e2e-slow steer run $TERMINAL_ID" \
+      -e STEER="steer from phone $TERMINAL_ID" -e STEER_RE="$(re_escape "steer from phone $TERMINAL_ID")" \
+      -e QUEUE="queue from phone $TERMINAL_ID" -e QUEUE_RE="$(re_escape "queue from phone $TERMINAL_ID")"
+    flow stop stop.yaml -e SESSION="$ASK_SESSION_RE" -e SLOW="e2e-slow stop run $TERMINAL_ID"
+    flow question question.yaml -e SESSION="$ASK_SESSION_RE" -e PROMPT="e2e-question $TERMINAL_ID"
+    flow plan plan.yaml -e SESSION="$ASK_SESSION_RE" -e PROMPT="e2e-plan $TERMINAL_ID"
+    flow menu-model menu_model.yaml -e SESSION="$ASK_SESSION_RE"
+    flow menu-resume menu_resume.yaml -e SESSION="$ASK_SESSION_RE"
+    flow follow follow.yaml -e SESSION="$ASK_SESSION_RE"
+    flow session-screen session_screen.yaml -e SESSION="$ASK_SESSION_RE"
+    flow screen-keys screen_keys.yaml -e WINDOW="$SCREEN_WINDOW_RE" -e SCREEN="$SCREEN"
+    flow new-shell new_shell.yaml -e PROJECT="$NEW_SHELL_PROJECT_RE"
+    flow new-project new_project.yaml -e NAME="$NEW_PROJECT_NAME" -e NAME_RE="$NEW_PROJECT_NAME_RE"
+    flow project-list project_list.yaml -e PROJECT="$PROJECT_0_RE"
+    flow close-window close_window.yaml -e WINDOW="$CLOSE_WINDOW_RE"
+    flow attach-limit attach_limit.yaml -e SESSION="$SESSION_0_RE"
+    flow too-large too_large.yaml -e SESSION="$SESSION_0_RE"
+    flow account-sheet account_sheet.yaml
     flow switch-continue switch.yaml -e WINDOW=".*$SWITCH_CONTINUE_RE" -e HOW="Restart and continue"
     flow switch-restart switch.yaml -e WINDOW=".*$SWITCH_RESTART_RE" -e HOW="Just restart"
     flow end-session end_session.yaml -e SESSION="$END_SESSION_RE"
@@ -391,6 +433,23 @@ case $PHASE in
     ;;
   revoke)
     flow revoked revoked.yaml
+    ;;
+  server-down)
+    # The server stopped (the desktop starts it again after this phase).
+    flow unreachable unreachable.yaml
+    ;;
+  computer-off)
+    # Settings → Terminal from phone is off on the computer; then the desktop
+    # turns it back on when asked through its rpc folder, and Retry brings
+    # the computer back. Asked even when offline.yaml failed: the phases
+    # after need it on.
+    flow offline offline.yaml
+    RPC="$RUN_DIR/rpc"
+    rm -f "$RPC/terminal-on.done"
+    date >"$RPC/terminal-on.req"
+    for ((w = 0; w < 60; w++)); do [ -f "$RPC/terminal-on.done" ] && break; sleep 1; done
+    echo "terminal from phone on: $(cat "$RPC/terminal-on.done" 2>/dev/null || echo 'no answer')"
+    flow retry retry.yaml -e SESSION="$SESSION_1_RE"
     ;;
   *) echo "unknown phase: $PHASE" >&2; exit 2 ;;
 esac

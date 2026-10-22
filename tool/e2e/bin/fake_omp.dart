@@ -14,6 +14,20 @@
 //     --busy  start at work (a spinner), as omp in the middle of a run
 //     --ask   start asking to approve a command
 //
+// A prompt, typed here or from the phone, gets `fake reply: <text>` (and a
+// line for each image or @file it carries). A prompt with:
+//   e2e-slow      works for 20 s first; Esc or the phone's Stop ends it
+//   e2e-question  asks which color (Red, Green, Blue or a typed Other) and
+//                 replies `fake answer: <answer>`
+//   e2e-plan      shows plan mode's review (Approve and execute, Refine the
+//                 plan, Stay in plan mode); replies `fake plan: <option>`
+// A phone prompt while at work is a steer unless it says followUp: a steer
+// shows at once and gets `fake steered: <text>` as the run ends; a follow-up
+// waits its turn and runs as a prompt of its own, as does one typed here.
+// `/model` opens a picker of fake-model, fake-model-fast and fake-model-slow;
+// `/resume` one of three sessions, narrowed by what's typed. Enter picks,
+// Esc closes. Each draws as omp's do, so PocketTerm reads it off the screen.
+//
 // The extension counts as installed while
 // $HOME/.omp/agent/extensions/pocketterm-live.ts exists when it starts, as
 // omp loads extensions once at start. Everything it hears and does goes to
@@ -56,6 +70,46 @@ const _commands = [
   {'name': 'resume', 'description': 'Resume a session'},
 ];
 
+/// The /model picker's rows: a model and what it's for.
+const _models = [
+  ('fake-model', 'the default'),
+  ('fake-model-fast', 'quick replies'),
+  ('fake-model-slow', 'careful replies'),
+];
+
+/// The /resume picker's rows: a past session and its size.
+const _sessions = [
+  ('e2e alpha session', '3 messages'),
+  ('e2e beta session', '5 messages'),
+  ('e2e gamma session', '8 messages'),
+];
+
+/// What `e2e-question` asks, and the answers it offers before Other.
+const _question = 'Which color should the e2e button be?';
+const _colors = ['Red', 'Green', 'Blue'];
+
+/// The plan review's options, top to bottom.
+const _planOptions = ['Approve and execute', 'Refine the plan', 'Stay in plan mode'];
+
+/// A picker a slash command opened: its rows (label, detail), the row its
+/// cursor is on and, in one that searches, what was typed.
+class _Picker {
+  _Picker(this.menu, this.title, this.all, {this.cursor = 0, this.search = false});
+
+  final String menu;
+  final String title;
+  final List<(String, String)> all;
+  final bool search;
+  int cursor;
+  String query = '';
+
+  /// The rows whose label holds the search, in any case.
+  List<(String, String)> get rows => [
+    for (final r in all)
+      if (r.$1.toLowerCase().contains(query.toLowerCase())) r,
+  ];
+}
+
 class FakeOmp {
   FakeOmp({required this.resume, required bool busy, required bool ask}) : _startBusy = busy, _startAsk = ask;
 
@@ -80,8 +134,15 @@ class FakeOmp {
   var _items = <Map<String, Object?>>[];
   var _seq = 0;
   bool _busy = false;
+
+  /// The ask up now: an approval, the color question or the plan review.
   Map<String, Object?>? _ask;
   int _askCursor = 0;
+
+  /// The question's Other answer while it's being typed.
+  String? _other;
+  _Picker? _picker;
+  String _model = 'fake-model';
   String _editor = '';
   String? _streaming;
   Timer? _spin;
@@ -90,7 +151,12 @@ class FakeOmp {
   bool _connecting = false;
   bool _quitting = false;
   String _tty = '';
-  final _queue = <({String text, List<Map<String, Object?>> images})>[];
+
+  /// The run at work: a new prompt and an abort each start another, so an
+  /// old run that wakes up knows it's over.
+  int _run = 0;
+  final _steers = <String>[];
+  final _queue = <({String text, List<Map<String, Object?>> images, String source})>[];
 
   void log(String event, [Map<String, Object?> data = const {}]) {
     _log.writeAsStringSync(
@@ -163,6 +229,8 @@ class FakeOmp {
     _items = [];
     _seq = 0;
     _ask = null;
+    _other = null;
+    _picker = null;
     _save();
     log('new');
     _hello();
@@ -179,21 +247,47 @@ class FakeOmp {
     _render();
   }
 
-  void _raiseAsk() {
-    _ask = {'kind': 'approval', 'id': 'call-${_newId()}', 'tool': 'bash', 'summary': 'echo e2e'};
+  /// Puts [ask] up, on the screen and to PocketTerm, at work until it's answered.
+  void _raise(Map<String, Object?> ask) {
+    _ask = ask;
     _askCursor = 0;
+    _other = null;
     if (!_busy) _setBusy(true);
-    log('ask', {'ask': _ask});
-    _send({'t': 'ask', 'ask': _ask});
+    log('ask', {'ask': ask});
+    _send({'t': 'ask', 'ask': ask});
     _render();
+  }
+
+  void _raiseAsk() => _raise({'kind': 'approval', 'id': 'call-${_newId()}', 'tool': 'bash', 'summary': 'echo e2e'});
+
+  void _raiseQuestion() => _raise({
+    'kind': 'ask',
+    'id': 'call-${_newId()}',
+    'questions': [
+      {
+        'id': 'color',
+        'header': 'Color',
+        'question': _question,
+        'options': [for (final c in _colors) {'label': c}],
+      },
+    ],
+  });
+
+  void _raisePlan() => _raise({'kind': 'plan', 'id': 'call-${_newId()}', 'title': 'e2e plan'});
+
+  /// Takes the ask down, on the screen and at PocketTerm.
+  void _dropAsk() {
+    _ask = null;
+    _other = null;
+    _send({'t': 'ask', 'ask': null});
   }
 
   Future<void> _answerAsk({required bool approve}) async {
     final ask = _ask;
     if (ask == null) return;
-    _ask = null;
+    final run = _run;
+    _dropAsk();
     log('answered', {'approve': approve, 'ask': ask['id']});
-    _send({'t': 'ask', 'ask': null});
     final tool = _itemId();
     _put({
       'id': tool,
@@ -203,17 +297,46 @@ class FakeOmp {
       'st': approve ? 'ok' : 'error',
       'out': approve ? 'e2e' : 'denied',
     });
-    await _say(approve ? 'approved' : 'denied');
-    _setBusy(false, summary: approve ? 'approved' : 'denied');
+    await _finish(run, approve ? 'approved' : 'denied');
   }
 
-  /// A prompt, from the phone ([source] `phone`) or typed here.
-  Future<void> _prompt(String text, List<Map<String, Object?>> images, {required String source}) async {
+  Future<void> _answerQuestion(String answer, {required bool custom}) async {
+    if (_ask == null) return;
+    final run = _run;
+    _dropAsk();
+    log('question-answered', {'answer': answer, 'custom': custom});
+    await _finish(run, 'fake answer: $answer');
+  }
+
+  Future<void> _pickPlan(String option) async {
+    if (_ask == null) return;
+    final run = _run;
+    _dropAsk();
+    log('plan-picked', {'option': option});
+    await _finish(run, 'fake plan: $option');
+  }
+
+  /// A prompt, from the phone ([source] `phone`) or typed here. While at
+  /// work a [steer] shows at once and is answered as the run ends; any
+  /// other waits its turn.
+  Future<void> _prompt(
+    String text,
+    List<Map<String, Object?>> images, {
+    required String source,
+    bool steer = false,
+  }) async {
     if (_busy) {
-      _queue.add((text: text, images: images));
-      log('queued', {'text': text});
+      if (steer) {
+        _steers.add(text);
+        log('steer', {'text': text});
+        _put({'id': _itemId(), 'k': 'user', 't': text, if (images.isNotEmpty) 'im': images.length});
+      } else {
+        _queue.add((text: text, images: images, source: source));
+        log('queued', {'text': text});
+      }
       return;
     }
+    final run = ++_run;
     final described = <Map<String, Object?>>[];
     for (final (n, im) in images.indexed) {
       final bytes = base64Decode(im['data']! as String);
@@ -246,18 +369,36 @@ class FakeOmp {
     log('prompt', {'text': text, 'source': source, 'images': described, 'files': files});
     _put({'id': _itemId(), 'k': 'user', 't': text, if (images.isNotEmpty) 'im': images.length});
     _setBusy(true);
-    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (text.contains('e2e-question')) return _raiseQuestion();
+    if (text.contains('e2e-plan')) return _raisePlan();
+    final work = text.contains('e2e-slow') ? const Duration(seconds: 20) : const Duration(milliseconds: 400);
+    final until = DateTime.now().add(work);
+    while (DateTime.now().isBefore(until)) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      if (run != _run) return;
+    }
     final reply = [
       for (final d in described) 'fake image: ${d['bytes']} bytes ${d['mime']}',
       for (final f in files) 'fake file: ${f['name']} ${f['bytes']} bytes',
       if (text.trim().isNotEmpty) 'fake reply: ${text.trim()}',
     ].join('\n');
-    await _say(reply.isEmpty ? 'fake reply: (nothing)' : reply);
-    if (!_busy) return;
-    _setBusy(false, summary: reply);
+    await _finish(run, reply.isEmpty ? 'fake reply: (nothing)' : reply);
+  }
+
+  /// Ends [run]: says [reply], then answers each steer that came during it,
+  /// goes idle and starts the next prompt waiting. Nothing once it's over.
+  Future<void> _finish(int run, String reply) async {
+    var last = reply;
+    await _say(reply);
+    while (run == _run && _steers.isNotEmpty) {
+      last = 'fake steered: ${_steers.removeAt(0)}';
+      await _say(last);
+    }
+    if (run != _run || !_busy) return;
+    _setBusy(false, summary: last);
     if (_queue.isNotEmpty) {
       final next = _queue.removeAt(0);
-      unawaited(_prompt(next.text, next.images, source: source));
+      unawaited(_prompt(next.text, next.images, source: next.source));
     }
   }
 
@@ -283,9 +424,10 @@ class FakeOmp {
   void _abort(String why) {
     if (!_busy) return;
     log('abort', {'why': why});
+    _run++;
+    _steers.clear();
     _streaming = null;
-    _ask = null;
-    _send({'t': 'ask', 'ask': null});
+    _dropAsk();
     _put({'id': _itemId(), 'k': 'notice', 't': 'Interrupted'});
     _setBusy(false);
   }
@@ -341,27 +483,113 @@ class FakeOmp {
 
   void _typed(String text) {
     log('text', {'text': text});
-    if (_ask != null) return;
+    if (_picker case final picker?) {
+      if (picker.search) {
+        picker
+          ..query += text
+          ..cursor = 0;
+        _render();
+      }
+      return;
+    }
+    if (_ask != null) {
+      if (_other case final other?) {
+        _other = other + text;
+        _render();
+      }
+      return;
+    }
     _editor += text;
     _render();
   }
 
   void _key(String key) {
     log('key', {'key': key});
-    if (_ask != null) {
+    if (_picker case final picker?) {
+      _pickerKey(picker, key);
+    } else if (_ask case final ask?) {
+      _askKey(ask, key);
+    } else {
+      _editorKey(key);
+    }
+    _render();
+  }
+
+  /// A picker's keys: ↑/↓ move, Backspace edits the search, Enter picks,
+  /// Esc (or Ctrl+C) closes it.
+  void _pickerKey(_Picker picker, String key) {
+    final rows = picker.rows;
+    switch (key) {
+      case 'up':
+        picker.cursor = max(0, picker.cursor - 1);
+      case 'down':
+        picker.cursor = max(0, min(rows.length - 1, picker.cursor + 1));
+      case 'backspace':
+        if (picker.search && picker.query.isNotEmpty) {
+          picker
+            ..query = picker.query.substring(0, picker.query.length - 1)
+            ..cursor = 0;
+        }
+      case 'enter':
+        if (rows.isEmpty) return;
+        final label = rows[picker.cursor].$1;
+        _picker = null;
+        if (picker.menu == 'model') {
+          _model = label;
+          log('model', {'model': label});
+        } else {
+          log('resume', {'session': label});
+        }
+      case 'esc' || 'ctrl+c':
+        _picker = null;
+        log('menu-cancel', {'menu': picker.menu});
+    }
+  }
+
+  /// An ask's keys: ↑/↓ move (stopping at the ends), Enter answers, Esc
+  /// stops the run. The question's Other row opens typing on Enter; its
+  /// next Enter answers with what was typed, and Esc goes back to the rows.
+  void _askKey(Map<String, Object?> ask, String key) {
+    if (_other case final other?) {
       switch (key) {
-        case 'up':
-          _askCursor = 0;
-        case 'down':
-          _askCursor = 1;
         case 'enter':
-          unawaited(_answerAsk(approve: _askCursor == 0));
+          if (other.trim().isNotEmpty) unawaited(_answerQuestion(other.trim(), custom: true));
+        case 'backspace':
+          if (other.isNotEmpty) _other = other.substring(0, other.length - 1);
         case 'esc':
-          _abort('esc');
+          _other = null;
       }
-      _render();
       return;
     }
+    final rows = switch (ask['kind']) {
+      'approval' => 2,
+      'plan' => _planOptions.length,
+      _ => _colors.length + 1,
+    };
+    switch (key) {
+      case 'up':
+        _askCursor = max(0, _askCursor - 1);
+      case 'down':
+        _askCursor = min(rows - 1, _askCursor + 1);
+      case 'enter':
+        switch (ask['kind']) {
+          case 'approval':
+            unawaited(_answerAsk(approve: _askCursor == 0));
+          case 'plan':
+            unawaited(_pickPlan(_planOptions[_askCursor]));
+          default:
+            if (_askCursor < _colors.length) {
+              unawaited(_answerQuestion(_colors[_askCursor], custom: false));
+            } else {
+              _other = '';
+            }
+        }
+      case 'esc':
+        _abort('esc');
+    }
+  }
+
+  void _editorKey(String key) {
     switch (key) {
       case 'esc':
         _abort('esc');
@@ -377,12 +605,18 @@ class FakeOmp {
         if (text.isEmpty) break;
         if (text.startsWith('/')) {
           log('command', {'command': text});
-          if (text == '/new') _newSession();
+          switch (text) {
+            case '/new':
+              _newSession();
+            case '/model':
+              _picker = _Picker('model', 'Select a model', _models, cursor: _models.indexWhere((m) => m.$1 == _model));
+            case '/resume':
+              _picker = _Picker('resume', 'Resume a session', _sessions, search: true);
+          }
           break;
         }
         unawaited(_prompt(text, const [], source: 'keyboard'));
     }
-    _render();
   }
 
   // ------------------------------------------------------------ screen
@@ -391,9 +625,18 @@ class FakeOmp {
     if (_quitting) return;
     if (spin) _spinAt = (_spinAt + 1) % _spinner.length;
     final state = _ask != null ? '!' : (_busy ? _spinner[_spinAt] : '>');
+    stdout.write('\x1b]2;π $state $_title\x07\x1b[H\x1b[2J${_screen()}');
+  }
+
+  /// The screen's text, as the terminal shows it. A picker, the question or
+  /// the plan review is drawn as omp draws it, so PocketTerm reads it back
+  /// (pocketterm_core's parseMenu, parsePlanReview and askOnScreen): its
+  /// title right above its rows, the cursor row `  ❯ <label>`, the others
+  /// indented as far, a picker's detail two spaces past its label, and no
+  /// editor line. /resume's search goes on a `> ` line between its title
+  /// and its rows.
+  String _screen() {
     final out = StringBuffer()
-      ..write('\x1b]2;π $state $_title\x07')
-      ..write('\x1b[H\x1b[2J')
       ..writeln('fake omp · $_title · session ${_sessionId.substring(0, 6)} · PocketTerm ${_extension ? 'on' : 'off'}')
       ..writeln('─' * 40);
     final rows = stdout.hasTerminal ? stdout.terminalLines : 24;
@@ -410,19 +653,50 @@ class FakeOmp {
         lines.add('$who: $l');
       }
     }
-    final room = max(1, rows - 10);
+    final room = max(1, rows - 12);
     lines.skip(max(0, lines.length - room)).forEach(out.writeln);
     out.writeln('─' * 40);
-    if (_ask case final ask?) {
-      out
-        ..writeln('Allow ${ask['tool']}: ${ask['summary']}')
-        ..writeln('${_askCursor == 0 ? '❯' : ' '} Approve')
-        ..writeln('${_askCursor == 1 ? '❯' : ' '} Deny');
-    } else if (_busy) {
-      out.writeln('${_spinner[_spinAt]} Working… (esc to interrupt)');
+    // A row of a list whose cursor is on row [at].
+    String row(int i, int at, String text) => '${i == at ? '  ❯ ' : '    '}$text';
+    if (_picker case final picker?) {
+      out.writeln(picker.title);
+      if (picker.search) out.writeln('> ${picker.query}');
+      final shown = picker.rows;
+      if (shown.isEmpty) out.writeln('No match');
+      for (final (i, (label, detail)) in shown.indexed) {
+        out.writeln(row(i, picker.cursor, '$label  $detail'));
+      }
+      out.write('↑/↓ move · ⏎ pick · esc cancel');
+    } else if (_ask case final ask?) {
+      switch (ask['kind']) {
+        case 'approval':
+          out
+            ..writeln('Allow ${ask['tool']}: ${ask['summary']}')
+            ..writeln('${_askCursor == 0 ? '❯' : ' '} Approve')
+            ..writeln('${_askCursor == 1 ? '❯' : ' '} Deny')
+            ..write('> $_editor');
+        case 'plan':
+          out
+            ..writeln('Plan: ${ask['title']}')
+            ..writeln('Plan mode - next step');
+          for (final (i, o) in _planOptions.indexed) {
+            out.writeln(row(i, _askCursor, o));
+          }
+          out.write('↑/↓ select · ⏎ confirm · esc cancel');
+        default:
+          out
+            ..writeln('Color')
+            ..writeln(_question);
+          for (final (i, c) in [..._colors, 'Other'].indexed) {
+            out.writeln(row(i, _askCursor, i == _colors.length && _other != null ? 'Other: $_other' : c));
+          }
+          out.write(_other != null ? '⏎ answer · esc back' : '↑/↓ move · ⏎ pick · esc cancel');
+      }
+    } else {
+      if (_busy) out.writeln('${_spinner[_spinAt]} Working… (esc to interrupt)');
+      out.write('> $_editor');
     }
-    out.write('> $_editor');
-    stdout.write(out);
+    return out.toString();
   }
 
   // ------------------------------------------------------------ PocketTerm
@@ -513,7 +787,7 @@ class FakeOmp {
       't': 'hello',
       'v': 1,
       'agent': 'omp',
-      'session': {'id': _sessionId, 'title': _title, 'cwd': _cwd, 'model': 'fake-model'},
+      'session': {'id': _sessionId, 'title': _title, 'cwd': _cwd, 'model': _model},
       'window': _windowKey,
       'term': _term,
       'pid': pid,
@@ -541,7 +815,7 @@ class FakeOmp {
         final words = m['text'] as String? ?? '';
         if (words.trim().isEmpty && images.isEmpty) return reply({'error': 'Nothing to send.'});
         reply();
-        await _prompt(words, images, source: 'phone');
+        await _prompt(words, images, source: 'phone', steer: m['deliver'] != 'followUp');
       case 'abort':
         _abort('phone');
         reply();

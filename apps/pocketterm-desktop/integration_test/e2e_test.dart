@@ -19,14 +19,17 @@ import 'package:integration_test/integration_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/backend.dart';
-import 'package:pocketterm_core/live.dart' show routedKey;
+import 'package:pocketterm_core/live.dart' show LiveAnswer, LiveAsk, routedKey;
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal.dart';
+import 'package:pocketterm_core/terminal_remote.dart' show TerminalLink;
 import 'package:pocketterm_core/ui.dart';
+import 'package:pocketterm_desktop/hosting/vps.dart' show ServerAddress;
 import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:pocketterm_desktop/local_api.dart';
 import 'package:pocketterm_desktop/main_window.dart';
+import 'package:pocketterm_desktop/setup_page.dart' show SetupPage, setupLinkProblem;
 import 'package:pocketterm_e2e/e2e.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -115,6 +118,9 @@ class _Run {
 
     await report.step('desktop: runs as from Finder (launchd PATH, no TERM, no locale)', _asFromFinder, critical: true);
     await report.step('terminals: throwaway windows open', _openEarlyWindows, critical: true);
+    if (!c.builtIn) await report.step('setup: On this computer shows Tailscale as it is', _thisComputer);
+    await report.step('setup: Not yet shows the server guide', _serverGuide);
+    await report.step('setup: link problems are explained', _linkProblems);
     if (c.builtIn) {
       await report.step(
         'setup: On this computer starts its server, Tailscale serves it',
@@ -122,12 +128,15 @@ class _Run {
         critical: true,
       );
     } else {
-      await report.step('setup: On this computer shows Tailscale as it is', _thisComputer);
       await report.step('setup: own server, paste link', _ownServer, critical: true);
     }
     await _getReady();
     await report.step('windows: sessions in their own windows', _sessionsLocated, critical: true);
     await report.step('windows: plain shell is a screen', _shellIsScreen);
+    await report.step('settings: status bar and Open setup checklist', _statusBar);
+    await report.step('settings: coding agents tab', _agentsTab);
+    await report.step('settings: data protection', _dataProtection);
+    await report.step('settings: launch at login switch', _launchAtLogin);
     await report.step('settings: new sessions open in $t', _chooseTerminal);
     await report.step('add a phone: two pairing links', _pairingLinks, critical: true);
     await report.step('hand-off files', _handOff, critical: true);
@@ -141,6 +150,7 @@ class _Run {
       await report.step('stand-in phone: main scenarios', _standInMain);
     }
     await _verifyMain();
+    await report.step('phone: computer off, then Retry brings it back', _computerOff);
 
     await report.step('restart: server', _serverRestart);
     await report.step('restart: desktop app', _desktopRestart);
@@ -150,7 +160,23 @@ class _Run {
       report.skip('real omp: /new from the phone starts a fresh session in place', 'omp is not installed');
     }
     await report.step('revoke: phone removed on the server', _revoke);
-    if (t == 'ghostty') await report.step('ghostty: Start new windows in tmux', _ghosttyTmux);
+    if (t == 'ghostty') {
+      await report.step('ghostty: Start new windows in tmux', _ghosttyTmux);
+      await report.step('ghostty: Remove takes tmux out', _ghosttyTmuxRemove);
+    }
+    await report.step('settings: project folders remove and add', _projectFolders);
+    if (c.builtIn) {
+      await report.step('account: Add a computer', _addComputer);
+    } else {
+      report.skip('account: Add a computer', 'only a computer that runs the built-in server offers it (app.hosting)');
+    }
+    await report.step('phone tab: Reset key', _resetKey);
+    if (c.builtIn) {
+      await report.step('account: Erase', _erase);
+    } else {
+      report.skip('account: Erase', 'only the computer running the server erases it (Session.hostsServer)');
+    }
+    await report.step('account: sign out', _signOut);
   }
 
   /// The run started this app as Launch Services does (tool/e2e/lib/e2e.dart's
@@ -267,14 +293,17 @@ class _Run {
 
   // ---------------------------------------------------------------- windows
 
-  /// Before PocketTerm is set up: the terminal with a plain shell, and two
-  /// omp at work (started before PocketTerm was in omp, so they don't
-  /// report: the phone switches them to their conversation later).
+  /// Before PocketTerm is set up: the terminal with a plain shell, another
+  /// plain shell the phone closes, two omp at work (started before PocketTerm
+  /// was in omp, so they don't report: the phone switches them to their
+  /// conversation later), and folders the phone opens a session and a shell in.
   Future<void> _openEarlyWindows() async {
     await term.start(makeProject(c, name('shell')));
+    await _open('closeme');
     await _open('switchgo', autorun: 'omp --busy');
     await _open('switchstop', autorun: 'omp --busy');
     makeProject(c, name('newsess'));
+    makeProject(c, name('newshell'));
     for (final w in ['switchgo', 'switchstop']) {
       await until('fake omp at work in ${name(w)}', () => fakeOmpLog(dir(w)).any((e) => e['event'] == 'start'));
     }
@@ -297,6 +326,7 @@ class _Run {
   /// On this computer: the Tailscale checklist follows Tailscale's real
   /// state (asked here of its own CLI). Nothing is signed in or started.
   Future<void> _thisComputer() async {
+    await _toChoose();
     await _tap(_key('setup-this-computer'));
     final cli = await Process.run('/Applications/Tailscale.app/Contents/MacOS/Tailscale', ['status', '--json']);
     final installed = File('/Applications/Tailscale.app/Contents/MacOS/Tailscale').existsSync();
@@ -345,10 +375,11 @@ class _Run {
     expect(health.statusCode, 200, reason: '$url/v1/health through tailscale serve');
     await _see(find.text('Get this computer ready'));
     expect(app.terminalOn, isTrue, reason: 'the first sign-in turns Terminal from phone on');
-    expect(await app.host.launchAtLogin(), isTrue, reason: 'the first sign-in asks for launch at login');
+    expect(await app.host.launchAtLogin(), isFalse, reason: 'the first sign-in adds no login item on its own');
   }
 
   Future<void> _ownServer() async {
+    await _toChoose();
     await _tap(_key('setup-own-server'));
     await _tap(_key('setup-have-server'));
     await _see(_key('setup-link'));
@@ -359,6 +390,95 @@ class _Run {
     await _see(find.text('Get this computer ready'));
     expect(app.terminalOn, isTrue, reason: 'the first sign-in turns Terminal from phone on');
     expect(await app.host.launchAtLogin(), isFalse, reason: 'the first sign-in adds no login item on its own');
+  }
+
+  /// Back to the setup's first screen (where the server runs), from any
+  /// setup screen a step before left open.
+  Future<void> _toChoose() async {
+    for (var i = 0; i < 4 && _key('setup-own-server').evaluate().isEmpty; i++) {
+      if (_key('setup-back').evaluate().isEmpty) break;
+      await _tap(_key('setup-back'));
+    }
+    await _see(_key('setup-own-server'));
+  }
+
+  /// [f] off the screen.
+  Future<void> _gone(Finder f, {Duration timeout = const Duration(seconds: 30)}) async {
+    final end = DateTime.now().add(timeout);
+    while (f.evaluate().isNotEmpty) {
+      if (DateTime.now().isAfter(end)) throw TestFailure('Still on screen: $f');
+      await _frames(1);
+    }
+  }
+
+  /// Own server, Not yet: an address that can't be a server's says why; a
+  /// public IP address gets its sslip.io name and the commands that set the
+  /// server up there. Back returns to the own-server choice, then the first
+  /// screen.
+  Future<void> _serverGuide() async {
+    await _toChoose();
+    await _tap(_key('setup-own-server'));
+    await _tap(_key('setup-new-server'));
+    await _see(_key('setup-address'));
+    for (final bad in ['not a server', '10.0.0.5']) {
+      await tester.enterText(_key('setup-address'), bad);
+      await _see(_key('setup-address-error'));
+      expect(tester.widget<Text>(_key('setup-address-error')).data, ServerAddress.parse(bad).error);
+      expect(_key('setup-command-0'), findsNothing, reason: 'no commands for $bad');
+    }
+    await tester.enterText(_key('setup-address'), '203.0.113.7');
+    await _see(find.textContaining('203-0-113-7.sslip.io'));
+    await _see(_key('setup-command-0'));
+    expect(_key('setup-address-error'), findsNothing);
+    await report.shot('setup-new-server');
+    // What was typed stays with the setup; empty, it doesn't open there again.
+    await tester.enterText(_key('setup-address'), '');
+    await _tap(_key('setup-back'));
+    await _see(_key('setup-have-server'));
+    await _tap(_key('setup-back'));
+    await _see(_key('setup-own-server'));
+  }
+
+  /// Own server, Yes: a pasted link that isn't a computer's setup link says
+  /// what is wrong with it, asks no server, and Connect signs nothing in; a
+  /// setup link whose server doesn't answer says that. Back to the first
+  /// screen after.
+  Future<void> _linkProblems() async {
+    await _toChoose();
+    await _tap(_key('setup-own-server'));
+    await _tap(_key('setup-have-server'));
+    await _see(_key('setup-link'));
+    String link(Map<String, String> q) => '${Uri(scheme: 'pocketterm', host: 'setup', queryParameters: q)}';
+    const url = 'https://pocketterm.example.com';
+    String? error() => _key('setup-error').evaluate().isEmpty ? null : tester.widget<Text>(_key('setup-error')).data;
+    for (final text in [
+      'not a link',
+      link({'url': url}),
+      link({'url': url, 'code': 'E2E-PHONE'}),
+      link({'url': 'http://pocketterm.example.com', 'setup': 'e2e'}),
+    ]) {
+      final why = setupLinkProblem(text);
+      expect(why, isNotNull, reason: '$text is no setup link');
+      await tester.enterText(_key('setup-link'), text);
+      await _see(_key('setup-error'));
+      expect(error(), why);
+      expect(_key('setup-link-health'), findsNothing, reason: 'no server asked for $text');
+      await _tap(_key('setup-connect'));
+      expect(app.backend, isNull, reason: 'Connect with $text');
+      expect(error(), why, reason: 'Connect says it again');
+    }
+    final down = link({'url': 'https://127.0.0.1:9', 'setup': 'e2e-not-a-token'});
+    expect(setupLinkProblem(down), isNull, reason: 'a setup link as such');
+    await tester.enterText(_key('setup-link'), down);
+    final said = await until('the server not answering said', () async {
+      await _frames(1);
+      return error();
+    }, timeout: const Duration(seconds: 20));
+    expect(said, contains('127.0.0.1'));
+    expect(find.textContaining('answers'), findsNothing);
+    await report.shot('setup-link-problem');
+    await tester.enterText(_key('setup-link'), '');
+    await _toChoose();
   }
 
   Future<void> _getReady() async {
@@ -433,10 +553,67 @@ class _Run {
 
   Future<void> _shellIsScreen() async {
     final windows = await app.terminals.windows();
-    final shell = windows.where((w) => w.cwd == dir('shell')).toList();
-    expect(shell.length, 1, reason: 'the shell window: ${_ws(windows)}');
-    expect(shell.single.agent, isNull);
-    expect(app.live.sessions.any((s) => s.window == shell.single.key), isFalse);
+    for (final what in ['shell', 'closeme']) {
+      final shell = windows.where((w) => w.cwd == dir(what)).toList();
+      expect(shell.length, 1, reason: 'the ${name(what)} window: ${_ws(windows)}');
+      expect(shell.single.agent, isNull);
+      expect(app.live.sessions.any((s) => s.window == shell.single.key), isFalse);
+    }
+  }
+
+  /// Settings' status bar says how this computer stands; Open setup
+  /// checklist goes back to Get this computer ready, whose Done returns.
+  Future<void> _statusBar() async {
+    Finder bar(Finder f) => find.descendant(of: _key('settings-status'), matching: f);
+    await _see(
+      bar(find.byWidgetPredicate((w) => w is Text && (w.data == 'All set' || (w.data ?? '').contains('attention')))),
+    );
+    await _tap(bar(find.text('Open setup checklist')));
+    await until('the checklist open', () => !app.getReadyDone);
+    await _see(find.text('Get this computer ready'));
+    await _tap(find.widgetWithText(FilledButton, 'Done'));
+    await until('the checklist done', () => app.getReadyDone);
+    await _see(_key('settings-content'));
+    await _see(_key('settings-status'));
+  }
+
+  /// Settings → Coding agents: omp has PocketTerm, up to date, and is the
+  /// default; Claude Code isn't on this computer (the run keeps it out).
+  Future<void> _agentsTab() async {
+    await _tap(_key('settings-tab-agents'));
+    Finder on(String key, String text) => find.descendant(of: _key(key), matching: find.text(text));
+    await _see(on('settings-agent-omp', 'PocketTerm installed, up to date'));
+    await _see(on('settings-default-omp', 'Default'));
+    await _see(on('settings-agent-claude', 'Not found on this computer'));
+    expect(_key('settings-default-claude'), findsNothing);
+    await report.shot('settings-agents');
+  }
+
+  /// Settings → Account → How your data is protected: Read… opens it, Done
+  /// closes it.
+  Future<void> _dataProtection() async {
+    await _tap(_key('settings-tab-account'));
+    await _tap(_key('settings-data-protection'));
+    await _see(_key('data-protection'));
+    await _tap(find.descendant(of: _key('data-protection'), matching: find.text('Done')));
+    await _gone(_key('data-protection'));
+  }
+
+  /// Settings → Account → Launch at login, switched over and back: the
+  /// run's host keeps it (the Mac's login items stay as they are).
+  Future<void> _launchAtLogin() async {
+    await _tap(_key('settings-tab-account'));
+    await until('launch at login read', () => app.launchAtLogin != null);
+    final was = app.launchAtLogin!;
+    for (final on in [!was, was]) {
+      await _tap(_key('settings-launch-at-login'));
+      await until(
+        'launch at login ${on ? 'on' : 'off'}',
+        () async => app.launchAtLogin == on && await app.host.launchAtLogin() == on,
+      );
+      await _frames();
+      expect(tester.widget<Switch>(_key('settings-launch-at-login')).value, on);
+    }
   }
 
   Future<void> _chooseTerminal() async {
@@ -477,6 +654,9 @@ class _Run {
     await spare.putDesktop('spare${t.substring(0, 3)}', name: 'Spare Mac $t', platform: 'macos');
     final windows = await app.terminals.windows();
     final shell = windows.firstWhere((w) => w.cwd == dir('shell'));
+    final closeme = await until('the closeme window', () async {
+      return (await app.terminals.windows()).where((w) => w.cwd == dir('closeme')).firstOrNull;
+    });
     final host = await app.terminals.opensIn(app.terminalApp);
     File(p.join(c.artifacts, 'expect.json')).writeAsStringSync(
       const JsonEncoder.withIndent('  ').convert({
@@ -499,6 +679,11 @@ class _Run {
         'switchContinue': name('switchgo'),
         'switchRestart': name('switchstop'),
         'newSessionProject': name('newsess'),
+        // The session the + flow starts; the steer, stop, ask and menu flows run on it.
+        'askSession': name('newsess'),
+        'closeWindow': closeme.title,
+        'newShellProject': name('newshell'),
+        'newProjectName': name('made'),
         'endSession': name('endme'),
         'realOmp': {'title': name('realomp'), 'project': name('realomp')},
         'lockedComputer': 'Spare Mac $t',
@@ -576,6 +761,101 @@ class _Run {
     await act('new session', () async {
       final launched = await r.launch(dir('newsess'), startAgent: true);
       report.log('phone launched $launched');
+    });
+    // On the session the + flow started, as the phone's steer, stop, ask and menu flows do.
+    Future<String> newsess() => until(
+      'the new session on the phone',
+      () => r.sessions.where((s) => s.cwd == dir('newsess')).firstOrNull?.key,
+      timeout: const Duration(seconds: 40),
+    );
+    Future<String> atRest() async {
+      final key = await newsess();
+      await until(
+        '${name('newsess')} at rest',
+        () => r.session(key)?.busy == false,
+        timeout: const Duration(seconds: 60),
+      );
+      return key;
+    }
+
+    Future<LiveAsk> asked(String key, bool Function(LiveAsk a) which) => until('the ask on the phone', () {
+      final a = r.session(key)?.ask;
+      return a != null && which(a) ? a : null;
+    });
+    Future<void> pick(String key, LiveAsk ask, int i) => r.answer(
+      key,
+      ask,
+      answers: [
+        LiveAnswer(picks: [i]),
+      ],
+    );
+    Future<void> working(String key) =>
+        until('${name('newsess')} at work', () => r.session(key)?.busy ?? false, timeout: const Duration(seconds: 20));
+    await act('steer and queue', () async {
+      final key = await atRest();
+      await r.prompt(key, 'e2e-slow steer run $t');
+      await working(key);
+      await r.prompt(key, 'steer from phone $t');
+      await r.prompt(key, 'queue from phone $t', followUp: true);
+      await until(
+        'the queued prompt ran',
+        () =>
+            fakeOmpLog(dir('newsess'))
+                .any((e) => e['event'] == 'prompt' && '${e['text']}'.contains('queue from phone')),
+        timeout: const Duration(seconds: 60),
+      );
+    });
+    await act('stop', () async {
+      final key = await atRest();
+      await r.prompt(key, 'e2e-slow stop run $t');
+      await working(key);
+      await r.abort(key);
+      await atRest();
+    });
+    await act('question', () async {
+      final key = await atRest();
+      await r.prompt(key, 'e2e-question $t');
+      final ask = await asked(key, (a) => a.questions?.isNotEmpty ?? false);
+      await pick(key, ask, ask.questions!.first.options.indexOf('Green'));
+    });
+    await act('plan', () async {
+      final key = await atRest();
+      await r.prompt(key, 'e2e-plan $t');
+      // Its options as the computer read them off the screen.
+      final ask = await asked(key, (a) => a.isPlan && a.options.isNotEmpty);
+      await pick(key, ask, ask.options.indexOf('Approve and execute'));
+    });
+    await act('/model', () async {
+      final key = await atRest();
+      await r.prompt(key, '/model');
+      final ask = await asked(key, (a) => a.isMenu && a.title == 'Select a model');
+      await pick(key, ask, ask.items.indexWhere((i) => i.label == 'fake-model-fast'));
+    });
+    await act('/resume', () async {
+      final key = await atRest();
+      await r.prompt(key, '/resume');
+      final menu = await asked(key, (a) => a.isMenu && a.title == 'Resume a session');
+      expect(menu.filter, isTrue, reason: '/resume can be searched');
+      await r.answer(key, menu, answers: const [LiveAnswer(custom: 'beta')]);
+      final found = await asked(
+        key,
+        (a) => a.isMenu && a.items.isNotEmpty && a.items.every((i) => i.label.toLowerCase().contains('beta')),
+      );
+      await pick(key, found, found.items.indexWhere((i) => i.label == 'e2e beta session'));
+    });
+    await act('screen keys', () async {
+      final shell = windowOf('shell');
+      for (final k in ['tab', 'enter', 'ctrl+c']) {
+        await r.press(shell.key, k);
+      }
+    });
+    await act('close a shell window', () => r.close(windowOf('closeme').key));
+    await act('new shell', () async {
+      report.log('phone opened ${await r.launch(dir('newshell'), startAgent: false)}');
+    });
+    await act('new project', () async {
+      final root = (r.roots ?? const <String>[]).firstWhere((x) => x == c.projects);
+      report.log('phone made ${await r.create(root, name('made'), startAgent: true)}');
     });
     await act('restart and continue', () async {
       final go = windowOf('switchgo');
@@ -697,12 +977,82 @@ class _Run {
         return app.live.sessions.where((s) => s.cwd == dir('newsess') && s.window != null).firstOrNull;
       }, timeout: const Duration(seconds: 40));
       final key = s.window!;
-      final want = t == 'ghostty' ? 'tmux:' : (t == 'kitty' ? 'kitty' : 'wezterm:');
-      expect(key.startsWith(want), isTrue, reason: 'opened in $key, expected $want…');
+      expect(key.startsWith(_opensWith), isTrue, reason: 'opened in $key, expected $_opensWith…');
       if (t == 'ghostty') {
         final w = (await app.terminals.windows()).firstWhere((w) => w.key == key);
         expect(w.via, 'Ghostty', reason: 'the tmux pane shows in a Ghostty window');
       }
+    });
+    // On the session the + flow started: what the phone's steer, stop, ask and menu flows did.
+    bool says(Map<String, dynamic> e, String event, String text) =>
+        e['event'] == event && '${e['text']}'.contains(text);
+    Future<Map<String, dynamic>> heard(String what, bool Function(Map<String, dynamic> e) which) =>
+        until(what, () => log('newsess').where(which).firstOrNull, timeout: const Duration(seconds: 60));
+    await report.step('phone: steer reaches the agent while it works', () async {
+      final e = await heard('a steer', (e) => says(e, 'steer', 'steer from phone'));
+      expect('${e['text']}'.startsWith('steer from phone'), isTrue, reason: '$e');
+    });
+    await report.step('phone: a queued prompt runs after the turn', () async {
+      await until('queued, then run', () {
+        final l = log('newsess');
+        final queued = l.indexWhere((e) => says(e, 'queued', 'queue from phone'));
+        return queued >= 0 && l.skip(queued + 1).any((e) => says(e, 'prompt', 'queue from phone'));
+      }, timeout: const Duration(seconds: 60));
+    });
+    await report.step('phone: Stop interrupts the agent', () async {
+      await until('stopped from the phone', () {
+        final l = log('newsess');
+        final slow = l.indexWhere((e) => says(e, 'prompt', 'e2e-slow stop run'));
+        return slow >= 0 && l.skip(slow + 1).any((e) => e['event'] == 'abort' && e['why'] == 'phone');
+      }, timeout: const Duration(seconds: 60));
+    });
+    await report.step('phone: the agent\u2019s question answered', () async {
+      final e = await heard('the question answered', (e) => e['event'] == 'question-answered');
+      expect(e['answer'], 'Green');
+      expect(e['custom'], isFalse);
+    });
+    await report.step('phone: the plan review answered', () async {
+      final e = await heard('the plan picked', (e) => e['event'] == 'plan-picked');
+      expect(e['option'], 'Approve and execute');
+    });
+    await report.step('phone: /model picker answered', () async {
+      final e = await heard('a model picked', (e) => e['event'] == 'model');
+      expect(e['model'], 'fake-model-fast');
+    });
+    await report.step('phone: /resume picker searched and answered', () async {
+      final e = await heard('a session resumed', (e) => e['event'] == 'resume');
+      expect(e['session'], 'e2e beta session');
+    });
+    await report.step('phone: screen keys Tab, Enter, Ctrl+C reach the window', () async {
+      await until('keys in the shell', () {
+        final l = typedLog(c, name('shell'));
+        return l.contains('key:tab') && l.contains('key:enter') && l.contains('key:ctrl+c');
+      });
+    });
+    await report.step('phone: close a shell window from the window list', () async {
+      await until(
+        'closeme window gone',
+        () async => !(await app.terminals.windows()).any((w) => w.cwd == dir('closeme')),
+      );
+      final windows = await app.terminals.windows();
+      for (final w in ['shell', 'chat', 'approve']) {
+        expect(windows.where((x) => x.cwd == dir(w)), isNotEmpty, reason: '${name(w)} still open: ${_ws(windows)}');
+      }
+    });
+    await report.step('phone: new shell opens in $t without an agent', () async {
+      final w = await until('a window in ${name('newshell')}', () async {
+        return (await app.terminals.windows()).where((w) => w.cwd == dir('newshell')).firstOrNull;
+      }, timeout: const Duration(seconds: 40));
+      expect(w.key.startsWith(_opensWith), isTrue, reason: 'opened in ${w.key}, expected $_opensWith…');
+      expect(w.agent, isNull, reason: 'a plain shell: ${_ws([w])}');
+      expect(app.live.sessions.where((s) => s.window == w.key || s.cwd == dir('newshell')), isEmpty);
+    });
+    await report.step('phone: new project made in the project folder', () async {
+      final made = dir('made');
+      expect(Directory(made).existsSync(), isTrue, reason: '$made made');
+      await until('a session or window in ${name('made')}', () async {
+        return app.live.sessions.any((s) => s.cwd == made) || (await app.terminals.windows()).any((w) => w.cwd == made);
+      }, timeout: const Duration(seconds: 40));
     });
     await report.step('phone: switch to conversation, continue', () async {
       final starts = await until('switchgo restarted with -c', () {
@@ -746,6 +1096,70 @@ class _Run {
     });
   }
 
+  /// Where a window the phone opens goes: the terminal's own windows, tmux
+  /// for Ghostty (whose windows can't be read).
+  String get _opensWith => t == 'ghostty' ? 'tmux:' : (t == 'kitty' ? 'kitty' : 'wezterm:');
+
+  /// Settings → Phone → Terminal from phone off: the phone finds the computer
+  /// not answering (phase computer-off) and asks for it back on (rpc
+  /// terminal-on); Retry then brings its sessions back. It is on again after,
+  /// whatever the phase did.
+  Future<void> _computerOff() async {
+    await _tap(_key('settings-tab-phone'));
+    await _tap(_key('settings-terminal-from-phone'));
+    await until('Terminal from phone off', () => !app.terminalOn);
+    Future<void> turnOn() async {
+      if (app.terminalOn) return;
+      await _tap(_key('settings-terminal-from-phone'));
+      await until('Terminal from phone on', () => app.terminalOn);
+    }
+
+    if (!c.phone) {
+      final r = phone!.remote;
+      try {
+        await until(
+          'the phone finds it offline',
+          () => r.link == TerminalLink.offline,
+          timeout: const Duration(seconds: 40),
+        );
+      } finally {
+        await turnOn();
+      }
+      await until('the phone finds it online again', () => r.online, timeout: const Duration(seconds: 60));
+      return;
+    }
+    final done = File(p.join(c.rpcDir, 'terminal-on.done'));
+    if (done.existsSync()) done.deleteSync();
+    var over = false;
+    Future<void> serve() async {
+      final req = File(p.join(c.rpcDir, 'terminal-on.req'));
+      while (!over && !req.existsSync()) {
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+      if (!req.existsSync()) return;
+      req.deleteSync();
+      var answer = 'ok';
+      try {
+        await turnOn();
+      } on Object catch (e) {
+        answer = 'not on: $e';
+        report.log('terminal-on: $e');
+      }
+      done.writeAsStringSync(answer);
+    }
+
+    final serving = serve();
+    final String code;
+    try {
+      code = await handOff(c.phaseDir, 'computer-off', out: 'ready', timeout: const Duration(minutes: 10));
+    } finally {
+      over = true;
+      await serving;
+      await turnOn();
+    }
+    expect(code, '0', reason: 'phone phase computer-off');
+  }
+
   // ---------------------------------------------------------------- restarts
 
   /// Prompts from the phone, by text, each heard once.
@@ -761,20 +1175,34 @@ class _Run {
     }
   }
 
+  /// The server stops and starts again; while it is down the phone's flow
+  /// (phase server-down) finds it unreachable. It starts again whatever that
+  /// phase found.
   Future<void> _serverRestart() async {
+    Future<String?> down() async =>
+        c.phone ? await handOff(c.phaseDir, 'server-down', out: 'ready', timeout: const Duration(minutes: 10)) : null;
+    String? downCode;
     if (c.builtIn) {
       // It runs in this app: stopped (Tailscale stops serving it) and started on the same port and data.
       final h = app.hosting!;
       final port = h.port;
       await h.stop();
-      await Future<void>.delayed(const Duration(seconds: 3));
-      await h.start(port: port);
+      try {
+        downCode = await down();
+      } finally {
+        await Future<void>.delayed(const Duration(seconds: 3));
+        await h.start(port: port);
+      }
       expect(h.port, port, reason: 'the same port again');
       await until('Tailscale serves it again', () => h.publicUrl, timeout: const Duration(seconds: 60));
     } else {
       expect(await handOff(c.rpcDir, 'server-stop', out: 'req', timeout: const Duration(seconds: 60)), 'ok');
-      await Future<void>.delayed(const Duration(seconds: 3));
-      expect(await handOff(c.rpcDir, 'server-start', out: 'req', timeout: const Duration(seconds: 90)), 'ok');
+      try {
+        downCode = await down();
+      } finally {
+        await Future<void>.delayed(const Duration(seconds: 3));
+        expect(await handOff(c.rpcDir, 'server-start', out: 'req', timeout: const Duration(seconds: 90)), 'ok');
+      }
     }
     await until('desktop back on the server', () async {
       try {
@@ -785,6 +1213,7 @@ class _Run {
     }, timeout: const Duration(seconds: 60));
     await _phoneAfter('server-restart', 'after server restart $t');
     _noReplays();
+    if (downCode != null) expect(downCode, '0', reason: 'phone phase server-down');
   }
 
   Future<void> _desktopRestart() async {
@@ -938,5 +1367,95 @@ class _Run {
     expect(s.window!.startsWith('tmux:'), isTrue, reason: 'the new Ghostty window runs tmux: ${s.window}');
     final w = (await app.terminals.windows()).firstWhere((w) => w.key == s.window);
     expect(w.via, 'Ghostty');
+  }
+
+  /// Settings → Terminals → Remove: the throwaway Ghostty config no longer
+  /// starts tmux.
+  Future<void> _ghosttyTmuxRemove() async {
+    await _tap(_key('settings-tab-terminals'));
+    await _see(find.descendant(of: _key('settings-ghostty-tmux'), matching: find.text('Remove')));
+    await _tap(_key('settings-ghostty-tmux'));
+    final config = File(p.join(c.home, '.config', 'ghostty', 'config'));
+    await until('config without tmux', () => !config.readAsStringSync().contains('new-session'));
+  }
+
+  /// Settings → Phone → Project folders: a folder's chip (Remove) takes it
+  /// off; Add folder… (the run's host picks the run's projects folder) puts
+  /// it back.
+  Future<void> _projectFolders() async {
+    await _tap(_key('settings-tab-phone'));
+    final chip = _key('settings-folder-${c.projects}');
+    await _see(find.ancestor(of: chip, matching: find.byTooltip('Remove')));
+    await _tap(chip);
+    await until('folder removed', () => !app.projectRoots.contains(c.projects));
+    await _gone(chip);
+    await _tap(find.descendant(of: _key('settings-content'), matching: find.text('Add folder…')));
+    await until('folder added', () => app.projectRoots.contains(c.projects));
+    await _see(chip);
+  }
+
+  /// Settings → Account → Add a computer…: the link shown is the built-in
+  /// server's setup link, one another computer can paste.
+  Future<void> _addComputer() async {
+    await _tap(_key('settings-tab-account'));
+    await _tap(_key('settings-add-computer'));
+    await _see(_key('add-computer-link'));
+    final shown = tester.widget<SelectableText>(_key('add-computer-link')).data!;
+    expect(shown, '${app.computerSetupLink()}');
+    expect(setupLinkProblem(shown), isNull, reason: 'another computer can paste it');
+    expect(Backend.setupToken(Uri.parse(shown)), isNotNull);
+    await _tap(find.widgetWithText(TextButton, 'Done'));
+    await _gone(_key('add-computer-link'));
+  }
+
+  /// Settings → Phone → Reset key…, confirmed: a new channel key, said so.
+  Future<void> _resetKey() async {
+    final before = base64Encode((await app.channelKey()).bytes);
+    await _tap(_key('settings-tab-phone'));
+    await _tap(_key('settings-reset-key'));
+    await _see(find.text('Reset this computer’s key?'));
+    await _tap(find.widgetWithText(TextButton, 'Reset key'));
+    await _see(find.textContaining('New key made'));
+    expect(base64Encode((await app.channelKey()).bytes), isNot(before), reason: 'a new channel key');
+  }
+
+  /// Settings → Account → Erase…, confirmed: every computer and phone is
+  /// signed out of the server (the spare computer's sign-in stops working)
+  /// and this computer signs in again at once, the only one on it.
+  Future<void> _erase() async {
+    final before = app.user!.device.id;
+    await _tap(_key('settings-tab-account'));
+    await _tap(find.text('Erase…'));
+    await _see(find.text('Erase this server\u2019s data?'));
+    await _tap(find.widgetWithText(TextButton, 'Erase'));
+    final after = await until('signed in again', () {
+      final u = app.user;
+      return u != null && u.device.id != before ? u : null;
+    }, timeout: const Duration(seconds: 60));
+    final left = [for (final d in await app.serverDevices()) d.id];
+    expect(left, [after.device.id], reason: 'only this computer, signed in again');
+    final spare = _spare!;
+    await expectLater(spare.devices(), throwsA(isA<ServerException>()), reason: 'the spare computer was signed out');
+    spare.close();
+    _spare = null;
+  }
+
+  /// Settings → Account → Sign out, last: a computer running the server
+  /// asks first (signing out stops it); one on its own server goes to
+  /// sign-in, whose Use a different server returns to the setup.
+  Future<void> _signOut() async {
+    await _tap(_key('settings-tab-account'));
+    final hosts = app.hosting != null;
+    await _tap(_key('settings-sign-out'));
+    if (hosts) {
+      await _see(find.text('Stop your server and sign out?'));
+      await _tap(find.widgetWithText(TextButton, 'Sign out'));
+    }
+    await until('signed out', () => app.user == null);
+    await _frames();
+    if (app.backend != null) await _tap(find.textContaining('Use a different server'));
+    await until('no server', () => app.backend == null);
+    await _see(find.byType(SetupPage));
+    await report.shot('signed-out');
   }
 }

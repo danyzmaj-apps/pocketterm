@@ -1,0 +1,26 @@
+# After offline.yaml, with Terminal from phone back on: Retry (if the note
+# is still there) brings the computer back, and the list is online with its
+# sessions, no note at the top.
+#   env: SESSION (regex: a session on the list)
+appId: com.danyzmaj.pocketterm
+---
+- launchApp:
+    stopApp: false
+- runFlow:
+    when:
+      visible: "Retry"
+    commands:
+      # The note may go by itself before the tap.
+      - tapOn:
+          text: "Retry"
+          optional: true
+- extendedWaitUntil:
+    notVisible: ".*(isn.t answering|was last seen|[Cc]onnecting…|[Aa]sking .*…).*"
+    timeout: 90000
+- assertNotVisible: "Retry"
+# Below Android 9 a button's tooltip is read after a line break.
+- assertVisible: "\n?New session"
+- scrollUntilVisible:
+    element: "${SESSION}\n.*"
+    timeout: 20000
+- takeScreenshot: online

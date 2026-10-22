@@ -1,0 +1,32 @@
+# The agent's plan review: Plan ready shows, its options come once the
+# computer read them off the agent's screen, and Approve and execute picked
+# from the phone reaches the agent.
+#   env: SESSION (regex), PROMPT
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: "(Prompt omp…|\nSend)"
+    timeout: 15000
+- runFlow: sub/prompt.yaml
+- inputText: ${PROMPT}
+- tapOn: "\n?Send"
+- extendedWaitUntil:
+    visible: "Plan ready"
+    timeout: 20000
+- extendedWaitUntil:
+    visible: "Approve and execute"
+    timeout: 30000
+- assertVisible: "Refine the plan"
+- assertVisible: "Stay in plan mode"
+- takeScreenshot: plan
+- tapOn: "Approve and execute"
+- extendedWaitUntil:
+    visible: ".*fake plan: Approve and execute.*"
+    timeout: 30000
+- takeScreenshot: picked
+- runFlow: sub/back.yaml

@@ -1,0 +1,14 @@
+# With Terminal from phone off on the computer (run.sh's computer-off
+# phase): the app, opened on the list, says the computer isn't answering (or
+# when it was last seen) and offers Retry. retry.yaml follows once it's back.
+appId: com.danyzmaj.pocketterm
+---
+- launchApp
+# The computer's note at the top of the list; "Updated …" before it when
+# there is an older list to show. It comes once the computer stopped
+# reporting, which may take a while.
+- extendedWaitUntil:
+    visible: ".* isn.t answering.*|.* was last seen .*"
+    timeout: 200000
+- assertVisible: "Retry"
+- takeScreenshot: offline

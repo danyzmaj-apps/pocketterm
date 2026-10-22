@@ -1,0 +1,29 @@
+# + on the list, New project…: a folder named on the phone is made in the
+# computer's project folder and omp starts there; the phone lands in its
+# conversation, and back on the list the project shows.
+#   env: NAME, NAME_RE
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- tapOn: "\n?New session"
+- extendedWaitUntil:
+    visible: "New project…"
+    timeout: 10000
+- tapOn: "New project…"
+- extendedWaitUntil:
+    visible: "Create and open"
+    timeout: 10000
+# The name field takes the keyboard at once (below Android 9 its hint isn't
+# read, so it isn't tapped).
+- inputText: ${NAME}
+- takeScreenshot: named
+- tapOn: "Create and open"
+- extendedWaitUntil:
+    visible: "(Prompt omp…|\nSend)"
+    timeout: 45000
+- takeScreenshot: started
+- runFlow: sub/back.yaml
+- scrollUntilVisible:
+    element: "${NAME_RE}\n.*"
+    timeout: 30000
+- takeScreenshot: listed

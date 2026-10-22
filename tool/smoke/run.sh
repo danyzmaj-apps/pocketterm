@@ -11,15 +11,17 @@
 #   tool/smoke/run.sh launch [--real-tailscale]    start it; Tailscale is a stand-in (fake_tailscale.sh)
 #                                                  unless --real-tailscale (then never press Start while
 #                                                  `tailscale serve status` serves anything)
-#   tool/smoke/run.sh ax <command> [args…]         ax.swift on the running copy (dump, texts, has, press, set)
+#   tool/smoke/run.sh ax <command> [args…]         ax.swift on the running copy (dump, texts, has, enabled, press,
+#                                                  set, window, close, extras, press-extra)
 #   tool/smoke/run.sh shot <name>                  screenshot of its window → $SHOTS/<name>.png
 #   tool/smoke/run.sh quit                         quits it
 #   tool/smoke/run.sh clean                        quits it and removes everything it made
 #
-# SMOKE (default /private/tmp/pt-smoke) holds it all; SHOTS (default
-# /private/tmp/pt-smoke-shots) the screenshots, which `clean` keeps. Needs
-# Accessibility and Screen Recording for the terminal it runs in (System
-# Settings → Privacy & Security).
+# tool/smoke/scenario.sh walks it through whole screens with these (wizard,
+# getready, settings, menubar, quit). SMOKE (default /private/tmp/pt-smoke)
+# holds it all; SHOTS (default /private/tmp/pt-smoke-shots) the screenshots,
+# which `clean` keeps. Needs Accessibility and Screen Recording for the
+# terminal it runs in (System Settings → Privacy & Security).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)

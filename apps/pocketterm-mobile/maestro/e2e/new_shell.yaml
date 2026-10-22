@@ -1,0 +1,31 @@
+# + on the list with Start omp off: a plain shell opens in the chosen
+# project, and the phone lands on its screen page; back on the list it's a
+# window row in that folder.
+#   env: PROJECT (regex)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- tapOn: "\n?New session"
+- extendedWaitUntil:
+    visible: "Start omp\n.*"
+    timeout: 10000
+- assertVisible: "Start omp\nOff: just a shell(\n.*)?"
+- tapOn: "Start omp\n.*"
+- takeScreenshot: shell-only
+# The run's projects aren't under its home, so the sheet lists their full paths.
+- scrollUntilVisible:
+    element: ".*/${PROJECT}"
+    timeout: 20000
+- tapOn: ".*/${PROJECT}"
+# Below Android 9 the field's hint isn't read: there its Send.
+- extendedWaitUntil:
+    visible: "(Type a line…|\nSend \\(types it, then Enter\\))"
+    timeout: 45000
+- assertNotVisible: "Prompt omp…"
+- takeScreenshot: screen
+- runFlow: sub/back.yaml
+# Its row reads the folder after the program: "zsh · /…/<project>".
+- scrollUntilVisible:
+    element: ".* · .*/${PROJECT}(\n.*)?"
+    timeout: 30000
+- takeScreenshot: listed

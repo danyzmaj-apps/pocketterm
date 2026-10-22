@@ -1,0 +1,71 @@
+# A file over the 20 MB a message takes (run.sh puts a 21 MB "too big for
+# the phone.bin" in the Simulator's Files, On My iPhone, or the emulator's
+# Download folder) is left out, and the composer says why; nothing attaches.
+#   env: SESSION (regex)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: "(Prompt omp…|\nSend)"
+    timeout: 15000
+- tapOn: "\n?Attach images or files"
+- tapOn: "Choose from Files"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      # The document picker opens on Recents or Browse; the file is in On My iPhone.
+      - extendedWaitUntil:
+          visible: "(Recents|Browse|On My iPhone)"
+          timeout: 15000
+      - runFlow:
+          when:
+            visible: "Browse"
+          commands:
+            - tapOn: "Browse"
+      - runFlow:
+          when:
+            notVisible: "too big for the phone(\\.bin)?"
+          commands:
+            - tapOn: "On My iPhone"
+      - takeScreenshot: picker
+      - tapOn: "too big for the phone(\\.bin)?"
+      # Picking several at once: the pick still needs Open.
+      - runFlow:
+          when:
+            visible: "Open"
+          commands:
+            - tapOn: "Open"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      # The system's file picker (DocumentsUI); the file is in Downloads.
+      - extendedWaitUntil:
+          visible: ".*(Recent|Downloads|Files).*"
+          timeout: 15000
+      - runFlow:
+          when:
+            notVisible: "too big for the phone\\.bin"
+          commands:
+            - tapOn: "Show roots"
+            - tapOn: "Downloads"
+      - takeScreenshot: picker
+      - tapOn: "too big for the phone\\.bin"
+      # Picking several at once: a tap selects, Select takes them.
+      - runFlow:
+          when:
+            visible: "Select"
+          commands:
+            - tapOn: "Select"
+- extendedWaitUntil:
+    visible: '"too big for the phone\.bin" is too large: files can be up to 20 MB\.'
+    timeout: 15000
+- assertNotVisible: "Remove too big for the phone\\.bin"
+- assertNotVisible: "Remove image"
+- takeScreenshot: refused
+- runFlow: sub/back.yaml

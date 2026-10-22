@@ -1,0 +1,120 @@
+# A message takes at most 10 images and files: 10 photos picked at once (run.sh
+# adds 10 to the library) all attach, and then the attach button offers
+# nothing more. All are removed again; nothing is sent.
+#   env: SESSION (regex)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: "(Prompt omp…|\nSend)"
+    timeout: 15000
+- tapOn: "\n?Attach images or files"
+- tapOn: "Choose from Photos"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: "Select up to 10 photos\\."
+          timeout: 15000
+      # Single photos read "Photo, <date>, <time>", newest first; the pattern
+      # takes a picked one too, so the indexes stay put.
+      - tapOn:
+          text: "Photo, [^,]+, [0-9:]+.*"
+          index: 0
+      - tapOn:
+          text: "Photo, [^,]+, [0-9:]+.*"
+          index: 1
+      - tapOn:
+          text: "Photo, [^,]+, [0-9:]+.*"
+          index: 2
+      - tapOn:
+          text: "Photo, [^,]+, [0-9:]+.*"
+          index: 3
+      - tapOn:
+          text: "Photo, [^,]+, [0-9:]+.*"
+          index: 4
+      - tapOn:
+          text: "Photo, [^,]+, [0-9:]+.*"
+          index: 5
+      - tapOn:
+          text: "Photo, [^,]+, [0-9:]+.*"
+          index: 6
+      - tapOn:
+          text: "Photo, [^,]+, [0-9:]+.*"
+          index: 7
+      - tapOn:
+          text: "Photo, [^,]+, [0-9:]+.*"
+          index: 8
+      - tapOn:
+          text: "Photo, [^,]+, [0-9:]+.*"
+          index: 9
+      - takeScreenshot: picker
+      - tapOn: "Done"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: ".*(Photo|Photos|Select|images).*"
+          timeout: 15000
+      # The system photo picker, newest first; its button counts the picks,
+      # "Add (10)".
+      - tapOn:
+          id: "com.google.android.providers.media.module:id/icon_thumbnail"
+          index: 0
+      - tapOn:
+          id: "com.google.android.providers.media.module:id/icon_thumbnail"
+          index: 1
+      - tapOn:
+          id: "com.google.android.providers.media.module:id/icon_thumbnail"
+          index: 2
+      - tapOn:
+          id: "com.google.android.providers.media.module:id/icon_thumbnail"
+          index: 3
+      - tapOn:
+          id: "com.google.android.providers.media.module:id/icon_thumbnail"
+          index: 4
+      - tapOn:
+          id: "com.google.android.providers.media.module:id/icon_thumbnail"
+          index: 5
+      - tapOn:
+          id: "com.google.android.providers.media.module:id/icon_thumbnail"
+          index: 6
+      - tapOn:
+          id: "com.google.android.providers.media.module:id/icon_thumbnail"
+          index: 7
+      - tapOn:
+          id: "com.google.android.providers.media.module:id/icon_thumbnail"
+          index: 8
+      - tapOn:
+          id: "com.google.android.providers.media.module:id/icon_thumbnail"
+          index: 9
+      - takeScreenshot: picker
+      - tapOn: "(Done|Add|Select) \\(10\\)"
+# Each image its own ✕, ten of them; no eleventh.
+- extendedWaitUntil:
+    visible:
+      text: "Remove image"
+      index: 9
+    timeout: 30000
+- assertNotVisible:
+    text: "Remove image"
+    index: 10
+- takeScreenshot: ten-attached
+# Full: the attach button opens no menu.
+- tapOn: "\n?Attach images or files"
+- assertNotVisible: "Choose from Photos"
+- takeScreenshot: full
+- repeat:
+    while:
+      visible: "Remove image"
+    commands:
+      - tapOn: "Remove image"
+- assertNotVisible: "Remove image"
+- takeScreenshot: removed
+- runFlow: sub/back.yaml

@@ -1,0 +1,29 @@
+# Stop while the agent works: the run ends at once, the transcript says
+# Interrupted, and Stop goes away.
+#   env: SESSION (regex), SLOW
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: "(Prompt omp…|\nSend)"
+    timeout: 15000
+- runFlow: sub/prompt.yaml
+- inputText: ${SLOW}
+- tapOn: "\n?Send"
+- extendedWaitUntil:
+    visible: "Stop"
+    timeout: 15000
+- takeScreenshot: working
+- tapOn: "Stop"
+- extendedWaitUntil:
+    visible: ".*Interrupted.*"
+    timeout: 15000
+- extendedWaitUntil:
+    notVisible: "Stop"
+    timeout: 15000
+- takeScreenshot: stopped
+- runFlow: sub/back.yaml

@@ -1,0 +1,91 @@
+# A slash command whose picker has a search: /resume's card closed with
+# Cancel, then opened again, searched for beta (only that session left) and
+# that session picked; the card goes each time.
+#   env: SESSION (regex)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: "(Prompt omp…|\nSend)"
+    timeout: 15000
+# Opened, then Cancel (Esc on the computer).
+- runFlow: sub/prompt.yaml
+- inputText: "/res"
+- extendedWaitUntil:
+    visible: "/resume.*"
+    timeout: 10000
+- tapOn: "/resume.*"
+- tapOn: "\n?Send"
+- extendedWaitUntil:
+    visible: "Resume a session"
+    timeout: 15000
+    optional: true
+# A picker the computer didn't read in time opens the screen instead; the
+# card still comes on the conversation under it.
+- runFlow:
+    when:
+      visible: "(Type a line…|\nSend \\(types it, then Enter\\))"
+    commands:
+      - runFlow: sub/back.yaml
+- extendedWaitUntil:
+    visible: "Resume a session"
+    timeout: 15000
+- assertVisible: "e2e alpha session(\n.*)?"
+- assertVisible: "e2e beta session(\n.*)?"
+- assertVisible: "e2e gamma session(\n.*)?"
+- takeScreenshot: picker
+- tapOn: "Cancel"
+- extendedWaitUntil:
+    notVisible: "Resume a session"
+    timeout: 15000
+- takeScreenshot: canceled
+# Opened again, searched and picked.
+- runFlow: sub/prompt.yaml
+- inputText: "/res"
+- extendedWaitUntil:
+    visible: "/resume.*"
+    timeout: 10000
+- tapOn: "/resume.*"
+- tapOn: "\n?Send"
+- extendedWaitUntil:
+    visible: "Resume a session"
+    timeout: 15000
+    optional: true
+- runFlow:
+    when:
+      visible: "(Type a line…|\nSend \\(types it, then Enter\\))"
+    commands:
+      - runFlow: sub/back.yaml
+- extendedWaitUntil:
+    visible: "Resume a session"
+    timeout: 15000
+# Below Android 9 Flutter hands a text field's hint to nobody: there the
+# search is the first thing under the card's title.
+- runFlow:
+    when:
+      visible: "Search…"
+    commands:
+      - tapOn: "Search…"
+- runFlow:
+    when:
+      notVisible: "Search…"
+    commands:
+      - tapOn:
+          below: "Resume a session"
+- inputText: "beta"
+- extendedWaitUntil:
+    notVisible: "e2e alpha session(\n.*)?"
+    timeout: 15000
+- assertNotVisible: "e2e gamma session(\n.*)?"
+- assertVisible: "e2e beta session(\n.*)?"
+- takeScreenshot: searched
+- tapOn: "e2e beta session(\n.*)?"
+- extendedWaitUntil:
+    notVisible: "Resume a session"
+    timeout: 15000
+- takeScreenshot: picked
+- runFlow: sub/back.yaml

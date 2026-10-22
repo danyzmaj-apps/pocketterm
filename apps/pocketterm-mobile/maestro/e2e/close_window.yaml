@@ -1,0 +1,19 @@
+# Swipe left on a plain shell window's row, Close window (the swipe was the
+# asking: it closes at once): the window closes on the computer and the row
+# goes.
+#   env: WINDOW (regex)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- scrollUntilVisible:
+    element: "${WINDOW}\n.*"
+    timeout: 20000
+- swipe:
+    from: "${WINDOW}\n.*"
+    direction: LEFT
+- tapOn: "Close window"
+- takeScreenshot: closing
+- extendedWaitUntil:
+    notVisible: "${WINDOW}\n.*"
+    timeout: 30000
+- takeScreenshot: closed

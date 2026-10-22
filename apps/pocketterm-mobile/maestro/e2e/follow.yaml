@@ -1,0 +1,48 @@
+# Following a session (iOS: on the Lock Screen; Android: in the
+# notifications) turned off and on from its page, its button saying which;
+# left as it was found. A session prompted from the phone is followed
+# already, so either is where it starts.
+#   env: SESSION (regex)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+# Below Android 9 a button's tooltip is read after a line break.
+- extendedWaitUntil:
+    visible: "\n?(Stop following|Follow) (on Lock Screen|in notifications)"
+    timeout: 15000
+- takeScreenshot: found
+# Followed: off, then on again.
+- runFlow:
+    when:
+      visible: "\n?Stop following (on Lock Screen|in notifications)"
+    commands:
+      - tapOn: "\n?Stop following (on Lock Screen|in notifications)"
+      - extendedWaitUntil:
+          visible: "\n?Follow (on Lock Screen|in notifications)"
+          timeout: 10000
+      - takeScreenshot: unfollowed
+      - tapOn: "\n?Follow (on Lock Screen|in notifications)"
+      - extendedWaitUntil:
+          visible: "\n?Stop following (on Lock Screen|in notifications)"
+          timeout: 10000
+# Not followed: on, then off again. (After the block above it's followed, so
+# this one doesn't run then.)
+- runFlow:
+    when:
+      visible: "\n?Follow (on Lock Screen|in notifications)"
+    commands:
+      - tapOn: "\n?Follow (on Lock Screen|in notifications)"
+      - extendedWaitUntil:
+          visible: "\n?Stop following (on Lock Screen|in notifications)"
+          timeout: 10000
+      - takeScreenshot: followed
+      - tapOn: "\n?Stop following (on Lock Screen|in notifications)"
+      - extendedWaitUntil:
+          visible: "\n?Follow (on Lock Screen|in notifications)"
+          timeout: 10000
+- takeScreenshot: as-found
+- runFlow: sub/back.yaml

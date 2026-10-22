@@ -1,0 +1,61 @@
+# While the agent works: a prompt steers it at once (shown right away, and
+# the agent says it took it when the run ends), and with Queue on a prompt
+# waits for the run to end and then runs on its own.
+#   env: SESSION (regex), SLOW, STEER, STEER_RE, QUEUE, QUEUE_RE
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+# Below Android 9 the field's hint isn't read (sub/prompt.yaml): there Send, its tooltip after a line break.
+- extendedWaitUntil:
+    visible: "(Prompt omp…|\nSend)"
+    timeout: 15000
+- runFlow: sub/prompt.yaml
+- inputText: ${SLOW}
+- tapOn: "\n?Send"
+# Working: Stop shows, and the empty field offers to steer.
+- extendedWaitUntil:
+    visible: "Stop"
+    timeout: 15000
+- extendedWaitUntil:
+    visible: "(Steer omp…|\nSend)"
+    timeout: 10000
+- takeScreenshot: working
+# The hint changed, so the field is found by its identifier.
+- tapOn:
+    id: "session-input"
+- inputText: ${STEER}
+- tapOn: "\n?Send"
+# Sent once the field is empty again; the steer shows while the run goes on.
+- extendedWaitUntil:
+    visible: "(Steer omp…|\nSend)"
+    timeout: 10000
+- extendedWaitUntil:
+    visible: "${STEER_RE}"
+    timeout: 10000
+- assertVisible: "Stop"
+- takeScreenshot: steered
+# Queue on: the next prompt waits for the run to end. The chip reads with its tooltip.
+- tapOn: "Queue(\n.*)?"
+- extendedWaitUntil:
+    visible: "(Queue a prompt…|\nSend)"
+    timeout: 10000
+- takeScreenshot: queue-on
+- tapOn:
+    id: "session-input"
+- inputText: ${QUEUE}
+- tapOn: "\n?Send"
+- extendedWaitUntil:
+    visible: ".*fake steered: ${STEER_RE}.*"
+    timeout: 45000
+- extendedWaitUntil:
+    visible: ".*fake reply: ${QUEUE_RE}.*"
+    timeout: 30000
+- extendedWaitUntil:
+    notVisible: "Stop"
+    timeout: 15000
+- takeScreenshot: queued-ran
+- runFlow: sub/back.yaml

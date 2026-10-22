@@ -281,7 +281,7 @@ export function promptText(text: string, files: readonly string[]): string {
 /** What PocketTerm answers /v1/ping?nonce= with (pingProof in lib/local_api.dart): HMAC-SHA256 under the token of
  * the port and the nonce, in hex. Mods have SHA-256 (crypto.subtle.digest) but no HMAC, so it's built here. */
 export async function pingProof(token: string, port: number, nonce: string): Promise<string> {
-	const sha = async (bytes: Uint8Array) => new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+	const sha = async (bytes: BufferSource) => new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
 	const raw = new TextEncoder().encode(token);
 	const key = new Uint8Array(64);
 	key.set(raw.length > 64 ? await sha(raw) : raw);

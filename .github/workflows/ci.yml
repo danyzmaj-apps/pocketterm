@@ -105,6 +105,25 @@ jobs:
           deno-version: v2.x
       - run: deno check --config integrations/omp-check.json integrations/omp/*.ts
 
+  # The Claude Code plugin the desktop app installs: its tests (the ping proof PocketTerm checks, the frames the
+  # phone gets) in Claude Code's own mod test runner, which needs no sign-in, and its manifest. The hooks module's
+  # API types exist only once a signed-in Claude Code has loaded the plugin, so only the self-contained helpers
+  # (items.ts) are type-checked. Claude Code is pinned to the version the tests were written against.
+  claude-plugin:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/pocketterm-desktop/integrations/claude/plugins/pocketterm
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+      - run: deno check --no-config hooks/items.ts
+      - run: curl -fsSL https://claude.ai/install.sh | bash -s 2.1.305
+      - run: ~/.local/bin/claude plugin validate --strict .
+      - run: ~/.local/bin/claude plugin test .
+
   # The push relay (apps/pocketterm-relay): requests the Dart server seals must open in the relay, so the
   # vectors are made fresh by the server package first, then the relay's tests run against them.
   relay:

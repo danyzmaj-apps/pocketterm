@@ -124,9 +124,9 @@ void main() {
           ..write('{"pocketterm":');
         await req.response.flush();
       });
-      final health = await Backend(
-        url: 'http://127.0.0.1:${server.port}',
-      ).health(wait: const Duration(milliseconds: 300)).timeout(const Duration(seconds: 5));
+      final health = await Backend(url: 'http://127.0.0.1:${server.port}')
+          .health(wait: const Duration(milliseconds: 300))
+          .timeout(const Duration(seconds: 5));
       expect(health.error, contains('took too long to answer'));
     });
 

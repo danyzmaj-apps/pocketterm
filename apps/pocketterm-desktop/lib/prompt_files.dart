@@ -91,7 +91,10 @@ String safeFileName(String name, {String mime = ''}) {
 
 /// A name Windows opens as a device: its part before the first dot, spaces
 /// after it ignored, is one of these.
-final _deviceName = RegExp(r'^(con|prn|aux|nul|conin\$|conout\$|com[0-9¹²³]|lpt[0-9¹²³]) *(\..*)?$', caseSensitive: false);
+final _deviceName = RegExp(
+  r'^(con|prn|aux|nul|conin\$|conout\$|com[0-9¹²³]|lpt[0-9¹²³]) *(\..*)?$',
+  caseSensitive: false,
+);
 
 /// [path] as omp and Claude Code take a file named in a prompt: `@path`,
 /// or `@"path"` when it holds a character that would end the mention (a

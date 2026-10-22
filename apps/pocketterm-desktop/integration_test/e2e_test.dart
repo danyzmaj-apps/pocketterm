@@ -422,8 +422,13 @@ class _Run {
     await _see(_key('setup-address'));
     for (final bad in ['not a server', '10.0.0.5']) {
       await tester.enterText(_key('setup-address'), bad);
-      await _see(_key('setup-address-error'));
-      expect(tester.widget<Text>(_key('setup-address-error')).data, ServerAddress.parse(bad).error);
+      // The error of the address typed before may still show for a frame.
+      final want = ServerAddress.parse(bad).error;
+      await until('the error for $bad', () async {
+        await _frames(1);
+        final e = _key('setup-address-error');
+        return e.evaluate().isNotEmpty && tester.widget<Text>(e).data == want;
+      }, timeout: const Duration(seconds: 10));
       expect(_key('setup-command-0'), findsNothing, reason: 'no commands for $bad');
     }
     await tester.enterText(_key('setup-address'), '203.0.113.7');
@@ -460,8 +465,11 @@ class _Run {
       final why = setupLinkProblem(text);
       expect(why, isNotNull, reason: '$text is no setup link');
       await tester.enterText(_key('setup-link'), text);
-      await _see(_key('setup-error'));
-      expect(error(), why);
+      // The error of the link pasted before may still show for a frame.
+      await until('the error for $text', () async {
+        await _frames(1);
+        return error() == why;
+      }, timeout: const Duration(seconds: 10));
       expect(_key('setup-link-health'), findsNothing, reason: 'no server asked for $text');
       await _tap(_key('setup-connect'));
       expect(app.backend, isNull, reason: 'Connect with $text');
@@ -571,8 +579,16 @@ class _Run {
     await _tap(bar(find.text('Open setup checklist')));
     await until('the checklist open', () => !app.getReadyDone);
     await _see(find.text('Get this computer ready'));
-    await _tap(find.widgetWithText(FilledButton, 'Done'));
-    await until('the checklist done', () => app.getReadyDone);
+    // The checklist's cards fill in as their checks come back and push Done
+    // down; a tap that landed where Done was before is tried again.
+    for (var i = 0; i < 5 && !app.getReadyDone; i++) {
+      await _tap(find.widgetWithText(FilledButton, 'Done'));
+      try {
+        await until('the checklist done', () => app.getReadyDone, timeout: const Duration(seconds: 5));
+      } on TimeoutException {
+        if (i == 4) rethrow;
+      }
+    }
     await _see(_key('settings-content'));
     await _see(_key('settings-status'));
   }

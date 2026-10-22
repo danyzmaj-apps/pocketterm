@@ -15,6 +15,9 @@ appId: com.danyzmaj.pocketterm
 - runFlow: sub/prompt.yaml
 - inputText: ${PROMPT}
 - tapOn: "\n?Send"
+# The keyboard put away: with it up the card, at most under half of what's
+# left, scrolls and its heading may sit above what shows.
+- hideKeyboard
 - extendedWaitUntil:
     visible: "Plan ready"
     timeout: 20000

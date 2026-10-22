@@ -1,0 +1,41 @@
+# Switch to conversation on a busy omp window that shows only its screen. HOW:
+# "Restart and continue" (it carries on: the agent replies to "continue") or
+# "Just restart" (it waits, a Continue chip on offer).
+#   env: WINDOW (regex), HOW
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${WINDOW}
+- extendedWaitUntil:
+    visible: "Switch to conversation"
+    timeout: 15000
+- takeScreenshot: screen-only
+- tapOn: "Switch to conversation"
+- extendedWaitUntil:
+    visible: ${HOW}
+    timeout: 15000
+- takeScreenshot: sheet
+- tapOn: ${HOW}
+- extendedWaitUntil:
+    visible: "Prompt omp…"
+    timeout: 45000
+- runFlow:
+    when:
+      true: ${HOW == 'Restart and continue'}
+    commands:
+      - extendedWaitUntil:
+          visible: ".*fake reply: continue.*"
+          timeout: 30000
+- runFlow:
+    when:
+      true: ${HOW != 'Restart and continue'}
+    commands:
+      - extendedWaitUntil:
+          visible: "Continue"
+          timeout: 15000
+      - assertNotVisible: ".*fake reply: continue.*"
+- takeScreenshot: conversation
+- tapOn: "Back"

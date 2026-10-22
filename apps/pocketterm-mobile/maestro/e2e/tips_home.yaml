@@ -1,0 +1,77 @@
+# First-use tips, turned back on (Show tips again), come one at a time in
+# their order and only once: the list's, then a conversation's; after a
+# relaunch none comes back.
+#   env: SESSION (regex)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- tapOn: "Account"
+- tapOn: "Show tips again"
+- extendedWaitUntil:
+    visible: "This session shows only its screen. Tap it to open."
+    timeout: 10000
+- takeScreenshot: tip-switch
+- tapOn: "Got it"
+- extendedWaitUntil:
+    visible: "Tap to fold this project. Long-press for its menu."
+    timeout: 10000
+- takeScreenshot: tip-project
+- tapOn: "Got it"
+- extendedWaitUntil:
+    visible: "Swipe left to end the session or close the window."
+    timeout: 10000
+- tapOn: "Got it"
+- extendedWaitUntil:
+    visible: "Start your agent or a shell in any project."
+    timeout: 10000
+- takeScreenshot: tip-new
+- tapOn: "Got it"
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: "Type / for slash commands."
+    timeout: 10000
+- tapOn: "Got it"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: "Follow this session on your Lock Screen."
+          timeout: 10000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: "Follow this session in your notifications."
+          timeout: 10000
+- tapOn: "Got it"
+- extendedWaitUntil:
+    visible: "See the raw terminal screen."
+    timeout: 10000
+- takeScreenshot: tip-screen
+- tapOn: "Got it"
+- tapOn: "Back"
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "New session"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "Got it"
+    timeout: 4000
+    optional: true
+- assertNotVisible: "Got it"
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: "Got it"
+    timeout: 4000
+    optional: true
+- assertNotVisible: "Got it"
+- tapOn: "Back"

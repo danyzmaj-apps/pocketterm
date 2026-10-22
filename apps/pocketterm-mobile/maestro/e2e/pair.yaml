@@ -1,0 +1,41 @@
+# Signs a phone in with the computer's code, pasted where the camera would read
+# it (E2E builds only: lib/onboarding/scan.dart), then answers the
+# notifications question, asked at every sign-in (leaving a server forgets the
+# answer): PUSH=accept turns them on and allows the system's prompt,
+# PUSH=decline taps Not now. Ends on the computer's session list.
+#   env: LINK, PUSH, COMPUTER
+appId: com.danyzmaj.pocketterm
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Scan the code from your computer"
+    timeout: 30000
+- tapOn: "Scan the code from your computer"
+- tapOn: "Paste a code \\(debug\\)"
+- inputText: ${LINK}
+- tapOn: "Use"
+- extendedWaitUntil:
+    visible: "Know when a session needs you"
+    timeout: 20000
+- takeScreenshot: consent
+- runFlow:
+    when:
+      true: ${PUSH == 'accept'}
+    commands:
+      - tapOn: "Turn on notifications"
+      # iOS asks once per install; Android 13+ asks too.
+      - tapOn:
+          text: "Allow"
+          optional: true
+- runFlow:
+    when:
+      true: ${PUSH != 'accept'}
+    commands:
+      - tapOn: "Not now"
+- extendedWaitUntil:
+    visible: ${COMPUTER}
+    timeout: 20000
+- extendedWaitUntil:
+    visible: "New session"
+    timeout: 20000
+- takeScreenshot: home

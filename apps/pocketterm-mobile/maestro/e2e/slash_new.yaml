@@ -1,0 +1,33 @@
+# A slash command from the phone: / shows the agent's commands, /new is picked
+# and sent; the conversation starts over in the same row (no second row).
+#   env: SESSION (regex)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: ".*fake reply: .*"
+    timeout: 15000
+- tapOn: "Prompt omp…"
+- inputText: "/"
+- extendedWaitUntil:
+    visible: "/new.*"
+    timeout: 10000
+- takeScreenshot: commands
+- tapOn: "/new.*"
+- tapOn: "Send"
+- extendedWaitUntil:
+    notVisible: ".*fake reply: .*"
+    timeout: 30000
+- takeScreenshot: fresh-session
+- tapOn: "Back"
+- extendedWaitUntil:
+    visible: "${SESSION}\n.*"
+    timeout: 10000
+- assertNotVisible:
+    text: "${SESSION}\n.*"
+    index: 1
+- takeScreenshot: one-row

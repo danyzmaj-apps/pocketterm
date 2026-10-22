@@ -1,0 +1,20 @@
+# A session that asks before running a command: the answer goes from the
+# phone and the agent carries on.
+#   env: SESSION (regex), ANSWER
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: ${ANSWER}
+    timeout: 20000
+- takeScreenshot: asking
+- tapOn: ${ANSWER}
+- extendedWaitUntil:
+    visible: "approved"
+    timeout: 20000
+- takeScreenshot: answered
+- tapOn: "Back"

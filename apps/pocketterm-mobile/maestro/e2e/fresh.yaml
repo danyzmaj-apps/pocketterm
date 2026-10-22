@@ -1,0 +1,17 @@
+# A phone as after a fresh install: no sign-in, no keys, no tips seen (an E2E
+# build starts them seen: lib/e2e_hooks.dart). The camera is denied (the
+# Simulator has none; the scanner's paste field reads the code), photos
+# allowed, notifications left for the app to ask.
+appId: com.danyzmaj.pocketterm
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      camera: deny
+      photos: allow
+      notifications: unset
+- extendedWaitUntil:
+    visible: "Welcome to PocketTerm"
+    timeout: 30000
+- takeScreenshot: setup

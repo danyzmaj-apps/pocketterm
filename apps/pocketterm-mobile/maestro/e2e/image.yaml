@@ -1,0 +1,55 @@
+# An image from the photo library (run.sh adds one to the Simulator's Photos,
+# or the emulator's Pictures) goes with a prompt; the agent gets it.
+#   env: SESSION (regex), IMAGE_PROMPT
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: "Prompt omp…"
+    timeout: 15000
+- tapOn: "Attach images"
+- tapOn: "Choose from Photos"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: "Select up to .* photos\\."
+          timeout: 15000
+      - takeScreenshot: picker
+      # Single photos read "Photo, <date>, <time>"; the newest is first.
+      - tapOn:
+          text: "Photo, [^,]+, [0-9:]+"
+          index: 0
+      - tapOn: "Done"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: ".*(Photo|Photos|Select|images).*"
+          timeout: 15000
+      - takeScreenshot: picker
+      - tapOn:
+          id: "com.google.android.providers.media.module:id/icon_thumbnail"
+          index: 0
+          optional: true
+      - tapOn:
+          text: "(Done|Add|Select)"
+          optional: true
+- extendedWaitUntil:
+    visible: "Remove image"
+    timeout: 15000
+- takeScreenshot: attached
+- tapOn: "Prompt omp…"
+- inputText: ${IMAGE_PROMPT}
+- tapOn: "Send"
+- extendedWaitUntil:
+    visible: ".*fake image: .*"
+    timeout: 30000
+- takeScreenshot: received
+- tapOn: "Back"

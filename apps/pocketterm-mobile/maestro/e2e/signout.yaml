@@ -1,0 +1,24 @@
+# Leaves the server from the account sheet: back on the setup screen, which
+# says why. The computer's key goes with the sign-in (computers.yaml checks a
+# new sign-in brings it back only through a code).
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- tapOn: "Account"
+- assertVisible: "Signed in with your computer’s code"
+- assertVisible: ".*Encrypted, through the push relay.*"
+- takeScreenshot: account
+- tapOn: "Leave this server"
+- tapOn: "Leave"
+- extendedWaitUntil:
+    visible: "You signed out."
+    timeout: 15000
+- assertVisible: "Scan the code from your computer"
+- takeScreenshot: signed-out
+# Relaunched, still signed out: nothing of the sign-in was kept.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Scan the code from your computer"
+    timeout: 30000
+- assertNotVisible: ${COMPUTER}

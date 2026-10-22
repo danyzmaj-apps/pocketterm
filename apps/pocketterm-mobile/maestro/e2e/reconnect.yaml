@@ -1,0 +1,51 @@
+# After the server or the desktop app restarted: the computer is back online,
+# an earlier exchange shows once (nothing replayed), and a new prompt goes and
+# its reply comes back once.
+#   env: COMPUTER, SESSION, OLD_SESSION, OLD_PROMPT_RE (regexes), PROMPT, PROMPT_RE
+appId: com.danyzmaj.pocketterm
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "New session"
+    timeout: 60000
+- tapOn: ${COMPUTER}
+- extendedWaitUntil:
+    visible: "Online"
+    timeout: 90000
+- tapOn: ${COMPUTER}
+- extendedWaitUntil:
+    visible: "${OLD_SESSION}\n.*"
+    timeout: 60000
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${OLD_SESSION}
+- extendedWaitUntil:
+    visible: ".*fake reply: ${OLD_PROMPT_RE}.*"
+    timeout: 30000
+- assertNotVisible:
+    text: ".*fake reply: ${OLD_PROMPT_RE}.*"
+    index: 1
+- assertNotVisible:
+    text: "${OLD_PROMPT_RE}"
+    index: 1
+- takeScreenshot: earlier-once
+- tapOn: "Back"
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: "Prompt omp…"
+    timeout: 15000
+- tapOn: "Prompt omp…"
+- inputText: ${PROMPT}
+- tapOn: "Send"
+- extendedWaitUntil:
+    visible: ".*fake reply: ${PROMPT_RE}.*"
+    timeout: 30000
+- assertNotVisible:
+    text: ".*fake reply: ${PROMPT_RE}.*"
+    index: 1
+- takeScreenshot: new-once
+- tapOn: "Back"

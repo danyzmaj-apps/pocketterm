@@ -1,0 +1,30 @@
+# The account's computers: the paired one online, a second one (signed in to
+# the server, never in a code this phone read) locked until its code is
+# scanned. Back on the paired one at the end.
+#   env: COMPUTER, COMPUTER_RE, LOCKED_COMPUTER_RE
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- tapOn: ${COMPUTER}
+- extendedWaitUntil:
+    visible: "Computers"
+    timeout: 5000
+- extendedWaitUntil:
+    visible: "${LOCKED_COMPUTER_RE}\nLocked: scan its code"
+    timeout: 10000
+- assertVisible: "${COMPUTER_RE}\nOnline"
+- takeScreenshot: computers
+- tapOn: "${LOCKED_COMPUTER_RE}\nLocked: scan its code"
+- extendedWaitUntil:
+    visible: "Scan this computer’s code to connect"
+    timeout: 5000
+- assertNotVisible: "New session"
+- takeScreenshot: locked
+- tapOn: "${LOCKED_COMPUTER_RE}"
+- extendedWaitUntil:
+    visible: "Computers"
+    timeout: 5000
+- tapOn: "${COMPUTER_RE}\nOnline"
+- extendedWaitUntil:
+    visible: "New session"
+    timeout: 15000

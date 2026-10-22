@@ -1,0 +1,32 @@
+# /new with the real omp: its session shows its earlier shell item, /new is
+# sent from the phone, and the conversation starts over in the same row.
+#   env: SESSION (regex)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: ".*e2e-real.*"
+    timeout: 30000
+- takeScreenshot: before
+- tapOn: "Prompt omp…"
+- inputText: "/"
+- extendedWaitUntil:
+    visible: "/new.*"
+    timeout: 10000
+- tapOn: "/new.*"
+- tapOn: "Send"
+- extendedWaitUntil:
+    notVisible: ".*e2e-real.*"
+    timeout: 60000
+- takeScreenshot: after
+- tapOn: "Back"
+- extendedWaitUntil:
+    visible: "${SESSION}\n.*"
+    timeout: 20000
+- assertNotVisible:
+    text: "${SESSION}\n.*"
+    index: 1

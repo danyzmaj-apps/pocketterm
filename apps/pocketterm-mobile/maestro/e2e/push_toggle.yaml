@@ -1,0 +1,31 @@
+# Notifications turned on later in the account sheet (after Not now at
+# sign-in), then off and on again; the sheet closes.
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- tapOn: "Account"
+- extendedWaitUntil:
+    visible: ".*Off: no notifications.*"
+    timeout: 5000
+- takeScreenshot: push-off
+- tapOn: "Notifications\n.*"
+- tapOn:
+    text: "Allow"
+    optional: true
+- extendedWaitUntil:
+    visible: ".*Encrypted, through the push relay.*"
+    timeout: 10000
+- tapOn: "Notifications\n.*"
+- extendedWaitUntil:
+    visible: ".*Off: no notifications.*"
+    timeout: 10000
+- tapOn: "Notifications\n.*"
+- extendedWaitUntil:
+    visible: ".*Encrypted, through the push relay.*"
+    timeout: 10000
+- takeScreenshot: push-on
+- tapOn:
+    point: "50%,8%"
+- extendedWaitUntil:
+    notVisible: "Leave this server"
+    timeout: 5000

@@ -1,0 +1,25 @@
+# One project's conversation: opens its session, sends a prompt and sees the
+# agent's reply stream in, then back to the list.
+#   env: SESSION (regex), PROMPT, PROMPT_RE
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- extendedWaitUntil:
+    visible: "${SESSION}\n.*"
+    timeout: 30000
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: "Prompt omp…"
+    timeout: 15000
+- takeScreenshot: opened
+- tapOn: "Prompt omp…"
+- inputText: ${PROMPT}
+- tapOn: "Send"
+- extendedWaitUntil:
+    visible: ".*fake reply: ${PROMPT_RE}.*"
+    timeout: 30000
+- takeScreenshot: replied
+- tapOn: "Back"

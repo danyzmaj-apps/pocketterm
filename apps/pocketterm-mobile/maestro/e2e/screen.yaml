@@ -1,0 +1,25 @@
+# A plain shell window's screen: keys from the key bar (Esc, arrows) and a
+# typed line, which runs there and shows on the screen.
+#   env: WINDOW (regex)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${WINDOW}
+- extendedWaitUntil:
+    visible: "Type a line…"
+    timeout: 15000
+- takeScreenshot: screen
+- tapOn: "Esc"
+- tapOn: "↑"
+- tapOn: "↓"
+- tapOn: "Type a line…"
+- inputText: "echo e2e-$((6*7))"
+- tapOn: "Send \\(types it, then Enter\\)"
+- extendedWaitUntil:
+    visible: ".*e2e-42.*"
+    timeout: 20000
+- takeScreenshot: typed
+- tapOn: "Back"

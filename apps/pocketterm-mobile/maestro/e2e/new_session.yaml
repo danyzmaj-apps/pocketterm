@@ -1,0 +1,22 @@
+# + on the list: a new agent session in the chosen project, opened in the
+# terminal the computer is set to; it then shows in that project.
+#   env: PROJECT (regex), TERMINAL_RE
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- tapOn: "New session"
+- extendedWaitUntil:
+    visible: "Opens in ${TERMINAL_RE}"
+    timeout: 10000
+- assertVisible: "Start omp\n.*"
+- takeScreenshot: sheet
+- tapOn: "~/.*${PROJECT}"
+- extendedWaitUntil:
+    visible: "Prompt omp…"
+    timeout: 45000
+- takeScreenshot: started
+- tapOn: "Back"
+- extendedWaitUntil:
+    visible: "${PROJECT}\n.*"
+    timeout: 20000
+- takeScreenshot: listed

@@ -1,0 +1,8 @@
+# Opens the list row whose first line is ROW (a regex), scrolling to it.
+appId: com.danyzmaj.pocketterm
+---
+- scrollUntilVisible:
+    element: "${ROW}\n.*"
+    timeout: 20000
+- tapOn: "${ROW}\n.*"
+- waitForAnimationToEnd

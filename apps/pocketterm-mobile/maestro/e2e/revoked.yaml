@@ -1,0 +1,10 @@
+# The computer removed this phone: it lands on the setup screen, saying why,
+# with the computer's key gone.
+appId: com.danyzmaj.pocketterm
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Your sign-in ended on the server.*"
+    timeout: 60000
+- assertVisible: "Scan the code from your computer"
+- takeScreenshot: revoked

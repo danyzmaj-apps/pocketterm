@@ -1,0 +1,24 @@
+# Swipe left on a session's row, End session, confirm: its window closes on
+# the computer and the row goes.
+#   env: SESSION (regex)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- scrollUntilVisible:
+    element: "${SESSION}\n.*"
+    timeout: 20000
+- swipe:
+    from: "${SESSION}\n.*"
+    direction: LEFT
+- tapOn: "End session"
+- extendedWaitUntil:
+    visible: "End this omp session on .*"
+    timeout: 5000
+- takeScreenshot: confirm
+- tapOn:
+    text: "End session"
+    index: 0
+- extendedWaitUntil:
+    notVisible: "${SESSION}\n.*"
+    timeout: 30000
+- takeScreenshot: ended

@@ -1,0 +1,8 @@
+# Each scenario starts from a relaunched app on the session list, whatever the
+# one before left open.
+appId: com.danyzmaj.pocketterm
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "New session"
+    timeout: 60000

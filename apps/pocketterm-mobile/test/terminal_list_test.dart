@@ -49,7 +49,7 @@ void main() {
   /// a: one idle; b: one working; c: one in a terminal PocketTerm doesn't drive
   /// (IntelliJ's: no window). Plus a shell. By name: a, b, c, z; by
   /// activity: b, z, a, c.
-  void macState() {
+  void macState({String idleId = 's2'}) {
     final now = DateTime.now().millisecondsSinceEpoch;
     Map<String, dynamic> window(String key, String cwd, String program) => {
       'key': key,
@@ -69,7 +69,7 @@ void main() {
       'sessions': [
         {
           'key': 'kitty-1/2',
-          'id': 's2',
+          'id': idleId,
           'agent': 'omp',
           'window': 'kitty-1/2',
           'title': 'Idle one',
@@ -573,6 +573,41 @@ void main() {
     expect(find.textContaining('Run them on the computer.'), findsWidgets);
     expect(find.text('/new'), findsOneWidget, reason: 'what was typed stays');
     remote.flush();
+  });
+
+  group('a slash command with no picker', () {
+    /// Sends [command] in the idle session; the computer takes it.
+    Future<void> sendCommand(WidgetTester tester, String command) async {
+      macState();
+      await pumpList(tester);
+      await tester.tap(session('kitty-1/2'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.enterText(find.byKey(const ValueKey('session-input')), command);
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('session-send')));
+      await tester.pump(Duration.zero);
+      remote.handle('ran', {'id': runs('prompt').single['id']});
+      await tester.pump();
+    }
+
+    testWidgets('that renews the session (/new) keeps the conversation in front', (tester) async {
+      await sendCommand(tester, '/new');
+      macState(idleId: 's2-new');
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(TerminalPage), findsNothing);
+      expect(find.byType(SessionPage), findsOneWidget);
+      remote.flush();
+    });
+
+    testWidgets("that doesn't renew it opens the window's screen", (tester) async {
+      await sendCommand(tester, '/compact');
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(TerminalPage), findsOneWidget);
+      remote.flush();
+    });
   });
 
   testWidgets('why an agent window shows only as a screen follows where PocketTerm stands in that agent', (

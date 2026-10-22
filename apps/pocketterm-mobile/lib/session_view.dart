@@ -159,10 +159,11 @@ class _SessionPageState extends State<SessionPage> {
     setState(() => _sending = true);
     try {
       final queue = busy && (_followUp || !_agent(remote.session(key)).steers);
+      final before = remote.session(key)?.id;
       await remote.prompt(key, text, images: [for (final i in images) i.bytes], followUp: queue);
       final s = remote.session(key);
       final window = s?.window;
-      if (command && window != null) unawaited(_menuOrScreen(window));
+      if (command && window != null) unawaited(_menuOrScreen(window, before));
       // Followed from here on (Lock Screen, Android's notifications), as working.
       if (s != null && !command) unawaited(remote.activities?.prompted(key, title: _title(s)));
       // A prompt of their own says what comes next instead of Continue.
@@ -222,14 +223,16 @@ class _SessionPageState extends State<SessionPage> {
 
   /// A command's picker (/resume, /model, /tree …) shows here as a menu once
   /// the computer has read it off the agent's screen; when none comes (a command
-  /// without one, or one the computer can't read), its screen opens instead.
-  Future<void> _menuOrScreen(String window) async {
-    final until = DateTime.now().add(const Duration(seconds: 3));
-    while (DateTime.now().isBefore(until)) {
+  /// without one, or one the computer can't read), its screen opens instead. A
+  /// command that renewed the session (/new, /clear) shows its result here, so
+  /// nothing opens: [before] is the session's id when it was sent.
+  Future<void> _menuOrScreen(String window, String? before) async {
+    bool renewed() => before != null && (remote.session(key)?.id ?? before) != before;
+    for (var tick = 0; tick < 12; tick++) {
       await Future<void>.delayed(const Duration(milliseconds: 250));
-      if (!mounted || (remote.session(key)?.ask?.isMenu ?? false)) return;
+      if (!mounted || (remote.session(key)?.ask?.isMenu ?? false) || renewed()) return;
     }
-    if (!mounted) return;
+    if (!mounted || renewed()) return;
     if ((ModalRoute.of(context)?.isCurrent ?? false) && _can(window, TermCap.read)) {
       openWindow(context, remote, window);
     }

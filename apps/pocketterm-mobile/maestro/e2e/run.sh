@@ -178,11 +178,21 @@ flow() {
   if [ $STOP = 1 ] || { [ -n "$ONLY" ] && [[ ",$ONLY," != *",$name,"* ]]; }; then return; fi
   local dir="$OUT/$name"
   mkdir -p "$dir"
-  local started=$SECONDS
-  if "$MAESTRO" --device "$DEVICE" test "$HERE/$file" --test-output-dir "$dir" --debug-output "$dir" \
-    --format junit --output "$dir/report.xml" \
-    -e PLATFORM="$PLATFORM" -e COMPUTER="$COMPUTER" -e COMPUTER_RE="$COMPUTER_RE" -e TERMINAL="$TERMINAL" -e TERMINAL_RE="$TERMINAL_RE" \
-    "$@" >"$dir/maestro.log" 2>&1; then
+  local started=$SECONDS ok=0 try
+  # A flow whose Maestro driver didn't start on the device never touched
+  # the app: it runs once more.
+  for try in 1 2; do
+    if "$MAESTRO" --device "$DEVICE" test "$HERE/$file" --test-output-dir "$dir" --debug-output "$dir" \
+      --format junit --output "$dir/report.xml" \
+      -e PLATFORM="$PLATFORM" -e COMPUTER="$COMPUTER" -e COMPUTER_RE="$COMPUTER_RE" -e TERMINAL="$TERMINAL" -e TERMINAL_RE="$TERMINAL_RE" \
+      "$@" >"$dir/maestro.log" 2>&1; then
+      ok=1
+      break
+    fi
+    grep -q MaestroDriverStartupException "$dir/maestro.log" || break
+    cp "$dir/maestro.log" "$dir/maestro-driver-$try.log"
+  done
+  if [ $ok = 1 ]; then
     printf 'PASS  %-24s %4ss\n' "$name" $((SECONDS - started)) | tee -a "$SUMMARY"
   else
     printf 'FAIL  %-24s %4ss  %s\n' "$name" $((SECONDS - started)) "$dir/maestro.log" | tee -a "$SUMMARY"

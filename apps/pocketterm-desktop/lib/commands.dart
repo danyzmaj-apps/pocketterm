@@ -77,18 +77,29 @@ class Commands {
     }
     final exe = argv.first == 'brew' ? brew : argv.first;
     if (exe == null) return (code: 127, output: 'Homebrew isn’t installed.');
+    // Deleted once the command is done.
+    final askpass = password == null ? null : _askpass(password);
     final env = {
       // A GUI app's PATH is short: Homebrew's own folder first.
       'PATH': [p.dirname(exe), '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':'),
       'HOMEBREW_NO_ENV_HINTS': '1',
-      if (password != null) 'SUDO_ASKPASS': _askpass(password),
+      if (askpass != null) 'SUDO_ASKPASS': askpass.path,
     };
-    return await _run(exe, argv.sublist(1), env);
+    try {
+      return await _run(exe, argv.sublist(1), env);
+    } finally {
+      try {
+        askpass?.parent.deleteSync(recursive: true);
+      } on FileSystemException {
+        // Left in the temp folder.
+      }
+    }
   }
 
   /// A script sudo runs for the password (sudo -A, which Homebrew uses when
-  /// SUDO_ASKPASS is set): macOS's dialog, saying [why].
-  static String _askpass(String why) {
+  /// SUDO_ASKPASS is set): macOS's dialog, saying [why]. In a folder of its
+  /// own, which goes with it.
+  static File _askpass(String why) {
     final dir = Directory.systemTemp.createTempSync('pocketterm-askpass');
     final file = File(p.join(dir.path, 'askpass.sh'));
     final prompt = why.replaceAll(RegExp(r'''["'\\]'''), '');
@@ -98,7 +109,7 @@ class Commands {
       'with hidden answer with title "PocketTerm" with icon caution)\'\n',
     );
     Process.runSync('/bin/chmod', ['700', file.path]);
-    return file.path;
+    return file;
   }
 
   static Future<CommandResult> _runProcess(String exe, List<String> args, Map<String, String> env) async {

@@ -244,6 +244,13 @@ void main() {
         token: pixel.token,
         body: {'token': old, 'session': 'aaaa1111/s1', 'platform': 'android'},
       );
+      // Android hands the new token to both at once: the session may be followed anew before the token registers.
+      await h.call(
+        'POST',
+        '/v1/push/activity_register',
+        token: pixel.token,
+        body: {'token': fresh, 'session': 'aaaa1111/s1', 'platform': 'android'},
+      );
       await h.call('POST', '/v1/push/register', token: pixel.token, body: {'token': fresh, 'platform': 'android'});
 
       await h.call('POST', '/v1/push/notify', token: mac.token, body: {'desktop': 'aaaa1111', 'enc': enc});

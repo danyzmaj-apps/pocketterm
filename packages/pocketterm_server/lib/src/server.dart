@@ -653,22 +653,23 @@ class PocketTermServer {
       case 'register':
         _pushToken(token, platform as String);
         // A phone has one push token: a new one (Apple or Google replaced it) takes the old one's place, and on
-        // Android the sessions it follows move with it.
+        // Android the sessions it follows move with it (once: the phone may have followed them anew already).
         final old = [
           for (final p in _store.pushTokens.values)
             if (p.device == device && p.token != token) p.token,
         ];
         _store.pushTokens.removeWhere((t, _) => old.contains(t));
-        for (final (i, a) in _store.activityTokens.indexed.toList()) {
-          if (a.device == device && a.platform == 'android' && old.contains(a.token)) {
-            _store.activityTokens[i] = ActivityToken(
-              token: token as String,
-              session: a.session,
-              platform: a.platform,
-              device: device,
-            );
-          }
-        }
+        final moved = {
+          for (final a in _store.activityTokens)
+            if (a.device == device && a.platform == 'android' && old.contains(a.token)) a.session,
+        };
+        _store.activityTokens
+          ..removeWhere((a) => a.device == device && a.platform == 'android' && old.contains(a.token))
+          ..removeWhere((a) => a.token == token && moved.contains(a.session))
+          ..addAll([
+            for (final session in moved)
+              ActivityToken(token: token as String, session: session, platform: 'android', device: device),
+          ]);
         _store
           ..pushTokens[token as String] = PushToken(
             token: token,

@@ -8,10 +8,18 @@
 # The server image is this release's (POCKETTERM_VERSION, bumped with each release); set it in .env to change.
 name: pocketterm
 
+# Logs kept small: Docker's default keeps every line forever, and a full disk stops the server saving.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
 services:
   server:
     image: ${POCKETTERM_IMAGE:-ghcr.io/danyzmaj-apps/pocketterm-server:${POCKETTERM_VERSION:-0.1.0}}
     restart: unless-stopped
+    logging: *logging
     environment:
       POCKETTERM_PUBLIC_URL: https://${DOMAIN:?Set DOMAIN to this server's name, see the top of docker-compose.yml}
       # Caddy is the only way in, so its X-Forwarded-For names the caller for rate limits.
@@ -24,6 +32,7 @@ services:
   caddy:
     image: caddy:2
     restart: unless-stopped
+    logging: *logging
     # Automatic HTTPS for DOMAIN; WebSockets are proxied as they are.
     command: caddy reverse-proxy --from ${DOMAIN} --to server:47900
     ports:

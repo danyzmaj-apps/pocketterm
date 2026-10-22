@@ -211,6 +211,21 @@ void main() {
     expect(await openBytes(key, sealed, pushAad('abcd1234')), isNull);
   });
 
+  test('a request sent again under its id is answered as before, not run twice; ids are forgotten after a while', () {
+    var now = DateTime(2026);
+    final runs = RunLog(clock: () => now);
+    final again = <Map<String, dynamic>>[];
+    expect(runs.start('a', again.add), isTrue);
+    expect(runs.start('a', again.add), isFalse, reason: 'still running: its answer goes out when it ends');
+    expect(again, isEmpty);
+    runs.done('a', {'id': 'a', 'error': 'nope'});
+    expect(runs.start('a', again.add), isFalse);
+    expect(again.single, {'id': 'a', 'error': 'nope', 'repeat': true});
+    expect(runs.start('b', again.add), isTrue, reason: 'another request runs');
+    now = now.add(const Duration(minutes: 3));
+    expect(runs.start('a', again.add), isTrue);
+  });
+
   group('switching a screen-only agent window to its conversation', () {
     const window = 'kitty-1/7';
     const tty = 'ttys004';

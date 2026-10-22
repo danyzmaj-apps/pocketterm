@@ -600,9 +600,12 @@ class TerminalBridge {
 
   // ------------------------------------------------------------ requests
 
+  /// The phones' requests of the last minutes, by id.
+  final _runs = RunLog();
+
   Future<void> _onRun(Map<String, dynamic> p) async {
     final id = p['id'] as String?;
-    if (id == null) return;
+    if (id == null || !_runs.start(id, (ran) => _send('ran', ran))) return;
     String? error;
     String? window;
     bool? busy;
@@ -660,7 +663,9 @@ class TerminalBridge {
     } on Object catch (e) {
       error = 'The computer could not do that: $e';
     }
-    _send('ran', {'id': id, 'error': ?error, 'window': ?window, 'busy': ?busy});
+    final ran = {'id': id, 'error': ?error, 'window': ?window, 'busy': ?busy};
+    _runs.done(id, ran);
+    _send('ran', ran);
     unawaited(_poll(windows: const {'launch', 'create', 'close', 'switch'}.contains(p['op'])));
   }
 
@@ -1124,4 +1129,31 @@ class _MenuWatch {
     final timer = Timer(d, wake);
     return c.future.whenComplete(timer.cancel);
   }
+}
+
+/// The requests phones sent lately, by id, and their answers. A phone that heard no answer (its app went to the
+/// background, the network dropped) sends the same request again under the same id: it gets the answer it missed
+/// (marked `repeat`) instead of the request running twice; one still running is answered once it ends.
+class RunLog {
+  RunLog({this.keep = const Duration(minutes: 2), DateTime Function()? clock}) : _clock = clock ?? DateTime.now;
+
+  /// How long a request's answer is kept for a repeat.
+  final Duration keep;
+  final DateTime Function() _clock;
+  final _runs = <String, ({DateTime at, Map<String, dynamic>? ran})>{};
+
+  /// Whether request [id] is new, and then taken as running; for one that already ran, its answer goes to [again].
+  bool start(String id, void Function(Map<String, dynamic> ran) again) {
+    final now = _clock();
+    _runs.removeWhere((_, r) => now.difference(r.at) > keep);
+    if (_runs[id] case final r?) {
+      if (r.ran case final ran?) again({...ran, 'repeat': true});
+      return false;
+    }
+    _runs[id] = (at: now, ran: null);
+    return true;
+  }
+
+  /// Request [id] ended with [ran].
+  void done(String id, Map<String, dynamic> ran) => _runs[id] = (at: _clock(), ran: ran);
 }

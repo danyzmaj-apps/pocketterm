@@ -296,6 +296,36 @@ void main() {
     expect(remote().view('kitty-1/1'), isNull);
   });
 
+  test('a prompt the computer did not answer goes again under the same id, so it never runs twice', () async {
+    final r = remote()
+      ..handle('state', state())
+      ..answerWait = const Duration(milliseconds: 50);
+    List<Map<String, dynamic>> runs() => [
+      for (final (e, p) in sent)
+        if (e == 'run') p,
+    ];
+
+    await expectLater(r.prompt('kitty-1/1', 'fix it'), throwsA(isA<TerminalException>()));
+    final first = runs().last['id'];
+    // Sent again (the person taps Send once more): same id; the computer answers it as a repeat.
+    final again = r.prompt('kitty-1/1', 'fix it');
+    await Future<void>.delayed(Duration.zero);
+    expect(runs().last['id'], first);
+    r.handle('ran', {'id': first, 'repeat': true});
+    await again;
+    // Answered: the same text later is a new prompt.
+    final next = r.prompt('kitty-1/1', 'fix it');
+    await Future<void>.delayed(Duration.zero);
+    expect(runs().last['id'], isNot(first));
+    r.handle('ran', {'id': runs().last['id']});
+    await next;
+    // Another prompt after an unanswered one is new too.
+    await expectLater(r.prompt('kitty-1/1', 'one'), throwsA(isA<TerminalException>()));
+    final one = runs().last['id'];
+    await expectLater(r.prompt('kitty-1/1', 'two'), throwsA(isA<TerminalException>()));
+    expect(runs().last['id'], isNot(one));
+  });
+
   test('create sends root, name and agent, and takes the window', () async {
     final r = remote()..handle('state', state());
     expect(r.roots, ['/Users/me']);

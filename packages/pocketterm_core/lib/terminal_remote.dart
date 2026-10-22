@@ -478,24 +478,31 @@ class TerminalRemote extends ChangeNotifier {
 
   // ------------------------------------------------------------------ ops
 
-  /// [request]'s answer from the Mac, sending included within [wait]. With
+  /// How long a request waits for the computer's answer (a prompt with
+  /// images three times as long).
+  @visibleForTesting
+  Duration answerWait = const Duration(seconds: 10);
+
+  /// [request]'s answer from the Mac, sending included within [wait]
+  /// ([answerWait] by default), under [id] (a new one by default). With
   /// [onLate], an answer that comes after [wait] (the Mac did it after all)
   /// still goes there, for a while.
   Future<Map<String, dynamic>> _run(
     Map<String, dynamic> request, {
-    Duration wait = const Duration(seconds: 10),
+    Duration? wait,
+    String? id,
     void Function(Map<String, dynamic> reply)? onLate,
   }) async {
     if (!online) throw const TerminalException('The computer is not answering.');
-    final id = const Uuid().v4();
-    final done = _pending[id] = Completer();
+    final runId = id ?? const Uuid().v4();
+    final done = _pending[runId] = Completer();
     final Map<String, dynamic> reply;
     var later = false;
     try {
       reply = await Future(() async {
-        await _send('run', {'id': id, ...request});
+        await _send('run', {'id': runId, ...request});
         return await done.future;
-      }).timeout(wait);
+      }).timeout(wait ?? answerWait);
     } on TimeoutException {
       if (onLate != null) {
         later = true;
@@ -503,12 +510,12 @@ class TerminalRemote extends ChangeNotifier {
           done.future
               .timeout(_lateFor)
               .then<void>(onLate, onError: (Object _) {})
-              .whenComplete(() => _pending.remove(id)),
+              .whenComplete(() => _pending.remove(runId)),
         );
       }
-      throw const TerminalException('The computer did not answer.');
+      throw const _NoAnswer();
     } finally {
-      if (!later) _pending.remove(id);
+      if (!later) _pending.remove(runId);
     }
     final error = reply['error'] as String?;
     if (error != null) throw TerminalException(error);
@@ -534,7 +541,7 @@ class TerminalRemote extends ChangeNotifier {
   /// starts again on the same conversation, Claude Code reloads its plugins. The session shows up in
   /// [sessions] once the agent reports.
   Future<void> switchToConversation(String window, Agent agent) =>
-      _run({'op': 'switch', 'window': window, 'agent': agent.name}, wait: const Duration(seconds: 20));
+      _run({'op': 'switch', 'window': window, 'agent': agent.name}, wait: answerWait * 2);
 
   /// A new terminal window in [cwd] (where [opensIn] says), running the Mac's coding [agent] if
   /// [startAgent]; its window key.
@@ -552,7 +559,7 @@ class TerminalRemote extends ChangeNotifier {
   Future<String> _open(Map<String, dynamic> request) async {
     final reply = await _run(
       request,
-      wait: const Duration(seconds: 20),
+      wait: answerWait * 2,
       onLate: (r) {
         if (r['window'] case final String window) _fresh(window);
       },
@@ -576,12 +583,29 @@ class TerminalRemote extends ChangeNotifier {
     }
   }
 
+  /// The last prompt the computer didn't answer (the app went to the
+  /// background, the network dropped): what it was and the id it went
+  /// under. The same prompt sent again soon goes under the same id, which
+  /// the computer answers without running it twice if it got it the first
+  /// time (TerminalBridge in apps/pocketterm-desktop).
+  ({String what, String id, DateTime at})? _unanswered;
+  static const _sameFor = Duration(minutes: 2);
+
   /// Prompts [session] with [text] and [images] (image files: PNG, JPEG),
   /// which pass through the server sealed with [key]. While omp works the
   /// prompt steers it, or waits for the turn to end if [followUp]; Claude
   /// Code always waits.
   Future<void> prompt(String session, String text, {List<Uint8List> images = const [], bool followUp = false}) async {
     if (!online) throw const TerminalException('The computer is not answering.');
+    final what = sha1
+        .convert(utf8.encode(jsonEncode([session, text, followUp, for (final i in images) '${sha1.convert(i)}'])))
+        .toString();
+    final now = DateTime.now();
+    final again = switch (_unanswered) {
+      final u? when u.what == what && now.difference(u.at) < _sameFor => u,
+      _ => null,
+    };
+    final id = again?.id ?? const Uuid().v4();
     final upload = _uploadImage ?? _server.putBlob;
     final paths = <String>[];
     void forget() {
@@ -601,14 +625,16 @@ class TerminalRemote extends ChangeNotifier {
       throw TerminalException("The image didn't upload: $e");
     }
     try {
-      await _run({
-        'op': 'prompt',
-        'session': session,
-        'text': text,
-        'images': paths,
-        'deliver': followUp ? 'followUp' : 'steer',
-      }, wait: Duration(seconds: paths.isEmpty ? 10 : 30));
-    } on TerminalException {
+      final reply = await _run(
+        {'op': 'prompt', 'session': session, 'text': text, 'images': paths, 'deliver': followUp ? 'followUp' : 'steer'},
+        wait: paths.isEmpty ? answerWait : answerWait * 3,
+        id: id,
+      );
+      _unanswered = null;
+      // The computer had it already, with the images sent the first time.
+      if (reply['repeat'] == true) forget();
+    } on TerminalException catch (e) {
+      _unanswered = e is _NoAnswer ? (what: what, id: id, at: again?.at ?? now) : null;
       // The Mac deletes them once used; unanswered, nobody would.
       forget();
       rethrow;
@@ -722,4 +748,9 @@ class TerminalRemote extends ChangeNotifier {
     }
     super.dispose();
   }
+}
+
+/// No answer from the computer in time: it may have done it all the same.
+class _NoAnswer extends TerminalException {
+  const _NoAnswer() : super('The computer did not answer.');
 }

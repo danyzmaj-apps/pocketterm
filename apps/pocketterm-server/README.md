@@ -130,7 +130,7 @@ location / {
 }
 ```
 
-Traefik (Docker labels on the server container, joined to Traefik's network instead of publishing the port;
+Traefik (Docker labels on the server container, joined to Traefik's network, with no port published;
 Traefik passes WebSockets as they are):
 
 ```yaml
@@ -174,7 +174,7 @@ tokens), rewritten atomically on every change, with the state before the last ch
 images waiting for their computer, deleted once downloaded or after an hour. Push notifications go to the
 publisher's relay, which holds the Apple and Google keys and sees only the phone's push token and the encrypted text.
 
-A `state.json` that no longer reads (edited by hand, a broken disk) is never replaced by an empty one: the server
+A `state.json` that doesn't read (edited by hand, a broken disk) is never replaced by an empty one: the server
 starts from `state.json.bak` and keeps the bad file as `state.json.corrupt-<time>`, or, without a usable backup,
 refuses to start and says so in its log.
 

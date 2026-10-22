@@ -127,7 +127,7 @@ memory: restarting the server clears a lockout.
 ### `GET /v1/me`
 
 200 `{"device": <Device>, "server": {"id": "<16 characters [a-z0-9]>"}}`. The cheap way to check a token
-(401 when it no longer works). `server.id` is made once when the data directory is new and never changes:
+(401 when it doesn't work). `server.id` is made once when the data directory is new and never changes:
 key per-server state on it.
 
 ### `GET /v1/desktops`

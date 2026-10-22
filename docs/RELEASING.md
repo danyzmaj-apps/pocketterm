@@ -54,8 +54,8 @@ Each release is a notarized DMG on GitHub Releases, plus an `appcast.xml` that i
 
 ### Each release
 
-1. Bump `version:` in `apps/pocketterm-desktop/pubspec.yaml` (for example `0.2.0+2`), and set the same version name in `apps/pocketterm-desktop/integrations/claude/plugins/pocketterm/.claude-plugin/plugin.json`: Claude Code updates a plugin only to a new version, so installed copies would keep their old hooks (`release.sh` refuses a mismatch). Set the same version as the `POCKETTERM_VERSION` default in `apps/pocketterm-server/docker-compose.yml`: the VPS setup fetches that file from the release tag and runs the image it names (`release.sh` refuses a mismatch here too).
-2. Turn `## Unreleased` in `CHANGELOG.md` into a `## 0.2.0` section; `release.sh` refuses to run without a `## <version>` heading and uses that section as the release notes. Say whether servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again (new migrations or function changes) and whether the relay must be redeployed.
+1. Bump `version:` in `apps/pocketterm-desktop/pubspec.yaml` (`<version>+<build>`), and set the same version name in `apps/pocketterm-desktop/integrations/claude/plugins/pocketterm/.claude-plugin/plugin.json`: Claude Code updates a plugin only to a new version, so installed copies would keep their old hooks (`release.sh` refuses a mismatch). Set the same version as the `POCKETTERM_VERSION` default in `apps/pocketterm-server/docker-compose.yml`: the VPS setup fetches that file from the release tag and runs the image it names (`release.sh` refuses a mismatch here too).
+2. Add a `## <version>` section at the top of `CHANGELOG.md` with the user-visible changes; `release.sh` refuses to run without it and uses that section as the release notes. Say whether servers must be updated and whether the relay must be redeployed.
 3. Point the download links in `README.md` (**Getting started**) at the new version's DMG and installer.
 4. Commit and push to `main`, then (in `apps/pocketterm-desktop`):
    ```sh
@@ -72,7 +72,7 @@ The script checks the prerequisites above (a clean tree, no `v<version>` tag yet
 
 Nothing to do by hand: publishing the GitHub release (which `release.sh` does) starts [.github/workflows/release-windows.yml](../.github/workflows/release-windows.yml). On `windows-latest` it checks out the release's tag, installs the Flutter version from `.fvmrc`, runs `flutter build windows --release` in `apps/pocketterm-desktop`, checks that the pubspec version matches the tag (`v<version>`), builds the installer with Inno Setup (`windows/installer.iss`) and uploads `PocketTerm-<version>-setup.exe` to the same release.
 
-- If the job fails, fix it and run the workflow again by hand (Actions → Release (Windows) → **Run workflow**, with the tag, for example `v0.2.0`); it replaces an earlier upload.
+- If the job fails, fix it and run the workflow again by hand (Actions → Release (Windows) → **Run workflow**, with the tag `v<version>`); it replaces an earlier upload.
 - The installer and the app are not code-signed, so SmartScreen warns on first run. Windows copies don't update themselves: at start and once a day, the app asks GitHub for the latest release and, when it's newer than itself, shows a download link in Settings and **Update available…** in the tray menu, both opening the release page. That check reads `https://api.github.com/repos/danyzmaj-apps/pocketterm/releases/latest`, so a release only counts once it's published (not a draft or prerelease).
 
 To build the installer locally, see [BUILDING.md](BUILDING.md#windows).
@@ -102,7 +102,3 @@ Baker: add `apps/pocketterm-mobile` as a project, set its App Store Connect key 
 Set the version name in `apps/pocketterm-mobile/pubspec.yaml`, then ship from Baker to TestFlight and Google Play (**Ship both**). Baker's workflow uses the git commit count as the build number (`autoBuildNumber`), so it grows with every commit and the `+<build>` in the pubspec is ignored; ship from a new commit each time. For a build by hand: `fvm flutter build ipa --release --build-number <n>` (check `codesign -dv build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app` shows `TeamIdentifier=5SSZ6TYMF5`) and `fvm flutter build appbundle --release --build-number <n>`, with `<n>` above the last uploaded build.
 
 TestFlight builds use APNs production; the relay handles both production and sandbox tokens.
-
-### Reviewer codes
-
-Not needed for internal testing. **Settings → Reviewer access** in the desktop app (press ⌥ Option to show it) makes codes that sign a phone into a separate demo account on your server; they're only for a build someone outside your account has to try (TestFlight external testing goes through Beta App Review, which needs a way in).

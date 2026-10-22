@@ -6,7 +6,7 @@
 - **Mac and iPhone apps:** Xcode 26 or newer with your Apple ID signed in (Xcode → Settings → Accounts), and CocoaPods (`brew install cocoapods`).
 - **Android:** [Android Studio](https://developer.android.com/studio) (or the command-line Android SDK) with a JDK 17; `fvm flutter doctor` says what's missing.
 - **Windows app:** a Windows 10 1809+ or 11 PC with Visual Studio 2022 and its "Desktop development with C++" workload (`fvm flutter doctor` checks it), and [Inno Setup 6](https://jrsoftware.org/isinfo.php) for the installer (`winget install JRSoftware.InnoSetup`).
-- **Backend:** the Supabase CLI, Docker (only to run Supabase locally) and [Deno](https://deno.com) for the function checks.
+- **Server and relay:** nothing extra to run the server from source (it is Dart); Docker to build its image, and [Deno](https://deno.com) for the relay's checks.
 
 ```sh
 # at the repo root
@@ -14,7 +14,7 @@ fvm install
 fvm flutter pub get   # resolves the whole workspace
 ```
 
-The repo is a Dart pub workspace: the desktop app (macOS and Windows) in `apps/pocketterm-desktop`, the phone app (iPhone and Android) in `apps/pocketterm-mobile`, the shared code in `packages/pocketterm_core`. Each command below says which directory it runs in.
+The repo is a Dart pub workspace: the desktop app (macOS and Windows) in `apps/pocketterm-desktop`, the phone app (iPhone and Android) in `apps/pocketterm-mobile`, the shared code in `packages/pocketterm_core`, the PocketTerm server in `packages/pocketterm_server` (its Docker distribution in `apps/pocketterm-server`). The push relay in `apps/pocketterm-relay` is Deno. Each command below says which directory it runs in.
 
 ## Your signing identity
 
@@ -77,7 +77,7 @@ fvm flutter run -d windows                 # debug
 fvm flutter build windows --release        # → build\windows\x64\runner\Release\PocketTerm.exe and its DLLs
 ```
 
-Only one PocketTerm runs per Windows user: starting it again brings the running one's window to the front, and a `pocketterm://` link (the GitHub sign-in callback) goes to the running one. A debug build and an installed copy are the same app to Windows, so quit the installed one first.
+Only one PocketTerm runs per Windows user: starting it again brings the running one's window to the front, and a `pocketterm://` link (a setup link) goes to the running one. A debug build and an installed copy are the same app to Windows, so quit the installed one first.
 
 **The installer.** After the release build, in `apps/pocketterm-desktop`:
 
@@ -134,22 +134,22 @@ Keep the keystore and its password outside the repo, and back them up: Google Pl
 
 Then pair the phone as above.
 
-## Backend, locally
+## A server, locally
 
 ```sh
-cd apps/pocketterm-desktop                       # the backend lives with the desktop app, which bundles it for its setup wizard
-supabase start                                   # Docker; applies supabase/migrations
-supabase functions serve --no-verify-jwt
+# at the repo root
+fvm dart run apps/pocketterm-server/bin/pocketterm_server.dart serve \
+  --data build/local-server --port 47900 --address 127.0.0.1 --public-url http://127.0.0.1:47900
+# in another terminal: the setup link
+fvm dart run apps/pocketterm-server/bin/pocketterm_server.dart setup-link --data build/local-server --public-url http://127.0.0.1:47900
 ```
 
-Point the desktop app at `http://127.0.0.1:54321` with the local publishable key from `supabase status` (**I already have one: connect it**). GitHub sign-in against a local stack needs a second GitHub OAuth app whose callback is `http://127.0.0.1:54321/auth/v1/callback`, with its id and secret as `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` in `apps/pocketterm-desktop/supabase/.env` (git-ignored). A local `push` sends through the publisher's relay unless you set `PUSH_RELAY_URL`.
+Paste that link in the desktop app (**On my own server**) to sign the computer in, then add a phone with **Settings → Add a phone…**. `pocketterm-server help` lists every option. Pushes go through the publisher's relay unless you pass `--relay`. A phone on a device (not the Simulator) can't reach `127.0.0.1`; for one, pick **On this computer**, the server built into the desktop app.
 
 ## Checks
 
 The checks to run before a pull request, and which of them CI runs (`.github/workflows/ci.yml`), are listed in [CONTRIBUTING.md](../CONTRIBUTING.md#pull-requests). On Windows, tests that need a POSIX system (`/bin/sh`, unix sockets, `chmod`) are tagged `posix`: run `fvm flutter test --exclude-tags posix` there.
 
-[Maestro](https://maestro.mobile.dev) drives the iOS simulator app with `apps/pocketterm-mobile/maestro/sign_in.yaml`. It needs a simulator and a test backend. Set `appId` in the flow to your bundle id. Phones sign in only with a code from a computer, so the flow pastes one when the app isn't signed in: pass a reviewer code's link (**Settings → Reviewer access**, shown after pressing ⌥ Option; reusable) as `SETUP_LINK`, or a fresh **Add a phone…** code for a single run.
+[Maestro](https://maestro.mobile.dev) drives the phone app. `apps/pocketterm-mobile/maestro/demo.yaml` walks through the demo and needs no server (`maestro test apps/pocketterm-mobile/maestro/demo.yaml`, the app signed out). Set `appId` in a flow to your bundle id.
 
-```sh
-maestro test -e SETUP_LINK='pocketterm://setup?url=…&key=…&code=…' apps/pocketterm-mobile/maestro/sign_in.yaml
-```
+The whole path, end to end, runs on a Mac with `tool/e2e/run.sh`: it starts a local server (or uses the one built into the desktop app with `--server builtin`), the real desktop app, throwaway kitty, Ghostty and WezTerm windows with a fake omp, and the phone in the Simulator or an Android emulator, which signs in with the computer's **Add a phone…** code (`apps/pocketterm-mobile/maestro/e2e/`). It prints a pass/fail table; artifacts go to `build/e2e/<stamp>/`. `tool/e2e/bin/run.dart` describes every option.

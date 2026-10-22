@@ -3,6 +3,6 @@ contact_links:
   - name: Security vulnerability
     url: https://github.com/danyzmaj-apps/pocketterm/security/advisories/new
     about: Report it privately, please.
-  - name: Setting up your backend
+  - name: Setting up your server
     url: https://github.com/danyzmaj-apps/pocketterm/blob/main/docs/SELF_HOSTING.md#troubleshooting
     about: Most setup problems are covered in the troubleshooting table.

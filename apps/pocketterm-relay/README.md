@@ -108,7 +108,7 @@ then redeploy (Actions → relay-deploy → _Run workflow_).
 ### Rotating the relay key
 
 The relay can hold its key and the one before, so servers move over without missing a push. `kid` names the key a
-request was sealed to (servers from before `kid` are tried with each key).
+request was sealed to (a request without `kid` is tried with each key).
 
 1. Make the new key straight into the keys folder:
    `openssl genpkey -algorithm X25519 -out

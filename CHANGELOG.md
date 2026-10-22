@@ -1,68 +1,51 @@
 # Changelog
 
-User-visible changes to PocketTerm. Each release says whether servers need `apps/pocketterm-desktop/tool/setup-backend.sh` again and whether the push relay must be redeployed.
-
-## Unreleased
-
-**Your own PocketTerm server instead of Supabase.** The apps now connect only to a PocketTerm server (packages/pocketterm_server): no Supabase project, no GitHub sign-in. A computer signs in by opening the server's setup link (`pocketterm-server setup-link` prints it); a phone by scanning a computer's code, as before. Plain `http://` works on this machine, the local network and Tailscale (100.64.0.0/10, `*.ts.net`).
-
-- **Signing out leaves the server:** the device's token stops working there. On the phone, **Leave this server** replaces **Delete account**.
-- **Reviewer codes are gone** (Settings → Reviewer access on the computer); a demo mode on the phone replaces them.
-- A computer or phone set up with a Supabase project shows the setup screen again.
-- Supported terminals: kitty, Ghostty and WezTerm. iTerm2 and Terminal are no longer supported.
-- `pocketterm-server health` exits 0 when the server on the same machine answers, for container healthchecks (the image has no shell, curl or wget).
-
-**End-to-end encryption.** Your server (Supabase) now relays only ciphertext between a computer and its phones: sessions, screens, prompts, images and notification text.
-
-**Servers:** run `apps/pocketterm-desktop/tool/setup-backend.sh` again ([Updating](docs/SELF_HOSTING.md#updating)): `push` forwards notifications the computer sealed, and a migration drops the per-phone push keys. **Phones pair again once:** scan each computer's code (Settings → Add a phone…) on each phone.
-
-- **The push relay moved to the publisher's own server**, `https://push.danyzmaj.com`, and the PocketTerm server seals every request to the relay's key (X25519, AES-256-GCM): the network in between, Cloudflare included, sees neither device tokens nor anything else. The relay stores nothing and logs only status codes. Who can see what: [apps/pocketterm-relay/SECURITY.md](apps/pocketterm-relay/SECURITY.md). A fork's own relay: `PUSH_RELAY_URL` and the new `PUSH_RELAY_KEY`.
-- **A key per computer.** Each computer makes its own key and keeps it in the Keychain (Mac) or Credential Manager (Windows). It reaches a phone only in that computer's QR code, which now says it's a secret. Live messages carry a timestamp and are dropped when more than 5 minutes off; the computer drops a phone message it has already seen.
-- **Phone: locked computers.** A computer whose code this phone hasn't scanned shows **Scan this computer's code to connect** with a **Scan** button, and nothing from it shows or goes to it. Scanning a code while signed in adds that computer's key without signing in again. The computer picker marks locked computers and has **Scan a computer's code**. Signing out removes the keys.
-- **Desktop: Reset key** (Settings → Phone) makes a new key after losing a phone; every phone scans again.
-- **Images** from the phone are sealed before upload; the computer opens them.
-- **Push text** is sealed by the computer; your server and the relay pass it on unread. A phone without that computer's key shows a plain "PocketTerm" notification. Live Activity updates still carry only a session's state, unencrypted.
+What each PocketTerm release brings.
 
 ## 0.1.0
 
-The first release: your computer's omp and Claude Code sessions on your phone, through a Supabase server you own.
-
-**Servers:** a server set up with an earlier 0.1.0 build needs `apps/pocketterm-desktop/tool/setup-backend.sh` again ([Updating](docs/SELF_HOSTING.md#updating)) for the new `pair` function: its "That code doesn't work" message names **Settings → Add a phone…**, and it keeps used phone codes so the computer keeps knowing a phone signed in. A new server needs nothing extra. The push relay needs no redeploy.
+The first release of PocketTerm: the omp and Claude Code sessions on your computer, on your phone, end-to-end encrypted, through a PocketTerm server you run yourself.
 
 ### Desktop app (macOS and Windows)
 
 - **Runs in the background:** in the menu bar on the Mac, in the tray on Windows. Closing the window keeps it running; **Quit PocketTerm** is in **Settings → Account**.
-- **Setup wizard.** Creates your own Supabase server, or connects one you already have. Step 1 explains why the Supabase token has to cover the whole organization, what PocketTerm does with it, that it's never saved, and how to wall it off in an organization of its own; the last step reminds you to delete it. Step 3 warns, in amber, to untick GitHub's "Allow wildcard matching", and **Set up my server** stays off until you confirm you did. Sign-in is with GitHub.
-- **New Supabase projects.** The wizard's Database step no longer fails with `relation "realtime.messages" does not exist`: Realtime creates that table only once something connects to it, so the wizard connects first and waits until it's there.
-- **tmux installed while PocketTerm runs** is found within seconds, without a restart. Before, PocketTerm looked for tmux once at launch, so the phone kept asking for it. With tmux, Ghostty and Terminal show as **Ready** (sessions from your phone run in tmux, with full control), still naming the limit of windows you open in them yourself.
-- **Ghostty: Start new windows in tmux** (Settings → Terminals, Mac, with tmux installed). One click adds two marked lines to your Ghostty config (`command = <tmux> new-session \; set-option destroy-unattached on`), so each new Ghostty window or tab runs in a tmux session of its own, which ends when the window closes, and your phone gets full control there too. **Remove** takes out exactly those lines. When your config already sets a `command`, PocketTerm leaves it alone and says so.
-- **Get this computer ready.** After the first sign-in on a computer, a checklist instead of Settings: PocketTerm installs itself into every coding agent it finds (omp, Claude Code) and lists sessions that were already open, each with the command that picks PocketTerm up there and a copy button (`/reload-plugins` in Claude Code, nothing restarts; `omp -c` in omp). Then the terminals with their one-click fixes, project folders found in your home folder (one click each), and the QR code for your phone. Each step checks itself off; **Done** goes to Settings.
-- **Settings: a status bar over four tabs.** The status bar says **All set**, or how many things need attention; **Show** lists them with the button that fixes each, and a dot marks the tab they're on. **Open setup checklist** brings the checklist back. **Phone**: Terminal from phone, your phones with **Add a phone…**, project folders. **Coding agents**: a card per agent with **Install** or **Update**, the sessions to reopen, and **Make default**. **Terminals**: where new sessions open, and a card per terminal with its fix. **Account**: you, your server, Launch at login, **Delete account**, the version and **Quit PocketTerm**.
-- **Reviewer access** (codes for App Store or Play review) is hidden until you press ⌥ Option (Alt on Windows) in Settings.
-- **Several computers per account.** Each computer registers itself and shows as Online by the server's clock, so a computer whose clock is off still reads right.
-- **Mac:** a notarized DMG that updates itself (Sparkle). kitty is set up with one click (**Set up**); iTerm2, Terminal and Ghostty ask for macOS's Automation permission (**Allow…**); tmux is recommended with a `brew install tmux` line to copy.
-- **Windows:** an unsigned per-user installer (`PocketTerm-0.1.0-setup.exe`); Settings shows a link when a newer version is out. **Install WezTerm** downloads WezTerm's own installer from its GitHub release, checks it against WezTerm's published checksum and opens it (or copy the `winget` line). Non-ASCII text in screens, window titles and user folder names works; Claude Code is found as a native `claude.exe` (preferred) or npm's `claude.cmd`, also when `HOME` points somewhere other than your user folder.
+- **Setup wizard with two choices.** **On this computer** runs the PocketTerm server inside the app and reaches your phone through Tailscale; **On my own server** connects to a server on a VPS, either one you already have (paste its setup link) or a new one (the wizard shows the commands and checks each step). PocketTerm never runs a command without asking: buttons that install Tailscale or tmux show the exact command and run it only after you press **Run**.
+- **Get this computer ready.** After the first sign-in, a checklist installs PocketTerm into every coding agent it finds (omp, Claude Code), lists sessions that were already open with the command that picks PocketTerm up in each (`omp -c` in omp, `/reload-plugins` in Claude Code), shows your terminals with their one-click fixes, offers your usual project folders and shows the QR code for your phone. Each step checks itself off.
+- **Settings: a status bar over four tabs.** The status bar says **All set**, or how many things need attention; **Show** lists them with the button that fixes each, and **Open setup checklist** brings the checklist back. **Phone**: Terminal from phone, **Add a phone…**, **Reset key**, project folders. **Coding agents**: **Install** or **Update** per agent, sessions to reopen, **Make default**. **Terminals**: where new sessions open, and each terminal with its fix. **Account**: your server, Tailscale when this computer runs the server, **Add a computer…**, **Launch at login**, **How your data is protected**, **Sign out**, **Erase this server's data** on a computer that runs the server, the version and **Quit PocketTerm**.
+- **Several computers.** Every computer signed in to your server shows up on the phone, which picks one. A computer that runs the server adds others with **Add a computer…**.
+- **Keeps the computer awake** while **Terminal from phone** is on, and pushes to your phone only when nobody has touched the computer for 60 seconds.
+- **Mac:** a notarized DMG that updates itself (Sparkle). kitty is set up with one click (**Set up**), Ghostty asks for macOS's Automation permission (**Allow…**), and **Install tmux** runs `brew install tmux` once you confirm.
+- **Windows:** a per-user installer (`PocketTerm-0.1.0-setup.exe`, not code-signed), and a link in Settings when a newer version is out. **Install WezTerm** downloads WezTerm's own installer, checks it against WezTerm's published checksum and opens it.
 
 ### Phone app (iPhone and Android)
 
-- **Pairing.** Scan the code from your computer (or paste it). It works once, for 10 minutes. The welcome screen links to the desktop downloads, and the account sheet to the source on GitHub.
-- **Terminal list.** Your computer's omp and Claude Code sessions by project, then its other terminal windows. Projects are sorted by name or by recent activity (re-ranked when you pull to refresh), and sessions keep their order within a project. Tap a project's heading to fold it to one line that still says what needs you; long-press it for a new session there, **Fold all others** or **Unfold all**. With several computers, the title picks which one to show. With none on the account, the screen says why.
-- **Sessions as conversations.** Streamed Markdown answers, tool-call cards, prompts with images, steer, queue and stop, questions, approvals, plan reviews and `/` slash commands.
-- **Screens.** Other terminal windows are live screens you can type and press keys in.
-- **Screen only to conversation.** An omp or Claude Code window that doesn't report as a conversation is badged **Screen only**, with the reason the computer found: PocketTerm isn't installed in that agent, it's out of date, Claude Code has mods turned off, or the session was opened before PocketTerm was installed. Where it can, its screen page offers **Switch to conversation**: in omp, PocketTerm quits omp in that window and runs `omp -c`, so the same conversation comes back; if omp was working, **Restart and continue** prompts `continue` as soon as it's back, and **Just restart** leaves it stopped with a **Continue** button on its session page. In Claude Code it types `/reload-plugins` and nothing restarts.
-- **Ending a session.** Swipe a row left to reveal **End session** (**Close window** for a plain window); the close button on a session or screen asks in place.
-- **New session.** Start your agent or a shell in one of your projects without taking the computer's focus; **New project…** makes the folder first.
-- **First-use tips.** The first time a control is on screen, it's spotlit with a short tip: the switch from a screen-only session to a conversation first, then folding projects, swiping a row, the +, and on a conversation `/` commands, Queue, following and Screen. Tap the control or **Got it**; each shows once on this phone. **Show tips again** in the account sheet brings them back.
-- **Taps look like the control they press.** A press highlights a row inside its rounded card, a project heading as a rounded pill, an icon button as a circle; on iPhone it's a soft highlight (the + darkens), on Android a ripple. Sheets have a grab handle.
-- **The list runs under the home indicator**, and its last row still scrolls clear of the +.
-- **Pushes** when a run finishes or the agent needs you, encrypted for your phone and sent through the publisher's relay. A Live Activity on iPhone and an ongoing notification on Android for each session you follow. Pushes say which computer a session is on, so a tap opens it there.
+- **Connects by scanning a code.** **Scan the code from your computer** (or paste it) signs the phone in to your server and gives it that computer's key. The sign-in works once, for 10 minutes. Scan each computer's code once; a computer the phone can't read yet shows as locked, with a **Scan** button.
+- **Try the demo.** Made-up sessions to look around without a computer. Nothing connects.
+- **Your sessions by project.** omp and Claude Code sessions grouped by project, then every other terminal window. Sort projects by name or recent activity, tap a project's heading to fold it, long-press it for a new session there or to fold the others.
+- **Sessions as conversations.** Streamed Markdown answers, tool calls as cards, prompts with images, steer, queue and stop, questions, approvals, plan reviews and `/` slash commands.
+- **Screens.** Every other terminal window is a live screen you can type and press keys in.
+- **Switch to conversation.** A session opened before PocketTerm was installed in its agent shows only its screen. **Switch to conversation** restarts omp on the same conversation (`omp -c`); if it was working, **Restart and continue** has it carry on and **Just restart** leaves it stopped. In Claude Code it types `/reload-plugins` and nothing restarts.
+- **New and ended sessions.** Start your agent or a shell in a project without taking the computer's focus; **New project…** makes the folder first. Swipe a row left to **End session** (or **Close window**).
+- **Notifications, if you turn them on.** A push when a run finishes or the agent needs you, and a Live Activity on iPhone (an ongoing notification on Android) for the sessions you follow. The phone explains who sees what before it asks; **Account → Notifications** changes it later.
+- **First-use tips.** The first time a control shows up, a short tip says what it does, once per phone; **Show tips again** in the account sheet brings them back.
+- **Leave this server** in the account sheet signs the phone out and removes its keys.
 
-### Terminals and coding agents
+### Your server
 
-- **Coding agents:** omp and Claude Code (2.1.287 or later).
-- **Terminals:** kitty, tmux, WezTerm, iTerm2, Terminal and Ghostty on the Mac; WezTerm on Windows.
-- **Ghostty windows that share a folder** now show once, as their sessions. With two coding agents open in Ghostty in the same folder, each session showed twice on the phone: as a conversation and again as a window under Other windows. PocketTerm now tells the windows apart by the title omp gives each one (the session's title, or the folder's name until it has one) and by which windows other sessions already run in, and finds a session's window again once its title arrives. When it still can't tell, it leaves the session unmatched instead of guessing.
+- **The PocketTerm server** pairs your phones, keeps the list of your computers, passes the live channel between a computer and its phones, holds images on their way from phone to computer and sends pushes. One process, no database: everything it keeps is in one data folder.
+- **On this computer:** built into the desktop app, listening on 127.0.0.1 and published to your own devices with `tailscale serve` at `https://<this computer>.<tailnet>.ts.net`. It starts with the app and updates with it.
+- **On your own server:** a Docker image (`ghcr.io/danyzmaj-apps/pocketterm-server`, amd64 and arm64) with a compose file that puts Caddy in front for HTTPS from Let's Encrypt. Works with a domain of your own or an sslip.io name for the server's IP address, and behind nginx, Traefik or Cloudflare. `pocketterm-server setup-link` prints the link that signs a computer in; `setup-link --new` replaces it. `pocketterm-server health` exits 0 when the server answers, for container healthchecks.
 
-### Backend
+### Security and privacy
 
-- A minimal schema (sign-up rules, pairing and reviewer codes, the terminal channel and image bucket, push registrations, the computers list) and two functions, `pair` and `push`. Give PocketTerm a Supabase project of its own ([docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)).
+- **End-to-end encrypted.** Each computer makes its own key and keeps it in the Keychain on a Mac, or in a file encrypted for your Windows user (DPAPI) on Windows. It reaches a phone only in that computer's QR code. Sessions, screens, prompts, images and notification text are sealed with it (AES-256-GCM), so your server only passes on ciphertext. Live messages carry a timestamp and are dropped when more than 5 minutes off, and the computer drops a message from a phone that it has seen already.
+- **Reset key** (Settings → Phone) makes a new key after a lost phone; every phone you keep scans the computer's code again.
+- **Pushes** are sealed by the computer and go from your server to the push relay at `push.danyzmaj.com`, run by Danijel Lovric in Germany, which passes them to Apple or Google. Every request to the relay is sealed to the relay's own key (X25519, AES-256-GCM). The relay stores nothing. Live Activity updates carry only a session's state, never text.
+- **Pairing codes** work once, for 10 minutes; ten wrong codes from one address in 10 minutes are turned away for a while. The server keeps only the SHA-256 of each device's token.
+- **Local only:** the desktop app's API for the agents listens on 127.0.0.1 behind a random token.
+
+### Terminals and agents
+
+- **Coding agents:** omp, and Claude Code 2.1.287 or later.
+- **Terminals on the Mac:** kitty, WezTerm, tmux in any terminal, and Ghostty 1.3 or later. Ghostty sessions started from the phone run in tmux for full control; **Start new windows in tmux** (Settings → Terminals) does the same for Ghostty windows you open yourself.
+- **Terminals on Windows:** WezTerm 20230326 or later.

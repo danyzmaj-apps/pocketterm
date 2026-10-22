@@ -146,7 +146,7 @@ One phone sign-in covers all your computers, but each computer encrypts its sess
 
 ## How your data is protected
 
-- **Encrypted from end to end.** Each computer makes its own 32-byte key and keeps it in the system's secure storage (the Keychain on a Mac, Credential Manager on Windows). It never goes to any server: a phone gets it only by scanning that computer's QR code. Sessions, prompts, screens, images and notification text are sealed with it (AES-256-GCM).
+- **Encrypted from end to end.** Each computer makes its own 32-byte key and keeps it in the system's secure storage (the Keychain on a Mac; on Windows, a file in `%APPDATA%` encrypted for your Windows user with DPAPI). It never goes to any server: a phone gets it only by scanning that computer's QR code. Sessions, prompts, screens, images and notification text are sealed with it (AES-256-GCM).
 - **Your PocketTerm server** keeps your list of devices, your computers' names, pairing codes (10 minutes) and your phones' push tokens, and passes everything else on without being able to read it.
 - **Tailscale** (On this computer) sees which of your devices connect and when, not what they send.
 - **Push notifications**, if you turn them on in the phone app, go from your server through PocketTerm's push relay (`push.danyzmaj.com`, run by Danijel Lovric on his server in Germany) to Apple or Google. They get encrypted text, the phone's push token and which computer it's from; the relay stores nothing ([apps/pocketterm-relay/SECURITY.md](../apps/pocketterm-relay/SECURITY.md)).
@@ -171,10 +171,10 @@ PUSH_RELAY_KEY=<the relay's public key, base64; the relay logs it at start>
 ## Updating
 
 - **On this computer**: the server is part of the app and updates with it. The Mac app updates itself; on Windows, Settings links to a new version when one is out.
-- **On my own server**: the compose file runs the server version it came with. To move to another one (here 0.2.0), on the VPS run
+- **On my own server**: the compose file runs the server version it came with. To move to another one, on the VPS run (with that version for `<version>`)
 
   ```sh
-  cd ~/pocketterm && echo "POCKETTERM_VERSION=0.2.0" >> .env && sudo docker compose pull && sudo docker compose up -d
+  cd ~/pocketterm && echo "POCKETTERM_VERSION=<version>" >> .env && sudo docker compose pull && sudo docker compose up -d
   ```
 
 [CHANGELOG.md](../CHANGELOG.md) says when a new app version needs a server update. Your data survives `docker compose pull && docker compose up -d`; to back it up or restore it, see [Back up and restore](../apps/pocketterm-server/README.md#back-up-and-restore).
@@ -187,7 +187,7 @@ PUSH_RELAY_KEY=<the relay's public key, base64; the relay logs it at start>
 | Setup: **Turn on HTTPS certificates** stays | On the page that opened (or [login.tailscale.com/admin/dns](https://login.tailscale.com/admin/dns)), turn on MagicDNS and HTTPS Certificates. The checklist sees it within a few seconds. On a work tailnet only an admin can: ask them, use a personal Tailscale account on this computer and your phone, or choose **Use my own server instead**. |
 | Setup: **Free Tailscale's HTTPS port (443)** | Something else is published with `tailscale serve` on port 443 of this computer (`tailscale serve status` shows what). PocketTerm never replaces it. Remove it (`tailscale serve --https=443 off`) or move it to another port, and the checklist moves on. |
 | Settings: "Tailscale didn't let PocketTerm change its Serve settings" | With the open source `tailscale` command (not the app), only its operator may change Serve: run `sudo tailscale set --operator=$USER` once. |
-| Settings: "Phones can't reach your server" | Tailscale on this computer is switched off, signed out, or port 443 was taken since. **Settings → Account** says which, with **Open Tailscale** or **Check again**. |
+| Settings: "Phones can't reach your server" | Tailscale on this computer is switched off or signed out, or something else holds its port 443. **Settings → Account** says which, with **Open Tailscale** or **Check again**. |
 | Settings: "This computer's Tailscale address changed" | The computer was renamed or Tailscale signed in to another account. Each phone scans this computer's code again (**Add a phone…**); each other computer pastes a new link (**Add a computer…**). Rename it back and the old address works again. |
 | Setup or Settings: "This device's clock is N minutes behind/ahead of the server's" | Every message between your computers and phones carries its time, and one more than 5 minutes off is dropped (so an old one can't be replayed). Turn on setting the time automatically (macOS: System Settings → General → Date & Time; Windows: Settings → Time & language → Date & time), on the phone too. |
 | Setup: "That isn't a setup link" | Copy the whole line `setup-link` printed, starting with `pocketterm://setup?url=`. |
@@ -219,7 +219,6 @@ PUSH_RELAY_KEY=<the relay's public key, base64; the relay logs it at start>
 | Phone: Notifications says "On, but notifications are off for PocketTerm in this phone's Settings" | They were turned off in the phone's Settings after you said yes. Tap **Open Settings** and allow them. |
 | Phone: "Your iPhone shows only a few Live Activities at once" | iOS limits Live Activities per app and in all. Stop following another session (or end one on the Lock Screen), then follow again. |
 | Phone: "That code is for a computer on <host>, and this phone is on …" | A phone uses one server at a time. **Account → Leave this server**, then scan the code again. |
-| Phone: "That code is from an older PocketTerm" | The computer still runs 0.1 (Supabase). Update PocketTerm on the computer and scan the new code. Updating the phone from 0.1 clears its old setup and starts at the scan screen. |
 | Phone: the camera needs permission, or there is no camera | Tap **Open Settings** and allow Camera. A phone or iPad without a camera can't scan a code: use one that has one (the demo works without). |
 | Android: notifications late or missing | Some Android makers stop apps in the background. Let PocketTerm run unrestricted (Settings → Apps → PocketTerm → Battery → Unrestricted). |
 | Phone: signed out while offline | The phone forgets its keys and sign-in at once; the server lists it until you remove it on the computer (**Settings → Phone**). |

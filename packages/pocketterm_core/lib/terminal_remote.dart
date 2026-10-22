@@ -60,14 +60,16 @@ class _Watch {
 /// channel and the hellos run between [attach] and [detach]: while the app is
 /// in front. Everything goes sealed with that computer's [key] (lib/e2e.dart).
 /// Its disk cache is `terminal/<desktopId>` in the given support directory.
+/// `send` and `upload`, when handed in (tests and the phone's demo, which
+/// answer locally), replace the channel and the image upload.
 class TerminalRemote extends ChangeNotifier {
   TerminalRemote(
     this._server,
     Directory supportDir, {
     required this.desktopId,
     required this.key,
-    @visibleForTesting TerminalSend? send,
-    @visibleForTesting ImageUpload? upload,
+    TerminalSend? send,
+    ImageUpload? upload,
     String? from,
   }) : _cacheDir = Directory('${supportDir.path}/terminal/$desktopId'),
        _transmit = send,
@@ -296,8 +298,8 @@ class TerminalRemote extends ChangeNotifier {
     }
   }
 
-  /// One message from the Mac.
-  @visibleForTesting
+  /// One message from the Mac; also handed in directly by tests and the
+  /// phone's demo, which answer locally.
   void handle(String event, Map<String, dynamic> p) {
     switch (event) {
       case 'state':

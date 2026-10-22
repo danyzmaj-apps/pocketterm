@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal.dart' show TerminalException;
+import 'package:pocketterm_core/timing.dart';
 
 /// Receives one message, opened: its fields as the sender gave them.
 typedef TopicHandler = void Function(Map<String, dynamic> payload);
@@ -218,8 +219,10 @@ class TerminalChannel {
     bool stale() => !_open || gen != _gen;
     final WebSocket ws;
     try {
+      timing('socket connecting');
       ws = await _server.connectSocket();
     } on Object catch (e) {
+      timing('socket failed');
       if (stale()) return;
       // Refused at the door: maybe the token stopped working.
       unawaited(_server.verify());
@@ -227,6 +230,7 @@ class TerminalChannel {
       return _again(null, '$e');
     }
     if (stale()) return unawaited(ws.close(1000).then((_) {}, onError: (Object _) {}));
+    timing('socket open');
     _setUnreachable(false);
     _ws = ws;
     _sub = ws.listen((data) => _frame(ws, data), onDone: () => _closed(ws), onError: (Object _) {});
@@ -250,6 +254,7 @@ class TerminalChannel {
     }
     switch (frame) {
       case {'t': 'joined', 'topic': final String t} when t == topic:
+        timing('joined');
         _joinWait?.cancel();
         _wait = _firstWait;
         _setJoined(joined: true);

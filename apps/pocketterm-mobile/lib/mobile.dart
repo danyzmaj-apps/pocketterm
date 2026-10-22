@@ -15,6 +15,7 @@ import 'package:pocketterm_core/native.dart';
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/session.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
+import 'package:pocketterm_core/timing.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/coach.dart';
@@ -613,6 +614,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Future<void> _openRouted(String routed) async {
     final r = splitRoutedKey(routed);
     if (r == null) return;
+    timing('deep link');
     if (!_desktops.all.any((d) => d.id == r.desktop)) await _desktops.refresh();
     if (!mounted || !_desktops.all.any((d) => d.id == r.desktop)) return;
     _desktops.select(r.desktop);
@@ -626,6 +628,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return;
     }
     Navigator.of(context).popUntil((r) => r.isFirst);
+    timing('session page');
     openSession(context, t, key);
   }
 
@@ -655,6 +658,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       unawaited(_findSupportDir());
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      timing('home');
       if (mounted) _refreshIfInFront();
     });
     _refreshTimer = Timer.periodic(_refreshEvery, (_) => _refreshIfInFront());
@@ -687,12 +691,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
+        timing('resumed');
         _attachTerminal(attach: true);
         _refreshIfInFront();
         unawaited(_openTappedSession());
         // Notifications may have been turned off or on in Settings meanwhile.
         if (!_demo) unawaited(widget.session.checkNotifications());
       case AppLifecycleState.hidden || AppLifecycleState.paused:
+        if (state == AppLifecycleState.paused) timing('paused');
         _attachTerminal(attach: false);
       case AppLifecycleState.inactive || AppLifecycleState.detached:
         break;

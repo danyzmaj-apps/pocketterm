@@ -13,6 +13,7 @@ import 'package:pocketterm_core/live_activity.dart';
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_channel.dart';
+import 'package:pocketterm_core/timing.dart';
 import 'package:uuid/uuid.dart';
 
 // The phone side of the terminal protocol (lib/live.dart): the Mac's coding
@@ -135,6 +136,10 @@ class TerminalRemote extends ChangeNotifier {
     onUnreachable: notifyListeners,
   );
   Timer? _timer;
+
+  /// Debug timing ([timing]): a state came since [attach]; sessions caught up since then.
+  bool _stateSinceAttach = false;
+  final _caughtUp = <String>{};
 
   /// The server this goes through, as [TerminalLink.unreachable] tells it.
   Backend get backend => _server.backend;
@@ -280,6 +285,9 @@ class TerminalRemote extends ChangeNotifier {
   /// leaves.
   void attach() {
     if (_users++ > 0) return;
+    timing('attach');
+    _stateSinceAttach = false;
+    _caughtUp.clear();
     _openedAt = DateTime.now();
     if (_transmit != null) return;
     _ch.open();
@@ -373,6 +381,10 @@ class TerminalRemote extends ChangeNotifier {
   }
 
   void _onState(Map<String, dynamic> p) {
+    if (kDebugMode && !_stateSinceAttach) {
+      _stateSinceAttach = true;
+      timing('first state');
+    }
     final now = _heard = stateAt = DateTime.now();
     fromCache = false;
     _applyState(p);
@@ -418,6 +430,7 @@ class TerminalRemote extends ChangeNotifier {
         older: p['older'] as bool?,
       );
     if (last && v.epoch == epoch) {
+      if (kDebugMode && key == watchedSession && _caughtUp.add(key)) timing('caught up');
       _syncing.remove(key);
       _behind.remove(key);
       for (final (e, ops) in _held.remove(key) ?? const <(String, List<LiveOp>)>[]) {

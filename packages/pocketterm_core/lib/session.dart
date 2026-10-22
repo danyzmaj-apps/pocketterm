@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/server_client.dart';
+import 'package:pocketterm_core/timing.dart';
 
 /// The connected server ([Backend]) and signing in to it (the server's
 /// setup link on a computer, a computer's code on a phone): what the
@@ -215,6 +216,7 @@ abstract class Session extends ChangeNotifier {
       _setUser(null);
     });
     _setUser(s.account);
+    timing('signed in');
   }
 
   /// Why the sign-in is gone when the server stopped taking it (this device

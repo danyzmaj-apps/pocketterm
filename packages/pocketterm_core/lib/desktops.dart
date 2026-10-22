@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/server_client.dart';
+import 'package:pocketterm_core/timing.dart';
 
 /// A computer running PocketTerm on this server (GET /v1/desktops): it
 /// refreshes [seenAt] every minute while its terminal bridge runs, and the
@@ -80,8 +81,10 @@ class Desktops extends ChangeNotifier {
   Future<void> refresh() async {
     try {
       final rows = await _server.desktops();
+      timing('computers listed');
       if (!_disposed) apply(rows);
     } on Object catch (e) {
+      timing('computers failed');
       debugPrint('PocketTerm: computers: $e');
       final why = e is ServerException ? e.message : '$e';
       if (_disposed || why == error) return;

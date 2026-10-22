@@ -149,7 +149,7 @@ class TerminalChannel {
 
   /// The largest frame the server takes (packages/pocketterm_server/PROTOCOL.md); a larger one would close the
   /// socket, and every message after it would be lost until the next join.
-  static const maxFrameBytes = 256 * 1024;
+  static const int maxFrameBytes = 256 * 1024;
 
   /// Drops [event] if the channel isn't joined: whoever waits on an answer
   /// times out, and the other side catches up after the next join. A

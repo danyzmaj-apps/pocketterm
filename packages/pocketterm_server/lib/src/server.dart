@@ -20,6 +20,13 @@ const int maxJsonBytes = 64 * 1024;
 /// The largest blob (20 MiB).
 const int maxBlobBytes = 20 * 1024 * 1024;
 
+/// The most one device's blobs (those waiting and those arriving) may take together (200 MiB); past it an upload
+/// gets 429.
+const int maxDeviceBlobBytes = 200 * 1024 * 1024;
+
+/// The most all blobs may take together (1 GiB); past it an upload gets 507.
+const int maxTotalBlobBytes = 1024 * 1024 * 1024;
+
 /// How long a blob nobody downloads is kept.
 const blobTtl = Duration(hours: 1);
 
@@ -90,6 +97,8 @@ class PocketTermServer {
     Uri relay,
     List<int> relayKey,
     Duration relayRetry,
+    this._deviceBlobQuota,
+    this._blobQuota,
   ) {
     _relay = Relay(relay, relayKey, log: _log, onGone: _gone, firstRetry: relayRetry);
   }
@@ -100,7 +109,8 @@ class PocketTermServer {
   /// With [trustProxy], the caller's address for rate limits is the last one in X-Forwarded-For (set it only
   /// behind a reverse proxy). With [trustLoopbackProxy], it is trusted only from a loopback peer: for a server on
   /// 127.0.0.1 that `tailscale serve` publishes, so each tailnet caller gets its own throttle. [clock] stands in
-  /// for the time and [relayRetry] for the relay's first retry wait in tests.
+  /// for the time and [relayRetry] for the relay's first retry wait in tests. [deviceBlobQuota] and [blobQuota]
+  /// stand in for [maxDeviceBlobBytes] and [maxTotalBlobBytes].
   ///
   /// Throws [StorageException] when [dataDir] can't be written, is held by another server or its state.json
   /// doesn't read (see [Store.open]).
@@ -116,6 +126,8 @@ class PocketTermServer {
     void Function(String message)? log,
     DateTime Function()? clock,
     Duration relayRetry = const Duration(seconds: 2),
+    int deviceBlobQuota = maxDeviceBlobBytes,
+    int blobQuota = maxTotalBlobBytes,
   }) async {
     final store = Store.open(dataDir, log: log);
     final HttpServer http;
@@ -139,7 +151,9 @@ class PocketTermServer {
       relay ?? defaultRelay,
       relayKey ?? parseRelayKey(defaultRelayKey)!,
       relayRetry,
-    );
+      deviceBlobQuota,
+      blobQuota,
+    ).._countBlobs();
     server._sweeper = Timer.periodic(const Duration(minutes: 1), (_) => unawaited(server.sweep()));
     unawaited(server.sweep());
     http.listen((req) => unawaited(server._handle(req)));
@@ -169,6 +183,14 @@ class PocketTermServer {
   final Map<String, List<DateTime>> _failures = {};
   final void Function(String)? _log;
   Timer? _sweeper;
+  final int _deviceBlobQuota;
+  final int _blobQuota;
+
+  /// The size of each blob waiting, by path, and the device that put it (`''` for one from before a restart).
+  final Map<String, ({String device, int size})> _blobUse = {};
+
+  /// The bytes of uploads still arriving, by device.
+  final Map<String, int> _arriving = {};
 
   /// What setup links point phones and computers at.
   final Uri publicUrl;
@@ -205,6 +227,49 @@ class PocketTermServer {
 
   Directory get _blobs => Directory('${_dir.path}/blobs');
 
+  /// Counts the blobs left from before a restart (anyone's: who put them isn't kept).
+  void _countBlobs() {
+    for (final f in _blobs.listSync().whereType<File>()) {
+      final path = f.uri.pathSegments.last;
+      if (_blobPath.hasMatch(path)) _blobUse[path] = (device: '', size: f.lengthSync());
+    }
+  }
+
+  /// The bytes blobs take on the server, waiting and arriving: all of them, or [device]'s.
+  int _blobBytes([String? device]) {
+    var sum = 0;
+    for (final u in _blobUse.values) {
+      if (device == null || u.device == device) sum += u.size;
+    }
+    for (final MapEntry(key: d, value: n) in _arriving.entries) {
+      if (device == null || d == device) sum += n;
+    }
+    return sum;
+  }
+
+  /// Why [device] can't upload [more] bytes now: its own blobs would pass its quota (429; they go once the
+  /// computer picks them up, or after [blobTtl]), or all blobs the server's (507). Null when there is room.
+  _Fail? _noRoom(String device, int more) {
+    if (_blobBytes(device) + more > _deviceBlobQuota) {
+      return _Fail(
+        429,
+        'rate_limited',
+        'This device has too many uploads waiting on the server. Try again once your computer has picked them up.',
+        retryAfter: const Duration(minutes: 1),
+      );
+    }
+    if (_blobBytes() + more > _blobQuota) {
+      return _Fail(507, 'storage_full', 'The server has no room for more uploads right now. Try again in a while.');
+    }
+    return null;
+  }
+
+  /// Deletes blob [file] (at [path]) and stops counting it.
+  void _dropBlob(File file, String path) {
+    _blobUse.remove(path);
+    if (file.existsSync()) file.deleteSync();
+  }
+
   /// Saves the store, or logs why it couldn't: for changes nobody waits on (a seen stamp, housekeeping), which
   /// the next save that works keeps.
   void _trySave() {
@@ -222,7 +287,7 @@ class PocketTermServer {
     final now = _now();
     try {
       for (final f in _blobs.listSync().whereType<File>()) {
-        if (now.difference(f.lastModifiedSync()) > blobTtl) f.deleteSync();
+        if (now.difference(f.lastModifiedSync()) > blobTtl) _dropBlob(f, f.uri.pathSegments.last);
       }
     } on FileSystemException catch (e) {
       _log?.call('blob sweep: $e');
@@ -343,7 +408,7 @@ class PocketTermServer {
       case ['push', final action]:
         only('POST');
         final me = _auth(req);
-        return await _json(req, 200, await _push(action, await _readJson(req), me.id));
+        return await _json(req, 200, await _push(action, await _readJson(req), me));
       case ['ws']:
         only('GET');
         final me = _auth(req);
@@ -495,21 +560,23 @@ class PocketTermServer {
     return {'token': token, 'device': device.toApi()};
   }
 
-  /// Signs device [id] out for good: its token, its push and activity tokens and its sockets. A computer's
-  /// desktops go from the list too (nothing checks them in any more); their Live Activities, and a phone's own,
-  /// are ended.
+  /// Signs device [id] out for good: its token, its push and activity tokens, the pairing codes it made and its
+  /// sockets. A computer's desktops go from the list too (nothing checks them in any more); their Live Activities,
+  /// and a phone's own, are ended. Throws [StorageException] with nothing changed when that can't be saved.
   void _dropDevice(String id) {
     final desktops = [
       for (final d in _store.desktops.values)
         if (d.device == id) d.id,
     ];
     final own = _store.activityTokens.where((t) => t.device == id).toList();
-    _store
-      ..devices.remove(id)
-      ..desktops.removeWhere((_, d) => d.device == id)
-      ..pushTokens.removeWhere((_, t) => t.device == id)
-      ..activityTokens.removeWhere((t) => t.device == id)
-      ..save();
+    _store.change(
+      () => _store
+        ..devices.remove(id)
+        ..desktops.removeWhere((_, d) => d.device == id)
+        ..pairingCodes.removeWhere((_, c) => c.by == id)
+        ..pushTokens.removeWhere((_, t) => t.device == id)
+        ..activityTokens.removeWhere((t) => t.device == id),
+    );
     _hub.closeDevice(id);
     _sendActivity(own, _ended(), null, null);
     desktops.forEach(_endActivities);
@@ -517,17 +584,21 @@ class PocketTermServer {
 
   /// Erases everything the owner has here: every device (the caller too), computer, pairing code, push and
   /// activity token and blob; every socket closes with 4003. The setup token and the server id stay, so
-  /// computers can set up again with the same link.
+  /// computers can set up again with the same link. Throws [StorageException] with nothing changed when that
+  /// can't be saved.
   Future<void> _erase() async {
-    // The phones' Live Activities end first: nothing would end them afterwards.
-    _store.activityTokens.map((t) => t.desktop).toSet().forEach(_endActivities);
-    _store
-      ..devices.clear()
-      ..desktops.clear()
-      ..pairingCodes.clear()
-      ..pushTokens.clear()
-      ..activityTokens.clear()
-      ..save();
+    final following = [..._store.activityTokens];
+    _store.change(
+      () => _store
+        ..devices.clear()
+        ..desktops.clear()
+        ..pairingCodes.clear()
+        ..pushTokens.clear()
+        ..activityTokens.clear(),
+    );
+    // Nothing would end the phones' Live Activities afterwards.
+    _sendActivity(following, _ended(), null, null);
+    _blobUse.clear();
     for (final f in _blobs.listSync()) {
       f.deleteSync(recursive: true);
     }
@@ -535,6 +606,16 @@ class PocketTermServer {
   }
 
   // Desktops.
+
+  /// Whether computer [me] may change (or speak for) the computer [id] in the list: nobody holds it, [me] does,
+  /// or the computer holding it is gone or has stopped checking in (one that signed in again under a new device,
+  /// keeping its id, takes it back that way).
+  bool _mayHold(String id, Device me) {
+    final d = _store.desktops[id];
+    final owner = d?.device;
+    if (d == null || owner == null || owner == me.id) return true;
+    return !_store.devices.containsKey(owner) || _now().difference(d.seen) >= Desktop.onlineFor;
+  }
 
   Future<void> _desktop(HttpRequest req, String id) async {
     final me = _auth(req);
@@ -545,25 +626,16 @@ class PocketTermServer {
         final body = await _readJson(req);
         final name = body['name'];
         if (name is! String) throw _bad('name must be a string.');
-        final desktop = Desktop(
-          id: id,
-          name: _clip(name, 80),
-          platform: _platform(body, _desktopPlatforms),
-          seen: _now(),
-          device: me.id,
-        );
-        _store
-          ..desktops[id] = desktop
-          ..save();
+        final platform = _platform(body, _desktopPlatforms);
+        if (!_mayHold(id, me)) throw _Fail(403, 'forbidden', 'Only the computer that added it can change it.');
+        final desktop = Desktop(id: id, name: _clip(name, 80), platform: platform, seen: _now(), device: me.id);
+        _store.change(() => _store.desktops[id] = desktop);
         return await _json(req, 200, desktop.toApi(_now()));
       case 'DELETE':
-        // Only a computer, and only the one that registered it (any computer for rows from before that was kept).
+        // Only a computer, and only the one that holds it.
         _desktopOnly(me);
-        final owner = _store.desktops[id]?.device;
-        if (owner != null && owner != me.id) {
-          throw _Fail(403, 'forbidden', 'Only the computer that added it can remove it.');
-        }
-        if (_store.desktops.remove(id) != null) _store.save();
+        if (!_mayHold(id, me)) throw _Fail(403, 'forbidden', 'Only the computer that added it can remove it.');
+        if (_store.desktops.containsKey(id)) _store.change(() => _store.desktops.remove(id));
         _endActivities(id);
         return await _json(req, 200, {'ok': true});
       default:
@@ -574,7 +646,7 @@ class PocketTermServer {
   // Blobs.
 
   Future<void> _blob(HttpRequest req, String path) async {
-    _auth(req);
+    final me = _auth(req);
     if (!_blobPath.hasMatch(path)) throw _bad('A blob path is 1 to 64 characters A-Z, a-z, 0-9 and -.');
     final file = File('${_blobs.path}/$path');
     switch (req.method) {
@@ -584,9 +656,15 @@ class PocketTermServer {
           req.response.persistentConnection = false;
           throw _tooLargeBlob();
         }
+        if (_noRoom(me.id, req.contentLength < 0 ? 0 : req.contentLength) case final full?) {
+          req.response.persistentConnection = false;
+          throw full;
+        }
         final part = File('${_blobs.path}/.$path.${newId(8)}.part');
         var size = 0;
+        var counted = 0;
         var tooLarge = false;
+        _Fail? full;
         try {
           final sink = part.openWrite();
           try {
@@ -596,35 +674,50 @@ class PocketTermServer {
                 tooLarge = true;
                 break;
               }
+              // Uploads arriving side by side count together.
+              if (_noRoom(me.id, chunk.length) case final f?) {
+                full = f;
+                break;
+              }
+              _arriving.update(me.id, (n) => n + chunk.length, ifAbsent: () => chunk.length);
+              counted += chunk.length;
               sink.add(chunk);
             }
           } finally {
             await sink.close();
           }
-          if (!tooLarge && !file.existsSync()) part.renameSync(file.path);
+          if (!tooLarge && full == null && !file.existsSync()) part.renameSync(file.path);
         } on Object catch (e) {
           // A full disk, or the phone gone mid-upload: nothing half-written stays.
           _deleteQuietly(part);
           if (e is FileSystemException) {
-            throw StorageException("Couldn't save an image: ${e.osError?.message ?? e.message}.");
+            throw StorageException("Couldn't save the upload: ${e.osError?.message ?? e.message}.");
           }
           rethrow;
+        } finally {
+          final left = (_arriving[me.id] ?? 0) - counted;
+          if (left > 0) {
+            _arriving[me.id] = left;
+          } else {
+            _arriving.remove(me.id);
+          }
         }
-        if (tooLarge) {
+        if (tooLarge || full != null) {
           _deleteQuietly(part);
           req.response.persistentConnection = false;
-          throw _tooLargeBlob();
+          throw full ?? _tooLargeBlob();
         }
         // Another upload to the same path finished meanwhile.
         if (part.existsSync()) {
           _deleteQuietly(part);
           throw _Fail(409, 'conflict', 'That blob path is taken.');
         }
+        _blobUse[path] = (device: me.id, size: size);
         return await _json(req, 201, {'path': path});
       case 'GET':
         if (!file.existsSync()) throw _Fail(404, 'not_found', 'No such blob: it ran out or was downloaded.');
         if (_now().difference(file.lastModifiedSync()) > blobTtl) {
-          file.deleteSync();
+          _dropBlob(file, path);
           throw _Fail(404, 'not_found', 'No such blob: it ran out or was downloaded.');
         }
         final res = req.response
@@ -638,10 +731,10 @@ class PocketTermServer {
           _log?.call('blob $path not sent: $e');
           return;
         }
-        if (file.existsSync()) file.deleteSync();
+        _dropBlob(file, path);
         return;
       case 'DELETE':
-        if (file.existsSync()) file.deleteSync();
+        _dropBlob(file, path);
         return await _json(req, 200, {'ok': true});
       default:
         throw _Fail(405, 'method_not_allowed', '${req.uri.path} takes PUT, GET or DELETE.');
@@ -650,7 +743,8 @@ class PocketTermServer {
 
   // Push: sealed notifications and Live Activity states, forwarded to the relay.
 
-  Future<Map<String, dynamic>> _push(String action, Map<String, dynamic> body, String device) async {
+  Future<Map<String, dynamic>> _push(String action, Map<String, dynamic> body, Device me) async {
+    final device = me.id;
     final platformValue = body['platform'];
     final platform = platformValue ?? 'ios';
     if (platform != 'ios' && platform != 'android') throw _bad('platform must be ios or android.');
@@ -736,19 +830,22 @@ class PocketTermServer {
           ..save();
         return {'ok': true};
       case 'activity_end':
-        // No session ends every one this token follows; a bad one ends none.
+        // No session ends every one this token follows; a bad one ends none. Only this device's own.
         final session = body['session'];
         if (session != null && !_isSessionKey(session)) throw _bad('session must be a coding session key.');
-        if (token is String) {
-          _store
-            ..activityTokens.removeWhere((t) => t.token == token && (session == null || t.session == session))
-            ..save();
-        }
+        bool ends(ActivityToken t) =>
+            t.device == device && t.token == token && (session == null || t.session == session);
+        if (_store.activityTokens.any(ends)) _store.change(() => _store.activityTokens.removeWhere(ends));
         return {'ok': true};
       case 'activity':
         final session = body['session'];
         if (session is! String || !_routedKey.hasMatch(session)) {
           throw _bad('session must be a routed session key, <desktop id>/<key>.');
+        }
+        // Only the computer whose session it is moves its followers' Live Activities.
+        _desktopOnly(me);
+        if (!_mayHold(session.split('/').first, me)) {
+          throw _Fail(403, 'forbidden', 'Only the computer the session runs on can update its Live Activities.');
         }
         final state = body['state'];
         if (!_activityStates.contains(state)) throw _bad('state must be ${_activityStates.join(', ')}.');
@@ -769,10 +866,8 @@ class PocketTermServer {
         };
         final tokens = _store.activityTokens.where((t) => t.session == session).toList();
         // An ended activity takes no more pushes.
-        if (state == 'ended') {
-          _store
-            ..activityTokens.removeWhere((t) => t.session == session)
-            ..save();
+        if (state == 'ended' && tokens.isNotEmpty) {
+          _store.change(() => _store.activityTokens.removeWhere((t) => t.session == session));
         }
         return {'sent': _sendActivity(tokens, live, enc as String?, tag as String?)};
       default:
@@ -848,7 +943,7 @@ class PocketTermServer {
   }
 
   static _Fail _tooLargeBlob() =>
-      _Fail(413, 'too_large', 'That image is too large: the most is ${maxBlobBytes ~/ (1024 * 1024)} MB.');
+      _Fail(413, 'too_large', 'That file is too large: the most is ${maxBlobBytes ~/ (1024 * 1024)} MB.');
 
   void _deleteQuietly(File f) {
     try {

@@ -29,15 +29,16 @@ Every error is an HTTP status of 400 or more with this body:
 | 400    | `bad_request`        | malformed JSON or a field that fails validation (the message names it)    |
 | 400    | `invalid_code`       | a setup token or pairing code that doesn't work (any reason, same answer) |
 | 401    | `unauthorized`       | no `Authorization` header, or the token is unknown or revoked             |
-| 403    | `forbidden`          | the device's role can't do this (a phone making a pairing code)           |
+| 403    | `forbidden`          | the device's role can't do this (a phone making a pairing code), or another computer holds that computer id |
 | 404    | `not_found`          | no such endpoint (the message names the server's version), device or blob |
 | 405    | `method_not_allowed` | the endpoint exists, the method doesn't                                   |
 | 409    | `conflict`           | a blob path that is already taken                                         |
 | 409    | `push_off`           | `activity_register` from a phone with no push token (notifications off)   |
 | 413    | `too_large`          | a body over its limit                                                     |
-| 429    | `rate_limited`       | too many failed redeems from this address, or too many WebSockets for one device; `Retry-After` gives seconds |
+| 429    | `rate_limited`       | too many failed redeems from this address, too many WebSockets for one device, or a device's blobs over its quota; `Retry-After` gives seconds |
 | 500    | `internal`           | a bug on the server                                                       |
 | 507    | `storage`            | the data directory can't be written (a full disk, a folder it doesn't own); nothing was saved |
+| 507    | `storage_full`       | all blobs together are at the server's quota (1 GiB); nothing was saved   |
 
 ## Objects
 
@@ -140,12 +141,17 @@ Request `{"name": "MacBook Pro", "platform": "macos"}`. Creates or replaces the 
 (`[a-z0-9]{8}`) and stamps its `seen_at` with the server's time. Call it on start and every 60 seconds: after 3
 minutes without it, the server ends the Live Activities of that computer's sessions (below).
 
-200 `<Desktop>`. 400 for a bad id, name or platform. 403 for a phone.
+The computer that last put `:id` holds it. Another computer gets 403 `forbidden` while that one is still signed in
+and online (`seen_at` less than 150 seconds old); once it is offline or gone, another computer may take the id over
+(a computer that signed in again under a new device keeps its id this way).
+
+200 `<Desktop>`. 400 for a bad id, name or platform. 403 for a phone, or for an id another computer holds.
 
 ### `DELETE /v1/desktops/:id` (desktop)
 
 Removes the computer from the list (sign out on that computer) and ends the Live Activities of its sessions. Only
-the computer that added it may (any computer for one kept without that), else 403 `forbidden`. 200 `{"ok": true}`, also when it wasn't there.
+the computer that holds it may (as for `PUT`; any computer for one kept without a holder), else 403 `forbidden`.
+200 `{"ok": true}`, also when it wasn't there.
 
 ### `GET /v1/devices`
 
@@ -153,9 +159,9 @@ the computer that added it may (any computer for one kept without that), else 40
 
 ### `DELETE /v1/devices/me`
 
-Leave: the caller's token stops working, its push and Live Activity tokens are forgotten and its WebSockets
-close with code 4003. A computer's desktops (the ones it last `PUT`) leave the list too and their sessions' Live
-Activities end. 200 `{"ok": true}`.
+Leave: the caller's token stops working, its push and Live Activity tokens and the pairing codes it made are
+forgotten and its WebSockets close with code 4003. A computer's desktops (the ones it last `PUT`) leave the list
+too and their sessions' Live Activities end. 200 `{"ok": true}`.
 
 ### `DELETE /v1/devices/:id` (desktop)
 
@@ -175,6 +181,9 @@ The client picks the path (a UUID v4 in the apps; any `[A-Za-z0-9-]{1,64}`), so 
 path in the AAD before uploading. The body is the raw bytes (any `content-type`; the apps send AES-GCM sealed
 images and files as `application/octet-stream`; a file's name travels only in the sealed prompt), at most 20971520
 bytes (20 MiB), else 413.
+
+One device's blobs, waiting and arriving, take at most 200 MiB together, else 429 `rate_limited` (they go once
+downloaded, deleted or an hour old); all blobs together at most 1 GiB, else 507 `storage_full`.
 
 201 `{"path": "<path>"}`. 409 `conflict` when that path already holds a blob. 400 for a bad path.
 
@@ -232,10 +241,12 @@ A server stopping gives what's on its way 3 seconds; what still waits is dropped
   Android phone's sessions use its FCM token). Afterwards nothing reaches the phone until it registers again.
 - `activity_register` for iOS moves the token to this session (an iPhone's activity follows one session). It needs
   the phone to have a push token (notifications on), else 409 `push_off`.
-- `activity_end` without `session` ends every session the token follows.
-- `activity`: iPhones get `state` and `kind` (Apple shows a Live Activity push without the app, so it can't be
-  encrypted) at the activity's own push token, and nothing else. Android phones get only `enc`: the computer's
-  channel-key AES-256-GCM seal of `{"session", "state", "since", "kind"?}` with AAD
+- `activity_end` without `session` ends every session the token follows. It only ever ends what the calling phone
+  registered.
+- `activity` (desktop): only the computer that holds `<desktop id>` (as for `PUT /v1/desktops/:id`) may send it,
+  else 403 `forbidden`, as for a phone. iPhones get `state` and `kind` (Apple shows a Live Activity push without
+  the app, so it can't be encrypted) at the activity's own push token, and nothing else. Android phones get only
+  `enc`: the computer's channel-key AES-256-GCM seal of `{"session", "state", "since", "kind"?}` with AAD
   `pocketterm/v1|activity|<desktop id>`, same layout and limits as a notification's `enc`, with `tag`; `enc` needs
   `tag`. Without `enc`, Android phones get nothing for that update. `ended` reaches Android phones as a plain end
   (below), then every token of that session is forgotten.

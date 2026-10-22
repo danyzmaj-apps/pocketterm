@@ -177,6 +177,35 @@ void main() {
       expect((await h.call('GET', '/v1/desktops', token: mac.token)).list, isEmpty);
     });
 
+    test(
+      'another computer can neither change nor remove a computer that checks in, only take over a silent one',
+      () async {
+        final mac = await h.desktop();
+        final other = await h.desktop('Other');
+        Future<int> put(String token, String name) async => (await h.call(
+          'PUT',
+          '/v1/desktops/aaaa1111',
+          token: token,
+          body: {'name': name, 'platform': 'macos'},
+        )).status;
+        Future<List<Object?>> names() async => [
+          for (final d in (await h.call('GET', '/v1/desktops', token: mac.token)).list) (d as Map)['name'],
+        ];
+
+        expect(await put(mac.token, 'Mac'), 200);
+        expect(await put(other.token, 'Taken'), 403);
+        expect((await h.call('DELETE', '/v1/desktops/aaaa1111', token: other.token)).status, 403);
+        expect(await names(), ['Mac']);
+
+        // The computer stopped checking in (it signed in again under a new device, keeping its id): it can be taken.
+        h.now = h.now.add(const Duration(seconds: 150));
+        expect(await put(other.token, 'Again'), 200);
+        expect(await names(), ['Again']);
+        expect(await put(mac.token, 'Mac'), 403);
+        expect((await h.call('DELETE', '/v1/desktops/aaaa1111', token: mac.token)).status, 403);
+      },
+    );
+
     test('computers are listed newest first and go offline when they stop checking in', () async {
       final mac = await h.desktop();
       await h.call('PUT', '/v1/desktops/aaaa1111', token: mac.token, body: {'name': 'Old', 'platform': 'macos'});
@@ -311,6 +340,21 @@ void main() {
       s.send({'t': 'send', 'topic': 'aaaa1111', 'event': 'big', 'payload': 'x' * (256 * 1024)});
       expect(await s.closed, WebSocketStatus.messageTooBig);
     });
+
+    test('a socket joins at most 32 topics; the 33rd is refused and the socket stays open', () async {
+      final mac = await h.desktop();
+      final s = await h.socket(mac.token);
+      for (var i = 0; i < 32; i++) {
+        await s.join('topic-$i');
+      }
+      s.send({'t': 'join', 'topic': 'topic-32'});
+      expect(await s.next(), containsPair('error', 'too_many_topics'));
+      // A topic it holds can still be joined again, and one left makes room.
+      await s.join('topic-0');
+      s.send({'t': 'leave', 'topic': 'topic-1'});
+      await s.join('topic-32');
+      await s.close();
+    });
   });
 
   group('blobs', () {
@@ -360,6 +404,49 @@ void main() {
     test('a bad path is refused', () async {
       final mac = await h.desktop();
       expect((await h.call('PUT', '/v1/blobs/a.b', token: mac.token, bytes: [1])).status, 400);
+    });
+
+    test('uploads stop at the per-device quota (429) and the server-wide one (507) until blobs go', () async {
+      await h.restart(deviceBlobQuota: 10, blobQuota: 15);
+      final mac = await h.desktop();
+      final phone = await h.phone(mac.token);
+      Future<Res> put(String token, String path, int size) =>
+          h.call('PUT', '/v1/blobs/$path', token: token, bytes: List<int>.filled(size, 7));
+
+      expect((await put(phone.token, 'p1', 8)).status, 201);
+      final mine = await put(phone.token, 'p2', 4);
+      expect(mine.status, 429);
+      expect(mine.error, 'rate_limited');
+      expect(mine.headers.value('retry-after'), isNotNull);
+      expect((await put(mac.token, 'm1', 7)).status, 201);
+      final full = await put(mac.token, 'm2', 1);
+      expect(full.status, 507);
+      expect(full.error, 'storage_full');
+
+      // An upload without a length is counted as it arrives.
+      final client = HttpClient();
+      addTearDown(() => client.close(force: true));
+      final req = await client.openUrl('PUT', h.url('/v1/blobs/p3'));
+      req.headers.set('authorization', 'Bearer ${phone.token}');
+      req.add(List<int>.filled(4, 7));
+      expect((await req.close()).statusCode, 429);
+      expect((await h.call('GET', '/v1/blobs/p3', token: mac.token)).status, 404);
+
+      // Downloaded, a blob makes room again.
+      expect((await h.call('GET', '/v1/blobs/p1', token: mac.token)).status, 200);
+      expect((await put(phone.token, 'p2', 4)).status, 201);
+      expect((await h.call('DELETE', '/v1/blobs/m1', token: mac.token)).status, 200);
+      expect((await put(mac.token, 'm2', 1)).status, 201);
+    });
+
+    test('blobs left from before a restart count toward the server-wide quota', () async {
+      final mac = await h.desktop();
+      expect((await h.call('PUT', '/v1/blobs/old', token: mac.token, bytes: List<int>.filled(10, 1))).status, 201);
+      await h.restart(blobQuota: 12);
+      final res = await h.call('PUT', '/v1/blobs/new', token: mac.token, bytes: List<int>.filled(3, 1));
+      expect(res.status, 507);
+      expect((await h.call('GET', '/v1/blobs/old', token: mac.token)).status, 200);
+      expect((await h.call('PUT', '/v1/blobs/new', token: mac.token, bytes: List<int>.filled(3, 1))).status, 201);
     });
   });
 
@@ -635,6 +722,44 @@ void main() {
       final res = await h.call('POST', '/v1/push/notify', token: mac.token, body: {'tag': _tag, 'enc': enc});
       expect(res.map['sent'], 0);
       expect(h.relay.received, isEmpty);
+    });
+
+    test("only the session's computer moves its Live Activities; a phone stops following only for itself", () async {
+      final mac = await h.desktop();
+      final other = await h.desktop('Other');
+      final phone = await h.phone(mac.token);
+      final pad = await h.phone(mac.token, 'iPad');
+      await optIn(phone.token);
+      await h.call('POST', '/v1/push/register', token: pad.token, body: {'token': 'ef' * 32});
+      await h.call('PUT', '/v1/desktops/aaaa1111', token: mac.token, body: {'name': 'Mac', 'platform': 'macos'});
+      await follow(phone.token, 'aaaa1111/s1', 'c1' * 80);
+      await follow(pad.token, 'aaaa1111/s1', 'c2' * 80);
+
+      for (final caller in [other.token, phone.token]) {
+        for (final state in ['working', 'ended']) {
+          final res = await h.call(
+            'POST',
+            '/v1/push/activity',
+            token: caller,
+            body: {'session': 'aaaa1111/s1', 'state': state},
+          );
+          expect(res.status, 403);
+        }
+      }
+      expect(h.relay.received, isEmpty);
+      expect(await sentTo(mac.token, 'aaaa1111/s1'), 2);
+
+      // Another phone naming this phone's token ends nothing; the phone itself can.
+      Future<int> end(String phoneToken) async => (await h.call(
+        'POST',
+        '/v1/push/activity_end',
+        token: phoneToken,
+        body: {'token': 'c1' * 80, 'session': 'aaaa1111/s1'},
+      )).status;
+      expect(await end(pad.token), 200);
+      expect(await sentTo(mac.token, 'aaaa1111/s1'), 2);
+      expect(await end(phone.token), 200);
+      expect(await sentTo(mac.token, 'aaaa1111/s1'), 1);
     });
   });
 

@@ -6,6 +6,7 @@ import 'dart:io' as io show Socket;
 import 'package:pocketterm_server/pocketterm_server.dart';
 import 'package:pocketterm_server/src/hub.dart' show maxSocketsPerDevice;
 import 'package:pocketterm_server/src/relay.dart';
+import 'package:pocketterm_server/src/secrets.dart' show newPairingCode, normalizePairingCode, sha256Hex;
 import 'package:pocketterm_server/src/server.dart' show callerKey;
 import 'package:test/test.dart';
 
@@ -103,6 +104,66 @@ void main() {
           ? 'needs POSIX permissions as a non-root user'
           : null,
     );
+
+    test(
+      'a revoke or an erase that cannot be saved changes nothing: tokens and sockets keep working',
+      () async {
+        final mac = await h.desktop();
+        final phone = await h.phone(mac.token);
+        final ws = await h.socket(phone.token);
+        await ws.join('aaaa1111');
+        Process.runSync('chmod', ['500', h.dir.path]);
+        try {
+          expect((await h.call('DELETE', '/v1/devices/${phone.id}', token: mac.token)).status, 507);
+          expect((await h.call('POST', '/v1/erase', token: mac.token)).status, 507);
+          expect((await h.call('GET', '/v1/me', token: phone.token)).status, 200);
+          expect((await h.call('GET', '/v1/me', token: mac.token)).status, 200);
+          ws.send({'t': 'ping'});
+          expect((await ws.next())['t'], 'pong');
+        } finally {
+          Process.runSync('chmod', ['700', h.dir.path]);
+        }
+        // Once the disk takes writes, the same revoke goes through.
+        expect((await h.call('DELETE', '/v1/devices/${phone.id}', token: mac.token)).status, 200);
+        expect(await ws.closed, 4003);
+        await h.restart();
+        expect((await h.call('GET', '/v1/me', token: phone.token)).status, 401);
+      },
+      skip: Platform.isWindows || Process.runSync('id', ['-u']).stdout.toString().trim() == '0'
+          ? 'needs POSIX permissions as a non-root user'
+          : null,
+    );
+
+    test('a computer that signs out takes its unused pairing codes with it', () async {
+      final mac = await h.desktop();
+      final other = await h.desktop('Other');
+      final gone = (await h.call('POST', '/v1/pair', token: mac.token)).map['code'] as String;
+      final kept = (await h.call('POST', '/v1/pair', token: other.token)).map['code'] as String;
+      expect((await h.call('DELETE', '/v1/devices/me', token: mac.token)).status, 200);
+      Future<int> redeem(String code) async =>
+          (await h.call('POST', '/v1/pair/redeem', body: {'code': code, 'platform': 'ios'})).status;
+      expect(await redeem(gone), 400);
+      expect(await redeem(kept), 200);
+    });
+
+    test('a state.json whose pairing codes do not name their computer still loads, codes working', () async {
+      final mac = await h.desktop();
+      await h.server.stop();
+      final code = newPairingCode();
+      final j = jsonDecode(state().readAsStringSync()) as Map<String, dynamic>;
+      j['pairing_codes'] = [
+        {
+          'hash': sha256Hex(normalizePairingCode(code)),
+          'expires': h.now.add(const Duration(minutes: 5)).toUtc().toIso8601String(),
+        },
+      ];
+      state().writeAsStringSync(jsonEncode(j));
+
+      await h.restart();
+      expect((await h.call('GET', '/v1/me', token: mac.token)).status, 200);
+      final res = await h.call('POST', '/v1/pair/redeem', body: {'code': code, 'platform': 'ios'});
+      expect(res.status, 200);
+    });
 
     test('an upload cut off midway leaves nothing behind', () async {
       final mac = await h.desktop();

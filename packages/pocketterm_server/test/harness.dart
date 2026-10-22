@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:pocketterm_server/pocketterm_server.dart';
+import 'package:pocketterm_server/src/server.dart' show maxDeviceBlobBytes, maxTotalBlobBytes;
 
 /// An answer from the server: status, headers and the body as JSON (null when it isn't) and bytes.
 class Res {
@@ -123,7 +124,12 @@ class Harness {
   bool _running = false;
 
   /// Stops the server if it runs and starts a new one on the same data directory.
-  Future<void> restart({bool trustLoopbackProxy = false, void Function(String)? log}) async {
+  Future<void> restart({
+    bool trustLoopbackProxy = false,
+    void Function(String)? log,
+    int deviceBlobQuota = maxDeviceBlobBytes,
+    int blobQuota = maxTotalBlobBytes,
+  }) async {
     if (_running) await server.stop();
     _running = false;
     server = await PocketTermServer.start(
@@ -137,6 +143,8 @@ class Harness {
       trustLoopbackProxy: trustLoopbackProxy,
       relayRetry: const Duration(milliseconds: 20),
       log: log,
+      deviceBlobQuota: deviceBlobQuota,
+      blobQuota: blobQuota,
     );
     _running = true;
   }

@@ -85,18 +85,19 @@ class Desktop {
 
 /// A single-use pairing code, by its SHA-256.
 class PairingCode {
-  PairingCode({required this.hash, required this.expires, required this.by});
+  PairingCode({required this.hash, required this.expires, this.by});
 
   factory PairingCode.fromJson(Map<String, dynamic> j) =>
-      PairingCode(hash: j['hash'] as String, expires: DateTime.parse(j['expires'] as String), by: j['by'] as String);
+      PairingCode(hash: j['hash'] as String, expires: DateTime.parse(j['expires'] as String), by: j['by'] as String?);
 
   final String hash;
   final DateTime expires;
 
-  /// The desktop device that asked for it.
-  final String by;
+  /// The desktop device that asked for it (null in a state file from before it was kept); a code goes when that
+  /// device signs out or is revoked.
+  final String? by;
 
-  Map<String, dynamic> toJson() => {'hash': hash, 'expires': iso(expires), 'by': by};
+  Map<String, dynamic> toJson() => {'hash': hash, 'expires': iso(expires), 'by': ?by};
 }
 
 /// A phone's push token (APNs or FCM), registered by device [device].
@@ -301,6 +302,37 @@ class Store {
   void save() {
     final file = File('${dir.path}/$_stateFile');
     _writeAtomically(file, const JsonEncoder.withIndent(' ').convert(_toJson()), backup: true);
+  }
+
+  /// Makes [apply]'s change and saves it. When the save fails, the change is undone (so a 507 means nothing
+  /// changed) and the [StorageException] thrown.
+  void change(void Function() apply) {
+    final devices = {...this.devices};
+    final desktops = {...this.desktops};
+    final pairingCodes = {...this.pairingCodes};
+    final pushTokens = {...this.pushTokens};
+    final activityTokens = [...this.activityTokens];
+    apply();
+    try {
+      save();
+    } on StorageException {
+      this.devices
+        ..clear()
+        ..addAll(devices);
+      this.desktops
+        ..clear()
+        ..addAll(desktops);
+      this.pairingCodes
+        ..clear()
+        ..addAll(pairingCodes);
+      this.pushTokens
+        ..clear()
+        ..addAll(pushTokens);
+      this.activityTokens
+        ..clear()
+        ..addAll(activityTokens);
+      rethrow;
+    }
   }
 
   /// Lets another server open [dir].

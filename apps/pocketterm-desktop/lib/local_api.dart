@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -235,7 +236,7 @@ class LocalApi {
           ..statusCode = HttpStatus.forbidden
           ..write(jsonEncode({'error': 'Bad token.'}));
       } else {
-        final body = jsonDecode(await utf8.decodeStream(req)) as Map<String, dynamic>;
+        final body = jsonDecode(await _bodyOf(req)) as Map<String, dynamic>;
         final id = body['conn'] as String?;
         final _PollLink? link;
         if (id == null) {
@@ -259,6 +260,10 @@ class LocalApi {
           res.write('{"conn":${jsonEncode(link!.id)},"frames":[${out.join(',')}]}');
         }
       }
+    } on _TooLarge {
+      res
+        ..statusCode = HttpStatus.requestEntityTooLarge
+        ..write(jsonEncode({'error': 'Request over ${maxBody ~/ (1024 * 1024)} MiB.'}));
     } on Object catch (e) {
       debugPrint('PocketTerm: live poll: $e');
       res
@@ -271,6 +276,20 @@ class LocalApi {
       // The extension gave up on a long poll.
       debugPrint('PocketTerm: live poll: $e');
     }
+  }
+
+  /// The most a long poll's body may hold; more is refused (413) unread.
+  static const int maxBody = 8 * 1024 * 1024;
+
+  /// [req]'s body as UTF-8, [_TooLarge] past [maxBody].
+  static Future<String> _bodyOf(HttpRequest req) async {
+    if (req.contentLength > maxBody) throw const _TooLarge();
+    final bytes = BytesBuilder(copy: false);
+    await for (final chunk in req) {
+      if (bytes.length + chunk.length > maxBody) throw const _TooLarge();
+      bytes.add(chunk);
+    }
+    return utf8.decode(bytes.takeBytes());
   }
 
   static String _newId() =>
@@ -372,4 +391,9 @@ class _PollLink implements LiveLink {
       if (--_active == 0 && !_closed) _idleTimer = Timer(idle, () => unawaited(close()));
     }
   }
+}
+
+/// A long poll's body over [LocalApi.maxBody].
+class _TooLarge implements Exception {
+  const _TooLarge();
 }

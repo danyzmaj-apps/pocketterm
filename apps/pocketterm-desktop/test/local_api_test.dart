@@ -291,6 +291,35 @@ void main() {
       }).timeout(const Duration(seconds: 5));
       expect(status, 200);
     });
+
+    group('a body over the cap is refused with 413, and opens no connection', () {
+      Future<int> send({required bool sayLength}) async {
+        final client = HttpClient();
+        try {
+          final req = await client.post('127.0.0.1', api.port!, '/v1/live/http');
+          req.headers.set('authorization', 'Bearer $token');
+          final big = utf8.encode(jsonEncode({'frames': [hello()], 'pad': 'x' * LocalApi.maxBody}));
+          if (sayLength) req.contentLength = big.length;
+          req.add(big);
+          return (await req.close()).statusCode;
+        } on IOException {
+          // The server stopped reading and answered before all of it went.
+          return HttpStatus.requestEntityTooLarge;
+        } finally {
+          client.close(force: true);
+        }
+      }
+
+      test('one that says its length', () async {
+        expect(await send(sayLength: true), HttpStatus.requestEntityTooLarge);
+        expect(hub.sessions, isEmpty);
+      });
+
+      test('one sent in chunks', () async {
+        expect(await send(sayLength: false), HttpStatus.requestEntityTooLarge);
+        expect(hub.sessions, isEmpty);
+      });
+    });
   });
 }
 

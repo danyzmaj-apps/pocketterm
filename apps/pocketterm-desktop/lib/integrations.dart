@@ -58,13 +58,42 @@ class Integrations {
        _windowsPath = windowsPath ?? (Platform.isWindows ? freshWindowsPath : () => Platform.environment['PATH'] ?? ''),
        home = home ?? homeDir(windows: windows),
        _bundle = bundle ?? rootBundle,
-       _run = run ?? _process;
+       _run = run ?? _processIn(home ?? homeDir(windows: windows));
 
   /// [Process.run], output read as UTF-8 (what claude writes; the default is
-  /// the ANSI code page on Windows), an npm `claude.cmd` through cmd.exe.
-  static Future<ProcessResult> _process(String executable, List<String> arguments) {
-    final (exe, args) = Platform.isWindows ? windowsCommand(executable, arguments) : (executable, arguments);
-    return Process.run(exe, args, stdoutEncoding: utf8, stderrEncoding: utf8);
+  /// the ANSI code page on Windows), an npm `claude.cmd` through cmd.exe; on
+  /// a Mac with [_agentPath] as PATH.
+  static Run _processIn(String home) => (executable, arguments) {
+    if (Platform.isWindows) {
+      final (exe, args) = windowsCommand(executable, arguments);
+      return Process.run(exe, args, stdoutEncoding: utf8, stderrEncoding: utf8);
+    }
+    return Process.run(
+      executable,
+      arguments,
+      stdoutEncoding: utf8,
+      stderrEncoding: utf8,
+      environment: {'PATH': _agentPath(executable, home, Platform.environment['PATH'] ?? '')},
+    );
+  };
+
+  /// The PATH [executable] runs with: its folder and the one it links into,
+  /// where Node goes ([_usualPlaces]), then [current]. Claude Code installed
+  /// with npm is a `#!/usr/bin/env node` script, and an app started from
+  /// Finder or the Dock has only `/usr/bin:/bin:/usr/sbin:/sbin`, no node.
+  static String _agentPath(String executable, String home, String current) {
+    String? linked;
+    try {
+      linked = File(executable).resolveSymbolicLinksSync();
+    } on FileSystemException {
+      linked = null;
+    }
+    return {
+      p.dirname(executable),
+      if (linked != null) p.dirname(linked),
+      for (final node in _usualPlaces(home, 'node')) p.dirname(node),
+      ...current.split(':').where((d) => d.isNotEmpty),
+    }.join(':');
   }
 
   final String Function() _windowsPath;
@@ -134,7 +163,7 @@ class Integrations {
       Directory(p.join(home, '.omp')).existsSync() ||
           await _find(
                 'omp',
-                _ompPaths ?? (_windows ? [p.join(home, '.bun', 'bin', 'omp.exe')] : _usualPlaces('omp')),
+                _ompPaths ?? (_windows ? [p.join(home, '.bun', 'bin', 'omp.exe')] : _usualPlaces(home, 'omp')),
               ) !=
               null,
     Agent.claude => (await _claude()).path != null,
@@ -143,7 +172,7 @@ class Integrations {
   /// Where [name] goes on macOS when installed by hand, by Homebrew, bun, npm (a global prefix, nvm with the
   /// newest Node first, Volta): a GUI app started from Finder or the Dock has none of these on its PATH, and a
   /// login shell has only what the profile files add, not ~/.zshrc (where bun's and nvm's installers put theirs).
-  List<String> _usualPlaces(String name) {
+  static List<String> _usualPlaces(String home, String name) {
     final nvm = Directory(p.join(home, '.nvm', 'versions', 'node'));
     final nodes = nvm.existsSync() ? nvm.listSync().whereType<Directory>().map((d) => d.path).toList() : <String>[];
     List<int> version(String dir) => [for (final n in RegExp(r'\d+').allMatches(p.basename(dir))) int.parse(n[0]!)];
@@ -274,7 +303,7 @@ class Integrations {
   Future<({String? path, String? problem})> _claude() async {
     final path = await _find(
       'claude',
-      _claudePaths ?? (_windows ? [p.join(home, '.local', 'bin', 'claude.exe')] : _usualPlaces('claude')),
+      _claudePaths ?? (_windows ? [p.join(home, '.local', 'bin', 'claude.exe')] : _usualPlaces(home, 'claude')),
     );
     if (path == null) return (path: null, problem: "Claude Code isn't installed");
     final r = await _run(path, ['--version']);

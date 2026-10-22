@@ -171,6 +171,28 @@ void main() {
       },
     );
 
+    test(
+      "from Finder (no node on the app's PATH), claude installed with npm runs on the Node it was installed with",
+      () async {
+        // npm's claude: a `#!/usr/bin/env node` script in the global prefix; the Node it was installed with in nvm.
+        final node = File('$home/.nvm/versions/node/v20.10.0/bin/node')
+          ..createSync(recursive: true)
+          ..writeAsStringSync(r'''
+#!/bin/sh
+case "$*" in
+  *--version*) echo '2.1.400 (Claude Code)' ;;
+  *"plugin list"*) echo '[]' ;;
+esac
+''');
+        final script = File('$home/.npm-global/bin/claude')
+          ..createSync(recursive: true)
+          ..writeAsStringSync('#!/usr/bin/env node\nconsole.log("not this node");\n');
+        Process.runSync('/bin/chmod', ['755', node.path, script.path]);
+        final npm = Integrations(home: home, claudePaths: [script.path]);
+        expect(await npm.state(Agent.claude), (installed: false, current: false, problem: null));
+      },
+    );
+
     test("on Windows claude is the native installer's claude.exe, and no login shell is asked", () async {
       final exe = FakeClaude('$home/.local/bin/claude.exe')..onPath = '$home/claude\n';
       File(exe.path).createSync(recursive: true);

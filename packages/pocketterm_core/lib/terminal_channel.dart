@@ -35,17 +35,19 @@ class ChannelSeal {
   int _seq = 0;
 
   /// [payload] of [event], as it goes on the topic. Seal in the order sent:
-  /// a receiver drops a `seq` below one it already took.
+  /// a receiver drops a `seq` below one it already took. The payload goes
+  /// whole under `m`, beside the envelope's `ts`, `mid`, `ep` and `seq`, so
+  /// a payload's own keys of those names (an items catch-up's `seq`) stay.
   Future<Map<String, dynamic>> seal(String event, Map<String, dynamic> payload) => sealEnvelope(key, {
-    ...payload,
+    'm': payload,
     'ts': _clock().millisecondsSinceEpoch,
     'mid': newMessageId(),
     'ep': _epoch,
     'seq': ++_seq,
   }, channelAad(topic, event));
 
-  /// What [wire] (an [event] off the topic) says, without `ts`, `mid`, `ep`
-  /// and `seq`; null when it's dropped.
+  /// What [wire] (an [event] off the topic) says: the payload [seal] put in;
+  /// null when it's dropped.
   Future<Map<String, dynamic>?> open(String event, Map<String, dynamic> wire) async {
     final (:message, :drop) = await openEnvelope(key, wire, channelAad(topic, event));
     final why = drop ?? _guard.check(message!);
@@ -53,11 +55,12 @@ class ChannelSeal {
       if (_logged.add('$event $why')) debugPrint('PocketTerm: $name: dropped $event ($why); more alike go unlogged');
       return null;
     }
-    return message!
-      ..remove('ts')
-      ..remove('mid')
-      ..remove('ep')
-      ..remove('seq');
+    final payload = message!['m'];
+    if (payload is! Map) {
+      if (_logged.add('$event shape')) debugPrint('PocketTerm: $name: dropped $event (no payload)');
+      return null;
+    }
+    return payload.cast<String, dynamic>();
   }
 }
 

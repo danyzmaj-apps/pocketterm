@@ -78,6 +78,14 @@ void main() {
       expect(await phone.open('state', await desktop.seal('state', {'windows': <Object>[]})), {'windows': <Object>[]});
     });
 
+    test(
+      "a payload's own seq, ts, mid and ep come through untouched (an items catch-up carries the log's seq)",
+      () async {
+        final items = {'session': 's1', 'epoch': 'e1', 'seq': 42, 'ts': 7, 'mid': 'm', 'ep': 'x', 'items': <Object>[]};
+        expect(await phone.open('items', await desktop.seal('items', items)), items);
+      },
+    );
+
     test('the computer takes a phone message once: the server replaying it gets nothing through', () async {
       final wire = await phone.seal('run', {'id': 'r1', 'op': 'send'});
       expect(await desktop.open('run', wire), isNotNull);

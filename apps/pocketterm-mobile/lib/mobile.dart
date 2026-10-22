@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pocketterm_core/account.dart' show Avatar;
 import 'package:pocketterm_core/desktops.dart';
@@ -17,8 +18,10 @@ import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/coach.dart';
+import 'package:pocketterm_mobile/demo/demo.dart';
 import 'package:pocketterm_mobile/links.dart';
 import 'package:pocketterm_mobile/onboarding/scan.dart';
+import 'package:pocketterm_mobile/push_consent.dart';
 import 'package:pocketterm_mobile/setup_page.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -46,7 +49,10 @@ class MobileSession extends Session {
   /// Computer [desktopId]'s channel key; null while this phone hasn't
   /// scanned that computer's code: the computer is locked, nothing from it
   /// shows and nothing goes to it.
-  ChannelKey? computerKey(String desktopId) => _computerKeys[desktopId];
+  ChannelKey? computerKey(String desktopId) => switch (_demo) {
+    final d? when user == null && desktopId == demoDesktopId => d.remote.key,
+    _ => _computerKeys[desktopId],
+  };
 
   @override
   Future<void> start() async {
@@ -67,16 +73,34 @@ class MobileSession extends Session {
   }
 
   @override
-  Future<void> addComputerKey(ComputerKey computer, {required bool replace}) async {
-    final held = _computerKeys[computer.desktop];
-    if (held == computer.key) return;
-    if (held != null && !replace) {
-      debugPrint("PocketTerm: a link from outside the app doesn't replace a computer's key; scan its code instead");
-      return;
-    }
+  Future<void> addComputerKey(ComputerKey computer) async {
+    if (_computerKeys[computer.desktop] == computer.key) return;
     await Native.setChannelKey(desktop: computer.desktop, key: computer.key.toBase64());
     _computerKeys[computer.desktop] = computer.key;
     notifyListeners();
+  }
+
+  /// "Try the demo": a made-up computer answered on this phone (lib/demo/demo.dart),
+  /// shown while signed out; null otherwise.
+  DemoComputer? get demo => _demo;
+  DemoComputer? _demo;
+
+  void enterDemo() {
+    if (user != null || _demo != null) return;
+    _demo = DemoComputer(Directory.systemTemp.createTempSync('pocketterm_demo'));
+    notifyListeners();
+  }
+
+  /// Back to the setup screen (or on, once signed in). The demo goes after
+  /// the frame that stops showing it.
+  void exitDemo() {
+    final d = _demo;
+    if (d == null) return;
+    _demo = null;
+    notifyListeners();
+    SchedulerBinding.instance
+      ..addPostFrameCallback((_) => d.dispose())
+      ..scheduleFrame();
   }
 
   static const _foldedKey = 'pocketterm_terminal_folded';
@@ -123,47 +147,89 @@ class MobileSession extends Session {
   }
 
   @override
-  Future<void> onSignedIn(Account user) => _registerPush(user.device.id);
+  Future<void> onSignedIn(Account user) async {
+    exitDemo();
+    if (pushEnabled ?? false) await _registerPush(user.device.id);
+  }
 
   static const _pushTokenKey = 'pocketterm_push_token';
+  static const _pushChoiceKey = 'pocketterm_push_on';
+
+  /// The person's push choice on the signed-in server (kept per server id):
+  /// null until asked (PushConsentPage), and while signed out. Nothing
+  /// registers for push before it's true.
+  bool? get pushEnabled => switch (user) {
+    final u? => _prefs.getBool('${_pushChoiceKey}_${u.id}'),
+    null => null,
+  };
+
+  /// Turns push on (the system's permission, then this phone's token to the
+  /// server) or off (the server forgets this phone's tokens, followed
+  /// sessions end and Follow goes away). False: [on], but the phone didn't
+  /// allow notifications, so it stays off.
+  Future<bool> setPushEnabled({required bool on}) async {
+    final u = user;
+    if (u == null) return false;
+    final key = '${_pushChoiceKey}_${u.id}';
+    if (!on) {
+      final was = pushEnabled ?? false;
+      await _prefs.setBool(key, false);
+      notifyListeners();
+      // Not now, the first time: nothing was registered.
+      if (was) await _pushOff();
+      return true;
+    }
+    final registered = await _registerPush(u.device.id);
+    await _prefs.setBool(key, registered);
+    notifyListeners();
+    return registered;
+  }
 
   /// Hands this phone's push token (APNs on iOS, FCM on Android) to the
   /// server, which from then on relays the computer's terminal news
-  /// (POST /v1/push/notify), sealed by each computer with its key.
-  Future<void> _registerPush(String deviceId) async {
+  /// (POST /v1/push/notify), sealed by each computer with its key. False:
+  /// not allowed, or no token. A server that missed it (offline) gets it at
+  /// the next launch.
+  Future<bool> _registerPush(String deviceId) async {
+    final String? token;
     try {
-      final token = await Native.registerPush();
-      if (token == null || user?.device.id != deviceId) return;
+      token = await Native.registerPush();
+    } on Object catch (e) {
+      debugPrint('PocketTerm: no push token: $e');
+      return false;
+    }
+    if (token == null) return false;
+    if (user?.device.id != deviceId) return true;
+    try {
       await server!.push('register', {'token': token, 'label': device, 'platform': pushPlatform});
       await _prefs.setString(_pushTokenKey, token);
     } on Object catch (e) {
       debugPrint('PocketTerm: push registration failed: $e');
     }
+    return true;
   }
 
-  /// Android: FCM handed over a new token (`pushToken`); the server needs it.
+  /// Push off: followed sessions end here, and the server forgets every
+  /// token of this phone (its push token and its followed sessions').
+  Future<void> _pushOff() async {
+    await _prefs.remove(_pushTokenKey);
+    await _endActivities();
+    await _tryServer('push unregister', () => server!.push('unregister', {}));
+  }
+
+  /// Android: FCM handed over a new token (`pushToken`); the server needs it,
+  /// if push is on.
   Future<void> pushTokenChanged() async {
     final user = this.user;
-    if (user != null) await _registerPush(user.device.id);
+    if (user != null && (pushEnabled ?? false)) await _registerPush(user.device.id);
   }
 
   @override
   Future<void> onSigningOut() async {
-    final pushToken = _prefs.getString(_pushTokenKey);
-    final activities = await _forgetHere();
-    // The followed sessions are this phone's: the server stops updating
-    // them too (iOS gives each its own token, which 'unregister' below
-    // doesn't know).
-    for (final a in activities) {
-      if (a.token case final activityToken?) {
-        await _tryServer(
-          'activity end',
-          () => server!.push('activity_end', {'token': activityToken, 'session': a.key}),
-        );
-      }
-    }
-    if (pushToken == null) return;
-    await _tryServer('push unregister', () => server!.push('unregister', {'token': pushToken}));
+    final push = pushEnabled ?? false;
+    await _forgetHere();
+    // The server forgets this phone's push token and its followed sessions'.
+    if (push) await _tryServer('push unregister', () => server!.push('unregister', {}));
   }
 
   /// However the sign-in went, also without [signOut] here (the computer
@@ -175,35 +241,40 @@ class MobileSession extends Session {
   }
 
   /// Drops what this phone keeps for the server: the push registration's
-  /// record, the computers' keys (the next sign-in scans a code, which
+  /// record, every computer's key (the next sign-in scans a code, which
   /// brings its computer's), and the followed sessions, ended at once.
-  /// Returns those sessions.
-  Future<List<({String key, String? token})>> _forgetHere() async {
+  Future<void> _forgetHere() async {
     await _prefs.remove(_pushTokenKey);
     await _prefs.remove(_desktopKey);
     await _prefs.remove(_desktopsKey);
-    for (final desktop in [..._computerKeys.keys]) {
-      try {
-        await Native.removeChannelKey(desktop: desktop);
-        _computerKeys.remove(desktop);
-      } on Object catch (e) {
-        debugPrint('PocketTerm: computer key not removed: $e');
-      }
+    try {
+      await Native.removeAllChannelKeys();
+      _computerKeys.clear();
+    } on Object catch (e) {
+      debugPrint('PocketTerm: computer keys not removed: $e');
     }
-    final activities = await Native.liveActivities();
-    for (final a in activities) {
-      await Native.endActivity(a.key, immediate: true);
-    }
-    return activities;
+    await _endActivities();
   }
 
-  /// One server call of the sign-out; a failed one (offline) doesn't stop
-  /// the rest.
+  /// The followed sessions (Live Activities, Android's ongoing
+  /// notifications) end at once.
+  Future<void> _endActivities() async {
+    try {
+      for (final a in await Native.liveActivities()) {
+        await Native.endActivity(a.key, immediate: true);
+      }
+    } on Object catch (e) {
+      debugPrint('PocketTerm: followed sessions not ended: $e');
+    }
+  }
+
+  /// One server call of a clean-up; a failed one (offline) doesn't stop the
+  /// rest.
   Future<void> _tryServer(String what, Future<Object?> Function() call) async {
     try {
       await call();
     } on Object catch (e) {
-      debugPrint('PocketTerm: $what at sign-out failed: $e');
+      debugPrint('PocketTerm: $what failed: $e');
     }
   }
 }
@@ -241,17 +312,36 @@ class MobileApp extends StatelessWidget {
     debugShowCheckedModeBanner: false,
     theme: _theme(appTheme()),
     builder: (context, child) => Coach(controller: session.tips, child: child!),
-    // No session, no app: only the computer's code gets a phone in.
+    // No session, no app: only the computer's code gets a phone in, or the
+    // demo shows a made-up computer. Signed in, push waits for a yes.
     home: ListenableBuilder(
       listenable: session,
       builder: (context, _) {
         final user = session.user;
         if (user == null) {
+          if (session.demo case final demo?) {
+            return HomePage(
+              key: const ValueKey('demo'),
+              session: session,
+              userId: demoDesktopId,
+              desktops: demo.desktops,
+              remoteFor: (_, _) => demo.remote,
+            );
+          }
           return Scaffold(
-            body: SafeArea(child: SetupPage(session: session)),
+            body: SafeArea(
+              child: SetupPage(session: session, onDemo: session.enterDemo),
+            ),
           );
         }
-        return HomePage(session: session, userId: user.id, desktops: desktops, remoteFor: remoteFor);
+        if (session.pushEnabled == null) return PushConsentPage(session: session);
+        return HomePage(
+          key: ValueKey(user.id),
+          session: session,
+          userId: user.id,
+          desktops: desktops,
+          remoteFor: remoteFor,
+        );
       },
     ),
   );
@@ -336,6 +426,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// A tapped push's or link's session, waiting for its computer's remote.
   ({String desktop, String key})? _sessionToOpen;
 
+  /// Showing "Try the demo"'s made-up computer.
+  bool get _demo => widget.session.demo != null && widget.session.user == null;
+
   bool get _resumed {
     final state = WidgetsBinding.instance.lifecycleState;
     return state == null || state == AppLifecycleState.resumed;
@@ -350,6 +443,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final old = _terminal;
     if (old != null && old.desktopId == d?.id && old.key == key) {
       old.desktopName = d?.name;
+      _syncFollow(old);
       return;
     }
     TerminalRemote? next;
@@ -358,11 +452,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         next = make(d.id, key);
       } else if (_supportDir case final dir?) {
         next = TerminalRemote(widget.session.server!, dir, desktopId: d.id, key: key);
-        next.activities = LiveActivities(widget.session.server!, next);
       } else {
         return; // Made once the cache folder is known.
       }
       next.desktopName = d.name;
+      _syncFollow(next);
     }
     if (old != null) {
       if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
@@ -380,10 +474,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
+  /// Following sessions (Live Activities, Android's ongoing notifications)
+  /// needs push: with it off there's no Follow, and nothing registers.
+  void _syncFollow(TerminalRemote t) {
+    final server = widget.session.server;
+    final on = (widget.session.pushEnabled ?? false) && server != null;
+    if (on && t.activities == null) {
+      t.activities = LiveActivities(server, t);
+    } else if (!on && t.activities != null) {
+      t.activities!.dispose();
+      t.activities = null;
+    }
+  }
+
   void _dropRemote(TerminalRemote t) {
     _terminalAttached = false;
-    if (widget.remoteFor != null) return;
     t.activities?.dispose();
+    t.activities = null;
+    if (widget.remoteFor != null) return;
     t.dispose();
   }
 
@@ -534,13 +642,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               selected?.name ?? 'Terminal',
               onTap: () => unawaited(_pickDesktop()),
               trailing: [
-                IconButton(
-                  tooltip: 'Account',
-                  onPressed: () => unawaited(_openAccount()),
-                  icon: Avatar(name: widget.session.userName, size: 30),
-                ),
+                if (_demo)
+                  TextButton(
+                    key: const ValueKey('exit-demo'),
+                    onPressed: widget.session.exitDemo,
+                    child: const Text('Exit demo'),
+                  )
+                else
+                  IconButton(
+                    tooltip: 'Account',
+                    onPressed: () => unawaited(_openAccount()),
+                    icon: Avatar(name: widget.session.userName, size: 30),
+                  ),
               ],
             ),
+            if (_demo) const _DemoBanner(),
             Expanded(
               child: switch (terminal) {
                 final t? => TerminalList(
@@ -586,7 +702,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final link = await scanSetupCode(context, signedIn: true);
     if (link == null || !mounted) return;
     widget.session.authError = null;
-    await widget.session.connectLink(link);
+    await widget.session.connectLink(link, scanned: true);
     if (!mounted) return;
     final selected = _desktops.selected;
     final problem =
@@ -681,6 +797,30 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            ListenableBuilder(
+              listenable: widget.session,
+              builder: (_, _) => SwitchListTile.adaptive(
+                key: const ValueKey('push-toggle'),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Notifications'),
+                subtitle: Text(
+                  widget.session.pushEnabled ?? false
+                      ? 'Encrypted, through the push relay at push.danyzmaj.com.'
+                      : isIos
+                      ? 'Off: no notifications and no Lock Screen sessions.'
+                      : 'Off: no notifications and no followed sessions.',
+                  style: const TextStyle(color: C.dim, height: 1.4),
+                ),
+                value: widget.session.pushEnabled ?? false,
+                onChanged: (on) async {
+                  final messenger = ScaffoldMessenger.of(sheet);
+                  if (!await widget.session.setPushEnabled(on: on) && on) {
+                    messenger.showSnackBar(const SnackBar(content: Text(pushNotAllowed)));
+                  }
+                },
+              ),
+            ),
             const SizedBox(height: 18),
             OutlinedButton(
               onPressed: () async {
@@ -723,6 +863,37 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ],
         ),
       ),
+    ),
+  );
+}
+
+/// Says the demo is one, under the computer's title.
+class _DemoBanner extends StatelessWidget {
+  const _DemoBanner();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    decoration: BoxDecoration(
+      color: C.accent.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: C.accent.withValues(alpha: 0.35)),
+    ),
+    child: const Row(
+      children: [
+        Text(
+          'DEMO',
+          style: TextStyle(color: C.accent, fontWeight: FontWeight.w700, fontSize: 12, letterSpacing: 1),
+        ),
+        SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'Made-up sessions on a pretend computer. Nothing leaves this phone.',
+            style: TextStyle(color: C.dim, fontSize: 13, height: 1.35),
+          ),
+        ),
+      ],
     ),
   );
 }

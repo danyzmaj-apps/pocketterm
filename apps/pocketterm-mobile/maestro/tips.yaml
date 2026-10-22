@@ -1,0 +1,14 @@
+# Dismisses the first-use tips as they come, one after another (demo.yaml).
+# A tip shows a moment after its page settles, so each gets a short wait.
+appId: com.danyzmaj.pocketterm
+---
+- repeat:
+    times: 3
+    commands:
+      - extendedWaitUntil:
+          visible: "Got it"
+          timeout: 2500
+          optional: true
+      - tapOn:
+          text: "Got it"
+          optional: true

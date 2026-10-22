@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/connect.dart' show ConfirmLink;
 import 'package:pocketterm_core/logo.dart';
 import 'package:pocketterm_core/session.dart';
@@ -9,70 +8,46 @@ import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/links.dart';
 import 'package:pocketterm_mobile/onboarding/scan.dart';
 
-/// What a phone without a session shows: the only way in is a code from the
-/// computer, scanned (its QR) or pasted (the same setup link as text), which
-/// connects to the server and signs in. A phone never signs in with GitHub
-/// and never sets up a server. After a sign-out, a deleted account or a
-/// session the server ended, it says why on top.
+/// What a phone without a session shows: the only way in is the code
+/// PocketTerm on the computer shows, scanned with this phone's camera, which
+/// connects to the server, signs in and brings that computer's key. A phone
+/// never signs in with GitHub and never sets up a server. "Try the demo"
+/// shows the app on a made-up computer instead. After a sign-out, a deleted
+/// account or a session the server ended, it says why on top.
 class SetupPage extends StatefulWidget {
-  const SetupPage({required this.session, super.key});
+  const SetupPage({required this.session, this.onDemo, @visibleForTesting this.scan = scanSetupCode, super.key});
   final Session session;
+
+  /// "Try the demo"; no button without it.
+  final VoidCallback? onDemo;
+
+  /// Reads the computer's code: the camera (tests hand in a link).
+  final Future<Uri?> Function(BuildContext context) scan;
 
   @override
   State<SetupPage> createState() => _SetupPageState();
 }
 
 class _SetupPageState extends State<SetupPage> {
-  final _pasted = TextEditingController();
-  bool _paste = false;
   bool _busy = false;
-
-  /// What's wrong with the pasted text, before anything is sent.
-  String? _invalid;
 
   Session get session => widget.session;
 
-  @override
-  void dispose() {
-    _pasted.dispose();
-    super.dispose();
-  }
-
-  /// The computer's code, read with this phone's camera.
+  /// Connects and signs in with the code the camera read; on failure the
+  /// page stays, with the reason ([Session.authError]) under the button.
   Future<void> _scan() async {
-    final link = await scanSetupCode(context);
-    if (link != null && mounted) await _signIn(link);
-  }
-
-  Future<void> _submitPasted() async {
-    final link = Uri.tryParse(_pasted.text.trim());
-    if (link == null || Backend.pairingCode(link) == null) {
-      return setState(
-        () => _invalid =
-            'Paste the whole code from your computer: the link that starts with pocketterm://setup and has a code '
-            'in it.',
-      );
-    }
-    await _signIn(link);
-  }
-
-  /// Connects and signs in; on failure the page stays, with the reason
-  /// ([Session.authError]) under the buttons.
-  Future<void> _signIn(Uri link) async {
-    setState(() {
-      _busy = true;
-      _invalid = null;
-    });
-    await session.connectLink(link);
+    final link = await widget.scan(context);
+    if (link == null || !mounted) return;
+    setState(() => _busy = true);
+    await session.connectLink(link, scanned: true);
     if (mounted) setState(() => _busy = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final error = _invalid ?? session.authError;
+    final error = session.authError;
     return Center(
       child: SingleChildScrollView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.all(24),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 460),
@@ -97,16 +72,14 @@ class _SetupPageState extends State<SetupPage> {
               ],
               const SizedBox(height: 10),
               const Text(
-                'PocketTerm puts your computer\u2019s coding sessions on your phone, through your own free server. '
-                'This phone signs in with a code from PocketTerm on your computer.',
+                'Your computer\u2019s coding sessions on your phone, end-to-end encrypted. This phone connects by '
+                'scanning the code PocketTerm on your computer shows.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: C.dim, height: 1.5),
               ),
               const SizedBox(height: 20),
               if (session.linkToConfirm case final link?)
                 ConfirmLink(session: session, link: link)
-              else if (_paste)
-                ..._pasteForm()
               else
                 ..._scanSteps(),
               if (error != null) ...[
@@ -117,16 +90,21 @@ class _SetupPageState extends State<SetupPage> {
                   style: const TextStyle(fontSize: 12, color: Color(0xFFFCA5A5)),
                 ),
               ],
-              const SizedBox(height: 10),
-              TextButton(
-                onPressed: _busy
-                    ? null
-                    : () => setState(() {
-                        _paste = !_paste;
-                        _invalid = null;
-                      }),
-                child: Text(_paste ? '← Scan the code instead' : 'Paste a code instead'),
-              ),
+              if (widget.onDemo case final onDemo?) ...[
+                const SizedBox(height: 18),
+                OutlinedButton(
+                  key: const ValueKey('try-demo'),
+                  onPressed: _busy ? null : onDemo,
+                  style: OutlinedButton.styleFrom(side: const BorderSide(color: C.line2)),
+                  child: const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Text('Try the demo')),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'No computer yet? See PocketTerm with made-up sessions. Nothing connects.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: C.dim, height: 1.4),
+                ),
+              ],
             ],
           ),
         ),
@@ -143,8 +121,8 @@ class _SetupPageState extends State<SetupPage> {
         border: Border.all(color: C.line2),
       ),
       child: const Text(
-        '1.  Install PocketTerm on your computer and open it. Its setup sets up your server.\n'
-        '2.  Then its setup checklist shows a code under Your phone (later: Settings \u2192 Add\u00A0a\u00A0phone\u2026).\n'
+        '1.  Install PocketTerm on your computer and open it. Its setup connects it to your server.\n'
+        '2.  On the computer, open Settings \u2192 Add\u00A0a\u00A0phone\u2026 to show a code.\n'
         '3.  Tap the button below and point this phone at it.\n'
         '4.  That\u2019s it: the phone connects and signs in by itself.',
         style: TextStyle(height: 1.7),
@@ -161,40 +139,11 @@ class _SetupPageState extends State<SetupPage> {
     ),
     const SizedBox(height: 8),
     FilledButton(
+      key: const ValueKey('scan-code'),
       onPressed: _busy ? null : () => unawaited(_scan()),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: _busy ? const _Spinner() : const Text('Scan the code from your computer'),
-      ),
-    ),
-  ];
-
-  List<Widget> _pasteForm() => [
-    const Text(
-      'Paste the code you were given: the whole link, as it came (pocketterm://setup?…).',
-      textAlign: TextAlign.center,
-      style: TextStyle(height: 1.4),
-    ),
-    const SizedBox(height: 14),
-    TextField(
-      controller: _pasted,
-      enabled: !_busy,
-      autocorrect: false,
-      onTapOutside: dismissKeyboard,
-      enableSuggestions: false,
-      keyboardType: TextInputType.url,
-      textInputAction: TextInputAction.done,
-      minLines: 1,
-      maxLines: 4,
-      decoration: setupField('pocketterm://setup?url=…&key=…&code=…'),
-      onSubmitted: (_) => unawaited(_submitPasted()),
-    ),
-    const SizedBox(height: 14),
-    FilledButton(
-      onPressed: _busy ? null : () => unawaited(_submitPasted()),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: _busy ? const _Spinner() : const Text('Sign in'),
       ),
     ),
   ];

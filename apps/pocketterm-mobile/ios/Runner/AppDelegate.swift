@@ -15,6 +15,8 @@ import UserNotifications
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    // Before Flutter starts and reads them: a reinstall doesn't pick up the last install's keys.
+    PocketTermShared.wipeKeychainAfterInstall()
     let launched = super.application(application, didFinishLaunchingWithOptions: launchOptions)
     // Before launch ends: the tap that launched the app comes next.
     notifications.install()
@@ -87,8 +89,8 @@ import UserNotifications
         } else {
           result(FlutterError(code: "keychain", message: "Couldn't save the key in the Keychain", details: nil))
         }
-      case "removeChannelKey":
-        if let desktop = args["desktop"] as? String { PocketTermShared.removeChannelKey(for: desktop) }
+      case "removeAllChannelKeys":
+        PocketTermShared.removeAllChannelKeys()
         result(nil)
       case "channelKeys":
         result(PocketTermShared.channelKeys().mapValues { $0.base64EncodedString() })

@@ -5,7 +5,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Scanning the setup code the computer shows (mobile_scanner); asked for when the scanner opens. -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <!-- A phone without a camera can still paste the computer's code. -->
+    <!-- A device without a camera can still try the demo. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- No backup and no device-to-device transfer (dataExtractionRules, Android 12+, where

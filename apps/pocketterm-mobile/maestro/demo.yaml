@@ -1,0 +1,32 @@
+# Opens the demo (made-up sessions, no server) from the setup screen and
+# walks through it: a session, its approval, and back to setup. Needs the app
+# signed out, as after a fresh install. First-use tips get "Got it" as they
+# come.
+#   maestro test demo.yaml
+appId: com.danyzmaj.pocketterm
+---
+- launchApp
+- scrollUntilVisible:
+    element: "Try the demo"
+- tapOn: "Try the demo"
+- extendedWaitUntil:
+    visible: ".*DEMO.*"
+    timeout: 5000
+- runFlow: tips.yaml
+# A row reads as its whole text. A tip's tour can take the first tap.
+- tapOn: ".*Fix the pricing table on small screens.*"
+- runFlow: tips.yaml
+- runFlow:
+    when:
+      notVisible: "Approve"
+    commands:
+      - tapOn: ".*Fix the pricing table on small screens.*"
+      - runFlow: tips.yaml
+- tapOn: "Approve"
+- extendedWaitUntil:
+    visible: ".*Built in 6.2 s.*"
+    timeout: 5000
+- tapOn: "Back"
+- runFlow: tips.yaml
+- tapOn: "Exit demo"
+- assertVisible: "Scan the code from your computer"

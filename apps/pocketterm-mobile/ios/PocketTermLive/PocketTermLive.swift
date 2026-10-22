@@ -15,28 +15,41 @@ private enum Palette {
 
 private typealias SessionState = SessionActivity.ContentState
 
-extension SessionActivity.ContentState {
-  fileprivate var color: Color {
-    switch state {
-    case .working: Palette.accent
-    case .needs: Palette.warn
-    case .done: Palette.ok
-    case .ended: Palette.dim
+/// What a followed session shows: its state, or, once past the stale date
+/// every update carries (the server sends updates with one a few minutes
+/// ahead), that the computer went quiet. Ended stays Ended.
+private struct Shown {
+  let state: SessionState
+  let isStale: Bool
+
+  init(_ context: ActivityViewContext<SessionActivity>) {
+    state = context.state
+    isStale = context.isStale && context.state.state != .ended
+  }
+
+  var color: Color {
+    if isStale { return Palette.dim }
+    switch state.state {
+    case .working: return Palette.accent
+    case .needs: return Palette.warn
+    case .done: return Palette.ok
+    case .ended: return Palette.dim
     }
   }
 
-  fileprivate var symbol: String {
-    switch state {
-    case .working: "sparkles"
-    case .needs: "exclamationmark.bubble.fill"
-    case .done: "checkmark.circle.fill"
-    case .ended: "stop.circle"
+  var symbol: String {
+    if isStale { return "wifi.slash" }
+    switch state.state {
+    case .working: return "sparkles"
+    case .needs: return "exclamationmark.bubble.fill"
+    case .done: return "checkmark.circle.fill"
+    case .ended: return "stop.circle"
     }
   }
 
   /// What it waits for, after "Needs you".
-  fileprivate var waitsFor: String? {
-    switch kind {
+  var waitsFor: String? {
+    switch state.kind {
     case .question: "Question"
     case .approval: "Approval"
     case .plan: "Plan review"
@@ -46,22 +59,21 @@ extension SessionActivity.ContentState {
 }
 
 /// Working with the time since it started, Needs you with what for,
-/// Finished, or Ended. A stale one (no word for 8 hours) says so.
+/// Finished, or Ended; stale, that the computer went quiet.
 private struct SessionChip: View {
-  let state: SessionState
-  let stale: Bool
+  let shown: Shown
 
   var body: some View {
     HStack(spacing: 4) {
-      if stale && state.state == .working {
-        Text("No word lately")
+      if shown.isStale {
+        Text("No word from the computer")
       } else {
-        switch state.state {
+        switch shown.state.state {
         case .working:
           Text("Working")
-          Text(state.sinceDate, style: .timer).monospacedDigit()
+          Text(shown.state.sinceDate, style: .timer).monospacedDigit()
         case .needs:
-          Text(state.waitsFor.map { "Needs you · \($0)" } ?? "Needs you")
+          Text(shown.waitsFor.map { "Needs you · \($0)" } ?? "Needs you")
         case .done:
           Text("Finished")
         case .ended:
@@ -70,11 +82,11 @@ private struct SessionChip: View {
       }
     }
     .font(.caption.weight(.semibold))
-    .foregroundStyle(stale ? Palette.dim : state.color)
+    .foregroundStyle(shown.color)
     .lineLimit(1)
     .padding(.horizontal, 8)
     .padding(.vertical, 4)
-    .background((stale ? Palette.dim : state.color).opacity(0.15), in: Capsule())
+    .background(shown.color.opacity(0.15), in: Capsule())
   }
 }
 
@@ -82,8 +94,9 @@ private struct SessionLockScreen: View {
   let context: ActivityViewContext<SessionActivity>
 
   var body: some View {
+    let shown = Shown(context)
     HStack(spacing: 12) {
-      Image(systemName: context.state.symbol).font(.title2).foregroundStyle(context.state.color)
+      Image(systemName: shown.symbol).font(.title2).foregroundStyle(shown.color)
       VStack(alignment: .leading, spacing: 2) {
         Text(context.attributes.title).font(.headline).foregroundStyle(.white).lineLimit(1)
         if !context.attributes.project.isEmpty {
@@ -91,7 +104,7 @@ private struct SessionLockScreen: View {
         }
       }
       Spacer(minLength: 8)
-      SessionChip(state: context.state, stale: context.isStale)
+      SessionChip(shown: shown)
     }
     .padding(16)
   }
@@ -105,10 +118,10 @@ struct SessionLiveActivity: Widget {
         .activitySystemActionForegroundColor(.white)
         .widgetURL(context.attributes.link)
     } dynamicIsland: { context in
-      let state = context.state
+      let shown = Shown(context)
       return DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          Image(systemName: state.symbol).font(.title2).foregroundStyle(state.color).padding(.leading, 4)
+          Image(systemName: shown.symbol).font(.title2).foregroundStyle(shown.color).padding(.leading, 4)
         }
         DynamicIslandExpandedRegion(.center) {
           VStack(spacing: 2) {
@@ -119,30 +132,34 @@ struct SessionLiveActivity: Widget {
           }
         }
         DynamicIslandExpandedRegion(.bottom) {
-          SessionChip(state: state, stale: context.isStale)
+          SessionChip(shown: shown)
         }
       } compactLeading: {
-        Image(systemName: state.symbol).foregroundStyle(state.color)
+        Image(systemName: shown.symbol).foregroundStyle(shown.color)
       } compactTrailing: {
-        switch state.state {
-        case .working:
-          Text(state.sinceDate, style: .timer)
-            .monospacedDigit()
-            .font(.caption2)
-            .foregroundStyle(state.color)
-            .frame(maxWidth: 44)
-        case .needs:
-          Text("Needs you").font(.caption2.weight(.semibold)).foregroundStyle(state.color)
-        case .done:
-          Text("Done").font(.caption2.weight(.semibold)).foregroundStyle(state.color)
-        case .ended:
-          Text("Ended").font(.caption2).foregroundStyle(state.color)
+        if shown.isStale {
+          Text("Quiet").font(.caption2).foregroundStyle(shown.color)
+        } else {
+          switch shown.state.state {
+          case .working:
+            Text(shown.state.sinceDate, style: .timer)
+              .monospacedDigit()
+              .font(.caption2)
+              .foregroundStyle(shown.color)
+              .frame(maxWidth: 44)
+          case .needs:
+            Text("Needs you").font(.caption2.weight(.semibold)).foregroundStyle(shown.color)
+          case .done:
+            Text("Done").font(.caption2.weight(.semibold)).foregroundStyle(shown.color)
+          case .ended:
+            Text("Ended").font(.caption2).foregroundStyle(shown.color)
+          }
         }
       } minimal: {
-        Image(systemName: state.symbol).foregroundStyle(state.color)
+        Image(systemName: shown.symbol).foregroundStyle(shown.color)
       }
       .widgetURL(context.attributes.link)
-      .keylineTint(state.color)
+      .keylineTint(shown.color)
     }
   }
 }

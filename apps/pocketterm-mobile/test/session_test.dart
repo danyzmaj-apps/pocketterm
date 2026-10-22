@@ -42,9 +42,11 @@ void main() {
 
     expect(calls.where((c) => c.method == 'endActivity').map((c) => (c.arguments as Map)['key']), ['kitty-1/2']);
     expect(prefs.getString('pocketterm_push_token'), isNull, reason: 'the next account registers for push afresh');
-    expect(calls.where((c) => c.method == 'removeChannelKey').map((c) => c.arguments), [
-      {'desktop': 'abcd1234'},
-    ]);
+    expect(
+      calls.where((c) => c.method == 'removeAllChannelKeys'),
+      hasLength(1),
+      reason: 'every key goes, also ones Dart never loaded',
+    );
     expect(phone.computerKey('abcd1234'), isNull, reason: 'the next sign-in scans a code, and gets its key');
   });
 }

@@ -92,8 +92,21 @@ enum PocketTermShared {
     return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
   }
 
-  static func removeChannelKey(for desktop: String) {
-    SecItemDelete(keyQuery(desktop) as CFDictionary)
+  /// Every computer's key, also ones the app never loaded (sign-out).
+  static func removeAllChannelKeys() {
+    SecItemDelete(keyQuery() as CFDictionary)
+  }
+
+  /// Keychain items outlive the app: deleting PocketTerm leaves its keys and
+  /// sign-in behind for a reinstall to pick up. The first launch after an
+  /// install (the app's own UserDefaults go with the app) wipes them, before
+  /// anything reads them.
+  static func wipeKeychainAfterInstall() {
+    let installed = "pocketterm.installed"
+    guard !UserDefaults.standard.bool(forKey: installed) else { return }
+    removeAllChannelKeys()
+    setDeviceToken(nil)
+    UserDefaults.standard.set(true, forKey: installed)
   }
 
   static func channelKey(for desktop: String) -> Data? {
@@ -131,5 +144,30 @@ enum PocketTermShared {
       return nil
     }
     return try? AES.GCM.open(box, using: SymmetricKey(data: key), authenticating: Data(aad.utf8))
+  }
+
+  // MARK: Fresh pushes
+
+  /// A sealed notice older (or further ahead) than this shows only the
+  /// generic alert: the relay or anyone on the way can hold one back and
+  /// send it again later.
+  static let freshFor: TimeInterval = 10 * 60
+
+  private static let seenKey = "seenPushIds"
+  /// More than a computer sends in [freshFor].
+  private static let seenKept = 256
+
+  /// Whether a sealed notice made at [ts] (ms since 1970) with [id] is new:
+  /// recent, and not seen before. Remembers [id] (the last 256) either way.
+  static func isFreshPush(ts: Double?, id: String?) -> Bool {
+    guard let ts, let id, !id.isEmpty else { return false }
+    var seen = defaults.stringArray(forKey: seenKey) ?? []
+    let repeated = seen.contains(id)
+    if !repeated {
+      seen.append(id)
+      defaults.set(Array(seen.suffix(seenKept)), forKey: seenKey)
+    }
+    let age = Date().timeIntervalSince1970 - ts / 1000
+    return !repeated && abs(age) <= freshFor
   }
 }

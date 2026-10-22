@@ -13,11 +13,26 @@ final testKey = ChannelKey(List.filled(32, 9));
 PocketTermServerClient offlineServer() =>
     PocketTermServerClient(const Backend(url: 'http://localhost:1'), tokens: MemoryDeviceTokens());
 
+/// A server that takes push calls (`POST /v1/push/<action>`) without a network,
+/// keeping them in [pushes].
+class PushRecorder extends PocketTermServerClient {
+  PushRecorder() : super(const Backend(url: 'http://localhost:1'), tokens: MemoryDeviceTokens());
+
+  final pushes = <(String, Map<String, Object?>)>[];
+
+  @override
+  Future<Map<String, dynamic>> push(String action, Map<String, Object?> body) async {
+    pushes.add((action, body));
+    return {};
+  }
+}
+
 /// A phone signed in to `ana.example.com` (or, with `signedIn: false`, not
-/// yet), with nothing behind it: no disk, no server. Its first-use tips are
-/// all seen unless `tips`; not `fresh`, it keeps the phone's prefs from
-/// before (the app started again). It holds [testKey] for every computer
-/// but the [locked] ones.
+/// yet), with nothing behind it: no disk, no server but [server]'s push
+/// calls. Its first-use tips are all seen unless `tips`; not `fresh`, it
+/// keeps the phone's prefs from before (the app started again). It holds
+/// [testKey] for every computer but the [locked] ones. `push`: its
+/// notifications choice on that server (null: not asked yet).
 class FakeSession extends MobileSession {
   FakeSession._(SharedPreferences prefs, this._signedIn) : super(prefs, 'iPhone');
 
@@ -33,13 +48,22 @@ class FakeSession extends MobileSession {
   Backend? get backend => connected;
 
   @override
+  final PushRecorder server = PushRecorder();
+
+  @override
   ChannelKey? computerKey(String desktopId) =>
       super.computerKey(desktopId) ?? (locked.contains(desktopId) ? null : testKey);
 
-  static Future<FakeSession> create({bool signedIn = true, bool tips = false, bool fresh = true}) async {
+  static Future<FakeSession> create({
+    bool signedIn = true,
+    bool tips = false,
+    bool fresh = true,
+    bool? push = false,
+  }) async {
     if (fresh) {
       SharedPreferences.setMockInitialValues({
         if (!tips) CoachController.seenKey: [for (final t in Tip.values) t.id],
+        'pocketterm_push_on_server': ?push,
       });
     }
     return FakeSession._(await SharedPreferences.getInstance(), signedIn);

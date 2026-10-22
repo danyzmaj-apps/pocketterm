@@ -129,8 +129,8 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
             }
-            "removeChannelKey" -> {
-                (args["desktop"] as? String)?.let { PocketTermShared.removeChannelKey(this, it) }
+            "removeAllChannelKeys" -> {
+                PocketTermShared.removeAllChannelKeys(this)
                 result.success(null)
             }
             "channelKeys" -> result.success(

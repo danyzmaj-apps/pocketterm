@@ -45,8 +45,10 @@ class Native {
   static Future<void> setChannelKey({required String desktop, required String key}) =>
       _channel.invokeMethod('setChannelKey', {'desktop': desktop, 'key': key});
 
-  static Future<void> removeChannelKey({required String desktop}) =>
-      _channel.invokeMethod('removeChannelKey', {'desktop': desktop});
+  /// Every computer's key goes, also ones Dart never loaded (sign-out). On
+  /// Android the Keystore key that wraps them goes too, and with it the
+  /// sign-in ([deviceToken]) it also wraps.
+  static Future<void> removeAllChannelKeys() => _channel.invokeMethod('removeAllChannelKeys');
 
   // Phone: followed coding sessions, as Live Activities on iOS
   // (apps/pocketterm-mobile/ios/Shared/SessionActivity.swift) and ongoing notifications on Android

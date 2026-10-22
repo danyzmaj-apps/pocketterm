@@ -84,8 +84,18 @@ object PocketTermShared {
         keyPrefs(c).edit().putString(desktop, Base64.encodeToString(wrapped, Base64.NO_WRAP)).commit()
     }
 
-    fun removeChannelKey(c: Context, desktop: String) {
-        keyPrefs(c).edit().remove(desktop).commit()
+    /**
+     * Every computer's key goes (sign-out), and the Keystore key that wraps
+     * them with it. The sign-in it also wraps goes too: it couldn't be read
+     * any more.
+     */
+    @Synchronized
+    fun removeAllChannelKeys(c: Context) {
+        keyPrefs(c).edit().clear().commit()
+        tokenPrefs(c).edit().clear().commit()
+        runCatching {
+            KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(WRAP_ALIAS)
+        }
     }
 
     /** Computer [desktop]'s key; null without one, or when it doesn't unwrap. */
@@ -142,4 +152,24 @@ object PocketTermShared {
         cipher.updateAAD(aad.toByteArray(Charsets.UTF_8))
         cipher.doFinal(sealed, 12, sealed.size - 12)
     }.getOrNull()
+
+    // Fresh pushes: a sealed notice older (or further ahead) than FRESH_FOR,
+    // or one whose id came before, shows only the generic alert. The relay
+    // or anyone on the way could hold one back and send it again later.
+
+    private const val FRESH_FOR = 10 * 60 * 1000L
+    /** More than a computer sends in FRESH_FOR. */
+    private const val SEEN_KEPT = 256
+
+    /** Whether a notice sealed at [ts] (ms since 1970) with [id] is new; remembers [id] (the last 256) either way. */
+    @Synchronized
+    fun isFreshPush(c: Context, ts: Long?, id: String?): Boolean {
+        if (ts == null || id.isNullOrEmpty()) return false
+        val seen = prefs(c).getString("seenPushIds", null)?.split('\n')?.filter { it.isNotEmpty() } ?: emptyList()
+        val repeated = id in seen
+        if (!repeated) {
+            prefs(c).edit().putString("seenPushIds", (seen + id).takeLast(SEEN_KEPT).joinToString("\n")).apply()
+        }
+        return !repeated && kotlin.math.abs(System.currentTimeMillis() - ts) <= FRESH_FOR
+    }
 }

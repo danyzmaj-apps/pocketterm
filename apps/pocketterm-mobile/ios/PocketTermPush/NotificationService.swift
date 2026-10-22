@@ -1,17 +1,22 @@
 import UserNotifications
 
 /// Turns a push into its real text. The relay (apps/pocketterm-relay) only
-/// forwards ciphertext: the computer `d` sealed {title, body, session?, state?}
-/// with its channel key (`PocketTermShared.channelKey`), AES-256-GCM in
+/// forwards ciphertext: the computer `d` sealed {title, body, session?, state?,
+/// ts, id} with its channel key (`PocketTermShared.channelKey`), AES-256-GCM in
 /// CryptoKit's combined form, AAD "pocketterm/v1|push|<d>". A computer whose
-/// code this iPhone never scanned, or anything else off, keeps the relay's
-/// generic "PocketTerm" alert; nothing private ever shows.
+/// code this iPhone never scanned, anything else off, or a notice that is old
+/// or seen before (`PocketTermShared.isFreshPush`: held back and sent again)
+/// keeps the relay's generic "PocketTerm" alert; nothing private ever shows.
 final class NotificationService: UNNotificationServiceExtension {
   private struct Message: Decodable {
     let title: String
     let body: String
     /// The coding session (its routed key) a tap opens.
     let session: String?
+    /// When the computer sealed it, in ms since 1970.
+    let ts: Double?
+    /// Unique per notice.
+    let id: String?
   }
 
   override func didReceive(
@@ -24,7 +29,8 @@ final class NotificationService: UNNotificationServiceExtension {
       let sealed = Data(base64Encoded: enc),
       let key = PocketTermShared.channelKey(for: desktop),
       let plain = PocketTermShared.open(sealed, key: key, aad: "pocketterm/v1|push|\(desktop)"),
-      let message = try? JSONDecoder().decode(Message.self, from: plain)
+      let message = try? JSONDecoder().decode(Message.self, from: plain),
+      PocketTermShared.isFreshPush(ts: message.ts, id: message.id)
     else { return }
     content.title = message.title
     content.body = message.body

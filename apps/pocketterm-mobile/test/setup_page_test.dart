@@ -23,7 +23,7 @@ class _Phone extends MobileSession {
 }
 
 /// A [Session] whose [connectLink] signs in (or fails with [failure])
-/// without a server.
+/// without a server, keeping what it was handed.
 class _FakeSession extends Session {
   _FakeSession({this.failure}) : super('iPhone');
   final String? failure;
@@ -33,12 +33,12 @@ class _FakeSession extends Session {
 
   @override
   DeviceTokens get deviceTokens => MemoryDeviceTokens();
-  final links = <Uri>[];
+  final links = <(Uri, bool)>[];
   bool signedIn = false;
 
   @override
-  Future<void> connectLink(Uri uri, {bool external = false}) async {
-    links.add(uri);
+  Future<void> connectLink(Uri uri, {bool scanned = false}) async {
+    links.add((uri, scanned));
     if (failure case final f?) {
       authError = f;
     } else {
@@ -49,7 +49,7 @@ class _FakeSession extends Session {
 }
 
 const _server = 'https://pt.example.com';
-final Uri _link = Uri.parse('pocketterm://setup?url=$_server&code=K7QM-3XRT-AB12-CD34-EF56-GH78-JK90');
+final Uri _link = Uri.parse('pocketterm://setup?url=$_server&code=K7QM-3XRT-AB12-CD34-EF56-GH78-JK90&d=abcd1234&k=a');
 
 void main() {
   void phoneSize(WidgetTester tester) {
@@ -58,7 +58,8 @@ void main() {
     addTearDown(tester.view.reset);
   }
 
-  Future<_FakeSession> pumpSetup(WidgetTester tester, {String? failure}) async {
+  /// The setup page whose camera reads [read] (null: cancelled).
+  Future<_FakeSession> pumpSetup(WidgetTester tester, {String? failure, Uri? read}) async {
     phoneSize(tester);
     final session = _FakeSession(failure: failure);
     await tester.pumpWidget(
@@ -66,7 +67,8 @@ void main() {
         home: Scaffold(
           body: ListenableBuilder(
             listenable: session,
-            builder: (_, _) => session.signedIn ? const Text('Signed in') : SetupPage(session: session),
+            builder: (_, _) =>
+                session.signedIn ? const Text('Signed in') : SetupPage(session: session, scan: (_) async => read),
           ),
         ),
       ),
@@ -74,36 +76,23 @@ void main() {
     return session;
   }
 
-  Future<void> paste(WidgetTester tester, String text) async {
-    await tester.ensureVisible(find.text('Paste a code instead'));
-    await tester.tap(find.text('Paste a code instead'));
-    await tester.pump();
-    await tester.enterText(find.byType(TextField), text);
-    await tester.tap(find.text('Sign in'));
+  Future<void> scan(WidgetTester tester) async {
+    await tester.tap(find.byKey(const ValueKey('scan-code')));
     await tester.pump();
   }
 
   for (final (name, known) in [('a new phone', null), ('a phone that knows its server', const Backend(url: _server))]) {
-    testWidgets('$name without a session offers only the computer’s code, scanned or pasted, never GitHub', (
+    testWidgets('$name without a session offers scanning the computer’s code and the demo, nothing else', (
       tester,
     ) async {
       phoneSize(tester);
       SharedPreferences.setMockInitialValues({});
       await tester.pumpWidget(MobileApp(session: _Phone(await SharedPreferences.getInstance(), known: known)));
       expect(find.text('Scan the code from your computer'), findsOneWidget);
-      expect(find.text('Paste a code instead'), findsOneWidget);
+      expect(find.byKey(const ValueKey('try-demo')), findsOneWidget);
+      expect(find.byType(TextField), findsNothing, reason: 'no server address, no pasted code');
       expect(find.byType(SignInPage), findsNothing);
       expect(find.textContaining('GitHub'), findsNothing);
-
-      await tester.ensureVisible(find.text('Paste a code instead'));
-      await tester.tap(find.text('Paste a code instead'));
-      await tester.pump();
-      expect(find.byType(TextField), findsOneWidget);
-      expect(find.textContaining('GitHub'), findsNothing);
-
-      await tester.tap(find.text('← Scan the code instead'));
-      await tester.pump();
-      expect(find.text('Scan the code from your computer'), findsOneWidget);
     });
   }
 
@@ -117,31 +106,26 @@ void main() {
     expect(find.text('Scan the code from your computer'), findsOneWidget);
   });
 
-  testWidgets('a pasted link with a code signs in', (tester) async {
-    final session = await pumpSetup(tester);
-    await paste(tester, '  $_link\n');
-    expect(session.links, [_link]);
+  testWidgets('a scanned code signs in, as scanned: its computer key is taken', (tester) async {
+    final session = await pumpSetup(tester, read: _link);
+    await scan(tester);
+    expect(session.links, [(_link, true)]);
     expect(find.text('Signed in'), findsOneWidget);
   });
 
-  testWidgets('a pasted link without a code, or anything else, is refused before anything is sent', (tester) async {
+  testWidgets('a cancelled scan sends nothing', (tester) async {
     final session = await pumpSetup(tester);
-    await paste(tester, 'pocketterm://setup?url=$_server');
-    expect(find.textContaining('Paste the whole code from your computer'), findsOneWidget);
-
-    await tester.enterText(find.byType(TextField), _server);
-    await tester.tap(find.text('Sign in'));
-    await tester.pump();
-    expect(find.textContaining('Paste the whole code from your computer'), findsOneWidget);
+    await scan(tester);
     expect(session.links, isEmpty);
+    expect(find.text('Scan the code from your computer'), findsOneWidget);
   });
 
   testWidgets('a code the server turns down says why and stays', (tester) async {
     const why = "That code doesn't work: it may have run out, been used already or been revoked.";
-    final session = await pumpSetup(tester, failure: why);
-    await paste(tester, '$_link');
-    expect(session.links, [_link]);
+    final session = await pumpSetup(tester, failure: why, read: _link);
+    await scan(tester);
+    expect(session.links, [(_link, true)]);
     expect(find.text(why), findsOneWidget);
-    expect(find.text('Sign in'), findsOneWidget);
+    expect(find.text('Scan the code from your computer'), findsOneWidget);
   });
 }

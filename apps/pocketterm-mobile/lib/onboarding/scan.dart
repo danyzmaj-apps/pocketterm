@@ -5,8 +5,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/ui.dart';
 
-/// Opens the camera to read the code the computer shows (Settings → Add a phone,
-/// or a reviewer code): a setup link with a sign-in code in it or, when
+/// Opens the camera to read the code the computer shows (Settings → Add a
+/// phone…): a setup link with a sign-in code in it or, when
 /// [signedIn] (a phone adding a computer's key), with that computer's key.
 /// Pops with that link, or null when cancelled.
 Future<Uri?> scanSetupCode(BuildContext context, {bool signedIn = false}) =>
@@ -158,9 +158,8 @@ class _CameraProblem extends StatelessWidget {
         padding: const EdgeInsets.all(32),
         child: Text(
           error.errorCode == MobileScannerErrorCode.permissionDenied
-              ? 'PocketTerm needs the camera to read the code. Allow it in Settings → PocketTerm → Camera, '
-                    'or paste the code instead.'
-              : "The camera didn't start (${error.errorCode.name}). Paste the code instead.",
+              ? 'PocketTerm needs the camera to read the code. Allow it in Settings → PocketTerm → Camera.'
+              : "The camera didn't start (${error.errorCode.name}). Close this and try again.",
           textAlign: TextAlign.center,
           style: const TextStyle(color: Colors.white, height: 1.5),
         ),

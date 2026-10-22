@@ -133,12 +133,11 @@ object SessionActivities {
         if (old != null) ended(c, key)
     }
 
-    /** A push from the server: {session, state, since, akind?}. */
-    fun pushed(c: Context, m: JSONObject) {
-        val key = m.optString("session").ifEmpty { return }
-        val args = mutableMapOf<String, Any>("key" to key, "state" to m.optString("state"))
-        if (m.has("since")) args["since"] = m.getLong("since")
-        m.optString("akind").ifEmpty { null }?.let { args["kind"] = it }
+    /** A push from the server (PushService) about followed session [key]; [since] in ms since 1970. */
+    fun pushed(c: Context, key: String, state: String, since: Long?, kind: String?) {
+        val args = mutableMapOf<String, Any>("key" to key, "state" to state)
+        if (since != null) args["since"] = since
+        if (kind != null) args["kind"] = kind
         // Not followed (any more): the server stops once Dart says so.
         update(c, args)
     }

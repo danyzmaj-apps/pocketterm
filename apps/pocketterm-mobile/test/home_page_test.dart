@@ -97,7 +97,7 @@ void main() {
     flush();
   });
 
-  testWidgets("a computer whose code wasn't scanned stays locked until it is; a link from outside replaces no key", (
+  testWidgets("a computer whose code wasn't scanned stays locked until it is; a link not scanned brings no key", (
     tester,
   ) async {
     final setKeys = <Object?>[];
@@ -129,7 +129,10 @@ void main() {
 
     // What the scanner hands over, signed in: the computer's code, with its key.
     final key = ChannelKey.generate();
-    await session.connectLink(server.linkWithCode('ABCD-1234', computer: (desktop: 'win00001', key: key)));
+    await session.connectLink(
+      server.linkWithCode('ABCD-1234', computer: (desktop: 'win00001', key: key)),
+      scanned: true,
+    );
     await tester.pumpAndSettle();
     expect(session.user, isNotNull, reason: 'still the same account');
     expect(setKeys, [
@@ -139,10 +142,9 @@ void main() {
     expect(find.text('PC work'), findsOneWidget);
     expect(find.text('Scan this computer’s code to connect'), findsNothing);
 
-    // Anyone can send a link: one opened from outside doesn't swap the key.
+    // Anyone can send a link: one opened from outside, or pasted, doesn't swap the key.
     await session.connectLink(
       server.linkWithCode('ABCD-1234', computer: (desktop: 'win00001', key: ChannelKey.generate())),
-      external: true,
     );
     expect(session.computerKey('win00001'), key);
     expect(setKeys, hasLength(1));

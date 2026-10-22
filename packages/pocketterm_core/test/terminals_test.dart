@@ -310,6 +310,21 @@ void main() {
       expect(await terms.projects(const []), isEmpty);
     });
 
+    test('symlinked folders are followed under their own path; a loop or one folder by two paths lists once', () async {
+      mk('real/repo/.git');
+      mk('elsewhere/linked/.git');
+      mk('deep/x/y/z/.git');
+      Link('$root/projects').createSync('$root/elsewhere');
+      Link('$root/real/loop').createSync(root);
+      Link('$root/real/again').createSync('$root/real/repo');
+      expect(await terms.projects([root]), ['$root/projects/linked', '$root/real/repo']);
+      expect(await terms.projects(['$root/', '$root/deep']), [
+        '$root/deep/x/y/z',
+        '$root/projects/linked',
+        '$root/real/repo',
+      ], reason: 'a root inside another is walked to its own depth; a trailing slash changes nothing');
+    });
+
     test('createProject makes the folder under one of the project folders, once', () {
       expect(terms.createProject(root, ' new ', roots: [root]), '$root/new');
       expect(Directory('$root/new').existsSync(), isTrue);

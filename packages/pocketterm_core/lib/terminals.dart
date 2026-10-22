@@ -286,33 +286,45 @@ class Terminals {
   }
 
   /// Git repositories up to three levels under [roots] (the Mac's Project
-  /// folders setting), for the phone's New session list.
+  /// folders setting), for the phone's New session list. A symlinked folder
+  /// is followed (under the link's own path), each real folder once: a
+  /// link loop, or two roots that are one folder, list nothing twice.
   Future<List<String>> projects(List<String> roots) async {
-    // A set: two roots nested in each other would find a repository twice.
-    final found = <String>{};
+    // Each repository by its real folder: under that path when it's found there too, else the first link to it.
+    final found = <String, String>{};
+    // Each real folder walked, with how deep it was walked from there.
+    final seen = <String, int>{};
     Future<void> walk(Directory dir, int depth) async {
+      final String real;
       final List<FileSystemEntity> entries;
       try {
+        real = await dir.resolveSymbolicLinks();
+        if (dir.path == real && found.containsKey(real)) found[real] = real;
+        if ((seen[real] ?? -1) >= depth) return;
+        seen[real] = depth;
         entries = await dir.list(followLinks: false).toList();
       } on FileSystemException {
         return;
       }
-      if (entries.any((e) => e.uri.pathSegments.lastWhere((s) => s.isNotEmpty) == '.git')) {
-        found.add(dir.path);
+      if (entries.any((e) => p.basename(e.path) == '.git')) {
+        found[real] = dir.path == real ? real : found[real] ?? dir.path;
         return;
       }
       if (depth == 0) return;
       for (final e in entries) {
-        final name = e.uri.pathSegments.lastWhere((s) => s.isNotEmpty);
-        if (e is Directory && !name.startsWith('.') && name != 'node_modules') await walk(e, depth - 1);
+        final name = p.basename(e.path);
+        if (name.startsWith('.') || name == 'node_modules') continue;
+        if (e is Directory || (e is Link && FileSystemEntity.isDirectorySync(e.path))) {
+          await walk(Directory(e.path), depth - 1);
+        }
       }
     }
 
     for (final root in roots) {
-      final dir = Directory(root);
+      final dir = Directory(root.length > 1 && root.endsWith('/') ? root.substring(0, root.length - 1) : root);
       if (dir.existsSync()) await walk(dir, 3);
     }
-    return found.toList()..sort();
+    return found.values.toList()..sort();
   }
 
   /// A new project folder [name] under [root], which must be one of [roots]

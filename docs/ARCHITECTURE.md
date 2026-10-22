@@ -8,7 +8,7 @@ One Dart pub workspace (root `pubspec.yaml`): the desktop app for macOS and Wind
 flowchart LR
   subgraph computer ["A computer (Mac or Windows PC)"]
     agent["omp or Claude Code<br/>with PocketTerm's integration"]
-    term["Terminal windows<br/>kitty · tmux · WezTerm · iTerm2 · Terminal · Ghostty<br/>(Windows: WezTerm)"]
+    term["Terminal windows<br/>kitty · tmux · WezTerm · Ghostty<br/>(Windows: WezTerm)"]
     app["PocketTerm desktop"]
     agent -->|"transcript, questions<br/>(local API)"| app
     app -->|"prompts, stop"| agent
@@ -36,7 +36,7 @@ flowchart LR
 | `core/lib/terminal_remote.dart` | Phone: the remote for one computer (with that computer's key; images sealed before upload) and its disk cache |
 | `core/lib/live_activity.dart` | Phone: followed sessions (Live Activities on iOS, ongoing notifications on Android) and their push tokens |
 | `core/lib/terminal.dart`, `terminals.dart` | The terminal layer: `TerminalHost`, `TermWindow`, `TermCap`, `TermStatus`, keys, process snapshots, `windowOfTerm`; `Terminals`, every installed terminal as one |
-| `core/lib/kitty.dart`, `tmux.dart`, `wezterm.dart`, `iterm.dart`, `apple_terminal.dart`, `ghostty.dart` | One `TerminalHost` per terminal |
+| `core/lib/kitty.dart`, `tmux.dart`, `wezterm.dart`, `ghostty.dart` | One `TerminalHost` per terminal |
 | `core/lib/ansi.dart`, `chat_images.dart`, `ui.dart`, `logo.dart`, `native.dart` | Screen lines with ANSI colors; images for prompts; shared UI; the logo; the `pocketterm/native` platform channel |
 | `desktop/lib/main.dart`, `controller.dart`, `main_window.dart` | The desktop app: one window that is the wizard, sign-in, the setup checklist or Settings (a status bar over the Phone, Coding agents, Terminals and Account tabs); `AppController` (account, this computer's id and its `desktops` row, its channel key and **Reset key**, the bridge, sealed pushes, the coding agents found and whether a phone has signed in) |
 | `desktop/lib/channel_keys.dart` | This computer's channel key per account, in the system's secure storage (`flutter_secure_storage`: the login Keychain on a Mac, Credential Manager on Windows) |
@@ -95,11 +95,9 @@ Each terminal is a `TerminalHost` (`core/lib/terminal.dart`): list its windows (
 | kitty | Remote control over its unix socket (`listen_on unix:/tmp/kitty`); only sockets the current user owns | `kitty-<pid>/<id>` |
 | tmux | The `tmux` CLI on every server socket of the user | `tmux:<socket>/<pane n>` |
 | WezTerm | `wezterm cli` per GUI socket (`~/.local/share/wezterm/gui-sock-<pid>`; on Windows under `%USERPROFILE%`) | `wezterm:<gui pid>/<pane>` |
-| iTerm2 | AppleScript | `iterm:<session UUID>` |
-| Terminal | AppleScript | `terminal:ttysNNN` |
 | Ghostty | AppleScript | `ghostty:<UUID>` |
 
-`Terminals` (`core/lib/terminals.dart`) puts the installed ones together: all six on macOS, WezTerm only on Windows (Settings and the setup checklist install it there: `desktop/lib/wezterm_setup.dart`). A tmux pane shown in a GUI window is listed once, as the pane. An app that can't both read and press keys (Terminal, Ghostty) launches a phone-started session inside tmux when tmux is installed. An agent's `hello` carries its terminal environment (`TERM_PROGRAM`, `KITTY_*`, `TMUX`, `WEZTERM_PANE`, …), which `windowOfTerm` turns into its window's key.
+`Terminals` (`core/lib/terminals.dart`) puts the installed ones together: all four on macOS, WezTerm only on Windows (Settings and the setup checklist install it there: `desktop/lib/wezterm_setup.dart`). A tmux pane shown in a GUI window is listed once, as the pane. An app that can't both read and press keys (Ghostty) launches a phone-started session inside tmux when tmux is installed. An agent's `hello` carries its terminal environment (`TERM_PROGRAM`, `KITTY_*`, `TMUX`, `WEZTERM_PANE`, …), which `windowOfTerm` turns into its window's key.
 
 **Screen only to conversation.** An agent window no live session claims (opened before PocketTerm was installed in its agent) shows on the phone as a screen, badged **Screen only**. Where the computer says PocketTerm is installed in that agent and the window's terminal can press keys and type, the phone offers to switch it, with two `run` ops (`core/lib/live.dart`) the bridge does with the window's terminal (`desktop/lib/terminal_bridge.dart`):
 

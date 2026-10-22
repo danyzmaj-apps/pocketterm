@@ -1,7 +1,7 @@
 import 'package:flutter/painting.dart';
 
 /// A terminal's colors: default foreground and background plus the 256-color
-/// palette, as the terminal reports them (kitty's `get-colors`, iTerm2's profile).
+/// palette, as the terminal reports them (kitty's `get-colors`).
 class TermColors {
   const TermColors({required this.foreground, required this.background, required this.palette});
 

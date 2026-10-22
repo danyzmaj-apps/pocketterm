@@ -5,9 +5,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/agent.dart';
-import 'package:pocketterm_core/apple_terminal.dart';
 import 'package:pocketterm_core/ghostty.dart';
-import 'package:pocketterm_core/iterm.dart';
 import 'package:pocketterm_core/kitty.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
@@ -16,16 +14,6 @@ import 'package:pocketterm_core/wezterm.dart';
 
 // Real outputs captured from each app (names shortened), with the `ps`
 // lines of the same windows.
-
-const _psTerminal = '''
-98233 94784 98233 98234 ttys009  Ss   login -pf me
-98234 98233 98234 98234 ttys009  S+   -zsh
-''';
-
-const _psITerm = '''
-98802 98785 98802 98803 ttys008  Ss   /usr/bin/login -fpl me /Applications/iTerm.app/Contents/MacOS/ShellLauncher --launch_shell
-98803 98802 98803 98803 ttys008  S+   -zsh
-''';
 
 const _psWezTerm = ' 1129  1128  1129 5249 ttys008  Ss+  -zsh\n 5249  1129  5249 5249 ttys008  S+   claude\n';
 
@@ -47,8 +35,6 @@ Terminals _terms() => Terminals(
   kitty: Kitty(socketDir: '/nonexistent-pocketterm', home: '/nonexistent-pocketterm', restoreFront: false),
   tmux: Tmux(executable: '/nonexistent-pocketterm/tmux', socketDirs: const []),
   wezterm: WezTerm(executable: '/nonexistent-pocketterm/wezterm', socketDir: '/nonexistent-pocketterm'),
-  iterm: ITerm(appPath: '/nonexistent-pocketterm/iTerm.app'),
-  terminal: AppleTerminal(appPath: '/nonexistent-pocketterm/Terminal.app'),
   ghostty: Ghostty(appPath: '/nonexistent-pocketterm/Ghostty.app'),
 );
 
@@ -101,28 +87,6 @@ void main() {
     );
   });
 
-  test('iTerm2 list: a session per line; focused only while iTerm2 is in front', () {
-    const out = '6A4030A3-8364-4898-9CEA-F189424E874A\t/dev/ttys008\tcap-iterm (-zsh)\t1\t1\ttrue\nfront\tfalse\n';
-    final w = parseITermList(out, Procs(parsePs(_psITerm))).single;
-    expect(
-      (w.key, w.title, w.tab, w.tty, w.program, w.focused),
-      ('iterm:6A4030A3-8364-4898-9CEA-F189424E874A', 'cap-iterm (-zsh)', 'Tab 1', 'ttys008', 'zsh', false),
-    );
-    expect(parseITermList(out.replaceFirst('front\tfalse', 'front\ttrue')).single.focused, isTrue);
-  });
-
-  test('Terminal list: a tab per line keyed by its tty, its custom title first', () {
-    const out =
-        '/dev/ttys009\tcap-terminal — cap-terminal — -zsh — 120×30\t1\t1\ttrue\tcap-terminal\r'
-        '/dev/ttys010\tme — ~ — -zsh — 120×30\t1\t2\tfalse\t\r'
-        'front\ttrue';
-    final tabs = parseTerminalList(out, Procs(parsePs(_psTerminal)));
-    expect(tabs.map((w) => (w.key, w.title, w.tab, w.program, w.focused)), [
-      ('terminal:ttys009', 'cap-terminal', 'Tab 1', 'zsh', true),
-      ('terminal:ttys010', 'me', 'Tab 2', '', false),
-    ]);
-  });
-
   test("Ghostty list: id, title and folder; no tty, and its windows can't be read", () {
     const out =
         'CB2035E7-67BF-48C7-8D0A-83F3FA5B8074\tcap-ghostty\t/tmp/dzt/cap-ghostty\tcap-ghostty\ttrue\nfront\tfalse\n';
@@ -150,9 +114,7 @@ void main() {
         [
           [_w('kitty-1/2', tty: 'ttys003')],
           [_w('tmux:default/0', tty: 'ttys008'), _w('tmux:default/1', tty: 'ttys011')],
-          [],
-          [_w('iterm:A', tty: 'ttys009')],
-          [_w('terminal:ttys010', tty: 'ttys010')],
+          [_w('wezterm:9/1', tty: 'ttys009'), _w('wezterm:9/2', tty: 'ttys010')],
           [],
         ],
         {'ttys009': 'tmux:default/0'},
@@ -160,9 +122,9 @@ void main() {
       );
       expect(merged.map((w) => (w.key, w.via)), [
         ('kitty-1/2', ''),
-        ('tmux:default/0', 'iTerm2'),
+        ('tmux:default/0', 'WezTerm'),
         ('tmux:default/1', ''),
-        ('terminal:ttys010', ''),
+        ('wezterm:9/2', ''),
       ]);
     });
 
@@ -172,8 +134,6 @@ void main() {
         [
           [],
           [_w('tmux:default/4', tty: 'ttys012')],
-          [],
-          [],
           [],
           [_w('ghostty:G1'), _w('ghostty:G2')],
         ],
@@ -189,10 +149,8 @@ void main() {
     TermStatus s(String id, TermState state) => TermStatus(id, id, state);
     final statuses = {
       'kitty': s('kitty', TermState.setup),
-      'iterm': s('iterm', TermState.limited),
-      'wezterm': s('wezterm', TermState.ready),
+      'wezterm': s('wezterm', TermState.limited),
       'ghostty': s('ghostty', TermState.idle),
-      'terminal': s('terminal', TermState.limited),
     };
 
     test('a chosen app that is installed wins, even when not running', () {
@@ -200,20 +158,18 @@ void main() {
     });
 
     test('Auto: the usable app used most recently, skipping ones that need setup', () {
-      expect(Terminals.pickApp(terms.apps, statuses, 'auto', ['Zen', 'kitty', 'Terminal', 'WezTerm']).id, 'terminal');
+      expect(Terminals.pickApp(terms.apps, statuses, 'auto', ['Zen', 'kitty', 'Ghostty', 'WezTerm']).id, 'wezterm');
       // A missing choice falls back the same way.
       final noGhostty = {...statuses, 'ghostty': s('ghostty', TermState.missing)};
-      expect(Terminals.pickApp(terms.apps, noGhostty, 'ghostty', ['iTerm2']).id, 'iterm');
+      expect(Terminals.pickApp(terms.apps, noGhostty, 'ghostty', ['WezTerm']).id, 'wezterm');
     });
 
     test('Auto with none used lately: the first usable in preference order, else one that can be started', () {
-      expect(Terminals.pickApp(terms.apps, statuses, 'auto', const []).id, 'iterm');
+      expect(Terminals.pickApp(terms.apps, statuses, 'auto', const []).id, 'wezterm');
       final none = {
         'kitty': s('kitty', TermState.idle),
-        'iterm': s('iterm', TermState.missing),
         'wezterm': s('wezterm', TermState.missing),
         'ghostty': s('ghostty', TermState.idle),
-        'terminal': s('terminal', TermState.idle),
       };
       // kitty can't be started listening: Ghostty, the next idle app.
       expect(Terminals.pickApp(terms.apps, none, 'auto', const []).id, 'ghostty');
@@ -222,19 +178,16 @@ void main() {
 
   test('new sessions run in tmux only where the app lacks screen or keys, and only with tmux', () {
     final terms = _terms();
-    expect(terms.viaTmux(terms.terminal!), isFalse); // no tmux here
+    expect(terms.viaTmux(terms.ghostty!), isFalse); // no tmux here
     final withTmux = Terminals(
       home: terms.home,
       kitty: terms.kitty,
       tmux: Tmux(executable: '/bin/sh', socketDirs: const []),
       wezterm: terms.wezterm,
-      iterm: terms.iterm,
-      terminal: terms.terminal,
       ghostty: terms.ghostty,
     );
-    expect(withTmux.viaTmux(withTmux.terminal!), isTrue);
     expect(withTmux.viaTmux(withTmux.ghostty!), isTrue);
-    expect(withTmux.viaTmux(withTmux.iterm!), isFalse);
+    expect(withTmux.viaTmux(withTmux.wezterm!), isFalse);
     expect(withTmux.describe(withTmux.ghostty!), 'Ghostty (in tmux)');
     expect(withTmux.describe(withTmux.kitty!), 'kitty');
   });

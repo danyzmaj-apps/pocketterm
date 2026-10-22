@@ -12,7 +12,7 @@ import 'package:pocketterm_core/agent.dart';
 //   as transcript items. The phone
 //   lays them out itself, so the Mac window's width doesn't matter.
 // - terminal windows, as screens (lib/terminals.dart: kitty, tmux, WezTerm,
-//   iTerm2, Terminal, Ghostty): shells and anything else,
+//   Ghostty): shells and anything else,
 //   and the agents' own menus when the phone needs them.
 //
 // Computer ↔ phone: the computer's topic on the server's WebSocket (its

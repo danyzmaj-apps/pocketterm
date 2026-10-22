@@ -107,23 +107,23 @@ void main() {
     final a = remote()
       ..handle('state', {
         ...state(),
-        'opensIn': 'Terminal (in tmux)',
+        'opensIn': 'Ghostty (in tmux)',
         'terminals': [
-          {'id': 'terminal', 'label': 'Terminal', 'state': 'limited', 'note': 'no keys'},
+          {'id': 'ghostty', 'label': 'Ghostty', 'state': 'limited', 'note': 'no screen'},
           {'id': 'tmux', 'label': 'tmux', 'state': 'ready', 'note': ''},
         ],
       });
-    expect(a.opensIn, 'Terminal (in tmux)');
+    expect(a.opensIn, 'Ghostty (in tmux)');
     expect(a.terminals.map((t) => (t.id, t.state, t.note)), [
-      ('terminal', TermState.limited, 'no keys'),
+      ('ghostty', TermState.limited, 'no screen'),
       ('tmux', TermState.ready, ''),
     ]);
     a.flush();
 
     final b = remote();
-    expect(b.opensIn, 'Terminal (in tmux)');
+    expect(b.opensIn, 'Ghostty (in tmux)');
     expect(b.terminals.map((t) => (t.id, t.label, t.state)), [
-      ('terminal', 'Terminal', TermState.limited),
+      ('ghostty', 'Ghostty', TermState.limited),
       ('tmux', 'tmux', TermState.ready),
     ]);
 

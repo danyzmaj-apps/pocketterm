@@ -247,7 +247,7 @@ async function helloFrame($: EngineInterface): Promise<Frame> {
 }
 
 /** Where Claude runs, as PocketTerm maps it to a terminal window (packages/pocketterm_core/lib/terminal.dart): the
- * terminals' variables, and its tty where only a tty tells (Terminal, Ghostty); read once. */
+ * terminals' variables, and its tty where only a tty tells (Ghostty); read once. */
 let term: Record<string, string> | undefined;
 async function termOf($: EngineInterface): Promise<Record<string, string>> {
 	if (term) return term;
@@ -260,12 +260,10 @@ async function termOf($: EngineInterface): Promise<Record<string, string>> {
 		["TMUX_PANE", await $.env.get("TMUX_PANE")],
 		["WEZTERM_PANE", await $.env.get("WEZTERM_PANE")],
 		["WEZTERM_UNIX_SOCKET", await $.env.get("WEZTERM_UNIX_SOCKET")],
-		["ITERM_SESSION_ID", await $.env.get("ITERM_SESSION_ID")],
-		["TERM_SESSION_ID", await $.env.get("TERM_SESSION_ID")],
 	];
 	const found: Record<string, string> = {};
 	for (const [name, v] of vars) if (v) found[name] = v;
-	if (!found.TMUX && (found.TERM_PROGRAM === "Apple_Terminal" || found.TERM_PROGRAM === "ghostty")) {
+	if (!found.TMUX && found.TERM_PROGRAM === "ghostty") {
 		try {
 			// The hook's process shares Claude's controlling terminal; its parent is Claude.
 			const r: unknown = await $.process.run(

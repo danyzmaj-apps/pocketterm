@@ -690,9 +690,9 @@ class _SettingsPageState extends State<SettingsPage> {
     final tmux = _terminals?.where((s) => s.id == 'tmux').firstOrNull;
     if (tmux == null) return where;
     return tmux.state == TermState.missing
-        ? '$where · in Terminal and Ghostty your phone can’t press keys or (Ghostty) see the screen: '
+        ? '$where · in Ghostty your phone can’t see the screen or answer: '
               'brew install tmux for full control'
-        : '$where · in Terminal and Ghostty they run in tmux, so your phone has full control';
+        : '$where · in Ghostty they run in tmux, so your phone has full control';
   }
 
   /// Auto, or one of the terminal apps found here (and the one chosen, should it be gone).
@@ -985,7 +985,7 @@ class _SettingsPageState extends State<SettingsPage> {
       items.add((
         tab: _Tab.terminals,
         short: 'No terminal app found',
-        text: 'No terminal app found: PocketTerm works with kitty, iTerm2, WezTerm, Ghostty and Terminal',
+        text: 'No terminal app found: PocketTerm works with kitty, Ghostty and WezTerm',
         action: null,
       ));
     }

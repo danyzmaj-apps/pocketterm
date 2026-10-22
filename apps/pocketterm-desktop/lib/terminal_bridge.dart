@@ -948,7 +948,7 @@ String? cantAnswer(Terminals terms, String window) {
 String? cantCommand(Terminals terms, String? window) {
   if (window == null) {
     return "Slash commands are typed into the agent's terminal window, and PocketTerm can't reach this one: it isn't in "
-        'kitty, tmux, WezTerm, iTerm2, Terminal or Ghostty. Run it on the computer.';
+        'kitty, tmux, WezTerm or Ghostty. Run it on the computer.';
   }
   if (terms.can(window, TermCap.line)) return null;
   return "${terms.hostOf(window)?.label ?? 'This terminal'} can't take a typed line, so run the command on the computer.";

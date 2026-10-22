@@ -9,7 +9,7 @@ Dart and Flutter code shared by the desktop app and the phone app:
 | `agent.dart` | The coding agents (omp, Claude Code): new sessions, names, steering, answers as keys |
 | `live.dart`, `terminal_channel.dart`, `terminal_remote.dart` | The terminal protocol, its Realtime channel and the phone's remote for one computer |
 | `terminal.dart`, `terminals.dart` | The terminal layer (`TerminalHost`, `TermWindow`, `TermCap`, `TermStatus`) and every installed terminal as one |
-| `kitty.dart`, `tmux.dart`, `wezterm.dart`, `iterm.dart`, `apple_terminal.dart`, `ghostty.dart` | One `TerminalHost` per terminal |
+| `kitty.dart`, `tmux.dart`, `wezterm.dart`, `ghostty.dart` | One `TerminalHost` per terminal |
 | `live_activity.dart` | Followed sessions (Live Activities on iOS, ongoing notifications on Android) |
 | `ansi.dart`, `chat_images.dart` | Screen lines with ANSI colors; images for prompts |
 | `native.dart` | The `pocketterm/native` platform channel |

@@ -7,22 +7,22 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/ghostty.dart';
-import 'package:pocketterm_core/iterm.dart';
 import 'package:pocketterm_core/kitty.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/tmux.dart';
+import 'package:pocketterm_core/wezterm.dart';
 import 'package:pocketterm_desktop/main_window.dart';
 
 import 'app_fakes.dart';
 
-/// A Mac in [home] with kitty and iTerm2 (iTerm2 not running).
+/// A Mac in [home] with kitty and WezTerm (WezTerm not running).
 class _Mac extends Terminals {
   _Mac(String home)
     : super(
         home: home,
         kitty: Kitty(socketDir: home, home: home),
-        iterm: ITerm(appPath: '$home/iTerm.app'),
+        wezterm: WezTerm(executable: '$home/wezterm', socketDir: home),
         recency: () async => const [],
         snapshot: () async => Procs(const []),
       );
@@ -30,7 +30,7 @@ class _Mac extends Terminals {
   @override
   Future<List<TermStatus>> statuses() async => [
     TermStatus(kitty!.id, kitty!.label, TermState.ready),
-    TermStatus(iterm!.id, iterm!.label, TermState.idle),
+    TermStatus(wezterm!.id, wezterm!.label, TermState.idle),
   ];
 
   @override
@@ -126,10 +126,10 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('settings-terminal-app')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('iTerm2').last);
+    await tester.tap(find.text('WezTerm').last);
     await tester.pumpAndSettle();
-    expect(app.terminalApp, 'iterm');
-    expect(find.text('Always iTerm2'), findsOneWidget);
+    expect(app.terminalApp, 'wezterm');
+    expect(find.text('Always WezTerm'), findsOneWidget);
   });
 
   group('Ghostty: start new windows in tmux', () {

@@ -7,16 +7,14 @@ import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/terminals.dart' show Terminals;
 
 // The Mac's terminals as the phone reaches them (lib/terminals.dart merges
-// them): one TerminalHost per terminal app (kitty, iTerm2, WezTerm,
-// Terminal, Ghostty) or multiplexer (tmux), each with what its scripting
+// them): one TerminalHost per terminal app (kitty, WezTerm, Ghostty) or
+// multiplexer (tmux), each with what its scripting
 // can do (TermCap). A window's key starts with its host's prefix and fits
 // the push function's session keys, `[\w.:/-]{1,64}`:
 //
 //   kitty      kitty-<pid>/<window id>       (the socket's name, as before)
 //   tmux       tmux:<socket name>/<pane n>   (%n is the pane)
 //   wezterm    wezterm:<gui pid>/<pane id>
-//   iterm      iterm:<session UUID>
-//   terminal   terminal:<tty>                (ttys012)
 //   ghostty    ghostty:<terminal UUID>
 
 /// What a window's terminal lets the phone do with it.
@@ -30,7 +28,7 @@ enum TermCap {
   /// Text can be typed without Enter, and Enter and Shift+Enter pressed.
   type,
 
-  /// A line can be typed and run (Enter after it), nothing else: Terminal.
+  /// A line can be typed and run (Enter after it).
   line,
 
   /// Keys can be pressed: arrows, Esc, Tab, Ctrl+C, digits.
@@ -88,7 +86,7 @@ class TermWindow {
   /// The window its app has focused.
   final bool focused;
 
-  /// Its host's id: kitty, tmux, wezterm, iterm, terminal, ghostty.
+  /// Its host's id: kitty, tmux, wezterm, ghostty.
   final String app;
   final Set<TermCap> caps;
 
@@ -201,10 +199,10 @@ class TermStatus {
 /// uses. Keys are always those [owns] accepts.
 abstract class TerminalHost {
   /// The key prefix family and the id in Settings: kitty, tmux, wezterm,
-  /// iterm, terminal, ghostty.
+  /// ghostty.
   String get id;
 
-  /// How people name it: "iTerm2".
+  /// How people name it: "WezTerm".
   String get label;
 
   /// What its windows can do.
@@ -353,7 +351,7 @@ List<String> screenLines(String text) {
 
 /// The key of the window a coding agent runs in, from the `term` its
 /// extension reports (its environment, raw: TERM_PROGRAM, KITTY_*, TMUX,
-/// TMUX_PANE, WEZTERM_*, ITERM_SESSION_ID, TERM_SESSION_ID, and `tty`).
+/// TMUX_PANE, WEZTERM_*, and `tty`).
 /// tmux wins (the pane, not the terminal showing it); then the terminal
 /// TERM_PROGRAM names (other terminals' variables leak into apps started
 /// from them); then kitty's own variables. Null when it can't be told
@@ -372,7 +370,6 @@ String? windowOfTerm(Map<String, dynamic>? term) {
     final n = pane.replaceFirst('%', '');
     if (_tmuxSocket.hasMatch(socket) && RegExp(r'^\d+$').hasMatch(n)) return 'tmux:$socket/$n';
   }
-  final tty = v('tty')?.replaceFirst('/dev/', '');
   String? kitty() {
     final window = v('KITTY_WINDOW_ID');
     if (window == null) return null;
@@ -389,19 +386,10 @@ String? windowOfTerm(Map<String, dynamic>? term) {
     return pane != null && pid != null ? 'wezterm:$pid/$pane' : null;
   }
 
-  String? iterm() {
-    final m = RegExp(r'^(?:w\d+t\d+p\d+:)?([0-9A-Fa-f-]{36})$').firstMatch(v('ITERM_SESSION_ID') ?? '');
-    return m == null ? null : 'iterm:${m[1]}';
-  }
-
-  String? terminal() => tty != null && RegExp(r'^ttys\d+$').hasMatch(tty) ? 'terminal:$tty' : null;
-
   return switch (v('TERM_PROGRAM')) {
-    'iTerm.app' => iterm(),
     'WezTerm' => wezterm(),
-    'Apple_Terminal' => terminal(),
     'ghostty' => null,
-    _ => kitty() ?? wezterm() ?? iterm(),
+    _ => kitty() ?? wezterm(),
   };
 }
 
@@ -774,22 +762,6 @@ class AutomationPending extends TerminalException {
   final String app;
 }
 
-/// xterm's color [i] of 256 as 0xRRGGBB: 16 basic, a 6×6×6 cube, 24 greys.
-int xtermRgb(int i) {
-  const basic = [
-    0x000000, 0xCD0000, 0x00CD00, 0xCDCD00, 0x0000EE, 0xCD00CD, 0x00CDCD, 0xE5E5E5, //
-    0x7F7F7F, 0xFF0000, 0x00FF00, 0xFFFF00, 0x5C5CFF, 0xFF00FF, 0x00FFFF, 0xFFFFFF,
-  ];
-  if (i < 16) return basic[i];
-  if (i < 232) {
-    int level(int v) => v == 0 ? 0 : 55 + v * 40;
-    final n = i - 16;
-    return level(n ~/ 36) << 16 | level(n ~/ 6 % 6) << 8 | level(n % 6);
-  }
-  final g = 8 + (i - 232) * 10;
-  return g << 16 | g << 8 | g;
-}
-
 /// A shell word for [s].
 String shellQuote(String s) => "'${s.replaceAll("'", r"'\''")}'";
 
@@ -867,7 +839,7 @@ function run(argv) {
 }''';
 
 /// Terminal apps by recent use, most recent first: names as
-/// `lsappinfo visibleProcessList` gives them ("kitty", "iTerm2"); none off
+/// `lsappinfo visibleProcessList` gives them ("kitty", "WezTerm"); none off
 /// macOS.
 Future<List<String>> appsByRecency({bool? windows}) async {
   if (windows ?? Platform.isWindows) return const [];

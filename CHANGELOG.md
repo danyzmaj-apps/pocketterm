@@ -9,6 +9,7 @@ User-visible changes to PocketTerm. Each release says whether servers need `apps
 - **Signing out leaves the server:** the device's token stops working there. On the phone, **Leave this server** replaces **Delete account**.
 - **Reviewer codes are gone** (Settings → Reviewer access on the computer); a demo mode on the phone replaces them.
 - A computer or phone set up with a Supabase project shows the setup screen again.
+- Supported terminals: kitty, Ghostty and WezTerm. iTerm2 and Terminal are no longer supported.
 
 **End-to-end encryption.** Your server (Supabase) now relays only ciphertext between a computer and its phones: sessions, screens, prompts, images and notification text.
 

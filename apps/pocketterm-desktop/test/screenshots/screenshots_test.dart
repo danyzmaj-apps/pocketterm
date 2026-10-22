@@ -14,9 +14,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pocketterm_core/agent.dart';
-import 'package:pocketterm_core/apple_terminal.dart';
 import 'package:pocketterm_core/ghostty.dart';
-import 'package:pocketterm_core/iterm.dart';
 import 'package:pocketterm_core/kitty.dart';
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal.dart';
@@ -136,8 +134,8 @@ Future<void> fillField(WidgetTester tester, int index, String text) async {
   await tester.pumpAndSettle();
 }
 
-/// A Mac's terminals as Settings finds them: by default kitty, macOS's
-/// Terminal and tmux, as a typical Mac might have; [found] for others.
+/// A Mac's terminals as Settings finds them: by default kitty, Ghostty and
+/// tmux, as a typical Mac might have; [found] for others.
 /// [shown]: its windows; ten shells by default. `tmuxExe`: tmux's
 /// executable, installed when it exists.
 class DemoTerminals extends Terminals {
@@ -153,8 +151,6 @@ class DemoTerminals extends Terminals {
            executable: '/nonexistent-pocketterm-demo/wezterm',
            socketDir: '/nonexistent-pocketterm-demo',
          ),
-         iterm: ITerm(appPath: '/nonexistent-pocketterm-demo/iTerm.app'),
-         terminal: AppleTerminal(appPath: '/nonexistent-pocketterm-demo/Terminal.app'),
          ghostty: Ghostty(appPath: '/nonexistent-pocketterm-demo/Ghostty.app'),
          recency: () async => const [],
          snapshot: () async => Procs(const []),
@@ -170,9 +166,7 @@ class DemoTerminals extends Terminals {
         TermStatus(kitty!.id, kitty!.label, TermState.ready, note: '3 windows'),
         TermStatus(tmux!.id, tmux!.label, TermState.ready, note: '2 panes'),
         TermStatus(wezterm!.id, wezterm!.label, TermState.missing),
-        TermStatus(iterm!.id, iterm!.label, TermState.missing),
-        TermStatus(terminal!.id, terminal!.label, TermState.limited, note: '1 window · ${terminal!.limits}'),
-        TermStatus(ghostty!.id, ghostty!.label, TermState.missing),
+        TermStatus(ghostty!.id, ghostty!.label, TermState.limited, note: '1 window · ${ghostty!.limits}'),
       ];
 
   @override
@@ -180,7 +174,7 @@ class DemoTerminals extends Terminals {
       shown ?? [for (var i = 0; i < 10; i++) TermWindow(key: 'demo:$i', title: '', tab: '', cwd: '', program: '')];
 }
 
-/// The setup checklist's Mac: kitty not set up yet, tmux, Terminal and Ghostty.
+/// The setup checklist's Mac: kitty not set up yet, tmux and Ghostty.
 List<TermStatus> _kittyToSetUp(DemoTerminals t) => [
   TermStatus(
     t.kitty!.id,
@@ -191,8 +185,6 @@ List<TermStatus> _kittyToSetUp(DemoTerminals t) => [
   ),
   TermStatus(t.tmux!.id, t.tmux!.label, TermState.ready, note: '1 pane'),
   TermStatus(t.wezterm!.id, t.wezterm!.label, TermState.missing),
-  TermStatus(t.iterm!.id, t.iterm!.label, TermState.missing),
-  TermStatus(t.terminal!.id, t.terminal!.label, TermState.limited, note: '1 window · ${t.terminal!.limits}'),
   TermStatus(t.ghostty!.id, t.ghostty!.label, TermState.idle),
 ];
 
@@ -238,16 +230,7 @@ void main() {
               found: (t) => [
                 TermStatus(t.kitty!.id, t.kitty!.label, TermState.ready, note: '10 windows'),
                 TermStatus(t.tmux!.id, t.tmux!.label, TermState.ready, note: '2 panes'),
-                TermStatus(t.wezterm!.id, t.wezterm!.label, TermState.missing),
-                TermStatus(t.iterm!.id, t.iterm!.label, TermState.idle),
-                TermStatus(
-                  t.terminal!.id,
-                  t.terminal!.label,
-                  TermState.ready,
-                  note:
-                      'Sessions from your phone run in tmux, with full control. '
-                      'In windows you open yourself: ${t.terminal!.limits}',
-                ),
+                TermStatus(t.wezterm!.id, t.wezterm!.label, TermState.idle),
                 TermStatus(
                   t.ghostty!.id,
                   t.ghostty!.label,

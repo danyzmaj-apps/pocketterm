@@ -86,11 +86,9 @@ The sessions live on the computer: it has to be awake, with PocketTerm running a
 | kitty | macOS | Yes | Yes | Yes |
 | WezTerm | macOS, Windows | Yes | Yes | Yes |
 | tmux (in any terminal) | macOS | Yes | Yes | Yes |
-| iTerm2 | macOS | Yes | No | Yes |
 | Ghostty | macOS | Sessions, no screen | No | Keys; answer on the computer |
-| Terminal | macOS | Yes, whole lines only | No | Answer on the computer |
 
-- **macOS:** with tmux installed (`brew install tmux`), sessions the phone starts in Terminal or Ghostty run inside tmux and get full control. For Ghostty windows you open yourself, **Settings → Terminals → Start new windows in tmux** does the same (it adds a marked `command =` line to your Ghostty config; **Remove** takes it out). kitty needs one click in **Settings → Terminals → Set up** (then restart kitty); iTerm2, Terminal and Ghostty need macOS's Automation permission (**Allow…**).
+- **macOS:** with tmux installed (`brew install tmux`), sessions the phone starts in Ghostty run inside tmux and get full control. For Ghostty windows you open yourself, **Settings → Terminals → Start new windows in tmux** does the same (it adds a marked `command =` line to your Ghostty config; **Remove** takes it out). kitty needs one click in **Settings → Terminals → Set up** (then restart kitty); Ghostty needs macOS's Automation permission (**Allow…**).
 - **Windows:** only [WezTerm](https://wezterm.org) windows are listed: it is the only Windows terminal another program can read and type into. The setup checklist and **Settings → Terminals** install it for you (or run `winget install --id wez.wezterm --exact`). Windows Terminal, conhost and WSL windows don't show up. Images sent from the phone must be PNG or JPEG (the phone apps send JPEG).
 
 ## Getting started

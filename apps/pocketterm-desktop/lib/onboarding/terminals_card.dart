@@ -81,7 +81,7 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
       children: [
         Text(
           found.isEmpty && all != null
-              ? 'No terminal app found. PocketTerm works with kitty, iTerm2, WezTerm, Ghostty and macOS\u2019s Terminal.'
+              ? 'No terminal app found. PocketTerm works with kitty, Ghostty and WezTerm.'
               : 'Sessions you start from your phone open in the one you used last (Settings can pin one).',
           style: const TextStyle(color: C.dim, height: 1.45, fontSize: 13),
         ),
@@ -94,7 +94,7 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
         if (tmux != null && tmux.state == TermState.missing) ...[
           const SizedBox(height: 12),
           const Text(
-            'Recommended: tmux. With it, sessions in Terminal and Ghostty get full control from your phone.',
+            'Recommended: tmux. With it, sessions in Ghostty get full control from your phone.',
             style: TextStyle(color: C.dim, height: 1.45, fontSize: 12.5),
           ),
           const SizedBox(height: 8),

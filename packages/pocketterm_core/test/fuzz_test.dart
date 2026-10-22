@@ -6,11 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/ansi.dart';
-import 'package:pocketterm_core/apple_terminal.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/chat_images.dart';
 import 'package:pocketterm_core/ghostty.dart';
-import 'package:pocketterm_core/iterm.dart';
 import 'package:pocketterm_core/kitty.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/terminal.dart';
@@ -212,12 +210,10 @@ void main() {
       }
     });
 
-    property('terminal listings: tmux, iTerm2, Terminal, Ghostty, ps, lsof', (g) {
+    property('terminal listings: tmux, Ghostty, ps, lsof', (g) {
       final s = g.any();
       parseTmuxPanes('default', s);
       parseTmuxClients('default', s);
-      parseITermList(s);
-      parseTerminalList(s);
       parseGhosttyList(s);
       parsePs(s);
       parseLsofCwd(s);

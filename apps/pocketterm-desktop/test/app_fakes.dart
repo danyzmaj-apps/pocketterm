@@ -5,10 +5,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pocketterm_core/apple_terminal.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/ghostty.dart';
-import 'package:pocketterm_core/iterm.dart';
 import 'package:pocketterm_core/kitty.dart';
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal.dart';
@@ -154,8 +152,6 @@ class FakeApp extends AppController {
     kitty: Kitty(socketDir: '/nonexistent-pocketterm-test', home: '/nonexistent-pocketterm-test', uid: 501),
     tmux: Tmux(executable: '/nonexistent-pocketterm-test/tmux', socketDirs: const []),
     wezterm: WezTerm(executable: '/nonexistent-pocketterm-test/wezterm', socketDir: '/nonexistent-pocketterm-test'),
-    iterm: ITerm(appPath: '/nonexistent-pocketterm-test/iTerm.app'),
-    terminal: AppleTerminal(appPath: '/nonexistent-pocketterm-test/Terminal.app'),
     ghostty: Ghostty(appPath: '/nonexistent-pocketterm-test/Ghostty.app'),
     recency: () async => const [],
     snapshot: () async => Procs(const []),

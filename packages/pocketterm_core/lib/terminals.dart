@@ -3,9 +3,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
-import 'package:pocketterm_core/apple_terminal.dart';
 import 'package:pocketterm_core/ghostty.dart';
-import 'package:pocketterm_core/iterm.dart';
 import 'package:pocketterm_core/kitty.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/tmux.dart';
@@ -22,14 +20,12 @@ class Terminals {
     this.kitty,
     this.tmux,
     this.wezterm,
-    this.iterm,
-    this.terminal,
     this.ghostty,
     this.recency = appsByRecency,
     this.snapshot = Procs.snapshot,
   });
 
-  /// The terminals of this computer: all six on a Mac (kitty's sockets in
+  /// The terminals of this computer: all four on a Mac (kitty's sockets in
   /// [kittyDir]), WezTerm alone on Windows.
   factory Terminals.standard({String kittyDir = '/tmp', String? home, bool? windows}) {
     final h = home ?? homeDir(windows: windows);
@@ -44,8 +40,6 @@ class Terminals {
       kitty: Kitty(socketDir: kittyDir, home: h),
       tmux: Tmux(),
       wezterm: WezTerm(home: h),
-      iterm: ITerm(),
-      terminal: AppleTerminal(),
       ghostty: Ghostty(),
     );
   }
@@ -55,8 +49,6 @@ class Terminals {
   final Kitty? kitty;
   final Tmux? tmux;
   final WezTerm? wezterm;
-  final ITerm? iterm;
-  final AppleTerminal? terminal;
   final Ghostty? ghostty;
 
   /// App names, most recently used first (`lsappinfo`); tests pass their own.
@@ -66,11 +58,11 @@ class Terminals {
   final Future<Procs> Function() snapshot;
 
   /// In the order their windows are listed.
-  List<TerminalHost> get hosts => [?kitty, ?tmux, ?wezterm, ?iterm, ?terminal, ?ghostty];
+  List<TerminalHost> get hosts => [?kitty, ?tmux, ?wezterm, ?ghostty];
 
   /// The terminal apps (tmux isn't one), in the order Auto prefers them
   /// when none was used lately.
-  List<TerminalHost> get apps => [?kitty, ?iterm, ?wezterm, ?ghostty, ?terminal];
+  List<TerminalHost> get apps => [?kitty, ?wezterm, ?ghostty];
 
   /// Terminal windows PocketTerm opened to show a tmux session: their key → the
   /// pane's (Ghostty tells no tty to match them by).
@@ -205,8 +197,8 @@ class Terminals {
   }
 
   /// Closes window [key]; for a tmux pane PocketTerm opened a terminal window to
-  /// show, that window too (Terminal keeps it open, its tmux gone), keeping
-  /// the focus where it is (Ghostty comes to the front as it closes it).
+  /// show, that window too keeping the focus where it is (Ghostty comes to the
+  /// front as it closes it).
   Future<void> close(String key) async {
     final guis = [
       for (final MapEntry(key: gui, value: pane) in _shows.entries)
@@ -266,7 +258,7 @@ class Terminals {
   bool viaTmux(TerminalHost host) =>
       (tmux?.installed ?? false) && !(host.caps.contains(TermCap.keys) && host.caps.contains(TermCap.read));
 
-  /// How the phone names where a new session opens: "kitty", "Terminal (in tmux)".
+  /// How the phone names where a new session opens: "kitty", "Ghostty (in tmux)".
   String describe(TerminalHost host) => viaTmux(host) ? '${host.label} (in tmux)' : host.label;
 
   /// A new window in [cwd] in [host] running the login shell, which then

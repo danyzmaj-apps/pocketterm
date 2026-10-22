@@ -8,11 +8,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/agent.dart';
-import 'package:pocketterm_core/apple_terminal.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/ghostty.dart';
-import 'package:pocketterm_core/iterm.dart';
 import 'package:pocketterm_core/kitty.dart';
 import 'package:pocketterm_core/live_activity.dart';
 import 'package:pocketterm_core/server_client.dart';
@@ -30,8 +28,6 @@ Terminals _terms({bool tmux = false}) => Terminals(
   kitty: Kitty(socketDir: '/nonexistent-pocketterm', home: '/nonexistent-pocketterm', restoreFront: false),
   tmux: Tmux(executable: tmux ? '/bin/sh' : '/nonexistent-pocketterm/tmux', socketDirs: const []),
   wezterm: WezTerm(executable: '/nonexistent-pocketterm/wezterm', socketDir: '/nonexistent-pocketterm'),
-  iterm: ITerm(appPath: '/nonexistent-pocketterm/iTerm.app'),
-  terminal: AppleTerminal(appPath: '/nonexistent-pocketterm/Terminal.app'),
   ghostty: Ghostty(appPath: '/nonexistent-pocketterm/Ghostty.app'),
 );
 
@@ -39,14 +35,16 @@ void main() {
   group('answering an ask from the phone', () {
     test('works where the screen can be read and keys pressed', () {
       final terms = _terms();
-      for (final key in ['kitty-1/2', 'tmux:default/0', 'wezterm:9/1', 'iterm:6A4030A3-8364-4898-9CEA-F189424E874A']) {
+      for (final key in ['kitty-1/2', 'tmux:default/0', 'wezterm:9/1']) {
         expect(cantAnswer(terms, key), isNull, reason: key);
       }
     });
 
-    test("Terminal can't press keys, Ghostty can't show its screen; tmux is the way out", () {
-      expect(cantAnswer(_terms(tmux: true), 'terminal:ttys009'), startsWith("Terminal can't press keys"));
-      expect(cantAnswer(_terms(tmux: true), 'terminal:ttys009'), contains('run in tmux there'));
+    test("Ghostty can't show its screen; tmux is the way out", () {
+      expect(
+        cantAnswer(_terms(tmux: true), 'ghostty:CB2035E7-67BF-48C7-8D0A-83F3FA5B8074'),
+        contains('run in tmux there'),
+      );
       final ghostty = cantAnswer(_terms(), 'ghostty:CB2035E7-67BF-48C7-8D0A-83F3FA5B8074')!;
       expect(ghostty, startsWith("Ghostty can't show its screen"));
       expect(ghostty, contains('brew install tmux'));
@@ -66,7 +64,7 @@ void main() {
   test('an error only when nothing shows and no terminal is usable: the setup one', () {
     const setup = TermStatus('kitty', 'kitty', TermState.setup, note: "kitty isn't listening.");
     const idle = TermStatus('ghostty', 'Ghostty', TermState.idle);
-    const limited = TermStatus('terminal', 'Terminal', TermState.limited);
+    const limited = TermStatus('wezterm', 'WezTerm', TermState.limited);
     expect(terminalsError([idle, setup], nothingShown: true), "kitty isn't listening.");
     expect(terminalsError([idle, setup], nothingShown: false), isNull);
     expect(terminalsError([setup, limited], nothingShown: true), isNull);
@@ -75,12 +73,7 @@ void main() {
 
   test("a slash command for a session in no terminal PocketTerm drives (IntelliJ's) is refused, not sent as chat", () {
     final terms = _terms();
-    for (final key in [
-      'kitty-1/2',
-      'tmux:default/0',
-      'terminal:ttys009',
-      'ghostty:CB2035E7-67BF-48C7-8D0A-83F3FA5B8074',
-    ]) {
+    for (final key in ['kitty-1/2', 'tmux:default/0', 'ghostty:CB2035E7-67BF-48C7-8D0A-83F3FA5B8074']) {
       expect(cantCommand(terms, key), isNull, reason: key);
     }
     expect(cantCommand(terms, null), startsWith("Slash commands are typed into the agent's terminal window"));
@@ -174,7 +167,6 @@ void main() {
     Terminals terms() => Terminals(
       home: '/nonexistent-pocketterm',
       kitty: kitty,
-      terminal: AppleTerminal(appPath: '/nonexistent-pocketterm/Terminal.app'),
       snapshot: () async {
         final program = foreground.length > 1 ? foreground.removeAt(0) : foreground.single;
         log.add('ps $program');
@@ -237,8 +229,10 @@ void main() {
 
     test("a terminal that can't press keys is refused", () async {
       await expectLater(
-        switchToConversation(terms(), 'terminal:ttys009', Agent.omp),
-        throwsA(isA<TerminalException>().having((e) => e.message, 'message', startsWith("Terminal can't press keys"))),
+        switchToConversation(terms(), 'nowhere:1', Agent.omp),
+        throwsA(
+          isA<TerminalException>().having((e) => e.message, 'message', startsWith("This terminal can't press keys")),
+        ),
       );
     });
 

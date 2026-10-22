@@ -32,14 +32,14 @@ void main() {
     final mac = _Mac([
       const TermStatus('kitty', 'kitty', TermState.setup, note: 'not let in', fix: TermFix.kittyConfig),
       const TermStatus('tmux', 'tmux', TermState.missing),
-      const TermStatus('iterm', 'iTerm2', TermState.missing),
-      const TermStatus('terminal', 'Terminal', TermState.setup, note: 'allow', fix: TermFix.automation),
+      const TermStatus('wezterm', 'WezTerm', TermState.missing),
+      const TermStatus('ghostty', 'Ghostty', TermState.setup, note: 'allow', fix: TermFix.automation),
     ]);
     await pump(tester, mac);
 
     expect(find.byKey(const ValueKey('terminal-kitty')), findsOneWidget);
-    expect(find.byKey(const ValueKey('terminal-terminal')), findsOneWidget);
-    expect(find.byKey(const ValueKey('terminal-iterm')), findsNothing, reason: 'not installed');
+    expect(find.byKey(const ValueKey('terminal-ghostty')), findsOneWidget);
+    expect(find.byKey(const ValueKey('terminal-wezterm')), findsNothing, reason: 'not installed');
     expect(find.text('Set up'), findsOneWidget);
     expect(find.text('Allow…'), findsOneWidget);
     expect(find.text('brew install tmux'), findsOneWidget);
@@ -48,7 +48,7 @@ void main() {
     mac.now = [
       const TermStatus('kitty', 'kitty', TermState.ready),
       const TermStatus('tmux', 'tmux', TermState.ready),
-      const TermStatus('terminal', 'Terminal', TermState.limited, note: 'whole lines'),
+      const TermStatus('ghostty', 'Ghostty', TermState.limited, note: 'no screen'),
     ];
     await tester.pump(const Duration(milliseconds: 150));
     await tester.pump();

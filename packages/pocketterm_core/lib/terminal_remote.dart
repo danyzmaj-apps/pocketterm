@@ -151,7 +151,7 @@ class TerminalRemote extends ChangeNotifier {
   /// empty from a computer that doesn't say.
   Map<Agent, AgentIntegration> agents = const {};
 
-  /// Where a session the phone starts opens ("iTerm2", "Terminal (in tmux)");
+  /// Where a session the phone starts opens ("kitty", "Ghostty (in tmux)");
   /// null from a Mac that doesn't say.
   String? opensIn;
 

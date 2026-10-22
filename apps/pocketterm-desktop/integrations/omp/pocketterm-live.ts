@@ -364,8 +364,6 @@ const TERM_VARS = [
 	"TMUX_PANE",
 	"WEZTERM_PANE",
 	"WEZTERM_UNIX_SOCKET",
-	"ITERM_SESSION_ID",
-	"TERM_SESSION_ID",
 ];
 
 /** Where omp runs: those variables, and its tty (`/dev/ttys012`), read once. */

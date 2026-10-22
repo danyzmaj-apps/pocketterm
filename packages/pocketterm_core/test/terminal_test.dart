@@ -8,9 +8,9 @@ import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/terminal.dart';
 
 // Outputs and environments below were captured on a Mac (macOS 26, tmux 3.6,
-// WezTerm 20240203, iTerm2 3.6, Ghostty 1.3.1, kitty 0.4x), names shortened.
+// WezTerm 20240203, Ghostty 1.3.1, kitty 0.4x), names shortened.
 
-/// `ps -Ao pid=,ppid=,pgid=,tpgid=,tty=,stat=,args=`: a Terminal tab (login,
+/// `ps -Ao pid=,ppid=,pgid=,tpgid=,tty=,stat=,args=`: a terminal tab (login,
 /// then zsh in front), a Ghostty window attached to tmux (login, tmux client
 /// in front), omp running in a tab, and a daemon without a tty.
 const _ps = '''
@@ -135,23 +135,6 @@ void main() {
       );
       // Ghostty tells nothing to match: Terminals.locate finds it by folder.
       expect(windowOfTerm({...leaked, 'TERM_PROGRAM': 'ghostty', 'tty': '/dev/ttys007'}), isNull);
-    });
-
-    test('iTerm2 by its session id, Terminal by its tty', () {
-      expect(
-        windowOfTerm({'TERM_PROGRAM': 'iTerm.app', 'ITERM_SESSION_ID': 'w0t1p0:6A4030A3-8364-4898-9CEA-F189424E874A'}),
-        'iterm:6A4030A3-8364-4898-9CEA-F189424E874A',
-      );
-      expect(
-        windowOfTerm({
-          'TERM_PROGRAM': 'Apple_Terminal',
-          'TERM_SESSION_ID': '4B0E2E4C-55B8-4F2F-9C55-6B8D9E1D2F10',
-          'tty': '/dev/ttys009',
-        }),
-        'terminal:ttys009',
-      );
-      // Terminal without a tty can't be told.
-      expect(windowOfTerm({'TERM_PROGRAM': 'Apple_Terminal'}), isNull);
     });
 
     test('nothing known: null', () {

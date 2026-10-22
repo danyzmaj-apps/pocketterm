@@ -34,13 +34,12 @@ appId: com.danyzmaj.pocketterm
           visible: ".*(Photo|Photos|Select|images).*"
           timeout: 15000
       - takeScreenshot: picker
+      # The system photo picker: the newest (the run's image) first; once
+      # picked, its button reads "Add (1)".
       - tapOn:
           id: "com.google.android.providers.media.module:id/icon_thumbnail"
           index: 0
-          optional: true
-      - tapOn:
-          text: "(Done|Add|Select)"
-          optional: true
+      - tapOn: "(Done|Add|Select)( \\(1\\))?"
 - extendedWaitUntil:
     visible: "Remove image"
     timeout: 15000

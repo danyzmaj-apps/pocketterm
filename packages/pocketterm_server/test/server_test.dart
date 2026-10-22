@@ -5,6 +5,10 @@ import 'package:test/test.dart';
 
 import 'harness.dart';
 
+/// A computer's push tag and a session's (pocketterm_core's pushTag, sessionTag): opaque to the server.
+const _tag = 'RJM0r7AxRLM';
+const _ref = 'yMPqtkm1TA3-r0AeuNDSHg';
+
 void main() {
   late Harness h;
   setUp(() async => h = await Harness.start());
@@ -394,52 +398,42 @@ void main() {
         'POST',
         '/v1/push/notify',
         token: mac.token,
-        body: {'desktop': 'aaaa1111', 'enc': enc, 'collapse': 'kitty-1/2'},
+        body: {'tag': _tag, 'enc': enc, 'collapse': _ref},
       );
       // Queued for both phones; the relay says the iPhone is gone.
       expect(first.map['sent'], 2);
       expect(
         h.relay.attempts,
         unorderedEquals([
-          {'token': iosToken, 'kind': 'terminal', 'enc': enc, 'desktop': 'aaaa1111', 'collapse': 'kitty-1/2'},
-          {
-            'platform': 'android',
-            'token': androidToken,
-            'kind': 'terminal',
-            'enc': enc,
-            'desktop': 'aaaa1111',
-            'collapse': 'kitty-1/2',
-          },
+          {'token': iosToken, 'kind': 'terminal', 'enc': enc, 'tag': _tag, 'collapse': _ref},
+          {'platform': 'android', 'token': androidToken, 'kind': 'terminal', 'enc': enc, 'tag': _tag, 'collapse': _ref},
         ]),
       );
 
       h.relay.received.clear();
-      final second = await h.call(
-        'POST',
-        '/v1/push/notify',
-        token: mac.token,
-        body: {'desktop': 'aaaa1111', 'enc': enc},
-      );
+      final second = await h.call('POST', '/v1/push/notify', token: mac.token, body: {'tag': _tag, 'enc': enc});
       expect(second.map['sent'], 1);
       expect([for (final b in h.relay.received) b['token']], [androidToken]);
       expect(h.relay.received.single.containsKey('collapse'), isFalse);
+
+      // The relay sees neither the computer's id nor a session key.
+      Future<int> notify(Map<String, Object> body) async =>
+          (await h.call('POST', '/v1/push/notify', token: mac.token, body: {'enc': enc, ...body})).status;
+      expect(await notify({'desktop': 'aaaa1111'}), 400);
+      expect(await notify({'tag': 'aaaa1111'}), 400);
+      expect(await notify({'tag': _tag, 'collapse': 'aaaa1111/kitty-1/2'}), 400);
     });
 
     test('a notification that is not sealed is refused', () async {
       final mac = await h.desktop();
       final short = base64.encode(List<int>.filled(28, 0));
-      final res = await h.call(
-        'POST',
-        '/v1/push/notify',
-        token: mac.token,
-        body: {'desktop': 'aaaa1111', 'enc': short},
-      );
+      final res = await h.call('POST', '/v1/push/notify', token: mac.token, body: {'tag': _tag, 'enc': short});
       expect(res.status, 400);
       final badToken = await h.call('POST', '/v1/push/register', token: mac.token, body: {'token': 'xyz'});
       expect(badToken.status, 400);
     });
 
-    test('iPhones get the state, Android phones the sealed state, until the session ends', () async {
+    test('iPhones get the state alone, Android phones the sealed state, until the session ends; no ids', () async {
       final mac = await h.desktop();
       final phone = await h.phone(mac.token);
       await optIn(phone.token);
@@ -454,7 +448,7 @@ void main() {
         'POST',
         '/v1/push/activity_register',
         token: phone.token,
-        body: {'token': androidToken, 'session': 'aaaa1111/s1', 'platform': 'android'},
+        body: {'token': androidToken, 'session': 'aaaa1111/s1', 'platform': 'android', 'ref': _ref},
       );
 
       final enc = base64.encode(List<int>.generate(40, (i) => i));
@@ -462,7 +456,7 @@ void main() {
         'POST',
         '/v1/push/activity',
         token: mac.token,
-        body: {'session': 'aaaa1111/s1', 'state': 'needs', 'kind': 'question', 'desktop': 'aaaa1111', 'enc': enc},
+        body: {'session': 'aaaa1111/s1', 'state': 'needs', 'kind': 'question', 'tag': _tag, 'enc': enc},
       );
       expect(needs.map['sent'], 2);
       final since = h.now.millisecondsSinceEpoch ~/ 1000;
@@ -471,14 +465,7 @@ void main() {
         h.relay.received,
         unorderedEquals([
           {'token': activity, 'kind': 'liveactivity', 'event': 'update', 'state': live},
-          {
-            'platform': 'android',
-            'token': androidToken,
-            'kind': 'activity',
-            'enc': enc,
-            'desktop': 'aaaa1111',
-            'collapse': 'aaaa1111/s1',
-          },
+          {'platform': 'android', 'token': androidToken, 'kind': 'activity', 'enc': enc, 'tag': _tag, 'ref': _ref},
         ]),
       );
 
@@ -500,36 +487,47 @@ void main() {
         h.relay.received,
         unorderedEquals([
           {'token': activity, 'kind': 'liveactivity', 'event': 'end', 'state': ended},
-          {
-            'platform': 'android',
-            'token': androidToken,
-            'kind': 'activity',
-            'session': 'aaaa1111/s1',
-            'state': ended,
-            'collapse': 'aaaa1111/s1',
-          },
+          {'platform': 'android', 'token': androidToken, 'kind': 'activity', 'ref': _ref, 'state': ended},
         ]),
       );
+      // Nothing on its way to the relay names the computer or the session.
+      expect(jsonEncode(h.relay.attempts), isNot(contains('aaaa1111')));
       h.relay.received.clear();
       final after = await h.call(
         'POST',
         '/v1/push/activity',
         token: mac.token,
-        body: {'session': 'aaaa1111/s1', 'state': 'done', 'desktop': 'aaaa1111', 'enc': enc},
+        body: {'session': 'aaaa1111/s1', 'state': 'done', 'tag': _tag, 'enc': enc},
       );
       expect(after.map['sent'], 0);
       expect(h.relay.received, isEmpty);
     });
 
-    test('a sealed state for another computer, or one not sealed, is refused', () async {
+    test("a sealed state without its computer's tag, or one not sealed, is refused", () async {
       final mac = await h.desktop();
       final enc = base64.encode(List<int>.generate(40, (i) => i));
       Future<int> activity(Map<String, Object> body) async =>
           (await h.call('POST', '/v1/push/activity', token: mac.token, body: {'state': 'working', ...body})).status;
-      expect(await activity({'session': 'aaaa1111/s1', 'desktop': 'bbbb2222', 'enc': enc}), 400);
+      expect(await activity({'session': 'aaaa1111/s1', 'desktop': 'aaaa1111', 'enc': enc}), 400);
       expect(await activity({'session': 'aaaa1111/s1', 'enc': enc}), 400);
-      expect(await activity({'session': 'aaaa1111/s1', 'desktop': 'aaaa1111', 'enc': 'AAAA'}), 400);
+      expect(await activity({'session': 'aaaa1111/s1', 'tag': 'aaaa1111', 'enc': enc}), 400);
+      expect(await activity({'session': 'aaaa1111/s1', 'tag': _tag, 'enc': 'AAAA'}), 400);
       expect(await activity({'session': 's1'}), 400);
+    });
+
+    test("an Android phone follows a session only with the session's tag", () async {
+      final mac = await h.desktop();
+      final phone = await h.phone(mac.token);
+      await optIn(phone.token);
+      Future<int> register(Map<String, Object> extra) async => (await h.call(
+        'POST',
+        '/v1/push/activity_register',
+        token: phone.token,
+        body: {'token': androidToken, 'session': 'aaaa1111/s1', 'platform': 'android', ...extra},
+      )).status;
+      expect(await register({}), 400);
+      expect(await register({'ref': 'aaaa1111/s1'}), 400);
+      expect(await register({'ref': _ref}), 200);
     });
 
     Future<void> follow(String phoneToken, String session, String token, [String platform = 'ios']) async {
@@ -537,7 +535,7 @@ void main() {
         'POST',
         '/v1/push/activity_register',
         token: phoneToken,
-        body: {'token': token, 'session': session, 'platform': platform},
+        body: {'token': token, 'session': session, 'platform': platform, if (platform == 'android') 'ref': _ref},
       );
       expect(res.status, 200);
     }
@@ -576,14 +574,7 @@ void main() {
         h.relay.received,
         unorderedEquals([
           {'token': quiet, 'kind': 'liveactivity', 'event': 'end', 'state': ended},
-          {
-            'platform': 'android',
-            'token': androidToken,
-            'kind': 'activity',
-            'session': 'aaaa1111/s2',
-            'state': ended,
-            'collapse': 'aaaa1111/s2',
-          },
+          {'platform': 'android', 'token': androidToken, 'kind': 'activity', 'ref': _ref, 'state': ended},
         ]),
       );
 
@@ -624,13 +615,13 @@ void main() {
 
       expect((await h.call('POST', '/v1/push/unregister', token: phone.token, body: {'token': iosToken})).status, 200);
       final enc = base64.encode(List<int>.filled(40, 1));
-      await h.call('POST', '/v1/push/notify', token: mac.token, body: {'desktop': 'aaaa1111', 'enc': enc});
+      await h.call('POST', '/v1/push/notify', token: mac.token, body: {'tag': _tag, 'enc': enc});
       await sentTo(mac.token, 'aaaa1111/s1');
       expect([for (final b in h.relay.received) b['token']], unorderedEquals(['ef' * 32, 'c2' * 80]));
 
       h.relay.received.clear();
       expect((await h.call('POST', '/v1/push/unregister', token: otherPhone.token)).status, 200);
-      await h.call('POST', '/v1/push/notify', token: mac.token, body: {'desktop': 'aaaa1111', 'enc': enc});
+      await h.call('POST', '/v1/push/notify', token: mac.token, body: {'tag': _tag, 'enc': enc});
       expect(await sentTo(mac.token, 'aaaa1111/s1'), 0);
       expect(h.relay.received, isEmpty);
     });
@@ -641,7 +632,7 @@ void main() {
       await h.call('POST', '/v1/push/register', token: phone.token, body: {'token': iosToken});
       await h.call('DELETE', '/v1/devices/${phone.id}', token: mac.token);
       final enc = base64.encode(List<int>.filled(40, 1));
-      final res = await h.call('POST', '/v1/push/notify', token: mac.token, body: {'desktop': 'aaaa1111', 'enc': enc});
+      final res = await h.call('POST', '/v1/push/notify', token: mac.token, body: {'tag': _tag, 'enc': enc});
       expect(res.map['sent'], 0);
       expect(h.relay.received, isEmpty);
     });
@@ -665,7 +656,7 @@ void main() {
     expect((await h.call('GET', '/v1/desktops', token: phone.token)).list.single, containsPair('name', 'Mac'));
     expect((await h.call('GET', '/v1/blobs/kept', token: mac.token)).bytes, [9]);
     final enc = base64.encode(List<int>.filled(40, 1));
-    final res = await h.call('POST', '/v1/push/notify', token: mac.token, body: {'desktop': 'aaaa1111', 'enc': enc});
+    final res = await h.call('POST', '/v1/push/notify', token: mac.token, body: {'tag': _tag, 'enc': enc});
     expect(res.map['sent'], 1);
   });
 }

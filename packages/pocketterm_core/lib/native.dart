@@ -1,11 +1,16 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// What the server (POST /v1/push/register) calls this phone's push
 /// service: APNs on iOS, FCM on Android.
-String get pushPlatform => Platform.isAndroid ? 'android' : 'ios';
+String get pushPlatform => debugPushPlatform ?? (Platform.isAndroid ? 'android' : 'ios');
+
+/// Stands in for the phone's push service in tests.
+@visibleForTesting
+String? debugPushPlatform;
 
 /// The phone's native side: the iPhone's (apps/pocketterm-mobile/ios/Runner/AppDelegate.swift) and
 /// Android's (apps/pocketterm-mobile/android/app/src/main/kotlin/com/danyzmaj/pocketterm/MainActivity.kt).

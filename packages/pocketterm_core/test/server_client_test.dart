@@ -134,7 +134,11 @@ void main() {
     await phone.push('register', {'token': token, 'label': 'iPhone', 'platform': 'ios'});
     final key = ChannelKey.generate();
     final enc = base64Encode(await sealBytes(key, utf8.encode('{"title":"done"}'), pushAad('abcd1234')));
-    final sent = await mac.push('notify', {'desktop': 'abcd1234', 'enc': enc, 'collapse': 'abcd1234/s1'});
+    final sent = await mac.push('notify', {
+      'tag': await pushTag(key),
+      'enc': enc,
+      'collapse': await sessionTag(key, 'abcd1234/s1'),
+    });
     expect(sent['sent'], 1);
     await until(() => own.relayed.isNotEmpty);
     // One request for the one phone, sealed to the relay on its way.
@@ -142,7 +146,7 @@ void main() {
     expect(jsonEncode(own.relayed.single), isNot(contains(token)));
 
     await phone.push('unregister', {'token': token});
-    expect((await mac.push('notify', {'desktop': 'abcd1234', 'enc': enc}))['sent'], 0);
+    expect((await mac.push('notify', {'tag': await pushTag(key), 'enc': enc}))['sent'], 0);
   });
 
   test('a phone that leaves, or that the computer signs out, can do nothing more', () async {

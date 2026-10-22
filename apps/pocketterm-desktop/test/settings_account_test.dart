@@ -63,7 +63,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('settings-data-protection')));
     await tester.pumpAndSettle();
     expect(find.text('Encrypted from end to end'), findsOneWidget);
-    expect(find.text('One exception: Live Activities'), findsOneWidget);
+    expect(find.text('Lock Screen updates (iPhone)'), findsOneWidget);
   });
 
   testWidgets('a computer that runs the server: HTTPS to turn on, then Add a computer, Erase, and Sign out stops it', (

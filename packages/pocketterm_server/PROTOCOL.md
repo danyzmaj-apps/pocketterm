@@ -202,21 +202,29 @@ A server stopping gives what's on its way 3 seconds; what still waits is dropped
 |--------------------------------------|---------------------------------------------------------------|---------------------|
 | `POST /v1/push/register`             | `{"token", "label"?, "platform"?}`                            | `{"ok": true}`      |
 | `POST /v1/push/unregister`           | `{"token"?}`                                                  | `{"ok": true}`      |
-| `POST /v1/push/notify`               | `{"desktop", "enc", "collapse"?}`                             | `{"sent": <count>}` |
-| `POST /v1/push/activity_register`    | `{"token", "session", "platform"?}`                           | `{"ok": true}`      |
+| `POST /v1/push/notify`               | `{"tag", "enc", "collapse"?}`                                 | `{"sent": <count>}` |
+| `POST /v1/push/activity_register`    | `{"token", "session", "platform"?, "ref"?}`                   | `{"ok": true}`      |
 | `POST /v1/push/activity_end`         | `{"token", "session"?}`                                       | `{"ok": true}`      |
-| `POST /v1/push/activity`             | `{"session", "state", "kind"?, "desktop"?, "enc"?}`           | `{"sent": <count>}` |
+| `POST /v1/push/activity`             | `{"session", "state", "kind"?, "tag"?, "enc"?}`               | `{"sent": <count>}` |
 
 - `token`: iOS, the APNs device token in hex (64 to 200 characters; a Live Activity's up to 400); Android, the
   FCM registration token (`[A-Za-z0-9_:-]{100,4096}`). Registering a token again replaces its row; a phone has one
   push token, so registering a new one (Apple or Google replaced it) forgets the phone's old one, and on Android the
   sessions the old one followed move to the new one.
 - `label`: at most 80 characters.
-- `desktop`: the computer's 8-character id. `enc`: base64 of nonce 12 ‖ ciphertext ‖ tag 16 (AES-256-GCM with the
-  computer's channel key over `{title, body, session?, state?}`, AAD `pocketterm/v1|push|<desktop>`), at most 3000
-  characters, more than 28 bytes decoded.
-- `collapse`: a coding session key, `[\w.:/-]{1,64}`. `session` (activity_register, activity): the routed session key
-  `<desktop id>/<key>`, at most 64 characters; `activity_end` takes any session key.
+- `tag`: the computer's push tag, what a push says instead of the computer's id: the first 8 bytes of
+  HMAC-SHA256(channel key, `pocketterm/v1|push-tag`), base64url without padding (11 characters). The same for every
+  push from that computer and meaningless without its key; a phone finds the key it belongs to among its own.
+- `enc`: base64 of nonce 12 ‖ ciphertext ‖ tag 16 (AES-256-GCM with the computer's channel key over
+  `{title, body, session?, state?}`, AAD `pocketterm/v1|push|<desktop id>`), at most 3000 characters, more than 28
+  bytes decoded. The coding session a tap opens, the title and the body are inside.
+- `collapse` (notify) and `ref` (activity_register): a coding session's push tag, the first 16 bytes of
+  HMAC-SHA256(channel key, `pocketterm/v1|push-session|<routed session key>`), base64url without padding (22
+  characters). `collapse` lets a newer notification for the session replace an older one; `ref` is what an Android
+  phone's session updates name the session by. `ref` is required with `"platform": "android"` and not kept for iOS.
+- `session` (activity_register, activity): the routed session key `<desktop id>/<key>`, at most 64 characters; the
+  server keeps it to know which phones follow which session, and never passes it to the relay. `activity_end` takes
+  any session key.
 - `state`: `working` | `needs` | `done` | `ended`; `kind` (with `needs` only): `question` | `approval` | `plan`.
 - `unregister` is how a phone turns notifications off: it forgets `token` (without one, every push token this phone
   registered) and every Live Activity token this phone registered, plus any following sessions with `token` (an
@@ -225,11 +233,11 @@ A server stopping gives what's on its way 3 seconds; what still waits is dropped
   the phone to have a push token (notifications on), else 409 `push_off`.
 - `activity_end` without `session` ends every session the token follows.
 - `activity`: iPhones get `state` and `kind` (Apple shows a Live Activity push without the app, so it can't be
-  encrypted). Android phones get only `enc`: the computer's channel-key AES-256-GCM seal of
-  `{"session", "state", "since", "kind"?}` with AAD `pocketterm/v1|activity|<desktop>`, same layout and limits as a
-  notification's `enc`. `enc` needs `desktop`, and `session` must start with `<desktop>/`. Without `enc`, Android phones
-  get nothing for that update. `ended` reaches Android phones as a plain end (below), then every token of that session
-  is forgotten.
+  encrypted) at the activity's own push token, and nothing else. Android phones get only `enc`: the computer's
+  channel-key AES-256-GCM seal of `{"session", "state", "since", "kind"?}` with AAD
+  `pocketterm/v1|activity|<desktop id>`, same layout and limits as a notification's `enc`, with `tag`; `enc` needs
+  `tag`. Without `enc`, Android phones get nothing for that update. `ended` reaches Android phones as a plain end
+  (below), then every token of that session is forgotten.
 - Ending by the server: when a computer hasn't `PUT /v1/desktops/:id` for 3 minutes (checked every minute), is
   removed with `DELETE /v1/desktops/:id`, or its device leaves or is revoked, the server sends an end to every Live
   Activity following one of its sessions (session keys starting with `<desktop id>/`) and forgets those tokens. A
@@ -243,13 +251,19 @@ first 11 characters of the relay public key's base64: a relay holding a new key 
 with the one it names (one without `kid` is tried with each); see
 `apps/pocketterm-relay/README.md`. Sealed inside:
 
-- notify, iOS: `{"token", "kind": "terminal", "enc", "desktop", "collapse"?}`
-- notify, Android: `{"platform": "android", "token", "kind": "terminal", "enc", "desktop", "collapse"?}`
+- notify, iOS: `{"token", "kind": "terminal", "enc", "tag", "collapse"?}`; the APNs payload is the generic alert
+  plus `{"enc", "t": <tag>}`, with `collapse` as `apns-collapse-id`
+- notify, Android: `{"platform": "android", "token", "kind": "terminal", "enc", "tag", "collapse"?}`; FCM data
+  `{"kind": "terminal", "enc", "t": <tag>}`, with `collapse` as `collapse_key`
 - activity, iOS: `{"token", "kind": "liveactivity", "event": "update" | "end", "state": {"state", "since", "kind"?}}`
-- activity, Android: `{"platform": "android", "token", "kind": "activity", "enc", "desktop", "collapse": <session>}`;
-  the relay hands the phone FCM data `{"kind": "activity", "enc", "d": <desktop>}`
-- end, Android: `{"platform": "android", "token", "kind": "activity", "session", "state": {"state": "ended",
-  "since"}, "collapse": <session>}`; FCM data `{"kind": "activity", "session", "state": "ended", "since": <ms>}`
+  and nothing more: no session key, computer id or collapse id
+- activity, Android: `{"platform": "android", "token", "kind": "activity", "enc", "tag", "ref"}`; FCM data
+  `{"kind": "activity", "enc", "t": <tag>}`, with `ref` as `collapse_key`
+- end, Android: `{"platform": "android", "token", "kind": "activity", "ref", "state": {"state": "ended", "since"}}`;
+  FCM data `{"kind": "activity", "ref", "state": "ended", "since": <ms>}`, with `ref` as `collapse_key`. The phone
+  ends the followed session whose push tag is `ref`.
+
+The relay refuses a body with any field not listed for its kind.
 
 An iPhone's Live Activity update goes stale 3 minutes after it was sent (`stale-date`); an ended one leaves the Lock
 Screen 10 minutes later (`dismissal-date`).

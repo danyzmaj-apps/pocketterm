@@ -192,9 +192,10 @@ void main() {
       state: ActivityState.needs,
       kind: ActivityKind.approval,
     ));
-    expect(body.keys, unorderedEquals(['session', 'state', 'kind', 'desktop', 'enc']));
+    expect(body.keys, unorderedEquals(['session', 'state', 'kind', 'tag', 'enc']));
     expect(body['session'], 'abcd1234/kitty-1/2');
-    expect(body['desktop'], 'abcd1234');
+    // The phone finds the key by this computer's tag; the computer's id goes only inside the seal.
+    expect(body['tag'], await pushTag(key));
 
     final sealed = base64Decode(body['enc']! as String);
     final opened = jsonDecode(utf8.decode((await openBytes(key, sealed, activityAad('abcd1234')))!));

@@ -8,6 +8,7 @@ import android.util.Base64
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
+import javax.crypto.Mac
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -110,6 +111,28 @@ object PocketTermShared {
     /** Every computer's key that unwraps, by its id. */
     fun channelKeys(c: Context): Map<String, ByteArray> =
         keyPrefs(c).all.keys.mapNotNull { d -> channelKey(c, d)?.let { d to it } }.toMap()
+
+    /**
+     * What a push names the computer that sealed it by, instead of its id (pocketterm_core's pushTag): the first
+     * 8 bytes of HMAC-SHA256([key], "pocketterm/v1|push-tag"), base64url without padding.
+     */
+    fun pushTag(key: ByteArray): String = tag(key, "pocketterm/v1|push-tag", 8)
+
+    /**
+     * What a push names coding session [routed] (`<desktop id>/<key>`) by (pocketterm_core's sessionTag): the first
+     * 16 bytes of HMAC-SHA256([key], "pocketterm/v1|push-session|<routed>"), base64url without padding.
+     */
+    fun sessionTag(key: ByteArray, routed: String): String = tag(key, "pocketterm/v1|push-session|$routed", 16)
+
+    private fun tag(key: ByteArray, what: String, length: Int): String {
+        val mac = Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(key, "HmacSHA256")) }
+        val bytes = mac.doFinal(what.toByteArray(Charsets.UTF_8)).copyOf(length)
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+    }
+
+    /** The computer among [keys] (by id) whose push tag is [tag]: its id and key; null when none. */
+    fun computer(tag: String, keys: Map<String, ByteArray>): Pair<String, ByteArray>? =
+        keys.entries.firstOrNull { pushTag(it.value) == tag }?.toPair()
 
     // The phone's sign-in on its server (the device token and what came with
     // it, one string the Dart side reads), wrapped like the channel keys.

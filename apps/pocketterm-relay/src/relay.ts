@@ -9,23 +9,29 @@
 // POST /v1/push with a sealed body {v: 1, epk, n, c}; opened, it is one of:
 //
 // iPhones (APNs; no platform field):
-//   {"token": hex, "kind": "terminal", "enc": base64, "desktop"?: computer id, "collapse"?: string}
+//   {"token": hex, "kind": "terminal", "enc": base64, "tag": push tag, "collapse"?: session tag}
 //   {"token": hex, "kind": "liveactivity", "event": "update"|"end",
 //    "state": {"state": "working"|"needs"|"done"|"ended", "since": unix seconds,
 //              "kind"?: "question"|"approval"|"plan"}}
 // Android phones (FCM HTTP v1, a data-only message the app shows itself):
 //   {"platform": "android", "token": FCM registration token,
-//    "kind": "terminal", "enc": base64, "desktop"?: computer id, "collapse"?: string}
+//    "kind": "terminal", "enc": base64, "tag": push tag, "collapse"?: session tag}
 //   {"platform": "android", "token": FCM registration token,
-//    "kind": "activity", "enc": base64 (the state, sealed by the computer), "desktop": computer id, "collapse"?: string}
+//    "kind": "activity", "enc": base64 (the state, sealed by the computer), "tag": push tag, "ref": session tag}
 //   {"platform": "android", "token": FCM registration token,
-//    "kind": "activity", "session": coding session key, "state": {"state": "ended", "since"}, "collapse"?: string}
+//    "kind": "activity", "ref": session tag, "state": {"state": "ended", "since"}}
 //    (an end, which the server sends when the computer has gone quiet and can't seal it)
 //   → 200 sent · 410 the phone is gone (uninstalled, signed out): forget it ·
 //     429 over a rate limit (Retry-After) · 501 FCM not configured here · 4xx/5xx otherwise
+// Any other field is refused (400): nothing else passes through.
 //
-// The phone opens enc with the key of the computer named by desktop (d in the
-// push); without one it shows a generic "PocketTerm" alert.
+// No computer id and no session key ever reach the relay. The push tag is
+// an HMAC of a fixed string under the computer's channel key (11 characters):
+// the phone finds the key it belongs to among its own and opens enc with it;
+// without one it shows a generic "PocketTerm" alert. A session tag is an HMAC
+// of the session's key under the same channel key (22 characters): it makes a
+// newer push for a session replace an older one (collapse id), and names the
+// session an Android end is for. Neither means anything without the key.
 //
 // Trust: any caller may use it (self-hosted servers have no credentials of the
 // publisher's), so whoever knows a device token can make that phone show a
@@ -37,11 +43,11 @@
 //
 // An iPhone's Live Activity push (a coding session on the Lock Screen) can't
 // be encrypted: the iPhone's notification extension never sees it. So it
-// carries only a state, rebuilt here from checked fields, never anything
-// passed through. An Android phone's comes sealed by the computer, except a
-// plain end, which says nothing but that the session is over.
-//
-// Stores nothing; never logs a token, an address or a body.
+// carries only a state, rebuilt here from checked fields, at the activity's
+// own token: Apple needs nothing else to find it, and the phone knows which
+// session it shows from what it set when the activity started. An Android
+// phone's comes sealed by the computer, except a plain end, which says
+// nothing but that the session behind its tag is over.
 
 import { decodeBase64 } from "jsr:@std/encoding@1/base64";
 import { encodeBase64Url } from "jsr:@std/encoding@1/base64url";
@@ -100,6 +106,25 @@ const fallback = "Terminal";
 
 const activityStates = ["working", "needs", "done", "ended"];
 const activityKinds = ["question", "approval", "plan"];
+
+/** A computer's push tag: 8 bytes of HMAC-SHA256 under its channel key, base64url. */
+const pushTag = /^[A-Za-z0-9_-]{11}$/;
+/** A coding session's push tag: 16 bytes of HMAC-SHA256 under its computer's channel key, base64url. */
+const sessionTag = /^[A-Za-z0-9_-]{22}$/;
+
+/** The fields each kind of push may carry; anything else is refused. */
+const fields = {
+  terminal: ["platform", "token", "kind", "enc", "tag", "collapse"],
+  liveactivity: ["platform", "token", "kind", "event", "state"],
+  activity: ["platform", "token", "kind", "enc", "tag", "ref"],
+  end: ["platform", "token", "kind", "ref", "state"],
+};
+
+/** What's wrong with [body]'s fields for [allowed]; null when nothing. */
+function extra(body: Record<string, unknown>, allowed: string[]): string | null {
+  const more = Object.keys(body).filter((k) => !allowed.includes(k));
+  return more.length ? `${more.join(", ")}: not taken here` : null;
+}
 
 /** The relay's POST /v1/push handler for [config]. */
 export function relay(config: Config): Push {
@@ -169,30 +194,37 @@ export function relay(config: Config): Push {
   async function android(body: Record<string, unknown>): Promise<Response> {
     if (!fcmToken(body.token)) return json(400, { error: "token must be an FCM registration token" });
     let data: FcmData;
+    let collapse: string | undefined;
     if (body.kind === "terminal") {
       const alert = sealedAlert(body);
       if (typeof alert === "string") return json(400, { error: alert });
-      data = { kind: "terminal", ...alert };
-    } else if (body.kind === "activity" && body.enc !== undefined) {
-      // A followed session's state, sealed by the computer like an alert: the phone opens it with that computer's key.
-      const sealed = sealedAlert(body);
-      if (typeof sealed === "string") return json(400, { error: sealed });
-      if (!sealed.d) return json(400, { error: "desktop must be the computer id whose key opens enc" });
-      data = { kind: "activity", ...sealed };
+      data = { kind: "terminal", ...alert.data };
+      collapse = alert.collapse;
     } else if (body.kind === "activity") {
-      if (typeof body.session !== "string" || !/^[\w.:/-]{1,64}$/.test(body.session)) {
-        return json(400, { error: "session must be a coding session key" });
+      if (typeof body.ref !== "string" || !sessionTag.test(body.ref)) {
+        return json(400, { error: "ref must be the session's push tag" });
       }
-      const s = activityState(body.state);
-      if (typeof s === "string") return json(400, { error: s });
-      // Anything but an end goes sealed (enc).
-      if (s.state !== "ended") return json(400, { error: "an Android session update must be sealed (enc)" });
-      // FCM data is strings only; the app takes since in ms.
-      data = { kind: "activity", session: body.session, state: s.state, since: String(s.since * 1000) };
+      collapse = body.ref;
+      if (body.enc !== undefined) {
+        // A followed session's state, sealed by the computer like an alert: the phone opens it with that computer's key.
+        const wrong = extra(body, fields.activity);
+        if (wrong) return json(400, { error: wrong });
+        const s = sealed(body);
+        if (typeof s === "string") return json(400, { error: s });
+        data = { kind: "activity", ...s };
+      } else {
+        const wrong = extra(body, fields.end);
+        if (wrong) return json(400, { error: wrong });
+        const s = activityState(body.state);
+        if (typeof s === "string") return json(400, { error: s });
+        // Anything but an end goes sealed (enc).
+        if (s.state !== "ended") return json(400, { error: "an Android session update must be sealed (enc)" });
+        // FCM data is strings only; the app takes since in ms.
+        data = { kind: "activity", ref: body.ref, state: s.state, since: String(s.since * 1000) };
+      }
     } else {
       return json(400, { error: "kind must be terminal or activity" });
     }
-    const collapse = typeof body.collapse === "string" && body.collapse.length <= 64 ? body.collapse : undefined;
     if (!(await tokenAllowed(body.token))) return tooMany();
 
     let access: FcmAccess;
@@ -243,12 +275,12 @@ export function relay(config: Config): Push {
           // The iPhone's notification extension opens enc into the real text.
           "mutable-content": 1,
         },
-        ...alert,
+        ...alert.data,
       });
       headers["apns-topic"] = config.apnsTopic;
       headers["apns-push-type"] = "alert";
       headers["apns-priority"] = "10";
-      if (typeof body.collapse === "string" && body.collapse.length <= 64) headers["apns-collapse-id"] = body.collapse;
+      if (alert.collapse) headers["apns-collapse-id"] = alert.collapse;
     }
     if (!(await tokenAllowed(body.token))) return tooMany();
     headers.authorization = `bearer ${await providerToken()}`;
@@ -306,15 +338,23 @@ export function relay(config: Config): Push {
   };
 }
 
-/**
- * A sealed alert's fields for the phone from a checked body: enc, and d (the
- * computer whose key opens it) when the server named one. A string says what's wrong.
- */
-function sealedAlert(body: Record<string, unknown>): { enc: string; d?: string } | string {
+/** A sealed push's enc and t, the tag of the computer whose key opens it; a string says what's wrong. */
+function sealed(body: Record<string, unknown>): { enc: string; t: string } | string {
   if (typeof body.enc !== "string" || body.enc.length > maxEnc) return "enc missing or too long";
-  if (body.desktop === undefined) return { enc: body.enc };
-  if (typeof body.desktop !== "string" || !/^[a-z0-9]{8}$/.test(body.desktop)) return "desktop must be a computer id";
-  return { enc: body.enc, d: body.desktop };
+  if (typeof body.tag !== "string" || !pushTag.test(body.tag)) return "tag must be the computer's push tag";
+  return { enc: body.enc, t: body.tag };
+}
+
+/** A sealed alert from a checked body: what goes to the phone and the collapse id. A string says what's wrong. */
+function sealedAlert(body: Record<string, unknown>): { data: { enc: string; t: string }; collapse?: string } | string {
+  const wrong = extra(body, fields.terminal);
+  if (wrong) return wrong;
+  const data = sealed(body);
+  if (typeof data === "string") return data;
+  const { collapse } = body;
+  if (collapse === undefined) return { data };
+  if (typeof collapse !== "string" || !sessionTag.test(collapse)) return "collapse must be the session's push tag";
+  return { data, collapse };
 }
 
 /** A session's state from a checked {state, since: unix seconds, kind?}; a string says what's wrong. */
@@ -334,6 +374,8 @@ function activityState(s: unknown): { state: string; since: number; kind?: strin
 
 /** A Live Activity's push from a checked body; a string says what's wrong. */
 function liveActivity(body: Record<string, unknown>): { payload: string; priority: string } | string {
+  const wrong = extra(body, fields.liveactivity);
+  if (wrong) return wrong;
   const s = activityState(body.state);
   if (typeof s === "string") return s;
   if (body.event !== "update" && body.event !== "end") return "event must be update or end";

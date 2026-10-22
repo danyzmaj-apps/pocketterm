@@ -125,4 +125,72 @@ void main() {
     await a.prompted('kitty-1/2', title: 'Fix it');
     expect(a.following('kitty-1/2'), isFalse);
   });
+
+  test("an Android phone names a followed session to the server with a tag only that computer's key makes", () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('pocketterm/native'),
+      (call) async => switch (call.method) {
+        'liveActivities' => const <Object>[],
+        'channelKeys' => {'zzzz9999': ChannelKey(List.filled(32, 9)).toBase64()},
+        _ => null,
+      },
+    );
+    final dir = Directory.systemTemp.createTempSync('pocketterm_activity');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final client = _Pushes();
+    final remote = TerminalRemote(
+      client,
+      dir,
+      desktopId: 'abcd1234',
+      key: ChannelKey(List.filled(32, 7)),
+      send: (_, _) {},
+    );
+    final a = LiveActivities(client, remote);
+    await pumpEventQueue();
+    final fcm = 'f' * 160;
+
+    debugPushPlatform = 'android';
+    addTearDown(() => debugPushPlatform = null);
+    a
+      ..onNative('activityToken', {'key': 'abcd1234/kitty-1/2', 'token': fcm})
+      ..onNative('activityToken', {'key': 'zzzz9999/kitty-1/2', 'token': fcm})
+      ..onNative('activityToken', {'key': 'qqqq0000/kitty-1/2', 'token': fcm});
+    await pumpEventQueue();
+    expect(client.sent.map((s) => s.$1).toSet(), {'activity_register'});
+    expect(
+      client.sent.map((s) => s.$2),
+      unorderedEquals([
+        {'token': fcm, 'session': 'abcd1234/kitty-1/2', 'platform': 'android', 'ref': 'yMPqtkm1TA3-r0AeuNDSHg'},
+        {
+          'token': fcm,
+          'session': 'zzzz9999/kitty-1/2',
+          'platform': 'android',
+          'ref': await sessionTag(ChannelKey(List.filled(32, 9)), 'zzzz9999/kitty-1/2'),
+        },
+        // No key for that computer: nothing it sends would open, and the server refuses a session without its tag.
+        {'token': fcm, 'session': 'qqqq0000/kitty-1/2', 'platform': 'android'},
+      ]),
+    );
+
+    // An iPhone's activity has a token of its own: Apple routes by it, the server needs no tag.
+    client.sent.clear();
+    debugPushPlatform = 'ios';
+    a.onNative('activityToken', {'key': 'abcd1234/kitty-1/2', 'token': 'ab' * 40});
+    await pumpEventQueue();
+    expect(client.sent.single.$2, {'token': 'ab' * 40, 'session': 'abcd1234/kitty-1/2', 'platform': 'ios'});
+  });
+}
+
+/// A server client that records the pushes it is asked for.
+class _Pushes extends PocketTermServerClient {
+  _Pushes() : super(const Backend(url: 'http://localhost:1'), tokens: MemoryDeviceTokens());
+
+  final sent = <(String, Map<String, Object?>)>[];
+
+  @override
+  Future<Map<String, dynamic>> push(String action, Map<String, Object?> body) async {
+    sent.add((action, body));
+    return {'ok': true};
+  }
 }

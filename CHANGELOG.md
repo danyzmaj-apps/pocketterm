@@ -2,6 +2,10 @@
 
 What each PocketTerm release brings.
 
+## Unreleased
+
+- **Less outside the encryption.** A notification names its computer and session only by tags made with that computer's key, so the push relay, Apple and Google see an encrypted message, a push token and when it was sent. A Lock Screen update on iPhone carries only its state (working, needs you, finished); which session it shows stays on the phone. Android's followed sessions name theirs the same way. Phones, computers and servers need this version together.
+
 ## 0.1.0
 
 The first release of PocketTerm: the omp and Claude Code sessions on your computer, on your phone, end-to-end encrypted, through a PocketTerm server you run yourself.

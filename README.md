@@ -160,9 +160,9 @@ Closing the window keeps PocketTerm running in the menu bar (Mac) or tray (Windo
 
 Notifications are off until you turn them on in the phone app, which says who sees what before it asks; **Account → Notifications** changes it later. They go from your server through PocketTerm's push relay, `push.danyzmaj.com`, run by Danijel Lovric on his server in Germany, to Apple or Google:
 
-- The computer encrypts each notification with its key; only your phone opens it. The relay and Apple or Google see the phone's push token, which computer it's from and when it comes, never what it says.
+- The computer encrypts each notification with its key; only your phone opens it. The relay and Apple or Google see an encrypted message, the phone's push token and when it was sent, never what it says or which computer or session it's about.
 - Your server seals every request to the relay's own key, so nothing in between reads it. The relay stores nothing.
-- Live Activities on iPhone (and their Android ongoing notifications) carry only a session's state (working, needs you, finished), never its title or text: Apple delivers those to the system directly, so they can't be encrypted.
+- **Lock Screen updates (iPhone).** When you follow a session, iOS shows its state on the Lock Screen: working, needs you, or finished. Apple doesn't let apps decrypt these updates, so this state travels unencrypted. It never includes any text from your sessions, and it carries no names, folders or ids. On Android, a followed session's updates are encrypted like notifications.
 
 <p align="center">
   <img src="docs/images/phone-notifications.png" width="24%" alt="Phone: notifications, with who sees what, before turning them on">

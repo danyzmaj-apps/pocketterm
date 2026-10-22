@@ -11,6 +11,10 @@ import 'package:test/test.dart';
 
 import 'harness.dart';
 
+/// A computer's push tag and a session's (pocketterm_core's pushTag, sessionTag).
+const _tag = 'RJM0r7AxRLM';
+const _ref = 'yMPqtkm1TA3-r0AeuNDSHg';
+
 void main() {
   late Harness h;
   setUp(() async => h = await Harness.start());
@@ -123,7 +127,7 @@ void main() {
       await h.call('POST', '/v1/push/register', token: phone.token, body: {'token': 'ab' * 32});
       h.relay.hang = true;
       final watch = Stopwatch()..start();
-      final res = await h.call('POST', '/v1/push/notify', token: mac.token, body: {'desktop': 'aaaa1111', 'enc': enc});
+      final res = await h.call('POST', '/v1/push/notify', token: mac.token, body: {'tag': _tag, 'enc': enc});
       expect(res.map['sent'], 1);
       expect((await h.call('DELETE', '/v1/devices/${phone.id}', token: mac.token)).status, 200);
       expect(watch.elapsed, lessThan(const Duration(seconds: 2)));
@@ -135,7 +139,7 @@ void main() {
       final token = 'ab' * 32;
       await h.call('POST', '/v1/push/register', token: phone.token, body: {'token': token});
       h.relay.script[token] = [503, 429];
-      await h.call('POST', '/v1/push/notify', token: mac.token, body: {'desktop': 'aaaa1111', 'enc': enc});
+      await h.call('POST', '/v1/push/notify', token: mac.token, body: {'tag': _tag, 'enc': enc});
       expect(h.relay.attempts, hasLength(3));
       expect(h.relay.received.single['token'], token);
     });
@@ -149,16 +153,16 @@ void main() {
         'POST',
         '/v1/push/activity_register',
         token: pixel.token,
-        body: {'token': fcm, 'session': 'aaaa1111/s1', 'platform': 'android'},
+        body: {'token': fcm, 'session': 'aaaa1111/s1', 'platform': 'android', 'ref': _ref},
       );
       h.relay.statusFor[fcm] = 410;
-      await h.call('POST', '/v1/push/notify', token: mac.token, body: {'desktop': 'aaaa1111', 'enc': enc});
+      await h.call('POST', '/v1/push/notify', token: mac.token, body: {'tag': _tag, 'enc': enc});
       h.relay.attempts.clear();
       final after = await h.call(
         'POST',
         '/v1/push/activity',
         token: mac.token,
-        body: {'session': 'aaaa1111/s1', 'state': 'working', 'desktop': 'aaaa1111', 'enc': enc},
+        body: {'session': 'aaaa1111/s1', 'state': 'working', 'tag': _tag, 'enc': enc},
       );
       expect(after.map['sent'], 0);
       expect(h.relay.attempts, isEmpty);
@@ -232,7 +236,7 @@ void main() {
   });
 
   group('push tokens', () {
-    test("a phone's new push token replaces its old one and takes over its followed sessions", () async {
+    test("a phone's new push token replaces its old one and takes over its followed sessions, tags and all", () async {
       final mac = await h.desktop();
       final pixel = await h.phone(mac.token);
       final old = 'f' * 120;
@@ -242,25 +246,41 @@ void main() {
         'POST',
         '/v1/push/activity_register',
         token: pixel.token,
-        body: {'token': old, 'session': 'aaaa1111/s1', 'platform': 'android'},
+        body: {'token': old, 'session': 'aaaa1111/s1', 'platform': 'android', 'ref': _ref},
+      );
+      await h.call(
+        'POST',
+        '/v1/push/activity_register',
+        token: pixel.token,
+        body: {'token': old, 'session': 'aaaa1111/s2', 'platform': 'android', 'ref': 'r' * 22},
       );
       // Android hands the new token to both at once: the session may be followed anew before the token registers.
       await h.call(
         'POST',
         '/v1/push/activity_register',
         token: pixel.token,
-        body: {'token': fresh, 'session': 'aaaa1111/s1', 'platform': 'android'},
+        body: {'token': fresh, 'session': 'aaaa1111/s1', 'platform': 'android', 'ref': _ref},
       );
       await h.call('POST', '/v1/push/register', token: pixel.token, body: {'token': fresh, 'platform': 'android'});
 
-      await h.call('POST', '/v1/push/notify', token: mac.token, body: {'desktop': 'aaaa1111', 'enc': enc});
+      await h.call('POST', '/v1/push/notify', token: mac.token, body: {'tag': _tag, 'enc': enc});
       await h.call(
         'POST',
         '/v1/push/activity',
         token: mac.token,
-        body: {'session': 'aaaa1111/s1', 'state': 'working', 'desktop': 'aaaa1111', 'enc': enc},
+        body: {'session': 'aaaa1111/s1', 'state': 'working', 'tag': _tag, 'enc': enc},
       );
       expect([for (final b in h.relay.received) (b['kind'], b['token'])], [('terminal', fresh), ('activity', fresh)]);
+      expect(h.relay.received.last['ref'], _ref);
+
+      h.relay.received.clear();
+      await h.call(
+        'POST',
+        '/v1/push/activity',
+        token: mac.token,
+        body: {'session': 'aaaa1111/s2', 'state': 'working', 'tag': _tag, 'enc': enc},
+      );
+      expect((h.relay.received.single['token'], h.relay.received.single['ref']), (fresh, 'r' * 22));
     });
 
     test('a phone with notifications off follows no session', () async {

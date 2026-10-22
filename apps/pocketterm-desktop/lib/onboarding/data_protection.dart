@@ -32,15 +32,15 @@ class DataProtection extends StatelessWidget {
       Icons.notifications_none,
       'Notifications, if you turn them on',
       'They go from your server through PocketTerm’s push relay (push.danyzmaj.com, run by Danijel Lovric on his '
-          'server in Germany) to Apple or Google, then your phone. The relay, Apple and Google get encrypted text, '
-          'your phone’s push token and which computer it’s from. The relay stores nothing.',
+          'server in Germany) to Apple or Google, then your phone. The relay, Apple and Google see an encrypted message, '
+          'your phone’s push token and when it was sent. The relay stores nothing.',
     ),
     (
       Icons.info_outline,
-      'One exception: Live Activities',
-      'On iPhone, a followed session on the Lock Screen (and its ongoing notification on Android) shows its state: '
-          'working, needs you or finished, since when, and whether it waits on a question, an approval or a plan. '
-          'Apple delivers those to the system directly, so they can’t be encrypted. They never carry any text.',
+      'Lock Screen updates (iPhone)',
+      'When you follow a session, iOS shows its state on the Lock Screen: working, needs you, or finished. Apple '
+          'doesn’t let apps decrypt these updates, so this state travels unencrypted. It never includes any text from '
+          'your sessions, and it carries no names, folders or ids.',
     ),
     (
       Icons.qr_code_2,

@@ -7,18 +7,20 @@ import org.json.JSONObject
 
 /**
  * Pushes from the user's own server, through the relay
- * (apps/pocketterm-relay) and FCM. They are data-only:
- * - kind terminal {enc, d}: the computer d sealed {title, body, session?, state?, ts, id}
- *   with its channel key, AAD "pocketterm/v1|push|<d>" (PocketTermShared.open).
+ * (apps/pocketterm-relay) and FCM. They are data-only and name no computer
+ * and no session: a computer is named by its push tag t, a session by its
+ * tag ref (PocketTermShared.pushTag, sessionTag), which only its key makes.
+ * - kind terminal {enc, t}: the computer whose tag is t sealed {title, body, session?, state?, ts, id}
+ *   with its channel key, AAD "pocketterm/v1|push|<computer id>" (PocketTermShared.open).
  *   The server, the relay and Google only ever see ciphertext. Without that
  *   computer's key, if it doesn't open, or if it is old or came before
  *   (PocketTermShared.isFreshPush), a generic "PocketTerm" alert shows, as on
  *   the iPhone.
- * - kind activity {enc, d}: a followed session's {session, state, since, kind?, ts, id},
- *   sealed the same way with AAD "pocketterm/v1|activity|<d>". It is dropped unless fresh
- *   (isFreshPush), its session is one of computer d's ("<d>/…") and its since is no
+ * - kind activity {enc, t}: a followed session's {session, state, since, kind?, ts, id},
+ *   sealed the same way with AAD "pocketterm/v1|activity|<computer id>". It is dropped unless fresh
+ *   (isFreshPush), its session is one of that computer's ("<id>/…") and its since is no
  *   older than the last one applied for that session: a replay can't roll it back.
- * - kind activity {session, state: ended}: the server ends a followed session
+ * - kind activity {ref, state: ended}: the server ends the followed session whose tag is ref
  *   (it ended, or its computer went quiet or left); it carries nothing else.
  */
 class PushService : FirebaseMessagingService() {
@@ -36,7 +38,7 @@ class PushService : FirebaseMessagingService() {
         when (data["kind"]) {
             "activity" -> activity(data)
             "terminal" -> {
-                val m = opened(data["enc"], data["d"], "push")?.takeIf {
+                val m = opened(data["enc"], data["t"], "push")?.second?.takeIf {
                     PocketTermShared.isFreshPush(this, if (it.has("ts")) it.optLong("ts") else null, it.optString("id"))
                 }
                 if (m == null) {
@@ -56,12 +58,17 @@ class PushService : FirebaseMessagingService() {
     private fun activity(data: Map<String, String>) {
         if (data["enc"] == null) {
             // Only an end comes unsealed: nobody on the way can make up a state.
-            val session = data["session"] ?: return
-            if (data["state"] == "ended") SessionActivities.pushed(this, session, "ended", null, null)
+            if (data["state"] != "ended") return
+            val ref = data["ref"] ?: return
+            val keys = PocketTermShared.channelKeys(this)
+            val session = SessionActivities.keys(this).firstOrNull { key ->
+                val k = keys[key.substringBefore('/')]
+                k != null && PocketTermShared.sessionTag(k, key) == ref
+            } ?: return
+            SessionActivities.pushed(this, session, "ended", null, null)
             return
         }
-        val desktop = data["d"] ?: return
-        val m = opened(data["enc"], desktop, "activity") ?: return
+        val (desktop, m) = opened(data["enc"], data["t"], "activity") ?: return
         if (!PocketTermShared.isFreshPush(this, if (m.has("ts")) m.optLong("ts") else null, m.optString("id"))) return
         val session = m.optString("session")
         if (!session.startsWith("$desktop/") || session.length == desktop.length + 1) return
@@ -81,12 +88,15 @@ class PushService : FirebaseMessagingService() {
         return true
     }
 
-    /** What computer [desktop] sealed for [what] (push, activity), opened with its key; null if anything is off. */
-    private fun opened(enc: String?, desktop: String?, what: String): JSONObject? = runCatching {
-        if (enc == null || desktop == null) return null
-        val key = PocketTermShared.channelKey(this, desktop) ?: return null
+    /**
+     * What the computer whose push tag is [tag] sealed for [what] (push, activity), opened with its key, and that
+     * computer's id; null if anything is off.
+     */
+    private fun opened(enc: String?, tag: String?, what: String): Pair<String, JSONObject>? = runCatching {
+        if (enc == null || tag == null) return null
+        val (desktop, key) = PocketTermShared.computer(tag, PocketTermShared.channelKeys(this)) ?: return null
         val plain = PocketTermShared.open(Base64.decode(enc, Base64.DEFAULT), key, "pocketterm/v1|$what|$desktop")
             ?: return null
-        JSONObject(String(plain, Charsets.UTF_8))
+        desktop to JSONObject(String(plain, Charsets.UTF_8))
     }.getOrNull()
 }

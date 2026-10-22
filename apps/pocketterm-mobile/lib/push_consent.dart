@@ -134,15 +134,15 @@ class PushExplainer extends StatelessWidget {
           ),
           _Point(
             Icons.lock_outline,
-            '$store sees this phone’s push token and when a notification comes, never what it says: your computer '
-            'encrypts it with the key from its code, and only this phone opens it.',
+            'The relay and $store see an encrypted message, this phone’s push token and when it was sent. Your '
+            'computer encrypts each notification with the key from its code, and only this phone opens it.',
           ),
           _Point(
             isIos ? Icons.lock_clock_outlined : Icons.notifications_outlined,
             isIos
-                ? 'Sessions you follow on the Lock Screen (Live Activities) are the exception: Apple can’t decrypt '
-                      'those, so they carry only the state (working, needs you, finished), never the session’s title '
-                      'or text.'
+                ? 'When you follow a session, iOS shows its state on the Lock Screen: working, needs you, or finished. '
+                      'Apple doesn’t let apps decrypt these updates, so this state travels unencrypted. It never '
+                      'includes any text from your sessions, and it carries no names, folders or ids.'
                 : 'Sessions you follow in your notifications are encrypted the same way.',
           ),
           const _Point(Icons.toggle_on_outlined, 'Change your mind any time: Account → Notifications.', last: true),

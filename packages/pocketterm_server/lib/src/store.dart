@@ -120,13 +120,14 @@ class PushToken {
 
 /// A Live Activity's push token following coding [session].
 class ActivityToken {
-  ActivityToken({required this.token, required this.session, required this.platform, required this.device});
+  ActivityToken({required this.token, required this.session, required this.platform, required this.device, this.ref});
 
   factory ActivityToken.fromJson(Map<String, dynamic> j) => ActivityToken(
     token: j['token'] as String,
     session: j['session'] as String,
     platform: j['platform'] as String,
     device: j['device'] as String,
+    ref: j['ref'] as String?,
   );
 
   final String token;
@@ -134,10 +135,20 @@ class ActivityToken {
   final String platform;
   final String device;
 
+  /// What an Android phone's pushes name [session] by: its tag under the computer's key (pocketterm_core's
+  /// sessionTag), which the phone registered. An iPhone's activity has none: its token is its own.
+  final String? ref;
+
   /// The computer whose session it follows: [session] is `<desktop id>/<key>`.
   String get desktop => session.split('/').first;
 
-  Map<String, dynamic> toJson() => {'token': token, 'session': session, 'platform': platform, 'device': device};
+  Map<String, dynamic> toJson() => {
+    'token': token,
+    'session': session,
+    'platform': platform,
+    'device': device,
+    'ref': ?ref,
+  };
 }
 
 String iso(DateTime t) => t.toUtc().toIso8601String();

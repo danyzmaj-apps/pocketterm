@@ -190,6 +190,18 @@ void main() {
     expect(await openBytes(key, base64Decode(activity), activityAad(topic)), isNotNull);
   });
 
+  test("a push names its computer and session only by tags made with that computer's key", () async {
+    // The same values the phone's Swift and Kotlin code compute (PocketTermShared): a mismatch would leave every
+    // push showing the generic alert.
+    final seven = ChannelKey(List.filled(32, 7));
+    final nine = ChannelKey(List.filled(32, 9));
+    expect(await pushTag(seven), 'RJM0r7AxRLM');
+    expect(await pushTag(nine), 'xx8kW7GbrvA');
+    expect(await sessionTag(seven, 'abcd1234/kitty-1/2'), 'yMPqtkm1TA3-r0AeuNDSHg');
+    expect(await sessionTag(seven, 'abcd1234/kitty-1/3'), isNot('yMPqtkm1TA3-r0AeuNDSHg'));
+    expect(await sessionTag(nine, 'abcd1234/kitty-1/2'), isNot('yMPqtkm1TA3-r0AeuNDSHg'));
+  });
+
   test('a key reads back from both of its spellings; anything else is no key', () {
     expect(ChannelKey.tryParse(key.toBase64()), key);
     expect(ChannelKey.tryParse(key.toBase64Url()), key);

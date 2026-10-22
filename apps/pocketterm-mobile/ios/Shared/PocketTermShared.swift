@@ -109,15 +109,6 @@ enum PocketTermShared {
     UserDefaults.standard.set(true, forKey: installed)
   }
 
-  static func channelKey(for desktop: String) -> Data? {
-    var query = keyQuery(desktop)
-    query[kSecReturnData as String] = true
-    query[kSecMatchLimit as String] = kSecMatchLimitOne
-    var out: CFTypeRef?
-    guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess else { return nil }
-    return out as? Data
-  }
-
   /// Every computer's key, by its id.
   static func channelKeys() -> [String: Data] {
     var query = keyQuery()
@@ -135,6 +126,21 @@ enum PocketTermShared {
       }
     }
     return keys
+  }
+
+  /// What a push names the computer that sealed it by, instead of its id (pocketterm_core's pushTag): the first
+  /// 8 bytes of HMAC-SHA256(key, "pocketterm/v1|push-tag"), base64url without padding.
+  static func pushTag(_ key: Data) -> String {
+    let mac = HMAC<SHA256>.authenticationCode(for: Data("pocketterm/v1|push-tag".utf8), using: SymmetricKey(data: key))
+    return Data(mac).prefix(8).base64EncodedString()
+      .replacingOccurrences(of: "+", with: "-")
+      .replacingOccurrences(of: "/", with: "_")
+      .replacingOccurrences(of: "=", with: "")
+  }
+
+  /// The computer among [keys] (by id) whose push tag is [tag]: its id and key; nil when none.
+  static func computer(tagged tag: String, in keys: [String: Data]) -> (desktop: String, key: Data)? {
+    keys.first { pushTag($0.value) == tag }.map { (desktop: $0.key, key: $0.value) }
   }
 
   /// Opens [sealed] (nonce 12 ‖ ciphertext ‖ tag 16, AES-256-GCM) with [key]

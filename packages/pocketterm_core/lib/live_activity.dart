@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/native.dart';
 import 'package:pocketterm_core/server_client.dart';
@@ -164,8 +165,19 @@ class LiveActivities extends ChangeNotifier {
 
   Future<void> _register(String routed, String token) async {
     if (!_registered.add('$routed\n$token')) return;
-    final body = {'token': token, 'session': routed, 'platform': pushPlatform};
+    // An Android phone's plain end names the session only by its tag (sessionTag), which the server can't make.
+    final ref = pushPlatform == 'android' ? await _ref(routed) : null;
+    final body = {'token': token, 'session': routed, 'platform': pushPlatform, 'ref': ?ref};
     if (!await _push('activity_register', body)) _registered.remove('$routed\n$token');
+  }
+
+  /// [routed]'s [sessionTag] under its computer's key; null without the key (nothing from it would open anyway).
+  Future<String?> _ref(String routed) async {
+    final desktop = splitRoutedKey(routed)?.desktop;
+    final key = desktop == _remote.desktopId
+        ? _remote.key
+        : ChannelKey.tryParse((await Native.channelKeys().catchError((Object _) => <String, String>{}))[desktop]);
+    return key == null ? null : await sessionTag(key, routed);
   }
 
   Future<bool> _push(String action, Map<String, Object?> body) async {

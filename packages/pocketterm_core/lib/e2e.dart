@@ -73,6 +73,25 @@ String pushAad(String desktopId) => 'pocketterm/v1|push|$desktopId';
 /// computer [desktopId].
 String activityAad(String desktopId) => 'pocketterm/v1|activity|$desktopId';
 
+/// What a push says about the computer that sealed it, instead of its id:
+/// the first 8 bytes of HMAC-SHA256([key], `pocketterm/v1|push-tag`) in
+/// base64url without padding (11 characters). The same for every push from
+/// that computer and meaningless without its key: the phone finds the key
+/// whose tag it is, the relay and the push services can't tell which computer it is.
+Future<String> pushTag(ChannelKey key) => _tag(key, 'pocketterm/v1|push-tag', 8);
+
+/// What a push says about coding session [routedKey] (`<desktop id>/<key>`):
+/// the first 16 bytes of HMAC-SHA256([key], `pocketterm/v1|push-session|<routedKey>`)
+/// in base64url without padding (22 characters). It lets a newer push for the
+/// session replace an older one (collapse id) and, on Android, names the session
+/// a plain end is for, without telling anyone on the way which session it is.
+Future<String> sessionTag(ChannelKey key, String routedKey) => _tag(key, 'pocketterm/v1|push-session|$routedKey', 16);
+
+Future<String> _tag(ChannelKey key, String what, int length) async {
+  final mac = await Hmac.sha256().calculateMac(utf8.encode(what), secretKey: SecretKey(key.bytes));
+  return base64UrlEncode(mac.bytes.sublist(0, length)).replaceAll('=', '');
+}
+
 const _nonceLength = 12;
 const _tagLength = 16;
 

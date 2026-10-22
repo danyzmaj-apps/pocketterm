@@ -244,8 +244,8 @@
     <div class="grid2" style="margin-top:16px">
       <div class="card"><h4>Sealed end to end</h4><p>Conversations, prompts, screens, keys you press, images, and notification text.</p></div>
       <div class="card"><h4>Visible to the server</h4><p>Your device list, computer names, pairing codes (hashed), push tokens, and when devices talk.</p></div>
-      <div class="card"><h4>Push relay (only if you turn notifications on)</h4><p>Run by Danijel Lovric on his server in Germany. Receives requests sealed to its own key, forwards the still-sealed notification to Apple or Google, stores nothing, logs no device ids.</p></div>
-      <div class="card"><h4>One exception</h4><p>iPhone Live Activities can't be encrypted (Apple's rule), so they carry only a session's state, like "working" or "needs you", never text.</p></div>
+      <div class="card"><h4>Push relay (only if you turn notifications on)</h4><p>Run by Danijel Lovric on his server in Germany. Receives requests sealed to its own key, forwards the still-sealed notification to Apple or Google, stores nothing, logs no device ids. The relay and Apple or Google see an encrypted message, a push token and when it was sent.</p></div>
+      <div class="card"><h4>Lock Screen updates (iPhone)</h4><p>When you follow a session, iOS shows its state on the Lock Screen: working, needs you, or finished. Apple doesn't let apps decrypt these updates, so this state travels unencrypted. It never includes any text from your sessions, and it carries no names, folders or ids.</p></div>
       <div class="card"><h4>Lost a phone?</h4><p>Settings → Phone → Reset key. The computer makes a new key; every phone scans again; the old key opens nothing new.</p></div>
       <div class="card"><h4>Links from outside</h4><p>A link opened from a message or website can never install a key. Only the in-app scanner can.</p></div>
     </div>

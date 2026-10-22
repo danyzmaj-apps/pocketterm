@@ -35,7 +35,9 @@ void main() {
     expect(app.host.calls, ['idleSeconds']);
   });
 
-  testWidgets("a push goes sealed: the server gets the computer's id and nothing it could read", (tester) async {
+  testWidgets("a push goes sealed: outside the seal only tags that mean nothing without this computer's key", (
+    tester,
+  ) async {
     await tester.runAsync(() async {
       final app = await FakeApp.create();
       app.host.idle = 600;
@@ -46,13 +48,19 @@ void main() {
 
       final body = app.pushes.single;
       final desktop = app.desktopId(app.fakeUser!.id);
-      expect(body.keys, unorderedEquals(['action', 'desktop', 'enc', 'collapse']));
+      final key = Backend.computerKey(await app.pairingLink())!.key;
+      expect(body.keys, unorderedEquals(['action', 'tag', 'enc', 'collapse']));
       expect(body['action'], 'notify');
-      expect(body['desktop'], desktop);
-      expect(jsonEncode(body), isNot(anyOf(contains('secret-project'), contains('login'), contains('finished'))));
+      // The phone finds this computer's key by its tag; a newer push for the session replaces this one.
+      expect(body['tag'], await pushTag(key));
+      expect(body['collapse'], await sessionTag(key, '$desktop/kitty-1/2'));
+      expect(
+        jsonEncode(body),
+        isNot(anyOf(contains('secret-project'), contains('login'), contains('finished'), contains(desktop))),
+      );
+      expect(jsonEncode(body), isNot(contains('kitty-1/2')));
 
       // A phone that scanned this computer's code opens it.
-      final key = Backend.computerKey(await app.pairingLink())!.key;
       final opened = await openBytes(key, base64Decode(body['enc']! as String), pushAad(desktop));
       final notice = jsonDecode(utf8.decode(opened!)) as Map<String, dynamic>;
       expect(notice, {

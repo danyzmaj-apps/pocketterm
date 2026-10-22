@@ -16,8 +16,14 @@ Future<void> main(List<String> args) async {
   final relay = await X25519().newKeyPair();
   final publicKey = (await relay.extractPublicKey()).bytes;
   final plains = [
-    jsonEncode({'token': 'a' * 64, 'kind': 'terminal', 'enc': 'c2VhbGVk', 'desktop': 'k3x9m2qa'}),
-    jsonEncode({'platform': 'android', 'token': 'f' * 160, 'kind': 'terminal', 'enc': 'x' * 3000}),
+    jsonEncode({'token': 'a' * 64, 'kind': 'terminal', 'enc': 'c2VhbGVk', 'tag': 'RJM0r7AxRLM'}),
+    jsonEncode({
+      'platform': 'android',
+      'token': 'f' * 160,
+      'kind': 'terminal',
+      'enc': 'x' * 3000,
+      'tag': 'RJM0r7AxRLM',
+    }),
     '',
     'not json, still sealed: ünïcødé',
   ];

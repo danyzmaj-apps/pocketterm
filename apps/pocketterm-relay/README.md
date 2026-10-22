@@ -24,18 +24,22 @@ seconds), and never `501`.
 What's inside the seal (the server builds it; see
 [packages/pocketterm_server/PROTOCOL.md](../../packages/pocketterm_server/PROTOCOL.md)):
 
-- iPhone alert: `{"token", "kind": "terminal", "enc", "desktop"?, "collapse"?}`
+- iPhone alert: `{"token", "kind": "terminal", "enc", "tag", "collapse"?}`
 - iPhone Live Activity:
   `{"token", "kind": "liveactivity", "event": "update"|"end", "state": {"state", "since", "kind"?}}`
-- Android alert: `{"platform": "android", "token", "kind": "terminal", "enc", "desktop"?, "collapse"?}`
-- Android coding session: `{"platform": "android", "token", "kind": "activity", "enc", "desktop", "collapse"?}`, or its
-  end in plain text:
-  `{"platform": "android", "token", "kind": "activity", "session", "state": {"state": "ended", "since"}, "collapse"?}`
+- Android alert: `{"platform": "android", "token", "kind": "terminal", "enc", "tag", "collapse"?}`
+- Android coding session: `{"platform": "android", "token", "kind": "activity", "enc", "tag", "ref"}`, or its end in
+  plain text: `{"platform": "android", "token", "kind": "activity", "ref", "state": {"state": "ended", "since"}}`
+- Any other field is refused (`400`).
 - iPhone Live Activities go stale 3 minutes after an update (`stale-date`) and leave the Lock Screen 10 minutes after
   their end (`dismissal-date`).
 
 `enc` is the notification (or an Android session's state), sealed on your computer with its channel key; the relay
-passes it to the phone as it is.
+passes it to the phone as it is. No computer id or session key reaches the relay: `tag` is an HMAC under the computer's
+channel key (the phone finds the key it belongs to), and `collapse` and `ref` are an HMAC of the session's key under the
+same key (a newer push for a session replaces an older one; an Android end names its session by it). A Live Activity
+push goes to the activity's own token, which is all Apple needs; the phone set which session it shows when the activity
+started.
 
 ## Sealed requests (v1)
 

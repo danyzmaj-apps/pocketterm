@@ -638,20 +638,21 @@ class AppController extends Session {
   /// nobody has touched this computer for a minute: at the desk, its own
   /// screen says it already. [session]: the coding session a tap opens;
   /// [activity]: where it stands (done, needs). Sealed with this computer's
-  /// key: the server and the push services see only which computer it came
-  /// from (Live Activities move by the bridge's own pushes). False if it
-  /// didn't go.
+  /// key; outside the seal go only this computer's push tag and the session's
+  /// (pushTag, sessionTag), which mean nothing without the key (Live
+  /// Activities move by the bridge's own pushes). False if it didn't go.
   Future<bool> notifyPhone(String title, String body, {String? session, String? activity}) async {
     if (user == null || await host.idleSeconds() < 60) return false;
     try {
       final id = desktopId(user!.id);
+      final key = await channelKey();
       final routed = session == null ? null : routedKey(id, session);
       final notice = {'title': title, 'body': body, 'session': ?routed, 'state': ?activity};
       final data = await invokePush('notify', {
-        'desktop': id,
-        'enc': await sealNotice(await channelKey(), id, notice),
+        'tag': await pushTag(key),
+        'enc': await sealNotice(key, id, notice),
         // Lets a newer push for the same session replace an older one.
-        if (routed != null && RegExp(r'^[\w.:/-]{1,64}$').hasMatch(routed)) 'collapse': routed,
+        if (routed != null) 'collapse': await sessionTag(key, routed),
       });
       return (data['sent'] as int? ?? 0) > 0;
     } on Object catch (e) {

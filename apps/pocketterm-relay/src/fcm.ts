@@ -18,7 +18,7 @@ const tokenAudience = "https://oauth2.googleapis.com/token";
 /** An FCM registration token. */
 export const fcmToken = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_:\-]{100,4096}$/.test(v);
 
-/** What an Android push carries: kind terminal {enc, d?} or kind activity {session, state, since, akind?} (or a server's from before end-to-end encryption: {enc}). */
+/** What an Android push carries: kind terminal or activity {enc, t} (t: the push tag of the computer whose key opens enc), or a plain end {kind: activity, ref, state, since}. */
 export type FcmData = { kind: "terminal" | "activity" } & Record<string, string>;
 
 /** The service account from its JSON key file; a string says what's wrong. */

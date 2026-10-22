@@ -342,9 +342,11 @@ class TerminalBridge {
   }
 
   /// What goes to POST /v1/push/activity for coding session [key] now at
-  /// [status]: its routed key, state and kind in the clear for iPhones' Live
-  /// Activities (Apple can't open anything sealed), and the same sealed with
-  /// this computer's [channelKey] as `enc`, the only thing Android phones get.
+  /// [status]: its routed key (for the server to find the phones following
+  /// it; it never reaches the relay), state and kind in the clear for
+  /// iPhones' Live Activities (Apple can't open anything sealed), and the
+  /// same sealed with this computer's [channelKey] as `enc`, the only thing
+  /// Android phones get, with this computer's push tag to find the key by.
   @visibleForTesting
   static Future<Map<String, Object?>> activityPush(
     ChannelKey channelKey,
@@ -357,7 +359,7 @@ class TerminalBridge {
     return {
       'session': session,
       ...state,
-      'desktop': desktopId,
+      'tag': await pushTag(channelKey),
       'enc': await sealActivity(channelKey, desktopId, {
         'session': session,
         ...state,

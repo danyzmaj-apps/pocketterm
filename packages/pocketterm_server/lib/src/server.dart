@@ -43,6 +43,12 @@ final _sessionKey = RegExp(r'^[\w.:/-]{1,64}$');
 final _routedKey = RegExp(r'^[a-z0-9]{8}/[\w.:/-]{1,55}$');
 final _fcmToken = RegExp(r'^[A-Za-z0-9_:\-]{100,4096}$');
 
+/// What a push names its computer by (pocketterm_core's pushTag): 8 bytes of an HMAC under its key, base64url.
+final _pushTag = RegExp(r'^[A-Za-z0-9_-]{11}$');
+
+/// What a push names a coding session by (pocketterm_core's sessionTag): 16 bytes of an HMAC, base64url.
+final _sessionTag = RegExp(r'^[A-Za-z0-9_-]{22}$');
+
 /// The relay takes at most 3000 base64 characters (FCM's 4 KB of data in all).
 const _maxEnc = 3000;
 
@@ -505,7 +511,7 @@ class PocketTermServer {
       ..activityTokens.removeWhere((t) => t.device == id)
       ..save();
     _hub.closeDevice(id);
-    _sendActivity(own, _ended(), null);
+    _sendActivity(own, _ended(), null, null);
     desktops.forEach(_endActivities);
   }
 
@@ -661,14 +667,14 @@ class PocketTermServer {
         _store.pushTokens.removeWhere((t, _) => old.contains(t));
         final moved = {
           for (final a in _store.activityTokens)
-            if (a.device == device && a.platform == 'android' && old.contains(a.token)) a.session,
+            if (a.device == device && a.platform == 'android' && old.contains(a.token)) a.session: a.ref,
         };
         _store.activityTokens
           ..removeWhere((a) => a.device == device && a.platform == 'android' && old.contains(a.token))
-          ..removeWhere((a) => a.token == token && moved.contains(a.session))
+          ..removeWhere((a) => a.token == token && moved.containsKey(a.session))
           ..addAll([
-            for (final session in moved)
-              ActivityToken(token: token as String, session: session, platform: 'android', device: device),
+            for (final MapEntry(key: session, value: ref) in moved.entries)
+              ActivityToken(token: token as String, session: session, platform: 'android', device: device, ref: ref),
           ]);
         _store
           ..pushTokens[token as String] = PushToken(
@@ -688,17 +694,21 @@ class PocketTermServer {
           ..save();
         return {'ok': true};
       case 'notify':
-        final desktop = body['desktop'];
-        if (desktop is! String || !_desktopId.hasMatch(desktop)) throw _bad("desktop must be the computer's id.");
+        final tag = body['tag'];
+        if (tag is! String || !_pushTag.hasMatch(tag)) throw _bad("tag must be the computer's push tag.");
         final enc = body['enc'];
         if (!_sealed(enc)) throw _bad('enc must be the sealed notification, base64, at most $_maxEnc.');
         final collapse = body['collapse'];
-        if (collapse != null && !_isSessionKey(collapse)) throw _bad('collapse must be a coding session key.');
-        return {'sent': _notify(desktop, enc! as String, collapse as String?)};
+        if (collapse != null && (collapse is! String || !_sessionTag.hasMatch(collapse))) {
+          throw _bad("collapse must be the coding session's push tag.");
+        }
+        return {'sent': _notify(tag, enc! as String, collapse as String?)};
       case 'activity_register':
         final session = body['session'];
+        final ref = body['ref'];
         if (platform == 'android') {
           if (token is! String || !_fcmToken.hasMatch(token)) throw _bad('token must be the FCM registration token.');
+          if (ref is! String || !_sessionTag.hasMatch(ref)) throw _bad("ref must be the session's push tag.");
         } else if (!_apnsToken(token, 400)) {
           throw _bad("token must be the activity's push token (hex).");
         }
@@ -714,7 +724,14 @@ class PocketTermServer {
         _store.activityTokens.removeWhere((t) => t.token == token && (t.session == session || platform == 'ios'));
         _store
           ..activityTokens.add(
-            ActivityToken(token: token! as String, session: session, platform: platform as String, device: device),
+            ActivityToken(
+              token: token! as String,
+              session: session,
+              platform: platform as String,
+              device: device,
+              // An iPhone's activity needs none: Apple routes its pushes by the activity's own token.
+              ref: platform == 'android' ? ref as String? : null,
+            ),
           )
           ..save();
         return {'ok': true};
@@ -737,13 +754,13 @@ class PocketTermServer {
         if (!_activityStates.contains(state)) throw _bad('state must be ${_activityStates.join(', ')}.');
         final kind = body['kind'];
         if (kind != null && !_activityKinds.contains(kind)) throw _bad('kind must be ${_activityKinds.join(', ')}.');
-        final desktop = body['desktop'];
-        if (desktop != null && (desktop is! String || !session.startsWith('$desktop/'))) {
-          throw _bad("desktop must be the id of the session's computer.");
+        final tag = body['tag'];
+        if (tag != null && (tag is! String || !_pushTag.hasMatch(tag))) {
+          throw _bad("tag must be the computer's push tag.");
         }
         final enc = body['enc'];
-        if (enc != null && (desktop == null || !_sealed(enc))) {
-          throw _bad('enc must be the sealed state, base64, at most $_maxEnc, with desktop.');
+        if (enc != null && (tag == null || !_sealed(enc))) {
+          throw _bad('enc must be the sealed state, base64, at most $_maxEnc, with tag.');
         }
         final live = {
           'state': state,
@@ -757,14 +774,14 @@ class PocketTermServer {
             ..activityTokens.removeWhere((t) => t.session == session)
             ..save();
         }
-        return {'sent': _sendActivity(tokens, live, enc as String?)};
+        return {'sent': _sendActivity(tokens, live, enc as String?, tag as String?)};
       default:
         throw _unknown();
     }
   }
 
-  /// Queues [enc], sealed on computer [desktop], for every phone; the number of phones.
-  int _notify(String desktop, String enc, String? collapse) {
+  /// Queues [enc], sealed by the computer whose push tag is [tag], for every phone; the number of phones.
+  int _notify(String tag, String enc, String? collapse) {
     final tokens = _store.pushTokens.values.toList();
     for (final t in tokens) {
       _relay.send({
@@ -772,7 +789,7 @@ class PocketTermServer {
         'token': t.token,
         'kind': 'terminal',
         'enc': enc,
-        'desktop': desktop,
+        'tag': tag,
         // Lets a newer push for the same coding session replace an older one.
         'collapse': ?collapse,
       }, key: collapse == null ? null : 'n|${t.token}|$collapse');
@@ -799,38 +816,27 @@ class PocketTermServer {
     if (tokens.isEmpty) return;
     _store.activityTokens.removeWhere((t) => t.desktop == desktop);
     _trySave();
-    _sendActivity(tokens, _ended(), null);
+    _sendActivity(tokens, _ended(), null, null);
   }
 
   /// Queues the move of the Live Activities of [tokens] to [live] (ended: ends them); the number queued. An
-  /// iPhone gets the state itself (Apple can't hand a Live Activity push to code that would decrypt it); an
-  /// Android phone gets [enc], the state the computer sealed, or nothing without it, except an end, which says
-  /// nothing and goes plain.
-  int _sendActivity(List<ActivityToken> tokens, Map<String, dynamic> live, String? enc) {
+  /// iPhone gets the state alone at its activity's token (Apple can't hand a Live Activity push to code that would
+  /// decrypt it, and its token is all Apple needs); an Android phone gets [enc], the state the computer with push
+  /// tag [tag] sealed, or nothing without it, except an end, which says nothing and goes plain. Neither carries a
+  /// session key or a computer id: an Android push names its session only by the tag the phone registered (ref).
+  int _sendActivity(List<ActivityToken> tokens, Map<String, dynamic> live, String? enc, String? tag) {
     final ended = live['state'] == 'ended';
     var sent = 0;
     for (final t in tokens) {
       final Map<String, dynamic> push;
       if (t.platform != 'android') {
         push = {'token': t.token, 'kind': 'liveactivity', 'event': ended ? 'end' : 'update', 'state': live};
+      } else if (t.ref == null) {
+        continue; // Registered before sessions had tags: nothing the phone could match.
       } else if (ended) {
-        push = {
-          'platform': 'android',
-          'token': t.token,
-          'kind': 'activity',
-          'session': t.session,
-          'state': live,
-          'collapse': t.session,
-        };
-      } else if (enc != null) {
-        push = {
-          'platform': 'android',
-          'token': t.token,
-          'kind': 'activity',
-          'enc': enc,
-          'desktop': t.desktop,
-          'collapse': t.session,
-        };
+        push = {'platform': 'android', 'token': t.token, 'kind': 'activity', 'ref': t.ref, 'state': live};
+      } else if (enc != null && tag != null) {
+        push = {'platform': 'android', 'token': t.token, 'kind': 'activity', 'enc': enc, 'tag': tag, 'ref': t.ref};
       } else {
         continue;
       }

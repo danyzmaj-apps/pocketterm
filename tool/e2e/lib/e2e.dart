@@ -29,6 +29,7 @@ class E2eConfig {
     required this.serverUrl,
     required this.setupLink,
     required this.phone,
+    this.serverCa,
   });
 
   factory E2eConfig.fromJson(Map<String, dynamic> j) => E2eConfig(
@@ -38,6 +39,7 @@ class E2eConfig {
     serverUrl: j['serverUrl'] as String,
     setupLink: j['setupLink'] as String,
     phone: j['phone'] as bool,
+    serverCa: j['serverCa'] as String?,
   );
 
   factory E2eConfig.read(String path) =>
@@ -64,6 +66,10 @@ class E2eConfig {
   /// Whether the phone's phases run (else the desktop goes on alone).
   final bool phone;
 
+  /// A PEM root the desktop trusts besides the system's: a test server
+  /// whose certificate is its own CA's (Caddy's `tls internal`).
+  final String? serverCa;
+
   Map<String, Object> toJson() => {
     'terminal': terminal,
     'artifacts': artifacts,
@@ -71,6 +77,7 @@ class E2eConfig {
     'serverUrl': serverUrl,
     'setupLink': setupLink,
     'phone': phone,
+    'serverCa': ?serverCa,
   };
 
   String get home => p.join(work, 'home');

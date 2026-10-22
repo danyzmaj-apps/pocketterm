@@ -6,7 +6,8 @@
 //
 //   dart run tool/e2e/bin/run.dart [--terminal kitty|ghostty|wezterm|all]
 //       [--server local|builtin|<https url> (--setup-link <link> |
-//        --setup-link-file <file>) [--server-stop-cmd <sh> --server-start-cmd <sh>]]
+//        --setup-link-file <file>) [--server-stop-cmd <sh> --server-start-cmd <sh>]
+//        [--server-ca <pem>]]
 //       [--no-phone] [--platform ios|android [--avd <name>]]
 //       [--phone-only <flow>,…] [--from-head] [--artifacts <dir>]
 //
@@ -22,7 +23,8 @@
 // a server elsewhere; its setup link best from a file (it stays off the
 // command line and out of the artifacts). --server-stop-cmd and
 // --server-start-cmd (sh -c) stop and start it for the server restart,
-// e.g. `ssh host docker stop <container>`.
+// e.g. `ssh host docker stop <container>`. --server-ca: a root the desktop
+// trusts for it (a test server with its own CA, e.g. Caddy's `tls internal`).
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -126,7 +128,7 @@ Map<String, String> _parse(List<String> args) {
     switch (args[i]) {
       case '--terminal' || '--server' || '--setup-link' || '--platform' || '--artifacts' || '--avd' || '--phone-only':
         o[args[i].substring(2)] = args[++i];
-      case '--setup-link-file' || '--server-stop-cmd' || '--server-start-cmd':
+      case '--setup-link-file' || '--server-stop-cmd' || '--server-start-cmd' || '--server-ca':
         o[args[i].substring(2)] = args[++i];
         if (args[i - 1] == '--setup-link-file') o['setup-link'] = File(args[i]).readAsStringSync().trim();
       case '--no-phone':
@@ -328,6 +330,7 @@ Future<Map<String, String>> _runTerminal(
       serverUrl: serverUrl,
       setupLink: setupLink,
       phone: phone,
+      serverCa: opts['server-ca'],
     );
     writeHome(c);
     File(p.join(bin, 'omp')).copySync(p.join(c.bin, 'omp'));

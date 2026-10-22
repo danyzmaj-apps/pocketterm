@@ -40,7 +40,9 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('PocketTerm end to end', (tester) async {
     if (_configPath.isEmpty) fail('Run through tool/e2e/run.sh (--dart-define=E2E_CONFIG=<config.json>).');
-    final run = _Run(tester, E2eConfig.read(_configPath));
+    final c = E2eConfig.read(_configPath);
+    if (c.serverCa case final ca?) HttpOverrides.global = _TrustCa(File(ca).readAsBytesSync());
+    final run = _Run(tester, c);
     try {
       await run.all();
     } finally {
@@ -48,6 +50,17 @@ void main() {
     }
     expect(run.report.failures, isEmpty, reason: 'see ${run.c.results}');
   }, timeout: const Timeout(Duration(minutes: 150)));
+}
+
+/// The app's HTTPS and WebSockets also trust [ca] (a test server's own CA),
+/// in this process only: the Mac's keychain stays as it is.
+class _TrustCa extends HttpOverrides {
+  _TrustCa(this.ca);
+  final List<int> ca;
+
+  @override
+  HttpClient createHttpClient(SecurityContext? context) =>
+      super.createHttpClient((context ?? SecurityContext(withTrustedRoots: true))..setTrustedCertificatesBytes(ca));
 }
 
 /// A 1×1 PNG, the stand-in phone's image.

@@ -11,8 +11,8 @@ appId: com.danyzmaj.pocketterm
     visible: "Scan the code from your computer"
     timeout: 30000
 - tapOn: "Scan the code from your computer"
-# Below Android 9 Flutter hands a text field's hint to nobody: there it's the
-# field under the instructions, left of Use.
+# Below Android 9 Flutter hands a text field's hint to nobody: there the field
+# is found by its identifier.
 - extendedWaitUntil:
     visible: "Use"
     timeout: 10000
@@ -26,8 +26,7 @@ appId: com.danyzmaj.pocketterm
       notVisible: "Paste a code \\(debug\\)"
     commands:
       - tapOn:
-          below: "On your computer:[\\s\\S]*"
-          leftOf: "Use"
+          id: "paste-code"
 - inputText: ${LINK}
 - tapOn: "Use"
 - extendedWaitUntil:

@@ -651,25 +651,29 @@ class _SessionPageState extends State<SessionPage> {
                     child: CoachTarget(
                       tip: Tip.slash,
                       radius: 12,
-                      child: TextField(
-                        key: const ValueKey('session-input'),
-                        onTapOutside: dismissKeyboard,
-                        controller: _field,
-                        minLines: 1,
-                        maxLines: 6,
-                        enabled: online,
-                        // A command's name isn't a word to correct or capitalize.
-                        autocorrect: !slash,
-                        enableSuggestions: !slash,
-                        textCapitalization: slash ? TextCapitalization.none : TextCapitalization.sentences,
-                        style: const TextStyle(fontSize: 16, height: 1.4),
-                        decoration: plainInput.copyWith(
-                          hintText: busy
-                              ? (_followUp || !agent.steers ? 'Queue a prompt…' : 'Steer ${agent.label}…')
-                              : 'Prompt ${agent.label}…',
-                          hintStyle: const TextStyle(color: C.dim2),
-                          // 48 tall, like the buttons either side, so one line sits on their center.
-                          contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                      // Named for UI tests: below Android 9 Flutter reads no text field's hint.
+                      child: Semantics(
+                        identifier: 'session-input',
+                        child: TextField(
+                          key: const ValueKey('session-input'),
+                          onTapOutside: dismissKeyboard,
+                          controller: _field,
+                          minLines: 1,
+                          maxLines: 6,
+                          enabled: online,
+                          // A command's name isn't a word to correct or capitalize.
+                          autocorrect: !slash,
+                          enableSuggestions: !slash,
+                          textCapitalization: slash ? TextCapitalization.none : TextCapitalization.sentences,
+                          style: const TextStyle(fontSize: 16, height: 1.4),
+                          decoration: plainInput.copyWith(
+                            hintText: busy
+                                ? (_followUp || !agent.steers ? 'Queue a prompt…' : 'Steer ${agent.label}…')
+                                : 'Prompt ${agent.label}…',
+                            hintStyle: const TextStyle(color: C.dim2),
+                            // 48 tall, like the buttons either side, so one line sits on their center.
+                            contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                          ),
                         ),
                       ),
                     ),

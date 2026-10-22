@@ -220,12 +220,16 @@ class _PasteCodeState extends State<_PasteCode> {
         Row(
           children: [
             Expanded(
-              child: TextField(
-                key: const ValueKey('paste-code'),
-                controller: _text,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(hintText: 'Paste a code (debug)', isDense: true),
-                onSubmitted: widget.onCode,
+              // Named for UI tests: below Android 9 Flutter reads no text field's hint.
+              child: Semantics(
+                identifier: 'paste-code',
+                child: TextField(
+                  key: const ValueKey('paste-code'),
+                  controller: _text,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(hintText: 'Paste a code (debug)', isDense: true),
+                  onSubmitted: widget.onCode,
+                ),
               ),
             ),
             TextButton(

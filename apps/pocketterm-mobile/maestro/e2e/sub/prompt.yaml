@@ -1,6 +1,5 @@
 # Taps the conversation's prompt field. Below Android 9 Flutter hands a text
-# field's hint to nobody (and reads a button's tooltip after a line break):
-# there it's the field between Attach images and Send.
+# field's hint to nobody: there it's found by its identifier.
 appId: com.danyzmaj.pocketterm
 ---
 - runFlow:
@@ -13,5 +12,4 @@ appId: com.danyzmaj.pocketterm
       notVisible: "Prompt omp…"
     commands:
       - tapOn:
-          rightOf: "\n?Attach images"
-          leftOf: "\n?Send"
+          id: "session-input"

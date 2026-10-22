@@ -290,7 +290,7 @@ flow() {
       ok=1
       break
     fi
-    grep -q MaestroDriverStartupException "$dir/maestro.log" || break
+    grep -qE "MaestroDriverStartupException|IOSDriverTimeoutException" "$dir/maestro.log" || break
     cp "$dir/maestro.log" "$dir/maestro-driver-$try.log"
   done
   if [ $ok = 1 ]; then

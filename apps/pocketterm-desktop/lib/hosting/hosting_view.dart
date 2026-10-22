@@ -69,6 +69,7 @@ class HostingStatusView extends StatelessWidget {
           ],
         ),
         HostState.failed => ('Tailscale didn’t publish the server: ${server.error}', false, [_again()]),
+        HostState.taken => (server.error ?? '', false, [_again()]),
         HostState.ready => ('Tailscale serves it to your own devices at ${server.publicUrl}', true, const <Widget>[]),
       };
       return Column(
@@ -100,6 +101,25 @@ class HostingStatusView extends StatelessWidget {
               padding: const EdgeInsets.only(left: 24),
               child: Wrap(spacing: 8, runSpacing: 8, children: actions),
             ),
+          if (server.state == HostState.ready)
+            if (server.renamedFrom case final old?)
+              Padding(
+                key: const ValueKey('hosting-renamed'),
+                padding: const EdgeInsets.only(left: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 8,
+                  children: [
+                    Text(
+                      'This computer’s Tailscale address changed from ${old.host}. Phones and computers set up '
+                      'with the old one can’t reach it: scan this computer’s code again on each phone (Add a '
+                      'phone…), and paste a new link on each other computer (Add a computer…).',
+                      style: const TextStyle(fontSize: 12.5, color: C.warn, height: 1.45),
+                    ),
+                    smallButton('Got it', server.renameSeen, key: const ValueKey('hosting-renamed-seen')),
+                  ],
+                ),
+              ),
         ],
       );
     },

@@ -11,13 +11,17 @@ import 'package:pocketterm_core/backend.dart';
 /// [error] is set.
 @immutable
 class ServerAddress {
-  const ServerAddress._(this.domain, this.error);
+  const ServerAddress._(this.domain, this.error, [this.host, this.user]);
 
   factory ServerAddress.parse(String typed) {
     var s = typed.trim().toLowerCase();
     s = s.replaceFirst(RegExp('^[a-z]+://'), '');
     final slash = s.indexOf('/');
     if (slash >= 0) s = s.substring(0, slash);
+    // user@host, as an SSH line has it ("ssh ubuntu@203.0.113.7").
+    final at = s.lastIndexOf('@');
+    final user = at < 0 ? null : s.substring(0, at).split(RegExp(r'\s+')).last;
+    s = s.substring(at + 1);
     while (s.endsWith('.')) {
       s = s.substring(0, s.length - 1);
     }
@@ -26,8 +30,9 @@ class ServerAddress {
     if (ip?.type == InternetAddressType.IPv6 || (ip == null && s.startsWith('['))) {
       return const ServerAddress._(
         null,
-        'Use the server’s IPv4 address (like 203.0.113.7) or a domain name. An IPv6 address doesn’t get a '
-        'certificate here.',
+        'Use the server’s IPv4 address (like 203.0.113.7) or a domain name. An IPv6-only server doesn’t work: '
+        'Docker gets the server from GitHub’s registry (ghcr.io), which has no IPv6, and many phone networks reach '
+        'only IPv4. Most providers add an IPv4 address for a small fee.',
       );
     }
     if (ip != null) {
@@ -37,7 +42,7 @@ class ServerAddress {
           'That’s a private address. Use the public IP address your VPS provider shows for the server.',
         );
       }
-      return ServerAddress._('${s.replaceAll('.', '-')}.sslip.io', null);
+      return ServerAddress._('${s.replaceAll('.', '-')}.sslip.io', null, s, user);
     }
     if (s.contains(':')) return const ServerAddress._(null, 'Leave out the port: the server answers on 443.');
     final label = RegExp(r'^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$');
@@ -45,13 +50,21 @@ class ServerAddress {
     if (labels.length < 2 || !labels.every(label.hasMatch) || RegExp(r'^\d+$').hasMatch(labels.last)) {
       return const ServerAddress._(null, 'That isn’t an IP address or a domain name, like pocketterm.example.com.');
     }
-    return ServerAddress._(s, null);
+    return ServerAddress._(s, null, s, user);
   }
 
   final String? domain;
 
   /// Why what was typed can't be used, for the person.
   final String? error;
+
+  /// What was typed, as SSH reaches the server: its IP address or domain,
+  /// and the user, if one was typed with it.
+  final String? host;
+  final String? user;
+
+  /// How to sign in to the server from here.
+  String? get ssh => host == null ? null : 'ssh ${user == null || user!.isEmpty ? 'root' : user}@$host';
 
   /// 10/8, 172.16/12, 192.168/16, 100.64/10 (carrier-grade NAT, Tailscale).
   static bool _isPrivate(List<int> b) =>
@@ -90,10 +103,15 @@ List<VpsCommand> vpsCommands(String domain, String version) => [
 class ServerChecks {
   const ServerChecks();
 
-  /// [domain] resolves to an address.
+  /// [domain] resolves to an IPv4 address (an A record: an IPv6-only name
+  /// leaves out the phone networks that reach only IPv4).
   Future<bool> resolves(String domain) async {
     try {
-      return (await InternetAddress.lookup(domain).timeout(const Duration(seconds: 8))).isNotEmpty;
+      final found = await InternetAddress.lookup(
+        domain,
+        type: InternetAddressType.IPv4,
+      ).timeout(const Duration(seconds: 8));
+      return found.isNotEmpty;
     } on Object {
       return false;
     }

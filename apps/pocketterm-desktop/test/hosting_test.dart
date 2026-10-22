@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/backend.dart';
@@ -7,6 +9,7 @@ import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/session.dart';
 import 'package:pocketterm_desktop/hosting/built_in_server.dart';
 import 'package:pocketterm_desktop/hosting/tailscale.dart';
+import 'package:pocketterm_desktop/main_window.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_fakes.dart';
@@ -41,9 +44,23 @@ void main() {
         Tailscale.findCli(env: {'PATH': '/usr/bin'}, exists: (f) => only({'/opt/homebrew/bin/tailscale'}, f)),
         '/opt/homebrew/bin/tailscale',
       );
+      const programs = r'C:\Program Files';
       expect(
-        Tailscale.findCli(env: {'PATH': r'C:\Windows'}, exists: (f) => only({Tailscale.windowsCli}, f), windows: true),
-        Tailscale.windowsCli,
+        Tailscale.findCli(
+          env: {'PATH': r'C:\Windows', 'ProgramFiles': programs},
+          exists: (f) => only({Tailscale.windowsCli(programs)}, f),
+          windows: true,
+        ),
+        r'C:\Program Files\Tailscale\tailscale.exe',
+      );
+      // Program Files on another drive.
+      expect(
+        Tailscale.findCli(
+          env: {'PATH': r'C:\Windows', 'ProgramFiles': r'D:\Program Files'},
+          exists: (f) => only({r'D:\Program Files\Tailscale\tailscale.exe'}, f),
+          windows: true,
+        ),
+        r'D:\Program Files\Tailscale\tailscale.exe',
       );
       expect(Tailscale.findCli(env: {'PATH': '/usr/bin'}, exists: (_) => false, windows: false), isNull);
     });
@@ -91,9 +108,109 @@ void main() {
     test('serve publishes 127.0.0.1 at the port on HTTPS 443, in the background', () async {
       final fake = FakeTailscale(installed: true);
       expect((await fake.tailscale.serve(47901)).ok, isTrue);
-      expect(fake.calls, ['serve --bg --https=443 http://127.0.0.1:47901']);
-      await fake.tailscale.unserve();
+      expect(fake.calls, ['serve status --json', 'serve --bg --https=443 http://127.0.0.1:47901']);
+      await fake.tailscale.unserve(47901);
       expect(fake.calls.last, 'serve --https=443 off');
+    });
+
+    test('what else Serve publishes on 443 is told apart from the built-in server', () {
+      String? at(Map<String, Object?> config, {int port = 47900}) =>
+          Tailscale.servedElsewhere(jsonEncode(config), port);
+      Map<String, Object?> web(Map<String, Object?> handlers) => {
+        'TCP': {
+          '443': {'HTTPS': true},
+        },
+        'Web': {
+          'mac.tail1234.ts.net:443': {'Handlers': handlers},
+        },
+      };
+      expect(at({}), isNull);
+      expect(Tailscale.servedElsewhere('not json', 47900), isNull);
+      // This app's, from this run or one whose port moved.
+      expect(
+        at(
+          web({
+            '/': {'Proxy': 'http://127.0.0.1:47900'},
+          }),
+        ),
+        isNull,
+      );
+      expect(
+        at(
+          web({
+            '/': {'Proxy': 'http://127.0.0.1:47903'},
+          }),
+        ),
+        isNull,
+      );
+      expect(
+        at(
+          web({
+            '/': {'Proxy': 'http://127.0.0.1:3000'},
+          }),
+        ),
+        'http://127.0.0.1:3000',
+      );
+      expect(
+        at(
+          web({
+            '/': {'Proxy': 'http://127.0.0.1:47900'},
+            '/grafana': {'Proxy': 'http://127.0.0.1:3000'},
+          }),
+        ),
+        'http://127.0.0.1:3000 at /grafana',
+      );
+      expect(
+        at({
+          'TCP': {
+            '443': {'TCPForward': '127.0.0.1:22'},
+          },
+        }),
+        'a TCP forward to 127.0.0.1:22',
+      );
+      // Another port of the tailnet name is no business of this one.
+      expect(
+        at({
+          'Web': {
+            'mac.tail1234.ts.net:8443': {
+              'Handlers': {
+                '/': {'Proxy': 'http://127.0.0.1:3000'},
+              },
+            },
+          },
+        }),
+        isNull,
+      );
+      // A `tailscale serve` running in a terminal (not --bg).
+      expect(
+        at({
+          'Foreground': {
+            'session1': web({
+              '/': {'Path': '/Users/me/site'},
+            }),
+          },
+        }),
+        '/Users/me/site',
+      );
+    });
+
+    test('serve leaves what else Serve publishes on 443 alone, and so does unserve', () async {
+      final fake = FakeTailscale(installed: true)..serving('http://127.0.0.1:3000');
+      final result = await fake.tailscale.serve(47900);
+      expect(result.ok, isFalse);
+      expect(result.taken, 'http://127.0.0.1:3000');
+      expect(fake.calls.where((c) => c.startsWith('serve --')), isEmpty);
+
+      await fake.tailscale.unserve(47900);
+      expect(fake.calls, isNot(contains('serve --https=443 off')));
+    });
+
+    test("the open source build's operator rule says how to let PocketTerm in", () {
+      expect(
+        Tailscale.serveError('Access denied: serve config denied\nUse sudo or set operator\n'),
+        contains('--operator'),
+      );
+      expect(Tailscale.serveError('first\nsomething broke\n\n'), 'something broke');
     });
   });
 
@@ -144,9 +261,9 @@ void main() {
       expect(fake.calls.last, 'serve --bg --https=443 http://127.0.0.1:${server.port}');
 
       // Looking again doesn't serve again.
-      final served = fake.calls.where((c) => c.startsWith('serve')).length;
+      final served = fake.calls.where((c) => c.startsWith('serve --bg')).length;
       await server.refresh();
-      expect(fake.calls.where((c) => c.startsWith('serve')).length, served);
+      expect(fake.calls.where((c) => c.startsWith('serve --bg')).length, served);
     });
 
     test('stopping takes it off the tailnet and closes the port', () async {
@@ -166,6 +283,77 @@ void main() {
       addTearDown(server.stop);
       await server.start(port: taken.port);
       expect(server.port, greaterThan(taken.port));
+    });
+
+    test('something else on 443 stays: the server says so and serves nothing, until it goes', () async {
+      final fake = FakeTailscale(installed: true)..serving('http://127.0.0.1:3000');
+      final server = await host(fake);
+      expect(server.state, HostState.taken);
+      expect(server.error, contains('http://127.0.0.1:3000'));
+      expect(server.publicUrl, isNull);
+      expect(server.setupLink(), isNull);
+
+      fake.serveConfig = {};
+      await server.refresh();
+      expect(server.state, HostState.ready);
+    });
+
+    test('something else taking 443 later shows, and stopping leaves it there', () async {
+      final fake = FakeTailscale(installed: true);
+      final server = await host(fake);
+      expect(server.state, HostState.ready);
+
+      fake.serving('http://127.0.0.1:8080');
+      await server.refresh();
+      expect(server.state, HostState.taken);
+      expect(server.publicUrl, isNull);
+      await server.stop();
+      expect(fake.serveConfig, isNotEmpty);
+    });
+
+    test('Tailscale stopping later takes it off; back on, it serves again', () async {
+      final fake = FakeTailscale(installed: true);
+      final server = await host(fake);
+      expect(server.state, HostState.ready);
+      fake.backendState = 'Stopped';
+      await server.refresh();
+      expect(server.state, HostState.tailscaleOff);
+      expect(server.publicUrl, isNull);
+      fake.backendState = 'Running';
+      await server.refresh();
+      expect(server.state, HostState.ready);
+    });
+
+    test('a new Tailscale name moves it there and is remembered, also after a restart, until seen', () async {
+      final fake = FakeTailscale(installed: true);
+      final server = await host(fake);
+      expect(server.renamedFrom, isNull);
+
+      fake.dnsName = 'studio.tail1234.ts.net';
+      await server.refresh();
+      expect(server.publicUrl, Uri.parse('https://studio.tail1234.ts.net'));
+      expect(Backend.fromLink(server.setupLink()!)!.url, 'https://studio.tail1234.ts.net');
+      expect(server.renamedFrom, Uri.parse('https://mac.tail1234.ts.net'));
+
+      // Renamed again: the phones still have the first one.
+      fake.dnsName = 'office.tail1234.ts.net';
+      await server.refresh();
+      expect(server.renamedFrom, Uri.parse('https://mac.tail1234.ts.net'));
+
+      await server.stop();
+      final again = await host(fake);
+      expect(again.renamedFrom, Uri.parse('https://mac.tail1234.ts.net'));
+
+      // Back at the first name: the phones' address works again.
+      fake.dnsName = 'mac.tail1234.ts.net';
+      await again.refresh();
+      expect(again.renamedFrom, isNull);
+
+      fake.dnsName = 'studio.tail1234.ts.net';
+      await again.refresh();
+      expect(again.renamedFrom, isNotNull);
+      again.renameSeen();
+      expect(again.renamedFrom, isNull);
     });
   });
 
@@ -305,6 +493,47 @@ void main() {
       expect(a.user!.device.id, isNot(before));
       await expectLater(phone.devices(), throwsA(isA<ServerException>().having((e) => e.status, 'status', 401)));
       expect((await a.serverDevices()).single.role, DeviceRole.desktop);
+    });
+
+    testWidgets('Tailscale switched off later: Settings says phones can’t reach the server, and opens Tailscale', (
+      tester,
+    ) async {
+      tester.view
+        ..physicalSize = const Size(1000, 2400)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final a = (await tester.runAsync(() async {
+        final a = await app();
+        await a.startHosting();
+        await a.hosting!.refresh();
+        return a;
+      }))!;
+      expect(a.hosting!.state, HostState.ready);
+      await tester.pumpWidget(
+        window(
+          ListenableBuilder(
+            listenable: a,
+            builder: (_, _) => SettingsPage(app: a),
+          ),
+        ),
+      );
+      await tester.pump();
+      final open = find.byKey(const ValueKey('attention-open-tailscale'));
+      expect(open, findsNothing);
+
+      fake.backendState = 'Stopped';
+      await tester.runAsync(a.hosting!.refresh);
+      await tester.pump();
+      await tester.tap(find.text('Show'));
+      await tester.pump();
+      expect(find.textContaining('Tailscale isn’t running, so phones can’t reach'), findsOneWidget);
+      await tester.tap(open);
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      expect(fake.calls, contains('-a Tailscale'));
+
+      await tester.runAsync(() async => await a.hosting?.stop());
+      a.server?.close();
+      await tester.pumpWidget(const SizedBox());
     });
   });
 }

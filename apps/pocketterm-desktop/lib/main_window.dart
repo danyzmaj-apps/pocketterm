@@ -692,7 +692,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (tmux == null) return where;
     return tmux.state == TermState.missing
         ? '$where · in Ghostty your phone can’t see the screen or answer: '
-              'brew install tmux for full control'
+              'install tmux for full control'
         : '$where · in Ghostty they run in tmux, so your phone has full control';
   }
 
@@ -999,6 +999,36 @@ class _SettingsPageState extends State<SettingsPage> {
         short: 'No terminal app found',
         text: 'No terminal app found: PocketTerm works with kitty, Ghostty and WezTerm',
         action: null,
+      ));
+    }
+    if (app.hosting case final h? when h.state != HostState.ready && h.state != HostState.checking) {
+      final open = h.state == HostState.tailscaleOff || h.state == HostState.loggedOut;
+      items.add((
+        tab: _Tab.account,
+        short: 'Phones can’t reach your server',
+        text: switch (h.state) {
+          HostState.noTailscale => 'Tailscale isn’t installed, so phones can’t reach the server on this computer',
+          HostState.tailscaleOff => 'Tailscale isn’t running, so phones can’t reach the server on this computer',
+          HostState.loggedOut => 'Tailscale is signed out, so phones can’t reach the server on this computer',
+          _ => 'Tailscale doesn’t serve this computer’s server, so phones can’t reach it: see Account',
+        },
+        action: open
+            ? _button(
+                'Open Tailscale',
+                () => unawaited(h.tailscale.open()),
+                key: const ValueKey('attention-open-tailscale'),
+              )
+            : null,
+      ));
+    } else if (app.hosting?.renamedFrom case final old?) {
+      items.add((
+        tab: _Tab.account,
+        short: 'Tailscale address changed',
+        text: 'This computer’s Tailscale address changed from ${old.host}: each phone must scan its code again',
+        action: _button('Add a phone…', () {
+          app.hosting?.renameSeen();
+          unawaited(showPairingQr(context, app));
+        }),
       ));
     }
     if (app.phoneSignedIn == false) {

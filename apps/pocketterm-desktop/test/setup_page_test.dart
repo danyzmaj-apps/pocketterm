@@ -273,6 +273,62 @@ void main() {
       expect(check(tester, 'check-running'), CheckState.now);
       File(brew.envs.last['SUDO_ASKPASS']!).parent.deleteSync(recursive: true);
     });
+
+    testWidgets('on Windows, winget installs Tailscale after Run; Download instead is Windows’ page', (tester) async {
+      fake.installed = false;
+      final pc = FakeCommands(windows: true);
+      await pumpSetup(tester, prefs: {'setup_step': 'thisComputer'}, commands: pc.commands);
+      await until(tester, () => check(tester, 'check-installed') == CheckState.now);
+
+      await tester.tap(find.byKey(const ValueKey('command---accept-package-agreements')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        tester.widget<SelectableText>(find.byKey(const ValueKey('command-shown'))).data,
+        'winget install --id Tailscale.Tailscale --exact --source winget --accept-source-agreements '
+        '--accept-package-agreements',
+      );
+      expect(pc.calls, isEmpty);
+      fake.installed = true;
+      await tester.tap(find.byKey(const ValueKey('command-run')));
+      await tester.pump();
+      await until(tester, () => check(tester, 'check-installed') == CheckState.done);
+      expect(pc.calls.single, startsWith('winget install --id Tailscale.Tailscale'));
+      // Windows' own PATH, untouched.
+      expect(pc.envs.single, isEmpty);
+
+      fake.installed = false;
+      await nextLook(tester, () => check(tester, 'check-installed') == CheckState.now);
+      await tester.tap(find.text('Download instead'));
+      await until(tester, () => opened.isNotEmpty);
+      expect(opened, ['https://tailscale.com/download/windows']);
+    });
+
+    testWidgets('something else Tailscale serves on 443 holds Start back until it goes, and is never replaced', (
+      tester,
+    ) async {
+      fake.serving('http://127.0.0.1:3000');
+      await pumpSetup(tester, prefs: {'setup_step': 'thisComputer'});
+      await until(tester, () => check(tester, 'check-serve-free') != CheckState.later);
+      expect(check(tester, 'check-https'), CheckState.done);
+      expect(check(tester, 'check-serve-free'), CheckState.now);
+      expect(find.textContaining('http://127.0.0.1:3000'), findsOneWidget);
+      expect(startEnabled(tester), isFalse);
+      expect(fake.calls.where((c) => c.startsWith('serve --')), isEmpty);
+
+      fake.serveConfig = {};
+      await nextLook(tester, () => check(tester, 'check-serve-free') == CheckState.done);
+      expect(startEnabled(tester), isTrue);
+    });
+
+    testWidgets('a tailnet whose admin keeps HTTPS off: the VPS way is one click away', (tester) async {
+      fake.https = false;
+      final app = await pumpSetup(tester, prefs: {'setup_step': 'thisComputer'});
+      await until(tester, () => check(tester, 'check-https') == CheckState.now);
+      await tap(tester, 'setup-https-own-server');
+      expect(shows('Do you already have a PocketTerm server?'), isTrue);
+      expect(app.setupStep, 'ownServer');
+    });
   });
 
   group('On my own server, I have one', () {
@@ -381,6 +437,17 @@ void main() {
       expect(find.byKey(signedIn), findsOneWidget);
       await finish(tester, app);
     });
+
+    testWidgets('it says how to get onto the server, for whatever was typed', (tester) async {
+      await pumpSetup(tester, prefs: {'setup_step': 'newServer'});
+      await tester.enterText(find.byKey(const ValueKey('setup-address')), 'ssh ubuntu@203.0.113.7');
+      await tester.pump();
+      expect(tester.widget<CopyCommand>(find.byKey(const ValueKey('setup-ssh'))).command, 'ssh ubuntu@203.0.113.7');
+      await tester.enterText(find.byKey(const ValueKey('setup-address')), 'https://pt.example.com/');
+      await tester.pump();
+      expect(tester.widget<CopyCommand>(find.byKey(const ValueKey('setup-ssh'))).command, 'ssh root@pt.example.com');
+      await until(tester, () => checks.asked.isNotEmpty);
+    });
   });
 
   group('server address', () {
@@ -389,6 +456,9 @@ void main() {
       expect(ServerAddress.parse('https://51.75.10.2/').domain, '51-75-10-2.sslip.io');
       expect(ServerAddress.parse('PocketTerm.Example.com').domain, 'pocketterm.example.com');
       expect(ServerAddress.parse('https://pt.example.com/v1').domain, 'pt.example.com');
+      // As an SSH line has it.
+      expect(ServerAddress.parse('root@203.0.113.7').domain, '203-0-113-7.sslip.io');
+      expect(ServerAddress.parse('pt.example.com.').domain, 'pt.example.com');
     });
 
     test('IPv6, private addresses, ports and other text are refused, saying why', () {

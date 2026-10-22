@@ -39,6 +39,17 @@ class GetReadyPage extends StatefulWidget {
   State<GetReadyPage> createState() => _GetReadyPageState();
 }
 
+/// Windows' usual project folders that exist here: Visual Studio's and
+/// GitHub Desktop's below [home], and GitHub Desktop's below OneDrive's
+/// folders ([env]'s OneDrive, OneDriveConsumer, OneDriveCommercial), where
+/// OneDrive's backup moves Documents.
+List<String> windowsProjectFolders(String home, Map<String, String> env, bool Function(String dir) exists) => {
+  p.windows.join(home, 'source', 'repos'),
+  p.windows.join(home, 'Documents', 'GitHub'),
+  for (final key in ['OneDrive', 'OneDriveConsumer', 'OneDriveCommercial'])
+    if (env[key] case final root? when root.isNotEmpty) p.windows.join(root, 'Documents', 'GitHub'),
+}.where(exists).toList();
+
 enum _Step { agents, terminals, folders, phone }
 
 enum _Status { done, action, optional, working }
@@ -381,9 +392,6 @@ class _GetReadyPageState extends State<GetReadyPage> {
   /// Where projects usually live, below the home folder.
   static const _usual = ['Dev', 'Developer', 'Projects', 'projects', 'code', 'Code', 'src', 'repos', 'dev', 'git'];
 
-  /// Windows: Visual Studio's and GitHub Desktop's own places.
-  static const _usualWindows = ['source/repos', 'Documents/GitHub'];
-
   /// The usual project folders that exist here and aren't added yet. The
   /// home folder is listed rather than each name tried, so a Mac's
   /// case-insensitive disk doesn't offer ~/Projects twice.
@@ -399,10 +407,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
       // No home folder to look in.
     }
     if (Platform.isWindows) {
-      for (final rel in _usualWindows) {
-        final dir = p.joinAll([home, ...rel.split('/')]);
-        if (Directory(dir).existsSync()) found.add(dir);
-      }
+      found.addAll(windowsProjectFolders(home, Platform.environment, (d) => Directory(d).existsSync()));
     }
     found.sort();
     return [

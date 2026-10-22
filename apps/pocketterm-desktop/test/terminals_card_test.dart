@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/ghostty.dart';
 import 'package:pocketterm_core/ghostty_config.dart';
@@ -8,6 +9,7 @@ import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/tmux.dart';
 import 'package:pocketterm_desktop/commands.dart';
+import 'package:pocketterm_desktop/onboarding/commands_view.dart';
 import 'package:pocketterm_desktop/onboarding/terminals_card.dart';
 
 import 'app_fakes.dart';
@@ -60,7 +62,7 @@ void main() {
     expect(find.byKey(const ValueKey('terminal-wezterm')), findsNothing, reason: 'not installed');
     expect(find.text('Set up'), findsOneWidget);
     expect(find.text('Allow…'), findsOneWidget);
-    expect(find.text('brew install tmux'), findsOneWidget);
+    expect(find.byKey(const ValueKey('tmux-get-homebrew')), findsOneWidget);
 
     // Permission given and tmux installed meanwhile: the card catches up.
     mac.now = [
@@ -71,7 +73,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 150));
     await tester.pump();
     expect(find.text('Allow…'), findsNothing);
-    expect(find.text('brew install tmux'), findsNothing);
+    expect(find.byKey(const ValueKey('tmux-get-homebrew')), findsNothing);
     expect(find.byKey(const ValueKey('terminal-tmux')), findsOneWidget);
   });
 
@@ -136,15 +138,41 @@ void main() {
     expect(find.byKey(const ValueKey('terminal-tmux')), findsOneWidget);
   });
 
-  testWidgets('without Homebrew, tmux is a line to copy, no button', (tester) async {
+  testWidgets('without Homebrew, where to get it, and Install tmux once it is there', (tester) async {
+    final opened = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/url_launcher'),
+      (call) async {
+        if (call.method == 'launch') opened.add((call.arguments as Map)['url'] as String);
+        return true;
+      },
+    );
+    final mac = FakeCommands();
+    await pump(tester, _Mac([const TermStatus('tmux', 'tmux', TermState.missing)]), commands: mac.commands);
+    expect(find.byKey(const ValueKey('command-tmux')), findsNothing);
+    expect(find.text('brew install tmux'), findsNothing, reason: 'no brew to type it in');
+    await tester.tap(find.byKey(const ValueKey('tmux-get-homebrew')));
+    await tester.pump();
+    expect(opened, ['https://brew.sh']);
+
+    // Homebrew installed meanwhile: the card's next look offers tmux.
+    mac.brew = '/opt/homebrew/bin/brew';
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('command-tmux')), findsOneWidget);
+    expect(find.byKey(const ValueKey('tmux-get-homebrew')), findsNothing);
+  });
+
+  testWidgets('with MacPorts and no Homebrew, MacPorts’ line to type', (tester) async {
     await pump(
       tester,
       _Mac([const TermStatus('tmux', 'tmux', TermState.missing)]),
-      commands: FakeCommands().commands,
+      commands: FakeCommands(macPorts: '/opt/local/bin/port').commands,
       poll: const Duration(hours: 1),
     );
+    expect(tester.widget<CopyCommand>(find.byKey(const ValueKey('tmux-macports'))).command, 'sudo port install tmux');
     expect(find.byKey(const ValueKey('command-tmux')), findsNothing);
-    expect(find.text('brew install tmux'), findsOneWidget);
+    expect(find.byKey(const ValueKey('tmux-get-homebrew')), findsNothing);
   });
 
   testWidgets('Ghostty with tmux: new windows in tmux in one click, said first, done after', (tester) async {

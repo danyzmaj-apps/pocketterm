@@ -234,4 +234,15 @@ void main() {
     await settle(tester, () => shows('1 thing needs attention'));
     expect(File('$home/.omp/agent/extensions/pocketterm-live.ts').existsSync(), isTrue);
   });
+
+  test('Windows: GitHub Desktop’s folder is found where OneDrive moved Documents too', () {
+    final there = {r'C:\Users\ana\source\repos', r'C:\Users\ana\OneDrive - Contoso\Documents\GitHub'};
+    expect(
+      windowsProjectFolders(r'C:\Users\ana', {
+        'OneDriveCommercial': r'C:\Users\ana\OneDrive - Contoso',
+        'OneDrive': r'C:\Users\ana\OneDrive - Contoso',
+      }, there.contains),
+      unorderedEquals(there),
+    );
+  });
 }

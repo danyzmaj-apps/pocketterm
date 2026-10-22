@@ -66,6 +66,39 @@ docker run -d --name pocketterm --restart unless-stopped -p 127.0.0.1:47900:4790
 Set `POCKETTERM_TRUST_PROXY=1` only when the proxy is the only way in: the server then rate limits failed
 sign-ins by the last address in `X-Forwarded-For`.
 
+The proxy must pass WebSocket upgrades on `/v1/ws`, keep them open (the server pings each socket every 25
+seconds; an idle timeout of 60 seconds or more is fine) and accept request bodies up to 20 MB (images).
+
+nginx, in the `server` block that already has your certificate:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:47900;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_read_timeout 1h;
+    client_max_body_size 20m;
+}
+```
+
+Traefik (Docker labels on the server container, joined to Traefik's network instead of publishing the port;
+Traefik passes WebSockets as they are):
+
+```yaml
+labels:
+  - traefik.enable=true
+  - traefik.http.routers.pocketterm.rule=Host(`pocketterm.example.com`)
+  - traefik.http.routers.pocketterm.tls.certresolver=letsencrypt
+  - traefik.http.services.pocketterm.loadbalancer.server.port=47900
+```
+
+Cloudflare: a proxied name (orange cloud) works, WebSockets included, with SSL/TLS set to **Full (strict)**:
+**Flexible** sends Cloudflare's requests to port 80, where Caddy redirects them to HTTPS, over and over. With
+the compose file's Caddy behind Cloudflare, the simplest is a DNS-only (grey cloud) record for this name.
+
 ## Without Docker
 
 ```sh

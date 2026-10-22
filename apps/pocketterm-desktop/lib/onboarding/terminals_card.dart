@@ -6,6 +6,7 @@ import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_desktop/commands.dart';
+import 'package:pocketterm_desktop/hosting/hosting_view.dart';
 import 'package:pocketterm_desktop/onboarding/commands_view.dart';
 import 'package:pocketterm_desktop/terminal_fixes.dart';
 import 'package:pocketterm_desktop/wezterm_setup.dart';
@@ -13,10 +14,12 @@ import 'package:pocketterm_desktop/wezterm_setup.dart';
 /// The setup checklist's terminals on a Mac (lib/onboarding/get_ready.dart):
 /// the terminals found on it, each with its one-click fix where it needs one
 /// (kitty's config, Automation), tmux when it's missing (installed with
-/// Homebrew once the person confirms, or its line to type), and Ghostty's
-/// new windows in tmux. Nothing to pick: new sessions open in the terminal
-/// used last, as Settings' Auto does. Looks again every few seconds, so a
-/// permission given in System Settings shows; [onStatuses] hears each look.
+/// Homebrew once the person confirms; MacPorts' line to type; without
+/// either, where to get Homebrew), and Ghostty's new windows in tmux.
+/// Nothing to pick: new sessions open in the terminal used last, as
+/// Settings' Auto does. Looks again every few seconds, so a permission
+/// given in System Settings or a new Homebrew shows; [onStatuses] hears
+/// each look.
 class MacTerminalsCard extends StatefulWidget {
   const MacTerminalsCard({
     required this.terminals,
@@ -27,7 +30,7 @@ class MacTerminalsCard extends StatefulWidget {
   });
   final Terminals terminals;
 
-  /// What installs tmux with Homebrew; without it, only its line to type.
+  /// What installs tmux with Homebrew; without it, MacPorts' line or where to get Homebrew.
   final Commands? commands;
   final Duration poll;
   final ValueChanged<List<TermStatus>>? onStatuses;
@@ -53,6 +56,8 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
   String? _ghosttyError;
 
   static const tmuxCommand = 'brew install tmux';
+  static const macPortsCommand = 'sudo port install tmux';
+  static final Uri homebrew = Uri.parse('https://brew.sh');
 
   /// What tmux is and why Ghostty needs it.
   static const tmuxWhy =
@@ -149,8 +154,25 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
             const SizedBox(height: 8),
             const Text('Or type it in a terminal:', style: TextStyle(fontSize: 11.5, color: C.dim)),
             const SizedBox(height: 6),
+            const CopyCommand(tmuxCommand),
+          ] else if (widget.commands?.macPorts != null) ...[
+            const Text('With MacPorts, type this in a terminal:', style: TextStyle(fontSize: 11.5, color: C.dim)),
+            const SizedBox(height: 6),
+            const CopyCommand(macPortsCommand, key: ValueKey('tmux-macports')),
+          ] else ...[
+            const Text(
+              'tmux comes from Homebrew, the free installer most Mac developers use, which isn’t on this Mac. Install '
+              'Homebrew from brew.sh, then come back: PocketTerm installs tmux from here. With MacPorts: '
+              '$macPortsCommand.',
+              key: ValueKey('tmux-no-homebrew'),
+              style: TextStyle(color: C.dim, height: 1.45, fontSize: 12.5),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: smallButton('Get Homebrew', () => openLink(homebrew), key: const ValueKey('tmux-get-homebrew')),
+            ),
           ],
-          const CopyCommand(tmuxCommand),
         ] else if (tmux != null)
           _row(tmux),
         ..._ghosttyInTmux(found, tmux),

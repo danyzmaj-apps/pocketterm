@@ -313,6 +313,24 @@ class FakeTailscale {
 
   static const enableLink = 'https://login.tailscale.com/f/serve?node=nTEST123';
 
+  /// What `tailscale serve status --json` prints: what Serve publishes now.
+  /// `serve --bg` sets it, `serve --https=443 off` clears it.
+  Map<String, Object?> serveConfig = {};
+
+  /// Serve publishing [proxy] on 443, as `tailscale serve --bg <proxy>` leaves it.
+  void serving(String proxy) => serveConfig = {
+    'TCP': {
+      '443': {'HTTPS': true},
+    },
+    'Web': {
+      '$dnsName:443': {
+        'Handlers': {
+          '/': {'Proxy': proxy},
+        },
+      },
+    },
+  };
+
   final calls = <String>[];
 
   /// `serve` processes still running (one that asks for HTTPS waits until killed).
@@ -338,6 +356,7 @@ class FakeTailscale {
         }),
       );
     }
+    if (args.take(2).join(' ') == 'serve status') return FakeProcess.done(0, out: jsonEncode(serveConfig));
     if (args.firstOrNull == 'serve' && args.last != 'off' && !https) {
       // What the CLI prints, then it waits for HTTPS to be turned on.
       final p = FakeProcess.waiting(
@@ -347,8 +366,10 @@ class FakeTailscale {
       return p;
     }
     if (args.firstOrNull == 'serve' && args.last != 'off') {
+      serving(args.last);
       return FakeProcess.done(0, out: 'Available within your tailnet:\n\nhttps://$dnsName/\n|-- proxy ${args.last}\n');
     }
+    if (args.firstOrNull == 'serve') serveConfig = {};
     return FakeProcess.done(0);
   }
 }
@@ -405,12 +426,15 @@ class FakeProcess implements Process {
 }
 
 /// Installs as a test sets them up: Homebrew at [brew] (none when null),
-/// each command recorded in [calls] (with its environment in [envs]) and
-/// answered with [result]; it waits for [gate] when one is set.
+/// MacPorts at [macPorts], winget on a [windows] PC, each command recorded
+/// in [calls] (with its environment in [envs]) and answered with [result];
+/// it waits for [gate] when one is set.
 class FakeCommands {
-  FakeCommands({this.brew});
+  FakeCommands({this.brew, this.macPorts, this.windows = false});
 
   String? brew;
+  String? macPorts;
+  final bool windows;
   CommandResult result = (code: 0, output: '');
   Completer<void>? gate;
   final calls = <String>[];
@@ -418,6 +442,8 @@ class FakeCommands {
 
   late final commands = Commands(
     brew: () => brew,
+    macPorts: () => macPorts,
+    windows: windows,
     run: (exe, args, env) async {
       calls.add([exe, ...args].join(' '));
       envs.add(env);

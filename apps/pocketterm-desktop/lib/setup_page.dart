@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -81,6 +82,7 @@ class _SetupPageState extends State<SetupPage> {
             app: widget.app,
             poll: widget.poll,
             onBack: () => _go(SetupStep.choose),
+            onOwnServer: () => _go(SetupStep.ownServer),
           ),
           SetupStep.ownServer => _ownServer(),
           SetupStep.haveServer => Column(
@@ -390,12 +392,23 @@ Widget _notice(String text, {IconData icon = Icons.info_outline, Key? key}) => C
 
 /// On this computer: a checklist that follows Tailscale as it's set up,
 /// looking again every [poll]: installed, running, signed in, HTTPS
-/// certificates on. Each step shows only its own action; then Start runs
-/// the built-in server and signs this computer in to it.
+/// certificates on, port 443 free for PocketTerm. Each step shows only its
+/// own action; then Start runs the built-in server and signs this computer
+/// in to it.
 class ThisComputerSetup extends StatefulWidget {
-  const ThisComputerSetup({required this.app, required this.onBack, this.poll = const Duration(seconds: 3), super.key});
+  const ThisComputerSetup({
+    required this.app,
+    required this.onBack,
+    this.onOwnServer,
+    this.poll = const Duration(seconds: 3),
+    super.key,
+  });
   final AppController app;
   final VoidCallback onBack;
+
+  /// A tailnet whose HTTPS only its admin turns on (a work one): the VPS
+  /// way instead.
+  final VoidCallback? onOwnServer;
   final Duration poll;
 
   @override
@@ -404,6 +417,10 @@ class ThisComputerSetup extends StatefulWidget {
 
 class _ThisComputerSetupState extends State<ThisComputerSetup> {
   TailscaleStatus? _status;
+
+  /// What already serves on port 443 of this computer's Tailscale name;
+  /// null while nothing else does (or not asked yet).
+  String? _taken;
   Timer? _timer;
   bool _busy = false;
   bool _askingHttps = false;
@@ -423,8 +440,16 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
   }
 
   Future<void> _look() async {
-    final status = await widget.app.tailscale.status();
-    if (mounted) setState(() => _status = status);
+    final ts = widget.app.tailscale;
+    final status = await ts.status();
+    final ready = status.state == TailscaleState.running && status.https && status.dnsName != null;
+    final taken = ready ? await ts.taken(47900) : null;
+    if (mounted) {
+      setState(() {
+        _status = status;
+        _taken = taken;
+      });
+    }
   }
 
   Future<void> _turnOnHttps() async {
@@ -462,7 +487,9 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
             s.state == TailscaleState.loggedOut || s.state == TailscaleState.running,
             s.state == TailscaleState.running,
             s.state == TailscaleState.running && s.https && s.dnsName != null,
+            s.state == TailscaleState.running && s.https && s.dnsName != null && _taken == null,
           ];
+    final commands = widget.app.commands;
     final current = done?.indexOf(false) ?? -1;
     final allDone = done != null && current == -1;
     CheckState state(int i) => switch (done) {
@@ -497,9 +524,9 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
           title: state(0) == CheckState.done ? 'Tailscale is installed' : 'Install Tailscale',
           note: 'Free for personal use.',
           actions: [
-            if (widget.app.commands.brew != null) ...[
+            if (commands.brew != null) ...[
               ConfirmedCommand(
-                commands: widget.app.commands,
+                commands: commands,
                 label: 'Install Tailscale',
                 argv: const ['brew', 'install', '--cask', 'tailscale-app'],
                 what: 'Homebrew downloads Tailscale’s app from Tailscale and installs it. Then open it from here.',
@@ -507,6 +534,17 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
                 onDone: () => unawaited(_look()),
               ),
               smallButton('Download instead', () => openLink(Tailscale.download)),
+            ] else if (commands.winget != null) ...[
+              ConfirmedCommand(
+                commands: commands,
+                label: 'Install Tailscale',
+                argv: Tailscale.wingetInstall,
+                what:
+                    'winget, Windows’ own installer, downloads Tailscale from Tailscale and installs it. Windows asks '
+                    'you to allow it. Then open Tailscale from here.',
+                onDone: () => unawaited(_look()),
+              ),
+              smallButton('Download instead', () => openLink(Tailscale.windowsDownload)),
             ] else
               smallButton('Install Tailscale', () => openLink(Tailscale.download)),
           ],
@@ -531,14 +569,31 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
           title: state(3) == CheckState.done ? 'HTTPS certificates are on' : 'Turn on HTTPS certificates',
           note:
               'On the Tailscale page that opens, turn on HTTPS (and MagicDNS, if it asks). Your phone then gets a '
-              'secure address for this computer.',
+              'secure address for this computer. On a work tailnet only its admin can: ask them, or run your server '
+              'on a VPS instead.',
           actions: [
             smallButton(
               _askingHttps ? 'Opening…' : 'Turn on HTTPS…',
               _askingHttps ? null : () => unawaited(_turnOnHttps()),
               key: const ValueKey('setup-turn-on-https'),
             ),
+            if (widget.onOwnServer case final go?)
+              smallButton('Use my own server instead', go, key: const ValueKey('setup-https-own-server')),
           ],
+        ),
+        SetupCheck(
+          key: const ValueKey('check-serve-free'),
+          state: state(4),
+          title: switch (state(4)) {
+            CheckState.done => 'Tailscale’s HTTPS port is free for PocketTerm',
+            CheckState.now => 'Free Tailscale’s HTTPS port (443)',
+            _ => 'Tailscale’s HTTPS port (443) for PocketTerm',
+          },
+          note: _taken == null
+              ? null
+              : 'Tailscale already serves $_taken there. PocketTerm needs that port and won’t replace it: remove it '
+                    'with tailscale serve --https=443 off, or move it to another port (tailscale serve --https=8443 …). '
+                    'This list checks again by itself.',
         ),
         const SizedBox(height: 14),
         _notice(phoneTailscaleNote, icon: Icons.phone_iphone, key: const ValueKey('setup-phone-tailscale')),
@@ -867,6 +922,14 @@ class _NewServerSetupState extends State<NewServerSetup> {
             'certificate from Let’s Encrypt, which checks port 80.',
             icon: Icons.shield_outlined,
           ),
+          const SizedBox(height: 16),
+          Text(
+            'Run these on the server, not here. To get there, type this in ${Platform.isWindows ? 'PowerShell' : 'Terminal'} '
+            '(some providers sign you in as ubuntu or debian instead of root):',
+            style: const TextStyle(fontSize: 12.5, color: C.dim, height: 1.45),
+          ),
+          const SizedBox(height: 6),
+          CopyCommand(_parsed.ssh!, key: const ValueKey('setup-ssh')),
           const SizedBox(height: 16),
           for (final (i, c) in (_version == null ? const <VpsCommand>[] : vpsCommands(domain, _version!)).indexed) ...[
             Text('${i + 1}. ${c.title}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),

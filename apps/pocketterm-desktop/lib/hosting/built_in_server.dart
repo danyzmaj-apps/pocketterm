@@ -26,6 +26,10 @@ enum HostState {
   /// `tailscale serve` failed for another reason ([BuiltInServer.error]).
   failed,
 
+  /// Port 443 of this computer's Tailscale name serves something else,
+  /// left alone ([BuiltInServer.error] says what).
+  taken,
+
   /// Phones reach it at [BuiltInServer.publicUrl].
   ready,
 }
@@ -87,6 +91,44 @@ class BuiltInServer extends ChangeNotifier {
   /// What `tailscale serve` said when it failed otherwise.
   String? get error => _error;
   String? _error;
+  bool _taken = false;
+
+  /// This computer's address before Tailscale gave it another one (the
+  /// computer was renamed, or Tailscale signed in to another tailnet):
+  /// phones and computers set up with it can't reach this one any more.
+  /// Kept until [renameSeen].
+  Uri? get renamedFrom {
+    final f = File('${dataDir.path}/$_renamedFile');
+    final old = f.existsSync() ? Uri.tryParse(f.readAsStringSync().trim()) : null;
+    return old == null || old.host.isEmpty ? null : old;
+  }
+
+  static const _servedFile = 'tailscale_url';
+  static const _renamedFile = 'tailscale_renamed_from';
+
+  /// The person has seen [renamedFrom]: it goes.
+  void renameSeen() {
+    final f = File('${dataDir.path}/$_renamedFile');
+    if (f.existsSync()) f.deleteSync();
+    notifyListeners();
+  }
+
+  /// Tailscale serves it at [url] now; another address before means a
+  /// rename. Renamed again before that was seen, the first address stays:
+  /// it's the one the phones have.
+  void _servedAt(Uri url) {
+    try {
+      final served = File('${dataDir.path}/$_servedFile');
+      final renamed = File('${dataDir.path}/$_renamedFile');
+      final before = served.existsSync() ? served.readAsStringSync().trim() : '';
+      if (before.isNotEmpty && before != '$url' && renamedFrom == null) renamed.writeAsStringSync(before);
+      // Back at the old name: nothing changed for the phones after all.
+      if (renamedFrom == url) renamed.deleteSync();
+      served.writeAsStringSync('$url');
+    } on FileSystemException catch (e) {
+      debugPrint('PocketTerm: Tailscale address not kept: $e');
+    }
+  }
 
   HostState get state {
     final s = _status;
@@ -96,6 +138,7 @@ class BuiltInServer extends ChangeNotifier {
       TailscaleState.stopped => HostState.tailscaleOff,
       TailscaleState.loggedOut => HostState.loggedOut,
       TailscaleState.running when _served != null => HostState.ready,
+      TailscaleState.running when _taken => HostState.taken,
       TailscaleState.running when _error != null => HostState.failed,
       TailscaleState.running => HostState.httpsOff,
     };
@@ -149,12 +192,21 @@ class BuiltInServer extends ChangeNotifier {
       _served = null;
       _enableHttps = null;
       _error = null;
+      _taken = false;
     } else if (_served != url) {
       final result = await tailscale.serve(port);
       if (_server == null) return;
       _served = result.ok ? url : null;
       _enableHttps = result.enableLink;
       _error = result.error;
+      _taken = result.taken != null;
+      if (result.ok) _servedAt(url);
+    } else if (await tailscale.taken(port) case final what?) {
+      // Something else took port 443 since: it stays, and phones can't reach this one.
+      if (_server == null) return;
+      _served = null;
+      _error = ServeResult.taken(what).error;
+      _taken = true;
     }
     _schedule();
     notifyListeners();
@@ -178,7 +230,8 @@ class BuiltInServer extends ChangeNotifier {
     _status = null;
     _enableHttps = null;
     _error = null;
-    await Future.wait([if (served) tailscale.unserve(), server.stop()]);
+    _taken = false;
+    await Future.wait([if (served) tailscale.unserve(server.port), server.stop()]);
     notifyListeners();
   }
 

@@ -16,16 +16,31 @@ typedef RunCommand = Future<CommandResult> Function(
 );
 
 /// The installs the setup offers to run for the person (`brew install
-/// tmux`, `brew install --cask tailscale-app`), each only after they
-/// confirmed it (lib/onboarding/commands_view.dart), never on its own.
+/// tmux`, `brew install --cask tailscale-app`, on Windows `winget install
+/// Tailscale.Tailscale`), each only after they confirmed it
+/// (lib/onboarding/commands_view.dart), never on its own.
 class Commands {
-  Commands({RunCommand? run, String? Function()? brew}) : _run = run ?? _runProcess, _brew = brew ?? findBrew;
+  Commands({RunCommand? run, String? Function()? brew, String? Function()? macPorts, bool? windows})
+    : _run = run ?? _runProcess,
+      _brew = brew ?? findBrew,
+      _macPorts = macPorts ?? findMacPorts,
+      _windows = windows ?? Platform.isWindows;
 
   final RunCommand _run;
   final String? Function() _brew;
+  final String? Function() _macPorts;
+  final bool _windows;
 
   /// Homebrew's `brew`, when it's on this Mac; null elsewhere.
   String? get brew => _brew();
+
+  /// MacPorts' `port`, when it's on this Mac; null elsewhere. Its installs
+  /// need sudo in a terminal, so the setup only shows its line.
+  String? get macPorts => _macPorts();
+
+  /// Windows' package manager, which comes with Windows 10 and 11 (App
+  /// Installer); null elsewhere. Whether it really runs shows when it does.
+  String? get winget => _windows ? 'winget' : null;
 
   /// Where Homebrew lives on Apple silicon and on Intel Macs.
   static String? findBrew({bool Function(String path)? exists}) {
@@ -37,19 +52,38 @@ class Commands {
     return null;
   }
 
+  /// Where MacPorts puts `port`.
+  static String? findMacPorts({bool Function(String path)? exists}) {
+    if (!Platform.isMacOS && exists == null) return null;
+    const path = '/opt/local/bin/port';
+    return (exists ?? (String path) => File(path).existsSync())(path) ? path : null;
+  }
+
   /// Runs [argv] (`brew` first stands for [brew]). [password]: why macOS
   /// asks for the person's password, should the command need it (a
-  /// package Homebrew installs with sudo): macOS's own dialog asks.
-  Future<CommandResult> run(List<String> argv, {String? password}) {
+  /// package Homebrew installs with sudo): macOS's own dialog asks. On
+  /// Windows the command keeps this app's own environment.
+  Future<CommandResult> run(List<String> argv, {String? password}) async {
+    if (_windows) {
+      try {
+        return await _run(argv.first, argv.sublist(1), const {});
+      } on ProcessException {
+        if (argv.first != 'winget') rethrow;
+        return (
+          code: 127,
+          output: 'winget isn’t on this PC (it comes with Windows’ App Installer, from the Microsoft Store).',
+        );
+      }
+    }
     final exe = argv.first == 'brew' ? brew : argv.first;
-    if (exe == null) return Future.value((code: 127, output: 'Homebrew isn’t installed.'));
+    if (exe == null) return (code: 127, output: 'Homebrew isn’t installed.');
     final env = {
       // A GUI app's PATH is short: Homebrew's own folder first.
       'PATH': [p.dirname(exe), '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':'),
       'HOMEBREW_NO_ENV_HINTS': '1',
       if (password != null) 'SUDO_ASKPASS': _askpass(password),
     };
-    return _run(exe, argv.sublist(1), env);
+    return await _run(exe, argv.sublist(1), env);
   }
 
   /// A script sudo runs for the password (sudo -A, which Homebrew uses when

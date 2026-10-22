@@ -5,11 +5,15 @@
 //   ephemeral X25519 key pair (esk, epk); shared = X25519(esk, relay public key)
 //   key = HKDF-SHA256(ikm: shared, salt: epk ‖ relay public key, info: "pocketterm-relay/v1", 32 bytes)
 //   c   = AES-256-GCM(key, nonce n: 12 random bytes, the JSON body) ‖ 16-byte tag
-//   body: {"v": 1, "epk": base64(32 bytes), "n": base64(12 bytes), "c": base64(c)}
+//   body: {"v": 1, "kid": key id, "epk": base64(32 bytes), "n": base64(12 bytes), "c": base64(c)}
 //
 // A fresh ephemeral key per request: no two requests share a key, and a
 // recorded request can't be opened without the relay's private key.
 // Sender: packages/pocketterm_server/lib/src/relay.dart.
+//
+// Key rotation: the relay may hold its current key and the previous one. kid
+// (the first 11 characters of the public key's base64) names the one a request
+// was sealed to; a request without it (servers from before) is tried with each.
 
 import { decodeBase64, encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { decodeBase64Url } from "jsr:@std/encoding@1/base64url";
@@ -31,6 +35,9 @@ export async function relayKey(pem: string): Promise<RelayKey> {
 /** The relay's public key as senders configure it: base64 of the raw 32 bytes. */
 export const publicKeyText = (key: RelayKey) => encodeBase64(key.publicKey);
 
+/** The id senders put in `kid`: the first 11 characters of [publicKeyText]. */
+export const keyId = (key: RelayKey) => publicKeyText(key).slice(0, 11);
+
 function field(o: Record<string, unknown>, name: string, length?: number): Uint8Array<ArrayBuffer> | null {
   const v = o[name];
   if (typeof v !== "string") return null;
@@ -42,8 +49,11 @@ function field(o: Record<string, unknown>, name: string, length?: number): Uint8
   }
 }
 
-/** The plain body of a sealed request [text], or null when it isn't one sealed to [key] (or was changed). */
-export async function unseal(key: RelayKey, text: string): Promise<Uint8Array | null> {
+/**
+ * The plain body of a sealed request [text], or null when it isn't one sealed to one of [keys] (or was changed).
+ * The key its kid names is tried first; without a kid, or with one no key has, each in turn.
+ */
+export async function unseal(keys: RelayKey | RelayKey[], text: string): Promise<Uint8Array | null> {
   let o: unknown;
   try {
     o = JSON.parse(text);
@@ -57,6 +67,21 @@ export async function unseal(key: RelayKey, text: string): Promise<Uint8Array | 
   const n = field(sealed, "n", 12);
   const c = field(sealed, "c");
   if (!epk || !n || !c || c.length < 16) return null;
+  const all = Array.isArray(keys) ? keys : [keys];
+  const named = all.find((k) => keyId(k) === sealed.kid);
+  for (const key of named ? [named] : all) {
+    const plain = await open(key, epk, n, c);
+    if (plain) return plain;
+  }
+  return null;
+}
+
+async function open(
+  key: RelayKey,
+  epk: Uint8Array<ArrayBuffer>,
+  n: Uint8Array<ArrayBuffer>,
+  c: Uint8Array<ArrayBuffer>,
+): Promise<Uint8Array | null> {
   try {
     const peer = await crypto.subtle.importKey("raw", epk, { name: "X25519" }, false, []);
     const shared = new Uint8Array(

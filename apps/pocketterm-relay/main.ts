@@ -3,9 +3,10 @@
 //
 // Settings (environment): PORT (8080), APNS_KEY_ID, APNS_TEAM_ID, APNS_TOPIC
 // (com.danyzmaj.pocketterm). Secret files: RELAY_KEY_FILE (/run/secrets/relay_key,
-// the X25519 private key, PEM), APNS_KEY_FILE (/run/secrets/apns_key, the .p8),
-// FCM_SERVICE_ACCOUNT_FILE (/run/secrets/fcm_service_account; without it
-// Android pushes answer 501).
+// the X25519 private key, PEM), RELAY_PREVIOUS_KEY_FILE (/run/secrets/relay_key_previous,
+// optional: the key before, kept while servers move to the new one), APNS_KEY_FILE
+// (/run/secrets/apns_key, the .p8), FCM_SERVICE_ACCOUNT_FILE (/run/secrets/fcm_service_account;
+// without it Android pushes answer 501).
 //
 // Logs: JSON lines with a level; a push logs only its platform, status and time.
 
@@ -35,6 +36,8 @@ async function optionalFile(path: string): Promise<string | undefined> {
 }
 
 const key = await relayKey(await Deno.readTextFile(setting("RELAY_KEY_FILE", "/run/secrets/relay_key")));
+const previousPem = await optionalFile(setting("RELAY_PREVIOUS_KEY_FILE", "/run/secrets/relay_key_previous"));
+const previous = previousPem ? await relayKey(previousPem) : undefined;
 const fcmServiceAccount = await optionalFile(setting("FCM_SERVICE_ACCOUNT_FILE", "/run/secrets/fcm_service_account"));
 const push = relay({
   apnsKey: await Deno.readTextFile(setting("APNS_KEY_FILE", "/run/secrets/apns_key")),
@@ -42,7 +45,7 @@ const push = relay({
   apnsTeamId: setting("APNS_TEAM_ID"),
   apnsTopic: setting("APNS_TOPIC", "com.danyzmaj.pocketterm"),
   fcmServiceAccount,
-  key,
+  keys: previous ? [key, previous] : [key],
 });
 const metrics = new Metrics();
 const port = Number(setting("PORT", "8080"));
@@ -50,7 +53,13 @@ const port = Number(setting("PORT", "8080"));
 Deno.serve({
   port,
   hostname: "0.0.0.0",
-  onListen: () => log("info", "listening", { port, publicKey: publicKeyText(key), fcm: !!fcmServiceAccount }),
+  onListen: () =>
+    log("info", "listening", {
+      port,
+      publicKey: publicKeyText(key),
+      previousKey: previous ? publicKeyText(previous) : undefined,
+      fcm: !!fcmServiceAccount,
+    }),
   onError: (e) => {
     log("error", "request failed", { error: e instanceof Error ? e.name : "unknown" });
     return new Response(null, { status: 500 });

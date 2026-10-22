@@ -8,12 +8,12 @@ const config: Config = {
   apnsKeyId: "KEYID12345",
   apnsTeamId: "TEAM123456",
   apnsTopic: "com.example.pocketterm",
-  key: await testKey(),
+  keys: [await testKey()],
 };
 // let: a test swaps in a relay with an FCM service account.
 let push = makeRelay(config);
 const relay = async (req: Promise<Request>) => (await push(await req)).res;
-const post = (body: unknown, headers: Record<string, string> = {}) => sealedPost(config.key, body, headers);
+const post = (body: unknown, headers: Record<string, string> = {}) => sealedPost(config.keys[0], body, headers);
 
 /** A device token of [n] hex digits, distinct per [seed]. */
 const hex = (seed: number, n = 64) => seed.toString(16).padStart(n, "0");
@@ -101,6 +101,17 @@ Deno.test("working waits at low priority; an ended activity is dismissed later",
   assertEquals(aps.event, "end");
   assert(aps["dismissal-date"] > now());
 });
+Deno.test("a server whose clock is off still reaches its phones, its since held to the last week", async () => {
+  for (const [since, held] of [[now() - 30 * 86400, now() - 7 * 86400], [now() + 7200, now()]]) {
+    network(apns());
+    const res = await relay(
+      post({ token: hex(10, 160), kind: "liveactivity", event: "update", state: { state: "done", since } }),
+    );
+    assertEquals(res.status, 200);
+    const got = JSON.parse(sent[0].body).aps["content-state"].since;
+    assert(Math.abs(got - held) <= 2, `${since} → ${got}`);
+  }
+});
 
 Deno.test("malformed pushes are refused before anything reaches Apple or Google", async () => {
   const bad: unknown[] = [
@@ -111,7 +122,6 @@ Deno.test("malformed pushes are refused before anything reaches Apple or Google"
     { token: hex(7), kind: "reminder", enc: "x" },
     { token: hex(7, 160), kind: "liveactivity", event: "update", state: { state: "exploded", since: now() } },
     { token: hex(7, 160), kind: "liveactivity", event: "update", state: { state: "done", since: now(), kind: "plan" } },
-    { token: hex(7, 160), kind: "liveactivity", event: "update", state: { state: "done", since: now() - 30 * 86400 } },
     { token: hex(7, 160), kind: "liveactivity", event: "start", state: { state: "done", since: now() } },
     { token: hex(7), kind: "terminal", enc: "x", desktop: "../../etc" },
     { platform: "windows", token: hex(7), kind: "terminal", enc: "x" },

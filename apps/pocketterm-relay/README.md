@@ -17,7 +17,9 @@ It stores nothing. It can't read your notifications. What it and everyone around
 
 Answers to a push: `200` sent, `410` the phone is gone (the server forgets it), `429` over a rate limit (`Retry-After`),
 `400` malformed or not sealed to this relay, `501` FCM not configured, `502` Apple or Google said no. The body of an
-answer never repeats the request.
+answer never repeats the request. A Live Activity's `since` from a server whose clock is off is held to the last week
+(never the future) rather than refused. Servers retry `429` and `5xx` on their own (after `Retry-After`, or 2, 4, 8 …
+seconds), and never `501`.
 
 What's inside the seal (the server builds it; see
 [packages/pocketterm_server/PROTOCOL.md](../../packages/pocketterm_server/PROTOCOL.md)):
@@ -45,7 +47,8 @@ see only ciphertext, device tokens included:
 shared     = X25519(esk, relay public key)
 key        = HKDF-SHA256(ikm = shared, salt = epk ‖ relay public key, info = "pocketterm-relay/v1", 32 bytes)
 c          = AES-256-GCM(key, n = 12 random bytes, the JSON body) ‖ 16-byte tag
-body       = {"v": 1, "epk": base64(epk), "n": base64(n), "c": base64(c)}
+body       = {"v": 1, "kid": the first 11 characters of base64(relay public key), "epk": base64(epk), "n": base64(n),
+              "c": base64(c)}
 ```
 
 The relay's public key ships in the server package (`defaultRelayKey` in
@@ -100,9 +103,24 @@ The originals are in the publisher's `~/Dev/keys/` (`pocketterm-relay-x25519.key
 ssh deploy@server.danyzmaj.com 'sudo install -m 644 -o root -g runner /dev/stdin /etc/danyzmaj/pocketterm-relay/apns.p8' < ~/Dev/keys/AuthKey_<id>.p8
 ```
 
-then redeploy (Actions → relay-deploy → _Run workflow_). A new relay key (`openssl genpkey -algorithm X25519`) also
-needs the new public key in `defaultRelayKey` and a server release; servers still on the old key get `400` until they
-update, so keep that for a leaked key.
+then redeploy (Actions → relay-deploy → _Run workflow_).
+
+### Rotating the relay key
+
+The relay can hold its key and the one before, so servers move over without missing a push. `kid` names the key a
+request was sealed to (servers from before `kid` are tried with each key).
+
+1. Make the new key straight into the keys folder:
+   `openssl genpkey -algorithm X25519 -out
+   ~/Dev/keys/pocketterm-relay-x25519-<year>.key && chmod 600 ~/Dev/keys/pocketterm-relay-x25519-<year>.key`.
+2. On the server, the current key becomes the previous one and the new one takes its place:
+   `sudo cp /etc/danyzmaj/pocketterm-relay/relay-x25519.key /etc/danyzmaj/pocketterm-relay/relay-x25519-previous.key`,
+   then install the new one as `relay-x25519.key` (as for `apns.p8` above).
+3. In `deploy/compose.yaml`, add the secret `relay_key_previous` (file `relay-x25519-previous.key`) to the service and
+   the `secrets:` list, and redeploy. The `listening` log line shows both `publicKey` and `previousKey`.
+4. Put the new public key (`publicKey` in that log line) in `defaultRelayKey` and release the server.
+5. Once servers have updated (months: self-hosted servers update rarely), drop the previous key and its secret. For a
+   leaked key skip the wait: servers still on it get `400` until they update.
 
 The public route is in danyzmaj-server's `monitoring/cloudflared/config.yml`: only `/v1/push` and `/health` reach the
 container; everything else is `404`.

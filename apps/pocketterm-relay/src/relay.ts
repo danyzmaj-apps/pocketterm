@@ -68,8 +68,11 @@ export type Config = {
   apnsTopic: string;
   /** The Firebase service account's JSON; without it Android pushes answer 501. */
   fcmServiceAccount?: string;
-  /** The relay's own key pair, which senders seal their requests to. */
-  key: RelayKey;
+  /**
+   * The relay's own key pairs, which senders seal their requests to: the current one first, then, while servers
+   * move to it, the one before.
+   */
+  keys: RelayKey[];
 };
 
 /** What one push came to, for metrics and the log: never the token or the body. */
@@ -272,7 +275,7 @@ export function relay(config: Config): Push {
       return { res: tooMany(), outcome: { platform: "none", status: 429 } };
     }
     const sealed = await req.text().catch(() => "");
-    const plain = sealed.length <= maxSealed ? await unseal(config.key, sealed) : null;
+    const plain = sealed.length <= maxSealed ? await unseal(config.keys, sealed) : null;
     let body: unknown = null;
     if (plain) {
       try {
@@ -319,14 +322,14 @@ function activityState(s: unknown): { state: string; since: number; kind?: strin
   if (!s || typeof s !== "object") return "state missing";
   const { state, since, kind } = s as Record<string, unknown>;
   if (typeof state !== "string" || !activityStates.includes(state)) return "state.state must be a known state";
+  if (typeof since !== "number" || !Number.isFinite(since)) return "state.since must be a unix time";
+  // A server whose clock is off still reaches its phones: its since is held to the last week, never the future.
   const now = Math.floor(Date.now() / 1000);
-  if (typeof since !== "number" || !Number.isFinite(since) || since < now - 7 * 86400 || since > now + 3600) {
-    return "state.since must be a recent unix time";
-  }
+  const held = Math.min(Math.max(Math.floor(since), now - 7 * 86400), now);
   if (kind !== undefined && (typeof kind !== "string" || !activityKinds.includes(kind) || state !== "needs")) {
     return "state.kind must be a known kind, with needs";
   }
-  return { state, since: Math.floor(since), ...(kind ? { kind } : {}) };
+  return { state, since: held, ...(kind ? { kind } : {}) };
 }
 
 /** A Live Activity's push from a checked body; a string says what's wrong. */

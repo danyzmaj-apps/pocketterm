@@ -3,8 +3,8 @@
 // another key does.
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { decodeBase64, encodeBase64 } from "jsr:@std/encoding@1/base64";
-import { type RelayKey, relayKey, unseal } from "../src/seal.ts";
-import { testKey } from "./harness.ts";
+import { keyId, type RelayKey, relayKey, unseal } from "../src/seal.ts";
+import { seal, testKey } from "./harness.ts";
 
 type Vectors = {
   relayPrivate: string;
@@ -69,4 +69,28 @@ Deno.test("what isn't a sealed request is refused", async () => {
   for (const text of ["", "null", "[]", '{"token":"abc","kind":"terminal"}', '{"v":1,"epk":"%%","n":"","c":""}']) {
     assertEquals(await unseal(key, text), null, text);
   }
+});
+
+Deno.test("while the key rotates, requests sealed to the new key or the old one open; others don't", async () => {
+  const fresh = await testKey();
+  const old = await testKey();
+  const keys = [fresh, old];
+  const plain = '{"token":"t"}';
+  const text = async (k: RelayKey, kid?: string) => {
+    const sealed = JSON.parse(await seal(k.publicKey, plain));
+    return JSON.stringify(kid === undefined ? sealed : { ...sealed, kid });
+  };
+  const opened = async (t: string) => {
+    const p = await unseal(keys, t);
+    return p && new TextDecoder().decode(p);
+  };
+  assertEquals(await opened(await text(fresh, keyId(fresh))), plain);
+  assertEquals(await opened(await text(old, keyId(old))), plain);
+  // A server from before kid.
+  assertEquals(await opened(await text(old)), plain);
+  // A kid naming a key the relay doesn't have yet: every key is tried.
+  assertEquals(await opened(await text(old, "AAAAAAAAAAA")), plain);
+  // A kid naming one key never opens what was sealed to the other.
+  assertEquals(await opened(await text(old, keyId(fresh))), null);
+  assertEquals(await opened(await text(await testKey())), null);
 });

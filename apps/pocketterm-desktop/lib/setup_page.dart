@@ -17,6 +17,10 @@ final Uri _selfHostingGuide = Uri.parse(
   'https://github.com/danyzmaj-apps/pocketterm/blob/main/docs/SELF_HOSTING.md#on-my-own-server',
 );
 
+final Uri _serverNeeds = Uri.parse(
+  'https://github.com/danyzmaj-apps/pocketterm/blob/main/apps/pocketterm-server/README.md#what-it-needs',
+);
+
 /// The first-run setup's screens. Where it was left is kept
 /// ([AppController.setupStep]) and it opens there again.
 enum SetupStep {
@@ -180,6 +184,23 @@ class _SetupPageState extends State<SetupPage> {
         title: 'Not yet',
         text: 'Set one up on a VPS: you get the commands to copy, and each step is checked as you go.',
         onTap: () => _go(SetupStep.newServer),
+      ),
+      const SizedBox(height: 14),
+      Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Already run your own servers? See what the PocketTerm server needs.',
+              style: TextStyle(fontSize: 12.5, color: C.dim, height: 1.45),
+            ),
+          ),
+          TextButton(
+            key: const ValueKey('setup-server-needs'),
+            onPressed: () => openLink(_serverNeeds),
+            style: TextButton.styleFrom(foregroundColor: C.dim2),
+            child: const Text('Open link'),
+          ),
+        ],
       ),
     ],
   );

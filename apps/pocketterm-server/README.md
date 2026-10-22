@@ -1,5 +1,19 @@
 # PocketTerm server
 
+## What it needs
+
+For admins who run their own servers already; the Docker walkthrough is [below](#run-it-on-a-vps-with-docker).
+
+- **One process:** one container (`ghcr.io/danyzmaj-apps/pocketterm-server`) or one binary, `pocketterm-server serve`. No database, no other services.
+- **Port 47900, plain HTTP** (`--port`, `--address`, default `0.0.0.0`). Terminate HTTPS in front of it and set `--public-url` to that `https://` address.
+- **WebSocket at `/v1/ws`** must pass through the proxy (Upgrade headers), with an idle timeout above 60 seconds. The server pings every 25 seconds.
+- **`--trust-proxy`** when it sits behind a proxy that sets `X-Forwarded-For`, so rate limits count the real caller. Leave it off when clients reach it directly.
+- **One data folder to back up:** `/data` in the container (`--data`, default `./data` for the binary).
+- **Health:** `pocketterm-server health` exits 0 when it answers; or `GET /v1/health` returns 200.
+- **Outbound:** HTTPS to `push.danyzmaj.com`, only if phones turn notifications on.
+
+Every option also reads an environment variable (`POCKETTERM_PORT`, `POCKETTERM_DATA`, `POCKETTERM_PUBLIC_URL`, `POCKETTERM_TRUST_PROXY=1`, …); `pocketterm-server help` lists them.
+
 The server your computers and phones talk to: pairing, the list of your computers, the live channel between a
 computer and its phones, images on their way from phone to computer, and push notifications. It serves one
 owner. Everything between a computer and a phone is end-to-end encrypted by the apps, so the server only ever

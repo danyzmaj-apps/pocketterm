@@ -55,6 +55,8 @@ If this computer's Tailscale name changes (you renamed the computer, or signed T
 
 ### On my own server
 
+Already run your own servers? See [what the PocketTerm server needs](../apps/pocketterm-server/README.md#what-it-needs).
+
 The wizard first asks: **Do you already have a PocketTerm server?**
 
 <p align="center">

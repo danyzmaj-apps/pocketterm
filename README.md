@@ -39,6 +39,8 @@ PocketTerm is a desktop app (macOS menu bar, Windows tray) and a phone app (iPho
 
 ## How it works
 
+Interactive diagrams of both setups: [docs/how-it-works.html](docs/how-it-works.html)
+
 ```mermaid
 flowchart LR
   subgraph computer ["Your computer"]

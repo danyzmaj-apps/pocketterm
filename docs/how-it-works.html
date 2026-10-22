@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PocketTerm: how the two setups work</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --text:#e7e9ee; --dim:#9aa1ad; --accent:#7c9cff; --ok:#4ade80; --warn:#fbbf24; --lock:#f472b6; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  main { max-width:1100px; margin:0 auto; padding:40px 24px 80px; }
+  h1 { font-size:28px; margin:0 0 6px; }
+  h2 { font-size:21px; margin:56px 0 6px; }
+  h3 { font-size:16px; margin:28px 0 8px; }
+  p.lead { color:var(--dim); margin:0 0 24px; }
+  .tabs { display:flex; gap:8px; margin:24px 0; flex-wrap:wrap; }
+  .tabs button { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:999px; padding:8px 16px; font:inherit; cursor:pointer; }
+  .tabs button.on { background:var(--accent); color:#0e0f12; border-color:var(--accent); font-weight:600; }
+  .panel { display:none; } .panel.on { display:block; }
+  svg { width:100%; height:auto; display:block; background:var(--card); border:1px solid var(--line); border-radius:16px; }
+  .box { fill:#1f2430; stroke:var(--line); stroke-width:1.5; }
+  .box.mine { stroke:var(--accent); }
+  .box.yours { stroke:var(--ok); }
+  .box.third { stroke:var(--warn); }
+  .t { fill:var(--text); font-size:14px; font-weight:600; }
+  .s { fill:var(--dim); font-size:12px; }
+  .zone { fill:none; stroke-dasharray:6 6; stroke-width:1.5; }
+  .zone.home { stroke:#3b4252; } .zone.ts { stroke:var(--accent); } .zone.net { stroke:#3b4252; }
+  .zl { font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
+  .flow { stroke-width:2.5; fill:none; }
+  .flow.e2e { stroke:var(--lock); }
+  .flow.plain { stroke:#5b6475; }
+  .flow.push { stroke:var(--warn); stroke-dasharray:5 5; }
+  .anim { stroke-dasharray:8 10; animation: dash 1.2s linear infinite; }
+  @keyframes dash { to { stroke-dashoffset:-36; } }
+  .lbl { fill:var(--text); font-size:12px; }
+  .legend { display:flex; gap:20px; flex-wrap:wrap; color:var(--dim); font-size:13px; margin:12px 0 0; }
+  .legend span::before { content:""; display:inline-block; width:22px; height:3px; vertical-align:middle; margin-right:8px; background:var(--c); }
+  ol.steps { counter-reset:s; list-style:none; padding:0; margin:0; display:grid; gap:10px; }
+  ol.steps li { counter-increment:s; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px 12px 52px; position:relative; }
+  ol.steps li::before { content:counter(s); position:absolute; left:14px; top:12px; width:26px; height:26px; border-radius:50%; background:var(--accent); color:#0e0f12; font-weight:700; display:grid; place-items:center; font-size:13px; }
+  ol.steps b { color:var(--text); }
+  ol.steps small { color:var(--dim); display:block; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  th, td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-weight:600; font-size:13px; }
+  tr:last-child td { border-bottom:0; }
+  .yes { color:var(--ok); } .no { color:#f87171; } .meh { color:var(--warn); }
+  code { background:#232836; padding:1px 6px; border-radius:6px; font-size:13px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:800px){ .grid2 { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .card h4 { margin:0 0 6px; font-size:15px; }
+  .card p { margin:0; color:var(--dim); }
+</style>
+</head>
+<body>
+<main>
+  <h1>PocketTerm: how the two setups work</h1>
+  <p class="lead">Your sessions always live on your computer. The only question is where the small PocketTerm server runs that connects your phone to it. In both setups, everything that matters is end-to-end encrypted between the computer and the phone.</p>
+
+  <div class="tabs">
+    <button class="on" data-p="local">On this computer (Tailscale)</button>
+    <button data-p="vps">On my own server (VPS)</button>
+    <button data-p="crypto">Encryption and pairing</button>
+    <button data-p="compare">Side by side</button>
+  </div>
+
+  <!-- ============ LOCAL ============ -->
+  <section class="panel on" id="local">
+    <svg viewBox="0 0 1060 620" role="img" aria-label="On this computer setup diagram">
+      <rect class="zone ts" x="20" y="20" width="1020" height="480" rx="18"/>
+      <text class="zl" x="40" y="46" fill="#7c9cff">Your private Tailscale network (WireGuard, encrypted device to device)</text>
+
+      <rect class="zone home" x="40" y="70" width="560" height="410" rx="14"/>
+      <text class="zl" x="60" y="94" fill="#9aa1ad">Your computer</text>
+
+      <rect class="box" x="70" y="120" width="200" height="70" rx="12"/>
+      <text class="t" x="86" y="148">omp / Claude Code</text>
+      <text class="s" x="86" y="170">in kitty, Ghostty+tmux, WezTerm</text>
+
+      <rect class="box mine" x="70" y="250" width="200" height="90" rx="12"/>
+      <text class="t" x="86" y="278">PocketTerm desktop</text>
+      <text class="s" x="86" y="300">reads windows, types keys,</text>
+      <text class="s" x="86" y="318">holds this computer's key</text>
+
+
+      <rect class="box mine" x="350" y="250" width="220" height="90" rx="12"/>
+      <text class="t" x="366" y="278">Built-in server</text>
+      <text class="s" x="366" y="300">inside the desktop app</text>
+      <text class="s" x="366" y="318">listens on 127.0.0.1 only</text>
+
+      <rect class="box third" x="350" y="380" width="220" height="70" rx="12"/>
+      <text class="t" x="366" y="408">tailscale serve</text>
+      <text class="s" x="366" y="430">https://&lt;mac&gt;.ts.net → 127.0.0.1</text>
+
+      <rect class="box yours" x="780" y="230" width="230" height="130" rx="12"/>
+      <text class="t" x="796" y="258">PocketTerm phone</text>
+      <text class="s" x="796" y="280">+ Tailscale app, same account</text>
+      <text class="s" x="796" y="300">holds the computer's key</text>
+      <text class="s" x="796" y="320">(from scanning its QR)</text>
+
+      <rect class="box third" x="780" y="530" width="230" height="70" rx="12"/>
+      <text class="t" x="796" y="558">Push relay (optional)</text>
+      <text class="s" x="796" y="580">push.danyzmaj.com → Apple/Google</text>
+
+      <path class="flow plain" d="M170 190 V250"/>
+      <text class="lbl" x="180" y="226">local API, 127.0.0.1</text>
+      <path class="flow e2e anim" d="M270 295 H350"/>
+      <path class="flow e2e anim" d="M460 340 V380"/>
+      <path class="flow e2e anim" d="M570 415 C680 415 680 300 780 300"/>
+      <text class="lbl" x="620" y="350">HTTPS inside Tailscale</text>
+      <text class="lbl" x="620" y="368">payload sealed end to end</text>
+      <path class="flow push" d="M460 340 C620 560 700 565 780 565"/>
+      <text class="lbl" x="520" y="606">sealed notification, outside the tailnet</text>
+    </svg>
+    <div class="legend">
+      <span style="--c:#f472b6">sealed with the computer's key (only the computer and your phones can read)</span>
+      <span style="--c:#5b6475">stays on the computer</span>
+      <span style="--c:#fbbf24">push (opt-in), still sealed</span>
+    </div>
+
+    <h3>What happens, step by step</h3>
+    <ol class="steps">
+      <li><b>Setup wizard checks Tailscale</b><small>Installed, running, signed in, HTTPS certificates on. Each row turns green on its own; buttons install or open things only after you confirm.</small></li>
+      <li><b>The desktop app starts its own server</b><small>It listens on 127.0.0.1 only, so nothing on your Wi-Fi or the internet can reach it directly.</small></li>
+      <li><b>Tailscale publishes it privately</b><small><code>tailscale serve</code> gives it an HTTPS address like <code>https://your-mac.tail1234.ts.net</code> that only devices signed in to your Tailscale can open.</small></li>
+      <li><b>You scan the QR code with your phone</b><small>The code carries the server address, a one-time pairing code and this computer's encryption key. It never goes through any server.</small></li>
+      <li><b>The phone connects through its Tailscale app</b><small>From anywhere: home Wi-Fi, mobile data, a café. Tailscale makes a direct encrypted tunnel to your Mac.</small></li>
+      <li><b>Everything inside is sealed again</b><small>Conversations, screens, prompts and images are encrypted with the computer's key before they leave, so even the server only passes ciphertext.</small></li>
+    </ol>
+  </section>
+
+  <!-- ============ VPS ============ -->
+  <section class="panel" id="vps">
+    <svg viewBox="0 0 1060 520" role="img" aria-label="Own server setup diagram">
+      <rect class="zone home" x="20" y="60" width="330" height="420" rx="14"/>
+      <text class="zl" x="40" y="86" fill="#9aa1ad">Your computer(s)</text>
+
+      <rect class="box" x="45" y="110" width="280" height="70" rx="12"/>
+      <text class="t" x="61" y="138">omp / Claude Code</text>
+      <text class="s" x="61" y="160">in kitty, Ghostty+tmux, WezTerm</text>
+
+      <rect class="box mine" x="45" y="240" width="280" height="90" rx="12"/>
+      <text class="t" x="61" y="268">PocketTerm desktop</text>
+      <text class="s" x="61" y="290">connects OUT to your server</text>
+      <text class="s" x="61" y="308">(no ports opened at home)</text>
+
+      <rect class="box mine" x="45" y="370" width="280" height="80" rx="12" opacity=".55"/>
+      <text class="t" x="61" y="398" opacity=".7">Another computer (optional)</text>
+      <text class="s" x="61" y="420">joins the same server</text>
+
+      <rect class="zone net" x="400" y="60" width="300" height="420" rx="14"/>
+      <text class="zl" x="420" y="86" fill="#9aa1ad">Your VPS (any provider)</text>
+
+      <rect class="box third" x="425" y="130" width="250" height="80" rx="12"/>
+      <text class="t" x="441" y="158">Caddy</text>
+      <text class="s" x="441" y="180">HTTPS certificate (Let's Encrypt)</text>
+      <text class="s" x="441" y="198">ports 80 + 443</text>
+
+      <rect class="box mine" x="425" y="260" width="250" height="90" rx="12"/>
+      <text class="t" x="441" y="288">PocketTerm server</text>
+      <text class="s" x="441" y="310">Docker container</text>
+      <text class="s" x="441" y="328">relays sealed messages only</text>
+
+      <rect class="box" x="425" y="390" width="250" height="60" rx="12"/>
+      <text class="t" x="441" y="416">/data volume</text>
+      <text class="s" x="441" y="436">device list, computer names, codes</text>
+
+      <rect class="box yours" x="770" y="230" width="260" height="110" rx="12"/>
+      <text class="t" x="786" y="258">PocketTerm phone</text>
+      <text class="s" x="786" y="280">no Tailscale needed</text>
+      <text class="s" x="786" y="300">holds the computer's key</text>
+      <text class="s" x="786" y="320">(from scanning its QR)</text>
+
+      <rect class="box third" x="770" y="400" width="260" height="70" rx="12"/>
+      <text class="t" x="786" y="428">Push relay (optional)</text>
+      <text class="s" x="786" y="450">push.danyzmaj.com → Apple/Google</text>
+
+      <path class="flow plain" d="M185 180 V240"/>
+      <text class="lbl" x="195" y="216">local API</text>
+      <path class="flow e2e anim" d="M325 285 C370 285 380 170 425 170"/>
+      <text class="lbl" x="300" y="226">HTTPS + WebSocket</text>
+      <path class="flow e2e anim" d="M550 210 V260"/>
+      <path class="flow e2e anim" d="M675 170 C730 170 720 285 770 285"/>
+      <text class="lbl" x="690" y="150">HTTPS from anywhere</text>
+      <path class="flow plain" d="M550 350 V390"/>
+      <path class="flow push" d="M675 320 C720 360 730 430 770 435"/>
+    </svg>
+    <div class="legend">
+      <span style="--c:#f472b6">sealed with the computer's key</span>
+      <span style="--c:#5b6475">local or storage</span>
+      <span style="--c:#fbbf24">push (opt-in), still sealed</span>
+    </div>
+
+    <h3>What happens, step by step</h3>
+    <ol class="steps">
+      <li><b>The wizard asks for your server's address</b><small>An IP like <code>203.0.113.7</code> becomes the free name <code>203-0-113-7.sslip.io</code>; a domain stays as typed.</small></li>
+      <li><b>You run four commands on the server</b><small>Install Docker, download PocketTerm's compose file (pinned to your app version), start it, print the setup link. Each has a Copy button.</small></li>
+      <li><b>Caddy gets an HTTPS certificate by itself</b><small>Ports 80 and 443 must be open. The wizard watches: name resolves → HTTPS answers → server healthy.</small></li>
+      <li><b>You paste the setup link</b><small>This computer signs in to your server. Other computers can join with the same kind of link.</small></li>
+      <li><b>You scan the computer's QR code with your phone</b><small>Same as the other setup: address, pairing code, and the computer's key, straight from screen to camera.</small></li>
+      <li><b>Both connect out to the server</b><small>The computer and the phone only make outgoing connections, so nothing at home needs to be reachable, and no Tailscale is needed.</small></li>
+    </ol>
+  </section>
+
+  <!-- ============ CRYPTO ============ -->
+  <section class="panel" id="crypto">
+    <svg viewBox="0 0 1060 360" role="img" aria-label="Pairing and encryption">
+      <rect class="box mine" x="40" y="60" width="260" height="120" rx="12"/>
+      <text class="t" x="56" y="90">Computer</text>
+      <text class="s" x="56" y="112">makes a 256-bit key, once</text>
+      <text class="s" x="56" y="130">keeps it in Keychain /</text>
+      <text class="s" x="56" y="148">Windows secure storage</text>
+
+      <rect class="box" x="400" y="40" width="260" height="70" rx="12"/>
+      <text class="t" x="416" y="68">QR code on screen</text>
+      <text class="s" x="416" y="90">address + pairing code + key</text>
+
+      <rect class="box yours" x="760" y="60" width="260" height="120" rx="12"/>
+      <text class="t" x="776" y="90">Phone</text>
+      <text class="s" x="776" y="112">camera reads the key</text>
+      <text class="s" x="776" y="130">iOS Keychain / Android</text>
+      <text class="s" x="776" y="148">Keystore, this device only</text>
+
+      <path class="flow e2e" d="M300 100 H400"/>
+      <path class="flow e2e" d="M660 75 C710 75 720 100 760 100"/>
+      <text class="lbl" x="420" y="135">light only: screen → camera. No server sees the key.</text>
+
+      <rect class="box third" x="400" y="210" width="260" height="110" rx="12"/>
+      <text class="t" x="416" y="238">Server (either setup)</text>
+      <text class="s" x="416" y="260">sees: who is paired, when,</text>
+      <text class="s" x="416" y="278">how much. Never the contents.</text>
+      <text class="s" x="416" y="296">Can't read, can't forge.</text>
+
+      <path class="flow e2e anim" d="M170 180 C170 265 300 265 400 265"/>
+      <path class="flow e2e anim" d="M660 265 C760 265 890 265 890 180"/>
+      <text class="lbl" x="120" y="300">AES-256-GCM sealed,</text>
+      <text class="lbl" x="120" y="318">numbered, time-stamped</text>
+      <text class="lbl" x="820" y="300">replays and edits</text>
+      <text class="lbl" x="820" y="318">are rejected</text>
+    </svg>
+
+    <div class="grid2" style="margin-top:16px">
+      <div class="card"><h4>Sealed end to end</h4><p>Conversations, prompts, screens, keys you press, images, and notification text.</p></div>
+      <div class="card"><h4>Visible to the server</h4><p>Your device list, computer names, pairing codes (hashed), push tokens, and when devices talk.</p></div>
+      <div class="card"><h4>Push relay (only if you turn notifications on)</h4><p>Run by Danijel Lovric on his server in Germany. Receives requests sealed to its own key, forwards the still-sealed notification to Apple or Google, stores nothing, logs no device ids.</p></div>
+      <div class="card"><h4>One exception</h4><p>iPhone Live Activities can't be encrypted (Apple's rule), so they carry only a session's state, like "working" or "needs you", never text.</p></div>
+      <div class="card"><h4>Lost a phone?</h4><p>Settings → Phone → Reset key. The computer makes a new key; every phone scans again; the old key opens nothing new.</p></div>
+      <div class="card"><h4>Links from outside</h4><p>A link opened from a message or website can never install a key. Only the in-app scanner can.</p></div>
+    </div>
+  </section>
+
+  <!-- ============ COMPARE ============ -->
+  <section class="panel" id="compare">
+    <table>
+      <tr><th></th><th>On this computer</th><th>On my own server (VPS)</th></tr>
+      <tr><td>Cost</td><td class="yes">Free</td><td class="meh">A VPS, about €4–6 a month</td></tr>
+      <tr><td>What you install</td><td>Tailscale on the computer and the phone</td><td>Docker on the VPS (four copy-paste commands)</td></tr>
+      <tr><td>Works from anywhere</td><td class="yes">Yes, through Tailscale</td><td class="yes">Yes, public HTTPS</td></tr>
+      <tr><td>Computer must be awake</td><td class="meh">Yes</td><td class="meh">Yes (the sessions live there in both setups)</td></tr>
+      <tr><td>Several computers</td><td>Yes: others join this computer's server through Tailscale</td><td class="yes">Yes: all join the VPS</td></tr>
+      <tr><td>Nothing reachable from the internet</td><td class="yes">Yes: only your tailnet</td><td class="meh">The VPS is public (it only relays sealed data, every request needs a device token)</td></tr>
+      <tr><td>Third parties involved</td><td>Tailscale (sees device names and IPs, not contents)</td><td>Your VPS provider (sees encrypted traffic only)</td></tr>
+      <tr><td>Best for</td><td>One person, one main computer, zero cost</td><td>Several computers, or no Tailscale on the phone</td></tr>
+    </table>
+  </section>
+</main>
+<script>
+  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+    document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.id === b.dataset.p));
+  });
+</script>
+</body>
+</html>

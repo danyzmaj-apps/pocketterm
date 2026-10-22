@@ -6,6 +6,17 @@ Every app's version is the `version:` line of its own `pubspec.yaml` (`apps/pock
 
 Keys and certificates never go in the repo: keep them in the maintainer's keys folder (mode 600), passwords in the Keychain.
 
+## Release order
+
+The wizard's VPS commands fetch `docker-compose.yml` from the tag `v<version>` and run the image `ghcr.io/danyzmaj-apps/pocketterm-server:<version>`. Neither exists until the release is out, so a desktop build of a new version can't set up a VPS before both are published. Release in this order:
+
+1. **Bump the version** in `apps/pocketterm-desktop/pubspec.yaml`, `apps/pocketterm-mobile/pubspec.yaml` and the `POCKETTERM_VERSION` default in `apps/pocketterm-server/docker-compose.yml` (details in [Mac → Each release](#each-release)). Commit and push to `main`.
+2. **Push the tag.** `tool/release.sh` creates the GitHub release `v<version>`, and with it the tag.
+3. **The server image publishes.** The tag starts [.github/workflows/server-image.yml](../.github/workflows/server-image.yml) (on `push` of tags `v*`), which pushes `:<version>`, `:<major>.<minor>` and `:latest` to ghcr. Wait for it to go green before telling anyone about the release.
+4. **Desktop and phone builds** go out after that: the Windows installer (built from the same release) and the phone builds from Baker.
+
+**Once, after the first image is published:** packages on ghcr start private, and a VPS can't pull a private image without signing in. On GitHub, open the organization's **Packages** → `pocketterm-server` → **Package settings** → **Danger Zone** → **Change visibility** → **Public**. Check it from a machine that isn't signed in to ghcr: `docker pull ghcr.io/danyzmaj-apps/pocketterm-server:<version>`.
+
 ## Push relay (once, and after relay changes)
 
 Every user's server sends phone notifications through one relay the publisher runs, `apps/pocketterm-relay` on the publisher's own server at `https://push.danyzmaj.com`. It holds the only credentials that can reach PocketTerm's installs: the APNs key for iPhones and the Firebase service account for Android.

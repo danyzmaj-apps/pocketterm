@@ -337,6 +337,12 @@ class FakeTailscale {
 
   final calls = <String>[];
 
+  /// `tailscale serve status` fails (exits non-zero) while set.
+  bool statusFails = false;
+
+  /// `tailscale serve --bg` waits for this before it publishes, when set.
+  Completer<void>? serveGate;
+
   /// `serve` processes still running (one that asks for HTTPS waits until killed).
   final running = <FakeProcess>[];
 
@@ -360,7 +366,10 @@ class FakeTailscale {
         }),
       );
     }
-    if (args.take(2).join(' ') == 'serve status') return FakeProcess.done(0, out: jsonEncode(serveConfig));
+    if (args.take(2).join(' ') == 'serve status') {
+      if (statusFails) return FakeProcess.done(1, err: 'failed to connect to local Tailscale service\n');
+      return FakeProcess.done(0, out: serveConfig.isEmpty ? 'null\n' : jsonEncode(serveConfig));
+    }
     if (args.firstOrNull == 'serve' && args.last != 'off' && !https) {
       // What the CLI prints, then it waits for HTTPS to be turned on.
       final p = FakeProcess.waiting(
@@ -370,6 +379,7 @@ class FakeTailscale {
       return p;
     }
     if (args.firstOrNull == 'serve' && args.last != 'off') {
+      await serveGate?.future;
       serving(args.last);
       return FakeProcess.done(0, out: 'Available within your tailnet:\n\nhttps://$dnsName/\n|-- proxy ${args.last}\n');
     }

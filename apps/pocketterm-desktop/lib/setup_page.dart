@@ -442,6 +442,9 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
   /// What already serves on port 443 of this computer's Tailscale name;
   /// null while nothing else does (or not asked yet).
   String? _taken;
+
+  /// `tailscale serve status` didn't say what serves on port 443.
+  bool _unreadable = false;
   Timer? _timer;
   bool _busy = false;
   bool _askingHttps = false;
@@ -464,11 +467,12 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
     final ts = widget.app.tailscale;
     final status = await ts.status();
     final ready = status.state == TailscaleState.running && status.https && status.dnsName != null;
-    final taken = ready ? await ts.taken(widget.app.ownServerPorts) : null;
+    final serving = ready ? await ts.port443(widget.app.ownServerPorts) : null;
     if (mounted) {
       setState(() {
         _status = status;
-        _taken = taken;
+        _taken = serving is ServingElsewhere ? serving.what : null;
+        _unreadable = serving is ServingUnknown;
       });
     }
   }
@@ -508,7 +512,7 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
             s.state == TailscaleState.loggedOut || s.state == TailscaleState.running,
             s.state == TailscaleState.running,
             s.state == TailscaleState.running && s.https && s.dnsName != null,
-            s.state == TailscaleState.running && s.https && s.dnsName != null && _taken == null,
+            s.state == TailscaleState.running && s.https && s.dnsName != null && _taken == null && !_unreadable,
           ];
     final commands = widget.app.commands;
     final current = done?.indexOf(false) ?? -1;
@@ -612,11 +616,14 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
             CheckState.now => 'Free Tailscale’s HTTPS port (443)',
             _ => 'Tailscale’s HTTPS port (443) for PocketTerm',
           },
-          note: _taken == null
-              ? null
-              : 'Tailscale already serves $_taken there. PocketTerm needs that port and won’t replace it: remove it '
+          note: _taken != null
+              ? 'Tailscale already serves $_taken there. PocketTerm needs that port and won’t replace it: remove it '
                     'with tailscale serve --https=443 off, or move it to another port (tailscale serve --https=8443 …). '
-                    'This list checks again by itself.',
+                    'This list checks again by itself.'
+              : _unreadable
+              ? 'PocketTerm couldn’t read Tailscale’s Serve settings, so it doesn’t know yet whether that port is '
+                    'free. This list checks again by itself.'
+              : null,
         ),
         const SizedBox(height: 14),
         _notice(phoneTailscaleNote, icon: Icons.phone_iphone, key: const ValueKey('setup-phone-tailscale')),

@@ -331,6 +331,19 @@ void main() {
       expect(startEnabled(tester), isTrue);
     });
 
+    testWidgets("while Tailscale can't say what serves on 443, Start waits and says why", (tester) async {
+      fake.statusFails = true;
+      await pumpSetup(tester, prefs: {'setup_step': 'thisComputer'});
+      await until(tester, () => check(tester, 'check-serve-free') == CheckState.now);
+      expect(check(tester, 'check-https'), CheckState.done);
+      expect(find.textContaining('couldn’t read Tailscale’s Serve settings'), findsOneWidget);
+      expect(startEnabled(tester), isFalse);
+
+      fake.statusFails = false;
+      await nextLook(tester, () => check(tester, 'check-serve-free') == CheckState.done);
+      expect(startEnabled(tester), isTrue);
+    });
+
     testWidgets('a tailnet whose admin keeps HTTPS off: the VPS way is one click away', (tester) async {
       fake.https = false;
       final app = await pumpSetup(tester, prefs: {'setup_step': 'thisComputer'});

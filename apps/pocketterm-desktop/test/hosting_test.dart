@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -230,6 +231,29 @@ void main() {
       expect(fake.calls, isNot(contains('serve --https=443 off')));
     });
 
+    test("while serve status can't say what's on 443, serve and unserve change nothing", () async {
+      final fake = FakeTailscale(installed: true)
+        ..serving('http://127.0.0.1:3000')
+        ..statusFails = true;
+      expect(await fake.tailscale.port443({47900}), isA<ServingUnknown>());
+      final result = await fake.tailscale.serve(47900);
+      expect(result.ok, isFalse);
+      expect(result.error, Tailscale.unreadable);
+      await fake.tailscale.unserve(47900);
+      expect(fake.calls.where((c) => c.startsWith('serve --')), isEmpty);
+      expect(jsonEncode(fake.serveConfig), contains('http://127.0.0.1:3000'));
+
+      // Readable again: nothing there, this app's own, or something else.
+      fake
+        ..statusFails = false
+        ..serveConfig = {};
+      expect(await fake.tailscale.port443({47900}), isA<ServingNothing>());
+      fake.serving('http://127.0.0.1:47900');
+      expect(await fake.tailscale.port443({47900}), isA<ServingOurs>());
+      expect(await fake.tailscale.port443({47901}), isA<ServingElsewhere>());
+      expect(Tailscale.readServing('not json', const {47900}), isA<ServingUnknown>());
+    });
+
     test("the open source build's operator rule says how to let PocketTerm in", () {
       expect(
         Tailscale.serveError('Access denied: serve config denied\nUse sudo or set operator\n'),
@@ -299,6 +323,44 @@ void main() {
       await server.stop();
       expect(fake.calls.last, 'serve --https=443 off');
       expect(await listening(port), isFalse);
+    });
+
+    test('stopping while Tailscale is still serving it takes back what that serve publishes', () async {
+      final fake = FakeTailscale(installed: true)..serveGate = Completer<void>();
+      final server = BuiltInServer(dataDir: dir, tailscale: fake.tailscale, recheck: Duration.zero);
+      await server.start(port: 0);
+      final port = server.port;
+      while (!fake.calls.contains('serve --bg --https=443 http://127.0.0.1:$port')) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      final stopped = server.stop();
+      fake.serveGate!.complete();
+      await stopped;
+      expect(fake.calls.last, 'serve --https=443 off');
+      expect(fake.serveConfig, isEmpty);
+      expect(server.state, HostState.checking);
+      expect(await listening(port), isFalse);
+    });
+
+    test("its own Serve entry gone while ready (tailscale serve reset), it's published again", () async {
+      final fake = FakeTailscale(installed: true);
+      final server = await host(fake);
+      expect(server.state, HostState.ready);
+
+      // serve status can't say for a moment: nothing changes.
+      fake.statusFails = true;
+      final serves = fake.calls.where((c) => c.startsWith('serve --bg')).length;
+      await server.refresh();
+      expect(server.state, HostState.ready);
+      expect(fake.calls.where((c) => c.startsWith('serve --bg')).length, serves);
+
+      fake
+        ..statusFails = false
+        ..serveConfig = {};
+      await server.refresh();
+      expect(fake.calls.last, 'serve --bg --https=443 http://127.0.0.1:${server.port}');
+      expect(jsonEncode(fake.serveConfig), contains('http://127.0.0.1:${server.port}'));
+      expect(server.state, HostState.ready);
     });
 
     test('a taken port moves it to the next one', () async {

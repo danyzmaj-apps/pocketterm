@@ -96,6 +96,9 @@ class BuiltInServer extends ChangeNotifier {
   String? _error;
   bool _taken = false;
 
+  /// `tailscale serve` was run since [start]: [stop] takes back what it published.
+  bool _serveRan = false;
+
   /// This computer's address before Tailscale gave it another one (the
   /// computer was renamed, or Tailscale signed in to another tailnet):
   /// phones and computers set up with it can't reach this one any more.
@@ -199,20 +202,33 @@ class BuiltInServer extends ChangeNotifier {
       _enableHttps = null;
       _error = null;
       _taken = false;
-    } else if (_served != url) {
-      final result = await tailscale.serve(port, earlier: _earlier);
-      if (_server == null) return;
-      _served = result.ok ? url : null;
-      _enableHttps = result.enableLink;
-      _error = result.error;
-      _taken = result.taken != null;
-      if (result.ok) _servedAt(url);
-    } else if (await tailscale.taken({port, ?_earlier}) case final what?) {
-      // Something else took port 443 since: it stays, and phones can't reach this one.
-      if (_server == null) return;
-      _served = null;
-      _error = ServeResult.taken(what).error;
-      _taken = true;
+    } else {
+      var serve = _served != url;
+      if (!serve) {
+        final now = await tailscale.port443({port});
+        if (_server == null) return;
+        switch (now) {
+          case ServingElsewhere(:final what):
+            // Something else took port 443 since: it stays, and phones can't reach this one.
+            _served = null;
+            _error = ServeResult.taken(what).error;
+            _taken = true;
+          case ServingNothing():
+            // This app's entry went (tailscale serve reset, say): Tailscale publishes it again.
+            serve = true;
+          case ServingOurs() || ServingUnknown():
+        }
+      }
+      if (serve) {
+        _serveRan = true;
+        final result = await tailscale.serve(port, earlier: _earlier);
+        if (_server == null) return;
+        _served = result.ok ? url : null;
+        _enableHttps = result.enableLink;
+        _error = result.error;
+        _taken = result.taken != null;
+        if (result.ok) _servedAt(url);
+      }
     }
     _schedule();
     notifyListeners();
@@ -224,14 +240,17 @@ class BuiltInServer extends ChangeNotifier {
     if (every > Duration.zero) _timer = Timer(every, () => unawaited(refresh()));
   }
 
-  /// Stops publishing it on the tailnet and stops it.
+  /// Stops publishing it on the tailnet and stops it. A look at Tailscale
+  /// under way ends first, so what its `tailscale serve` published goes too.
   Future<void> stop() async {
     _timer?.cancel();
     _timer = null;
     final server = _server;
     if (server == null) return;
     _server = null;
-    final served = _served != null;
+    await _refreshing?.onError((_, _) {});
+    final served = _serveRan;
+    _serveRan = false;
     _served = null;
     _status = null;
     _enableHttps = null;

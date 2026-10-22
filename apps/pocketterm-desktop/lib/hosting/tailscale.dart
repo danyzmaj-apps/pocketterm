@@ -68,6 +68,32 @@ class ServeResult {
   bool get ok => enableLink == null && error == null;
 }
 
+/// What port 443 of this computer's Tailscale name serves ([Tailscale.port443]).
+sealed class Serving {
+  const Serving();
+}
+
+/// Nothing.
+final class ServingNothing extends Serving {
+  const ServingNothing();
+}
+
+/// This app's built-in server, and nothing else.
+final class ServingOurs extends Serving {
+  const ServingOurs();
+}
+
+/// Something else, [what] in words: it stays.
+final class ServingElsewhere extends Serving {
+  const ServingElsewhere(this.what);
+  final String what;
+}
+
+/// The CLI couldn't say (it failed, or took too long): nothing is changed.
+final class ServingUnknown extends Serving {
+  const ServingUnknown();
+}
+
 /// The Tailscale CLI: whether Tailscale runs here and under which name, and
 /// `tailscale serve`, which publishes the built-in server at
 /// `https://<this computer>.<tailnet>.ts.net` to the tailnet only.
@@ -187,13 +213,20 @@ class Tailscale {
   /// on the tailnet, in the background (`tailscale serve --bg`), so it
   /// lasts until [unserve]. A tailnet with HTTPS off answers with the page
   /// that turns it on: the CLI prints it and waits, so it's stopped there.
-  /// Something else already served on 443 ([servedElsewhere]) stays: it's
-  /// never replaced. [earlier]: the port this app's server had before (its
-  /// entry is this app's to move).
+  /// Something else already served on 443 stays: it's never replaced, and
+  /// nothing is changed while `tailscale serve status` can't say.
+  /// [earlier]: the port this app's server had before (its entry is this
+  /// app's to move).
   Future<ServeResult> serve(int port, {int? earlier}) async {
     final cli = _locate();
     if (cli == null) return const ServeResult.failed('Tailscale isn’t installed.');
-    if (await taken({port, ?earlier}) case final what?) return ServeResult.taken(what);
+    switch (await port443({port, ?earlier})) {
+      case ServingElsewhere(:final what):
+        return ServeResult.taken(what);
+      case ServingUnknown():
+        return const ServeResult.failed(unreadable);
+      case ServingNothing() || ServingOurs():
+    }
     final ({int? code, String out}) run;
     try {
       run = await _run(
@@ -222,18 +255,22 @@ class Tailscale {
     return said.isEmpty ? 'tailscale serve failed.' : said;
   }
 
-  /// What already serves on port 443 that isn't this app's built-in server
-  /// at one of [ours] (`tailscale serve status --json`); null when nothing
-  /// does, or when the CLI can't say.
-  Future<String?> taken(Set<int> ours) async {
+  /// Why PocketTerm changed nothing: `tailscale serve status` didn't answer.
+  static const unreadable =
+      'PocketTerm couldn’t read Tailscale’s Serve settings, so it changed nothing. It checks again by itself.';
+
+  /// What serves on port 443 now (`tailscale serve status --json`): this
+  /// app's built-in server at one of [ours], something else, nothing, or
+  /// unknown when the CLI can't say.
+  Future<Serving> port443(Set<int> ours) async {
     final cli = _locate();
-    if (cli == null) return null;
+    if (cli == null) return const ServingUnknown();
     try {
       final run = await _run(cli, ['serve', 'status', '--json'], timeout: const Duration(seconds: 10));
-      return run.code == 0 ? servedElsewhere(run.out, ours) : null;
+      return run.code == 0 ? readServing(run.out, ours) : const ServingUnknown();
     } on Object catch (e) {
       debugPrint('PocketTerm: tailscale serve status: $e');
-      return null;
+      return const ServingUnknown();
     }
   }
 
@@ -246,18 +283,29 @@ class Tailscale {
     return m != null && ours.contains(int.parse(m.group(1)!));
   }
 
-  /// [json] (`tailscale serve status --json`, a ServeConfig) read for port
-  /// 443: what serves there that isn't the built-in server at one of
-  /// [ours], in words; null when nothing else does.
+  /// [json] (`tailscale serve status --json`, a ServeConfig, or `null` when
+  /// nothing is served) read for port 443: what serves there that isn't the
+  /// built-in server at one of [ours], in words; null when nothing else
+  /// does.
   @visibleForTesting
-  static String? servedElsewhere(String json, Set<int> ours) {
+  static String? servedElsewhere(String json, Set<int> ours) => switch (readServing(json, ours)) {
+    ServingElsewhere(:final what) => what,
+    _ => null,
+  };
+
+  /// [json] (`tailscale serve status --json`) read for port 443; output that
+  /// isn't a ServeConfig is unknown.
+  @visibleForTesting
+  static Serving readServing(String json, Set<int> ours) {
     final Object? config;
     try {
       config = jsonDecode(json.substring(json.indexOf('{').clamp(0, json.length)));
     } on FormatException {
-      return null;
+      return const ServingUnknown();
     }
-    if (config is! Map) return null;
+    if (config == null) return const ServingNothing();
+    if (config is! Map) return const ServingUnknown();
+    var oursSeen = false;
     String? look(Map<dynamic, dynamic> c) {
       if (c['TCP'] case {'443': final Map<dynamic, dynamic> tcp}) {
         if (tcp['TCPForward'] case final String to when to.isNotEmpty) return 'a TCP forward to $to';
@@ -270,7 +318,10 @@ class Tailscale {
           if (handlers is! Map) continue;
           for (final MapEntry(key: mount, value: h) in handlers.entries) {
             final proxy = h is Map ? h['Proxy'] : null;
-            if (mount == '/' && proxy is String && _ours(proxy, ours)) continue;
+            if (mount == '/' && proxy is String && _ours(proxy, ours)) {
+              oursSeen = true;
+              continue;
+            }
             final what = switch (h) {
               {'Proxy': final String to} => to,
               {'Path': final String path} => path,
@@ -290,7 +341,8 @@ class Tailscale {
       return null;
     }
 
-    return look(config);
+    if (look(config) case final what?) return ServingElsewhere(what);
+    return oursSeen ? const ServingOurs() : const ServingNothing();
   }
 
   /// The login.tailscale.com page `tailscale serve` asks for, if it does.
@@ -311,12 +363,13 @@ class Tailscale {
   }
 
   /// Stops publishing the built-in server at [port] (`tailscale serve
-  /// --https=443 off`), unless port 443 serves something else by now:
-  /// that would go with it.
+  /// --https=443 off`), only while port 443 serves it and nothing else:
+  /// something else there would go with it, and nothing is changed while
+  /// `tailscale serve status` can't say.
   Future<void> unserve(int port) async {
     final cli = _locate();
     if (cli == null) return;
-    if (await taken({port}) != null) return;
+    if (await port443({port}) is! ServingOurs) return;
     try {
       await _run(cli, ['serve', '--https=443', 'off'], timeout: const Duration(seconds: 5));
     } on Object catch (e) {

@@ -1,6 +1,8 @@
 # A plain shell window's screen: keys from the key bar (Esc, arrows) and a
-# typed line, which runs there and shows on the screen.
-#   env: WINDOW (regex)
+# typed line, which runs there and shows on the screen. Where the terminal
+# can't share its screen (Ghostty), the phone says so; the keys and the line
+# still go (the desktop checks they arrived).
+#   env: WINDOW (regex), SCREEN (yes: the screen is shown)
 appId: com.danyzmaj.pocketterm
 ---
 - runFlow: sub/home.yaml
@@ -11,6 +13,11 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     visible: "Type a line…"
     timeout: 15000
+- runFlow:
+    when:
+      true: ${SCREEN != 'yes'}
+    commands:
+      - assertVisible: ".* can't share its screen\\."
 - takeScreenshot: screen
 - tapOn: "Esc"
 - tapOn: "↑"
@@ -18,8 +25,12 @@ appId: com.danyzmaj.pocketterm
 - tapOn: "Type a line…"
 - inputText: "echo e2e-$((6*7))"
 - tapOn: "Send \\(types it, then Enter\\)"
-- extendedWaitUntil:
-    visible: ".*e2e-42.*"
-    timeout: 20000
+- runFlow:
+    when:
+      true: ${SCREEN == 'yes'}
+    commands:
+      - extendedWaitUntil:
+          visible: ".*e2e-42.*"
+          timeout: 20000
 - takeScreenshot: typed
 - tapOn: "Back"

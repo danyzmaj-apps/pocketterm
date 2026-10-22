@@ -100,7 +100,9 @@ class _Run {
     await report.step('hand-off files', _handOff, critical: true);
 
     if (c.phone) {
+      if (t == 'ghostty') unawaited(_answerOnComputer());
       final code = await handOff(c.phaseDir, 'main', out: 'ready', timeout: const Duration(minutes: 45));
+      _mainDone = true;
       report.log('phone main → $code');
     } else {
       await report.step('stand-in phone: main scenarios', _standInMain);
@@ -507,6 +509,34 @@ class _Run {
     expect(failed, 0, reason: 'stand-in phone actions failed; see the log');
   }
 
+  bool _mainDone = false;
+
+  /// Ghostty, phone main phase: the approval was still unanswered when the
+  /// phone was told to answer it on the computer.
+  bool? _leftToComputer;
+
+  /// Ghostty: the phone can't answer an approval (no screen to read), so once
+  /// it was told so, approval.yaml asks (rpc `approve-on-computer`) and the
+  /// approval is answered here, as a person at the computer would, before
+  /// the phone's next scenarios find omp still waiting.
+  Future<void> _answerOnComputer() async {
+    final req = File(p.join(c.rpcDir, 'approve-on-computer.req'));
+    while (!_mainDone && !req.existsSync()) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+    if (_mainDone) return;
+    req.deleteSync();
+    _leftToComputer = !fakeOmpLog(dir('approve')).any((e) => e['event'] == 'answered');
+    var answer = 'ok';
+    try {
+      await app.terminals.pressKeys(app.live.sessions.firstWhere((s) => s.cwd == dir('approve')).window!, ['enter']);
+    } on Object catch (e) {
+      answer = 'not answered: $e';
+      report.log('approve on the computer: $e');
+    }
+    File(p.join(c.rpcDir, 'approve-on-computer.done')).writeAsStringSync(answer);
+  }
+
   /// What every phone scenario should have done on the computer, from the
   /// fake omp's and the shells' own logs.
   Future<void> _verifyMain() async {
@@ -524,11 +554,15 @@ class _Run {
           : 'phone: approval answered',
       () async {
         if (t == 'ghostty') {
-          expect(log('approve').where((e) => e['event'] == 'answered'), isEmpty);
-          // Answered on the computer, so the run carries on.
-          await app.terminals.pressKeys(app.live.sessions.firstWhere((s) => s.cwd == dir('approve')).window!, [
-            'enter',
-          ]);
+          if (c.phone) {
+            expect(_leftToComputer, isTrue, reason: 'the phone was told, then the approval was answered here');
+          } else {
+            expect(log('approve').where((e) => e['event'] == 'answered'), isEmpty);
+            // Answered on the computer, so the run carries on.
+            await app.terminals.pressKeys(app.live.sessions.firstWhere((s) => s.cwd == dir('approve')).window!, [
+              'enter',
+            ]);
+          }
         }
         final answered = await until(
           'approval answered',

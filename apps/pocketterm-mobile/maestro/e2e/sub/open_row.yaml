@@ -5,11 +5,16 @@ appId: com.danyzmaj.pocketterm
     element: "${ROW}\n.*"
     timeout: 20000
 - tapOn: "${ROW}\n.*"
-- waitForAnimationToEnd
-# A tap while the list still moves (a row's age refreshed) can be lost.
+# A tap while the list still moves (a row's age refreshed) can be lost: tapped
+# again only once the page clearly didn't open (a tap mid-transition lands on
+# the list behind, folding a project).
+- extendedWaitUntil:
+    visible: "Back"
+    timeout: 5000
+    optional: true
 - runFlow:
     when:
       notVisible: "Back"
     commands:
       - tapOn: "${ROW}\n.*"
-      - waitForAnimationToEnd
+- waitForAnimationToEnd

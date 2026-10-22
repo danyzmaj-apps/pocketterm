@@ -216,13 +216,22 @@ case $PHASE in
     if [ "$TERMINAL_ID" = ghostty ]; then THEN=".*Ghostty can.t show its screen.*"; else THEN=approved; fi
     CRITICAL=0
     flow approval approval.yaml -e SESSION="$APPROVAL_SESSION_RE" -e ANSWER="$APPROVAL_ANSWER" -e THEN="$THEN"
+    # Ghostty: then the person answers on the computer (the desktop test does,
+    # asked through its rpc folder), so omp isn't still waiting for the rest.
+    if [ "$TERMINAL_ID" = ghostty ] && [ -d "$OUT/approval" ]; then
+      RPC="$RUN_DIR/rpc"
+      rm -f "$RPC/approve-on-computer.done"
+      date >"$RPC/approve-on-computer.req"
+      for ((w = 0; w < 30; w++)); do [ -f "$RPC/approve-on-computer.done" ] && break; sleep 1; done
+      echo "approved on the computer: $(cat "$RPC/approve-on-computer.done" 2>/dev/null || echo 'no answer')"
+    fi
     for ((i = 0; i < SESSION_COUNT; i++)); do
       t=SESSION_${i}_RE
       flow "conversation-$i" conversation.yaml -e SESSION="${!t}" -e PROMPT="$(prompt $i)" \
         -e PROMPT_RE="$(re_escape "$(prompt $i)")"
     done
     flow slash-new slash_new.yaml -e SESSION="$SESSION_0_RE"
-    flow screen screen.yaml -e WINDOW="$SCREEN_WINDOW_RE"
+    flow screen screen.yaml -e WINDOW="$SCREEN_WINDOW_RE" -e SCREEN="$SCREEN"
     flow image image.yaml -e SESSION="$SESSION_0_RE" -e IMAGE_PROMPT="what is in this image $TERMINAL_ID"
     flow new-session new_session.yaml -e PROJECT="$NEW_SESSION_PROJECT_RE"
     flow switch-continue switch.yaml -e WINDOW=".*$SWITCH_CONTINUE_RE" -e HOW="Restart and continue"

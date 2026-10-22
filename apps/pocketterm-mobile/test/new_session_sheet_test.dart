@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -145,6 +146,60 @@ void main() {
     expect(find.byKey(const ValueKey('project-name')), findsOneWidget);
     expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNotNull);
     expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'Back')).onPressed, isNotNull);
+    remote.flush();
+  });
+
+  testWidgets('a shell just started opens as coming, not closed, until the computer lists it', (tester) async {
+    remote.handle('state', {
+      'windows': <Object>[],
+      'sessions': <Object>[],
+      'projects': ['/Users/me/a'],
+      'home': '/Users/me',
+    });
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) =>
+                TextButton(onPressed: () => unawaited(openNewSession(context, remote)), child: const Text('open')),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('start-agent')));
+    await tester.pump();
+    await tester.tap(find.text('~/a'));
+    final run = await lastRun(tester);
+    expect(run, allOf(containsPair('op', 'launch'), containsPair('agent', false)));
+    remote.handle('ran', {'id': run['id'], 'window': 'kitty-1/9'});
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(TerminalPage), findsOneWidget);
+    expect(find.text('This window has closed.'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    Map<String, dynamic> listed(List<Object> windows) => {
+      'windows': windows,
+      'sessions': <Object>[],
+      'projects': ['/Users/me/a'],
+      'home': '/Users/me',
+    };
+    remote.handle(
+      'state',
+      listed([
+        {'key': 'kitty-1/9', 'title': 'zsh', 'cwd': '/Users/me/a', 'program': 'zsh', 'app': 'kitty'},
+      ]),
+    );
+    await tester.pump();
+    expect(find.text('This window has closed.'), findsNothing);
+    remote.handle('state', listed([]));
+    await tester.pump();
+    expect(find.text('This window has closed.'), findsOneWidget, reason: 'listed once, then gone: closed');
     remote.flush();
   });
 }

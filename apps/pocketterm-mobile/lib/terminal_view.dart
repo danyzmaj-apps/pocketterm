@@ -326,12 +326,14 @@ Route<void> openSession(BuildContext context, TerminalRemote remote, String key,
   return route;
 }
 
-/// Opens terminal window [window]'s screen.
-void openWindow(BuildContext context, TerminalRemote remote, String window) => Navigator.of(context).push(
-  MaterialPageRoute<void>(
-    builder: (_) => TerminalPage(remote: remote, window: window),
-  ),
-);
+/// Opens terminal window [window]'s screen; [starting]: it was just launched
+/// and may not be in the computer's list yet.
+void openWindow(BuildContext context, TerminalRemote remote, String window, {bool starting = false}) =>
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TerminalPage(remote: remote, window: window, starting: starting),
+      ),
+    );
 
 /// Asks where to start a session, starts it and opens it.
 Future<void> openNewSession(BuildContext context, TerminalRemote remote) async {
@@ -345,7 +347,7 @@ Future<void> openNewSession(BuildContext context, TerminalRemote remote) async {
     // An agent the phone started: its session's key is its window's.
     openSession(context, remote, launched.window, starting: true);
   } else {
-    openWindow(context, remote, launched.window);
+    openWindow(context, remote, launched.window, starting: true);
   }
 }
 
@@ -1002,9 +1004,12 @@ class _KeepAwakeState extends State<_KeepAwake> {
 /// keys a terminal program needs (a coding agent's menus: arrows, Enter, Esc),
 /// each as far as the window's terminal allows.
 class TerminalPage extends StatefulWidget {
-  const TerminalPage({required this.remote, required this.window, super.key});
+  const TerminalPage({required this.remote, required this.window, this.starting = false, super.key});
   final TerminalRemote remote;
   final String window;
+
+  /// Just launched: until the computer lists it, it's coming, not closed.
+  final bool starting;
 
   @override
   State<TerminalPage> createState() => _TerminalPageState();
@@ -1035,8 +1040,13 @@ class _TerminalPageState extends State<TerminalPage> {
   int? _anchor;
   bool _atBottom = true;
 
-  /// Each line's spans and visible length, for [_palette].
+  /// Each line's spans and visible length, for [_palette]. Emptied past
+  /// [_spansKept] lines: a long-watched log would otherwise keep every line.
   final _spans = <String, (List<TextSpan>, int)>{};
+  static const _spansKept = 2000;
+
+  /// The window was listed once: missing from the list now, it closed.
+  bool _seen = false;
   TermColors? _palette;
 
   TerminalRemote get remote => widget.remote;
@@ -1091,7 +1101,7 @@ class _TerminalPageState extends State<TerminalPage> {
   }
 
   (List<TextSpan>, int) _line(String line, TermColors palette) {
-    if (!identical(palette, _palette)) {
+    if (!identical(palette, _palette) || _spans.length >= _spansKept) {
       _palette = palette;
       _spans.clear();
     }
@@ -1328,7 +1338,8 @@ class _TerminalPageState extends State<TerminalPage> {
     builder: (context, _) {
       final w = remote.window(widget.window);
       final online = remote.online;
-      final gone = online && !remote.fromCache && w == null;
+      if (w != null) _seen = true;
+      final gone = online && !remote.fromCache && w == null && (_seen || !widget.starting);
       final screen = remote.screen(widget.window);
       final palette = remote.colors[widget.window] ?? TermColors.fallback;
       final note = linkNote(remote);

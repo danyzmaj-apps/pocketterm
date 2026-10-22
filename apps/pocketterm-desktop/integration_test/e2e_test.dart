@@ -113,6 +113,7 @@ class _Run {
     await startTmux(c, owned);
     await _launch();
 
+    await report.step('desktop: runs as from Finder (launchd PATH, no TERM, no locale)', _asFromFinder, critical: true);
     await report.step('terminals: throwaway windows open', _openEarlyWindows, critical: true);
     if (c.builtIn) {
       await report.step(
@@ -150,6 +151,21 @@ class _Run {
     }
     await report.step('revoke: phone removed on the server', _revoke);
     if (t == 'ghostty') await report.step('ghostty: Start new windows in tmux', _ghosttyTmux);
+  }
+
+  /// The run started this app as Launch Services does (tool/e2e/lib/e2e.dart's
+  /// launchServicesEnv), not with the environment of the terminal it was run from.
+  Future<void> _asFromFinder() async {
+    final env = Platform.environment;
+    final path = (env['PATH'] ?? '').split(':');
+    final home = env['HOME'] ?? '';
+    final leaks = [
+      for (final dir in ['/opt/homebrew/bin', '/usr/local/bin', '/opt/local/bin', '$home/.local/bin', '$home/.bun/bin'])
+        if (path.contains(dir)) '$dir on the PATH',
+      for (final k in ['TERM', 'TERM_PROGRAM', 'LANG', 'LC_ALL', 'LC_CTYPE', 'ZDOTDIR'])
+        if (env[k] case final v? when v.isNotEmpty) '$k=$v',
+    ];
+    if (leaks.isNotEmpty) throw StateError('the desktop has a terminal\u2019s environment: ${leaks.join(', ')}');
   }
 
   Future<void> end() async {

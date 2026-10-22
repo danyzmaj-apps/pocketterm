@@ -201,6 +201,25 @@ Future<void> _must(String what, String exe, List<String> args, String cwd) async
   }
 }
 
+/// [name] on this terminal's PATH, as an absolute path (the desktop's PATH
+/// is launchd's, which hasn't it).
+String _which(String name) {
+  for (final dir in (Platform.environment['PATH'] ?? '').split(':')) {
+    if (dir.isNotEmpty && File(p.join(dir, name)).existsSync()) return p.join(dir, name);
+  }
+  stderr.writeln('$name is not on the PATH');
+  exit(1);
+}
+
+/// A folder in [work] with just what `flutter test` runs by name that
+/// launchd's PATH hasn't: CocoaPods' `pod`. Nothing else of Homebrew's, so
+/// whatever PocketTerm finds there it finds as from Finder.
+String _flutterTools(String work) {
+  final dir = Directory(p.join(work, 'flutter-tools'))..createSync(recursive: true);
+  Link(p.join(dir.path, 'pod')).createSync(_which('pod'));
+  return dir.path;
+}
+
 Future<int> _freePort() async {
   final s = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
   final port = s.port;
@@ -330,6 +349,7 @@ Future<Map<String, String>> _runTerminal(
       serverUrl: serverUrl,
       setupLink: setupLink,
       phone: phone,
+      terminalPath: Platform.environment['PATH'] ?? launchdPath,
       serverCa: opts['server-ca'],
     );
     writeHome(c);
@@ -340,11 +360,16 @@ Future<Map<String, String>> _runTerminal(
     stdout.writeln('server $serverUrl, work $work');
 
     final desktopLog = File(p.join(artifacts, 'desktop.log')).openWrite();
+    // As Launch Services starts the app from Finder (no TERM, no locale,
+    // launchd's PATH), with only what `flutter test` needs besides.
     desktop = await Process.start(
-      'fvm',
+      _which('fvm'),
       ['flutter', 'test', 'integration_test/e2e_test.dart', '-d', 'macos', '--dart-define=E2E_CONFIG=$configPath'],
       workingDirectory: p.join(repo, 'apps', 'pocketterm-desktop'),
-      environment: {...cleanEnv(), 'TMUX_TMPDIR': c.tmuxTmp, 'POCKETTERM_CLI_JSON': c.cliJson},
+      environment: launchServicesEnv(
+        tools: [_flutterTools(work)],
+        extra: {'TMUX_TMPDIR': c.tmuxTmp, 'POCKETTERM_CLI_JSON': c.cliJson},
+      ),
       includeParentEnvironment: false,
     );
     desktop.stdout.transform(utf8.decoder).listen((s) {

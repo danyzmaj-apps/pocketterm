@@ -29,6 +29,7 @@ class E2eConfig {
     required this.serverUrl,
     required this.setupLink,
     required this.phone,
+    required this.terminalPath,
     this.serverCa,
   });
 
@@ -39,6 +40,7 @@ class E2eConfig {
     serverUrl: j['serverUrl'] as String,
     setupLink: j['setupLink'] as String,
     phone: j['phone'] as bool,
+    terminalPath: j['terminalPath'] as String,
     serverCa: j['serverCa'] as String?,
   );
 
@@ -66,6 +68,11 @@ class E2eConfig {
   /// Whether the phone's phases run (else the desktop goes on alone).
   final bool phone;
 
+  /// The PATH the throwaway terminals' shells start with: the one of the
+  /// terminal the run was started from, as a person's terminal has it (the
+  /// desktop itself runs with launchd's, [launchServicesEnv]).
+  final String terminalPath;
+
   /// A PEM root the desktop trusts besides the system's: a test server
   /// whose certificate is its own CA's (Caddy's `tls internal`).
   final String? serverCa;
@@ -77,11 +84,15 @@ class E2eConfig {
     'serverUrl': serverUrl,
     'setupLink': setupLink,
     'phone': phone,
+    'terminalPath': terminalPath,
     'serverCa': ?serverCa,
   };
 
   String get home => p.join(work, 'home');
-  String get projects => p.join(work, 'p');
+
+  /// Not ASCII, so a tool whose output PocketTerm reads in a locale it
+  /// doesn't have (an app from Finder has none) shows up as a wrong folder.
+  String get projects => p.join(work, 'p-é漢');
   String get kittyDir => p.join(work, 'k');
   String get tmuxTmp => p.join(work, 't');
   String get bin => p.join(work, 'bin');
@@ -105,6 +116,7 @@ class E2eConfig {
     'TMUX_TMPDIR': tmuxTmp,
     'ZDOTDIR': home,
     'LANG': 'en_US.UTF-8',
+    'PATH': terminalPath,
   };
 
   /// The project folder [name] of this terminal's run.
@@ -131,6 +143,25 @@ Map<String, String> cleanEnv([Map<String, String>? env]) => {
   for (final MapEntry(:key, :value) in (env ?? Platform.environment).entries)
     if (!_inherited(key)) key: value,
 };
+
+/// launchd's PATH: all an app started from Finder or the Dock has.
+const launchdPath = '/usr/bin:/bin:/usr/sbin:/sbin';
+
+/// What Launch Services starts an app from Finder or the Dock with: the
+/// home, user, shell and temp folder, launchd's PATH ([tools] after it:
+/// what `flutter test` itself needs), no TERM, no locale, nothing a shell or
+/// terminal sets; [extra] on top. The e2e desktop runs in it, so whatever
+/// PocketTerm starts behaves as it does for someone who opened the app,
+/// not as from the terminal the run was started in.
+Map<String, String> launchServicesEnv({List<String> tools = const [], Map<String, String> extra = const {}}) {
+  const kept = {'HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'SSH_AUTH_SOCK', '__CF_USER_TEXT_ENCODING'};
+  return {
+    for (final MapEntry(:key, :value) in Platform.environment.entries)
+      if (kept.contains(key)) key: value,
+    'PATH': [launchdPath, ...tools].join(':'),
+    ...extra,
+  };
+}
 
 int? _uidCache;
 int _uid() => _uidCache ??= int.parse('${Process.runSync('/usr/bin/id', ['-u']).stdout}'.trim());

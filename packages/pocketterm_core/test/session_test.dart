@@ -157,6 +157,32 @@ void main() {
     expect(kept.user, isNull);
   });
 
+  test("a signed-in phone that scans another server's computer stays where it is and says how to switch", () async {
+    final phone = _Device('iPhone', phone: true);
+    addTearDown(phone.disconnect);
+    await phone.connectLink(await mac.pairingLink(), scanned: true);
+    final before = phone.user;
+    const elsewhere = Backend(url: 'https://other.example.com');
+    final link = elsewhere.linkWithCode('ABCD-1234', computer: (desktop: 'zzzz9999', key: ChannelKey.generate()));
+    await phone.connectLink(link, scanned: true);
+    expect(phone.user, same(before));
+    expect(phone.backend, own.backend);
+    expect(phone.keys, [mac.computer], reason: "that computer's key isn't taken");
+    expect(phone.authError, allOf(contains('other.example.com'), contains('Leave this server')));
+  });
+
+  test('signing out with the server out of reach still forgets the sign-in here', () async {
+    final tokens = MemoryDeviceTokens();
+    final phone = _Device('iPhone', phone: true, tokens: tokens);
+    addTearDown(phone.disconnect);
+    await phone.connectLink(await mac.pairingLink());
+    await own.server.stop();
+    await phone.signOut();
+    expect(phone.user, isNull);
+    expect(tokens.value, isNull);
+    expect(phone.signedOutReason, 'You signed out.');
+  });
+
   group('a setup link opened from outside the app', () {
     const mine = Backend(url: 'https://mine.example.com');
     const theirs = Backend(url: 'https://theirs.example.com');

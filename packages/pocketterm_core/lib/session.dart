@@ -117,7 +117,11 @@ abstract class Session extends ChangeNotifier {
     final computer = scanned ? Backend.computerKey(uri) : null;
     if (user != null) {
       if (backend != this.backend) {
-        authError = 'Sign out before switching to ${backend.host}.';
+        // A phone keeps one server: a computer on another needs it to leave this one first.
+        authError = phone
+            ? 'That code is for a computer on ${backend.host}, and this phone is on $userName. To switch, leave '
+                  'this server (Account → Leave this server), then scan the code again.'
+            : 'Sign out before switching to ${backend.host}.';
       } else if (computer != null) {
         await addComputerKey(computer);
       } else if (phone && Backend.computerKey(uri) != null) {

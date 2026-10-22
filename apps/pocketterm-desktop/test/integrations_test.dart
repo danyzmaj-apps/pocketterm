@@ -2,6 +2,7 @@
 @Tags(['posix'])
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -136,6 +137,37 @@ void main() {
       );
       expect(claude.calls, isEmpty);
       expect(Directory(dir).existsSync(), isFalse);
+    });
+
+    test('a claude that never answers is said plainly instead of keeping Settings checking', () async {
+      final hung = Integrations(
+        home: home,
+        run: (exe, args) => args.first == 'plugin' ? Completer<ProcessResult>().future : claude.run(exe, args),
+        claudePaths: [claude.path],
+        claudeTimeout: const Duration(milliseconds: 50),
+      );
+      const noAnswer = (installed: false, current: false, problem: Integrations.noAnswer);
+      expect(await hung.state(Agent.claude), noAnswer);
+      expect(await hung.claudeModsOff(), isFalse);
+      await expectLater(
+        hung.install(Agent.claude),
+        throwsA(isA<IntegrationException>().having((e) => e.message, 'message', Integrations.noAnswer)),
+      );
+    });
+
+    test('a claude process that hangs is stopped at the timeout', () async {
+      final script = File('$home/hangs/claude')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('#!/bin/sh\nexec sleep 30\n');
+      Process.runSync('/bin/chmod', ['755', script.path]);
+      final hangs = Integrations(
+        home: home,
+        claudePaths: [script.path],
+        claudeTimeout: const Duration(milliseconds: 300),
+      );
+      final clock = Stopwatch()..start();
+      expect((await hangs.state(Agent.claude)).problem, Integrations.noAnswer);
+      expect(clock.elapsed, lessThan(const Duration(seconds: 10)));
     });
 
     test("claude found only by the login shell's PATH is used", () async {

@@ -45,7 +45,8 @@ class Integrations {
   /// installer's `claude.exe`; no login shell), else as the running platform.
   /// [windowsPath]: Windows' PATH to look in, as a new login has it
   /// ([freshWindowsPath]: an agent installed while PocketTerm runs counts);
-  /// this process's PATH when not on Windows.
+  /// this process's PATH when not on Windows. [claudeTimeout]: how long a
+  /// `claude` run may take before it counts as [noAnswer] (and is killed).
   Integrations({
     String? home,
     AssetBundle? bundle,
@@ -54,28 +55,47 @@ class Integrations {
     this._ompPaths,
     bool? windows,
     String Function()? windowsPath,
+    Duration claudeTimeout = const Duration(seconds: 60),
   }) : _windows = windows ?? Platform.isWindows,
        _windowsPath = windowsPath ?? (Platform.isWindows ? freshWindowsPath : () => Platform.environment['PATH'] ?? ''),
        home = home ?? homeDir(windows: windows),
        _bundle = bundle ?? rootBundle,
-       _run = run ?? _processIn(home ?? homeDir(windows: windows));
+       _claudeTimeout = claudeTimeout,
+       _run = run ?? _processIn(home ?? homeDir(windows: windows), claudeTimeout);
 
   /// [Process.run], output read as UTF-8 (what claude writes; the default is
   /// the ANSI code page on Windows), an npm `claude.cmd` through cmd.exe; on
-  /// a Mac with [_agentPath] as PATH.
-  static Run _processIn(String home) => (executable, arguments) {
+  /// a Mac with [_agentPath] as PATH. A run still going after [limit] is
+  /// killed and throws [TimeoutException].
+  static Run _processIn(String home, Duration limit) => (executable, arguments) {
     if (Platform.isWindows) {
       final (exe, args) = windowsCommand(executable, arguments);
-      return Process.run(exe, args, stdoutEncoding: utf8, stderrEncoding: utf8);
+      return _bounded(exe, args, null, limit);
     }
-    return Process.run(
-      executable,
-      arguments,
-      stdoutEncoding: utf8,
-      stderrEncoding: utf8,
-      environment: {'PATH': _agentPath(executable, home, Platform.environment['PATH'] ?? '')},
-    );
+    return _bounded(executable, arguments, {
+      'PATH': _agentPath(executable, home, Platform.environment['PATH'] ?? ''),
+    }, limit);
   };
+
+  /// [Process.run] with UTF-8 output, killed once it runs longer than [limit].
+  static Future<ProcessResult> _bounded(
+    String exe,
+    List<String> args,
+    Map<String, String>? env,
+    Duration limit,
+  ) async {
+    final process = await Process.start(exe, args, environment: env);
+    final out = process.stdout.transform(utf8.decoder).join();
+    final err = process.stderr.transform(utf8.decoder).join();
+    final code = await process.exitCode.timeout(
+      limit,
+      onTimeout: () {
+        process.kill(ProcessSignal.sigkill);
+        throw TimeoutException('$exe ran longer than $limit', limit);
+      },
+    );
+    return ProcessResult(process.pid, code, await out, await err);
+  }
 
   /// The PATH [executable] runs with: its folder and the one it links into,
   /// where Node goes ([_usualPlaces]), then [current]. Claude Code installed
@@ -102,6 +122,10 @@ class Integrations {
   final AssetBundle _bundle;
   final Run _run;
   final bool _windows;
+  final Duration _claudeTimeout;
+
+  /// What Settings says when a `claude` run outlasts its timeout.
+  static const noAnswer = "Claude Code didn't answer";
 
   /// Where `claude` may be: on macOS before asking a login shell, on Windows
   /// after PATH. The usual install places if null.
@@ -145,7 +169,13 @@ class Integrations {
       case Agent.claude:
         final claude = await _claude();
         if (claude.problem != null) return (installed: false, current: false, problem: claude.problem);
-        final entry = await _listed(claude.path!);
+        final Map<String, Object?>? entry;
+        try {
+          entry = await _listed(claude.path!);
+        } on IntegrationException catch (e) {
+          if (e.message != noAnswer) rethrow;
+          return (installed: false, current: false, problem: noAnswer);
+        }
         final installed = _loadsOurs(entry) && entry!['enabled'] != false;
         return (
           installed: installed,
@@ -236,8 +266,11 @@ class Integrations {
     // An empty directory: with mods on there is nothing to run or write.
     final empty = await Directory.systemTemp.createTemp('pocketterm-mods');
     try {
-      final r = await _run(claude.path!, ['plugin', 'test', empty.path]);
+      final r = await _claudeCall(claude.path!, ['plugin', 'test', empty.path]);
       return r.exitCode != 0 && '${r.stderr}${r.stdout}'.contains('modules are turned off');
+    } on IntegrationException {
+      // No answer: [state] says so.
+      return false;
     } finally {
       await empty.delete(recursive: true);
     }
@@ -306,7 +339,12 @@ class Integrations {
       _claudePaths ?? (_windows ? [p.join(home, '.local', 'bin', 'claude.exe')] : _usualPlaces(home, 'claude')),
     );
     if (path == null) return (path: null, problem: "Claude Code isn't installed");
-    final r = await _run(path, ['--version']);
+    final ProcessResult r;
+    try {
+      r = await _claudeCall(path, ['--version']);
+    } on IntegrationException catch (e) {
+      return (path: path, problem: e.message);
+    }
     final version = RegExp(r'(\d+)\.(\d+)\.(\d+)').firstMatch('${r.stdout}');
     if (version == null) return (path: path, problem: "Couldn't run Claude Code: ${_message(r)}");
     final [major, minor, patch] = [for (var i = 1; i <= 3; i++) int.parse(version[i]!)];
@@ -336,9 +374,18 @@ class Integrations {
   };
 
   Future<ProcessResult> _claudeRun(String claude, List<String> args) async {
-    final r = await _run(claude, args);
+    final r = await _claudeCall(claude, args);
     if (r.exitCode != 0) throw IntegrationException(_message(r));
     return r;
+  }
+
+  /// [claude] run with [args]; [noAnswer] once it outlasts [_claudeTimeout].
+  Future<ProcessResult> _claudeCall(String claude, List<String> args) async {
+    try {
+      return await _run(claude, args).timeout(_claudeTimeout);
+    } on TimeoutException {
+      throw IntegrationException(noAnswer);
+    }
   }
 
   /// What a failed run said: the `message` of its `--json` line, else stderr.

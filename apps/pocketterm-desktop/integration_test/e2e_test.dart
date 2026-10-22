@@ -17,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
+import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/ui.dart';
@@ -372,6 +373,13 @@ class _Run {
     File(p.join(c.artifacts, 'phone-link.txt')).writeAsStringSync('${links[0]}\n');
     File(p.join(c.artifacts, 'phone-link-2.txt')).writeAsStringSync('${links[1]}\n');
     File(p.join(c.artifacts, 'desktop-id.txt')).writeAsStringSync('${app.desktopId(app.user!.id)}\n');
+    // A second computer on the same server that no phone link names: the
+    // phone lists it locked.
+    final setup = Uri.parse(c.setupLink);
+    final spare = PocketTermServerClient(Backend.fromLink(setup)!, tokens: MemoryDeviceTokens());
+    await spare.redeemSetup(Backend.setupToken(setup)!, label: 'Spare Mac $t', platform: 'macos');
+    await spare.putDesktop('spare${t.substring(0, 3)}', name: 'Spare Mac $t', platform: 'macos');
+    spare.close();
     final windows = await app.terminals.windows();
     final shell = windows.firstWhere((w) => w.cwd == dir('shell'));
     final host = await app.terminals.opensIn(app.terminalApp);
@@ -392,6 +400,7 @@ class _Run {
         'newSessionProject': name('newsess'),
         'endSession': name('endme'),
         'realOmp': {'title': name('realomp'), 'project': name('realomp')},
+        'lockedComputer': 'Spare Mac $t',
         'prompt': 'hello from phone $t',
       }),
     );
@@ -669,7 +678,7 @@ class _Run {
       return now != null && now.log.items.any((i) => '${i.args}${i.output}${i.text}'.contains('e2e-real'))
           ? now.id
           : null;
-    }, timeout: const Duration(seconds: 30));
+    });
     if (c.phone) {
       final code = await handOff(c.phaseDir, 'real-omp', out: 'ready', timeout: const Duration(minutes: 15));
       expect(code, '0', reason: 'phone phase real-omp');
@@ -684,7 +693,7 @@ class _Run {
     final after = await until('real omp on a new session', () {
       final now = app.live.sessions.where((x) => x.cwd == dir('realomp')).toList();
       return now.length == 1 && now.single.id != before ? now.single : null;
-    }, timeout: const Duration(seconds: 30));
+    });
     expect(after.key, s.key, reason: 'the same window, the same session key');
     expect(after.log.items.any((i) => '${i.args}${i.output}${i.text}'.contains('e2e-real')), isFalse);
   }

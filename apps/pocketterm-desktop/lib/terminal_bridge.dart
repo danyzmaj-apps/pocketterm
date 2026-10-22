@@ -1046,8 +1046,19 @@ String? cantCommand(Terminals terms, String? window) {
   return "${terms.hostOf(window)?.label ?? 'This terminal'} can't take a typed line, so run the command on the computer.";
 }
 
-/// Whether [window]'s screen changes over [gap]: the agent in it is at work (a spinner, a clock, output).
+/// Whether [window]'s screen changes over [gap]: the agent in it is at work (a spinner, a clock, output). Where the
+/// terminal can't show its screen (Ghostty), its title, read a few times over [gap]: an agent at work spins there too.
 Future<bool> screenChanges(Terminals terms, String window, {Duration gap = const Duration(seconds: 2)}) async {
+  if (!terms.can(window, TermCap.read)) {
+    Future<String?> title() async => (await terms.windows()).where((w) => w.key == window).firstOrNull?.title;
+    final first = await title();
+    if (first == null) throw const TerminalException('That window has closed.');
+    for (var i = 0; i < 4; i++) {
+      await Future<void>.delayed(gap ~/ 4);
+      if (await title() case final t? when t != first) return true;
+    }
+    return false;
+  }
   final before = await terms.plainScreen(window);
   await Future<void>.delayed(gap);
   return await terms.plainScreen(window) != before;

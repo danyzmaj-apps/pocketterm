@@ -326,6 +326,18 @@ void main() {
       kitty.screens = ['π > idle', 'π > idle'];
       expect(await screenChanges(terms(), window, gap: Duration.zero), isFalse);
     });
+
+    test("probe in a terminal that can't show its screen (Ghostty): busy when the title spins", () async {
+      const key = 'ghostty:CB2035E7-67BF-48C7-8D0A-83F3FA5B8074';
+      final ghostty = _FakeGhostty();
+      final t = Terminals(home: '/nonexistent-pocketterm', ghostty: ghostty, snapshot: () async => Procs(const []));
+      ghostty.titles = ['π ⠋ chat', 'π ⠋ chat', 'π ⠙ chat'];
+      expect(await screenChanges(t, key, gap: Duration.zero), isTrue);
+      ghostty.titles = ['π > chat'];
+      expect(await screenChanges(t, key, gap: Duration.zero), isFalse);
+      ghostty.titles = [];
+      await expectLater(screenChanges(t, key, gap: Duration.zero), throwsA(isA<TerminalException>()));
+    });
   });
 }
 
@@ -344,4 +356,23 @@ class _FakeKitty extends Kitty {
 
   @override
   Future<String> plainScreen(String key) async => screens.length > 1 ? screens.removeAt(0) : screens.single;
+}
+
+/// Ghostty with one window whose title is [titles] in turn (none: no window).
+class _FakeGhostty extends Ghostty {
+  List<String> titles = const [];
+
+  @override
+  Future<List<TermWindow>> windows(Procs procs) async => [
+    if (titles.isNotEmpty)
+      TermWindow(
+        key: 'ghostty:CB2035E7-67BF-48C7-8D0A-83F3FA5B8074',
+        title: titles.length > 1 ? titles.removeAt(0) : titles.single,
+        tab: '',
+        cwd: '/p/chat',
+        program: '',
+        app: 'ghostty',
+        caps: caps,
+      ),
+  ];
 }

@@ -121,13 +121,24 @@ return out''';
   }
 
   /// Its terminals; those whose tty is known ([launch], [learn]) with it
-  /// and their foreground program.
+  /// and their foreground program, and that program's folder where Ghostty
+  /// tells none (a window opened with a command, or before its shell's
+  /// first prompt).
   @override
   Future<List<TermWindow>> windows(Procs procs) async {
     if (!_running(procs)) return const [];
     final all = parseGhosttyList(await _osa(_list));
     final listed = {for (final w in all) w.key};
     _ttys.removeWhere((key, _) => !listed.contains(key));
+    final front = {
+      for (final w in all)
+        if (_ttys[w.key] case final tty?)
+          if (procs.foreground(tty) case final p?) w.key: p,
+    };
+    final cwds = await Procs.cwds([
+      for (final w in all)
+        if (w.cwd.isEmpty && front[w.key] != null) front[w.key]!.pid,
+    ]);
     return [
       for (final w in all)
         if (_ttys[w.key] case final tty?)
@@ -135,8 +146,8 @@ return out''';
             key: w.key,
             title: w.title,
             tab: w.tab,
-            cwd: w.cwd,
-            program: procs.foreground(tty)?.program ?? '',
+            cwd: w.cwd.isNotEmpty ? w.cwd : cwds[front[w.key]?.pid] ?? '',
+            program: front[w.key]?.program ?? '',
             focused: w.focused,
             app: w.app,
             caps: w.caps,
@@ -254,14 +265,19 @@ end run''',
     final [window, id] = out.split('\t');
     _window = window;
     final key = 'ghostty:$id';
-    // Its tty: the one new among Ghostty's terminals.
+    // Its tty: the one new among Ghostty's terminals (not known as another
+    // window's) whose processes are in [cwd]; another window starting
+    // meanwhile adds one too.
     for (var i = 0; i < 20; i++) {
-      final added = _surfaceTtys(await Procs.snapshot()).difference(before);
-      if (added.length == 1) {
-        _ttys[key] = added.single;
+      final procs = await Procs.snapshot();
+      final added = _surfaceTtys(procs).difference(before).difference(_ttys.values.toSet());
+      final tty = added.isEmpty
+          ? null
+          : ghosttyNewTty(added, procs, await Procs.cwds(procs.all.where((p) => added.contains(p.tty)).map((p) => p.pid)), cwd);
+      if (tty != null) {
+        _ttys[key] = tty;
         break;
       }
-      if (added.length > 1) break;
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
     return key;
@@ -331,6 +347,31 @@ Set<String> ghosttySurfaceTtys(Procs procs, int? ghostty) {
     for (final p in procs.all)
       if (p.tty.isNotEmpty && (p.ppid == ghostty || orphanRoot(p))) p.tty,
   };
+}
+
+/// Of the new terminals' [ttys], the one a launch in [folder] made: the one
+/// whose processes ([procs], with their working directories [cwds]) are in
+/// [folder] (by its real path, as a process tells it); with no working
+/// directory known (no lsof), the only one. Else null: none yet, or
+/// another window starting meanwhile can't be told apart.
+@visibleForTesting
+String? ghosttyNewTty(Set<String> ttys, Procs procs, Map<int, String> cwds, String folder) {
+  String real(String path) {
+    try {
+      return Directory(path).resolveSymbolicLinksSync();
+    } on FileSystemException {
+      return path;
+    }
+  }
+
+  final on = procs.all.where((p) => ttys.contains(p.tty)).toList();
+  if (!on.any((p) => cwds.containsKey(p.pid))) return ttys.length == 1 ? ttys.single : null;
+  final want = real(folder);
+  final here = {
+    for (final p in on)
+      if (cwds[p.pid] case final cwd? when cwd == want || real(cwd) == want) p.tty,
+  };
+  return here.length == 1 ? here.single : null;
 }
 
 /// The listing script's output: a record per terminal (id, title, folder,

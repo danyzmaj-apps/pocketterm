@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/ghostty.dart';
 import 'package:pocketterm_core/terminal.dart';
@@ -35,5 +37,41 @@ void main() {
     ]);
     expect(ghosttySurfaceTtys(procs, ghostty), isEmpty);
     expect(ghosttySurfaceTtys(procs, null), isEmpty);
+  });
+
+  group('the tty of a window PocketTerm opened', () {
+    late Directory tmp;
+    late String mine;
+    late String other;
+    setUp(() {
+      tmp = Directory.systemTemp.createTempSync('ghostty-launch');
+      mine = (Directory('${tmp.path}/mine')..createSync()).resolveSymbolicLinksSync();
+      other = (Directory('${tmp.path}/other')..createSync()).resolveSymbolicLinksSync();
+    });
+    tearDown(() => tmp.deleteSync(recursive: true));
+
+    final procs = Procs([
+      ...base,
+      _p(501, 500, 'ttys030', '-zsh'),
+      _p(502, 501, 'ttys030', 'omp'),
+      _p(511, 510, 'ttys031', '-zsh'),
+    ]);
+
+    test('another window starting at the same time: the one in its folder', () {
+      final cwds = {501: other, 502: other, 511: mine};
+      // Asked by the path it was given (/tmp is /private/tmp on a Mac).
+      expect(ghosttyNewTty({'ttys030', 'ttys031'}, procs, cwds, '${tmp.path}/mine'), 'ttys031');
+      expect(ghosttyNewTty({'ttys030', 'ttys031'}, procs, cwds, other), 'ttys030');
+    });
+
+    test("the other window's terminal coming up first isn't taken for this one", () {
+      expect(ghosttyNewTty({'ttys030'}, procs, {501: other, 502: other}, mine), isNull);
+    });
+
+    test('two in the same folder are not told apart; with no folders known, only one new counts', () {
+      expect(ghosttyNewTty({'ttys030', 'ttys031'}, procs, {501: mine, 511: mine}, mine), isNull);
+      expect(ghosttyNewTty({'ttys031'}, procs, const {}, mine), 'ttys031');
+      expect(ghosttyNewTty({'ttys030', 'ttys031'}, procs, const {}, mine), isNull);
+    });
   });
 }

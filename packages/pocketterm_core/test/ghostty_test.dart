@@ -46,6 +46,25 @@ void main() {
     ]);
     expect(await g.byFolder(real.resolveSymbolicLinksSync(), procs), _key);
   });
+
+  test("a window Ghostty tells no folder for (opened with a command) has its program's, where its tty is known", () async {
+    final dir = Directory('${app.path}/project')..createSync();
+    final sleep = await Process.start('/bin/sleep', ['30'], workingDirectory: dir.path);
+    addTearDown(sleep.kill);
+    final g = ghostty(
+      ['0', '0'],
+      ["printf '${_key.substring(8)}\\037omp\\037\\037t\\037true\\036\\nfront\\037true'"],
+    );
+    final procs = Procs([
+      Proc(pid: 1, ppid: 0, pgid: 1, tpgid: -1, tty: '', stat: 'S', args: '${app.path}/Contents/MacOS/ghostty'),
+      Proc(pid: sleep.pid, ppid: 9, pgid: sleep.pid, tpgid: sleep.pid, tty: 'ttys099', stat: 'S+', args: '/bin/sleep 30'),
+    ]);
+    expect((await g.windows(procs)).single.cwd, isEmpty, reason: 'tty unknown');
+    g.learn(_key, '/dev/ttys099');
+    final w = (await g.windows(procs)).single;
+    expect(w.cwd, dir.resolveSymbolicLinksSync());
+    expect(w.program, 'sleep');
+  });
   Matcher says(String message) => throwsA(isA<TerminalException>().having((e) => e.message, 'message', message));
 
   test('long text goes in pieces of what a command line takes, a script each, in order', () async {

@@ -1,4 +1,4 @@
-# A document from the phone's files (run.sh puts pocketterm-e2e.txt in the
+# A document from the phone's files (run.sh puts "notes from the phone.txt" in the
 # Simulator's Files, On My iPhone, or the emulator's Download folder) goes
 # with a prompt; the agent gets it as a file on the computer, named @path.
 #   env: SESSION (regex), FILE_PROMPT
@@ -30,10 +30,10 @@ appId: com.danyzmaj.pocketterm
             - tapOn: "Browse"
       - runFlow:
           when:
-            notVisible: "pocketterm-e2e(\\.txt)?"
+            notVisible: "notes from the phone(\\.txt)?"
           commands:
             - tapOn: "On My iPhone"
-      - tapOn: "pocketterm-e2e(\\.txt)?"
+      - tapOn: "notes from the phone(\\.txt)?"
       # Picking several at once: the pick still needs Open.
       - runFlow:
           when:
@@ -51,11 +51,11 @@ appId: com.danyzmaj.pocketterm
       - takeScreenshot: picker
       - runFlow:
           when:
-            notVisible: "pocketterm-e2e.txt"
+            notVisible: "notes from the phone\\.txt"
           commands:
             - tapOn: "Show roots"
             - tapOn: "Downloads"
-      - tapOn: "pocketterm-e2e.txt"
+      - tapOn: "notes from the phone\\.txt"
       # Picking several at once: a tap selects, Select takes them.
       - runFlow:
           when:
@@ -63,14 +63,14 @@ appId: com.danyzmaj.pocketterm
           commands:
             - tapOn: "Select"
 - extendedWaitUntil:
-    visible: "Remove pocketterm-e2e.txt"
+    visible: "Remove notes from the phone\\.txt"
     timeout: 15000
 - takeScreenshot: attached
 - tapOn: "Prompt omp…"
 - inputText: ${FILE_PROMPT}
 - tapOn: "Send"
 - extendedWaitUntil:
-    visible: ".*fake file: pocketterm-e2e.txt .*"
+    visible: ".*fake file: notes from the phone\\.txt .*"
     timeout: 30000
 - takeScreenshot: received
 - runFlow: sub/back.yaml

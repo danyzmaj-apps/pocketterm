@@ -135,10 +135,13 @@ fi
 # HEAD, built and installed once per run; a photo in the library for
 # image.yaml, and a document in the phone's files for file.yaml (simctl
 # addmedia takes photos only: on iOS it goes straight into the Files app's
-# On My iPhone storage, on Android into Download).
+# On My iPhone storage, on Android into Download). The document is the one
+# the desktop's stand-in phone sends (integration_test/e2e_test.dart checks
+# it arrives as it was), its name with spaces, so its @path is quoted.
 FIXTURE="$APP/assets/icon/ios.png"
-DOC_FIXTURE="$OUT/pocketterm-e2e.txt"
-printf 'A document from the phone, for the PocketTerm E2E run.\n' >"$DOC_FIXTURE"
+DOC_NAME="notes from the phone.txt"
+DOC_FIXTURE="$OUT/$DOC_NAME"
+printf 'PocketTerm e2e notes\n' >"$DOC_FIXTURE"
 if [ "$PHASE" = main ] && [ $BUILD = 1 ]; then
   HEAD_SHA=$(git -C "$REPO" rev-parse HEAD)
   if [ -e "$PHONE_SRC/.git" ]; then
@@ -180,9 +183,9 @@ if [ "$PHASE" = main ]; then
     "$ADB" -s "$DEVICE" push "$FIXTURE" /sdcard/Pictures/pocketterm-e2e.png >/dev/null
     "$ADB" -s "$DEVICE" shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
       -d file:///sdcard/Pictures/pocketterm-e2e.png >/dev/null
-    "$ADB" -s "$DEVICE" push "$DOC_FIXTURE" /sdcard/Download/pocketterm-e2e.txt >/dev/null
+    "$ADB" -s "$DEVICE" push "$DOC_FIXTURE" "/sdcard/Download/$DOC_NAME" >/dev/null
     "$ADB" -s "$DEVICE" shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
-      -d file:///sdcard/Download/pocketterm-e2e.txt >/dev/null
+      -d "file:///sdcard/Download/${DOC_NAME// /%20}" >/dev/null
   fi
 fi
 

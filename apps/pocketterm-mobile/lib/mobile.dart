@@ -54,6 +54,7 @@ class MobileSession extends Session {
   /// Computer [desktopId]'s channel key; null while this phone hasn't
   /// scanned that computer's code: the computer is locked, nothing from it
   /// shows and nothing goes to it.
+  @override
   ChannelKey? computerKey(String desktopId) => switch (_demo) {
     final d? when user == null && desktopId == demoDesktopId => d.remote.key,
     _ => _computerKeys[desktopId],
@@ -581,6 +582,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// ([_openRouted]).
   _Routed? _routed;
 
+  /// What a link said while signed in ([MobileSession.notices]): a SnackBar.
+  late final StreamSubscription<String> _notices;
+
+  /// Whether [_tell] spoke since [_scanComputer] asked.
+  bool _told = false;
+
+  void _tell(String message) {
+    _told = true;
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   /// Showing "Try the demo"'s made-up computer.
   bool get _demo => widget.session.demo != null && widget.session.user == null;
 
@@ -780,6 +792,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // A followed session's link, also the one that launched the app (before this page was there).
     widget.session.addListener(_openLinkedSession);
     WidgetsBinding.instance.addPostFrameCallback((_) => _openLinkedSession());
+    _notices = widget.session.notices.listen(_tell);
     if (widget.remoteFor != null) {
       _syncRemote();
     } else {
@@ -811,6 +824,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     widget.session
       ..removeListener(_syncRemote)
       ..removeListener(_openLinkedSession);
+    unawaited(_notices.cancel());
     // After the frame that sends the pages on it away (_HomeSwitch).
     if (_terminal case final t?) SchedulerBinding.instance.addPostFrameCallback((_) => _dropRemote(t));
     if (widget.desktops == null) _desktops.dispose();
@@ -960,20 +974,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   };
 
   /// A computer's code, scanned while signed in: this phone gets that
-  /// computer's key ([Session.connectLink]).
+  /// computer's key ([Session.connectLink]); a problem with the code shows
+  /// as a notice ([_tell]).
   Future<void> _scanComputer() async {
     final link = await scanSetupCode(context, signedIn: true);
     if (link == null || !mounted) return;
-    widget.session.authError = null;
+    _told = false;
     await widget.session.connectLink(link, scanned: true);
-    if (!mounted) return;
+    if (!mounted || _told) return;
     final selected = _desktops.selected;
-    final problem =
-        widget.session.authError ??
-        (selected != null && widget.session.computerKey(selected.id) == null
-            ? 'That code is for another computer. Scan the one ${selected.name} shows.'
-            : null);
-    if (problem != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(problem)));
+    if (selected != null && widget.session.computerKey(selected.id) == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('That code is for another computer. Scan the one ${selected.name} shows.')),
+      );
+    }
   }
 
   /// Why the server lists no computer.

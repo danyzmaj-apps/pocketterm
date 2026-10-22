@@ -205,7 +205,9 @@ void main() {
   ) async {
     const server = Backend(url: 'https://pt.example.com');
     final session = await FakeSession.create()
-      ..connected = server;
+      ..connected = server
+      // Not scanned yet: the code's key is the first this phone holds for it.
+      ..locked.add('win00001');
     final desktops = await pumpHome(tester, session: session);
     expect(desktops.selected?.id, 'mac00001');
 
@@ -228,6 +230,23 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(desktops.selected?.id, 'win00001');
+    flush();
+  });
+
+  testWidgets("a link this signed-in phone can't use says why where the person is", (tester) async {
+    const server = Backend(url: 'https://pt.example.com');
+    final session = await FakeSession.create()
+      ..connected = server;
+    await pumpHome(tester, session: session);
+
+    const elsewhere = Backend(url: 'https://other.example.com');
+    await session.connectLink(
+      elsewhere.linkWithCode('ABCD-1234', computer: (desktop: 'zzzz9999', key: ChannelKey.generate())),
+      scanned: true,
+    );
+    await tester.pump();
+    expect(find.textContaining('That code is for a computer on other.example.com'), findsOneWidget);
+    expect(session.authError, isNull, reason: 'nothing waits for the setup page');
     flush();
   });
 

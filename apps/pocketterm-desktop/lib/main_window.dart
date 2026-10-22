@@ -68,7 +68,61 @@ class MainWindow extends StatelessWidget {
                 ),
               ),
             ),
+          if (signedIn) _Notice(app: app),
         ],
+      ),
+    );
+  }
+}
+
+/// What a link said while signed in ([AppController.notices], e.g. one for
+/// another server), over whatever page shows, until the person closes it.
+class _Notice extends StatefulWidget {
+  const _Notice({required this.app});
+  final AppController app;
+
+  @override
+  State<_Notice> createState() => _NoticeState();
+}
+
+class _NoticeState extends State<_Notice> {
+  late final StreamSubscription<String> _notices;
+  String? _message;
+
+  @override
+  void initState() {
+    super.initState();
+    _notices = widget.app.notices.listen((message) => setState(() => _message = message));
+  }
+
+  @override
+  void dispose() {
+    unawaited(_notices.cancel());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final message = _message;
+    if (message == null) return const SizedBox.shrink();
+    return Align(
+      alignment: Alignment.topCenter,
+      child: Container(
+        key: const ValueKey('link-notice'),
+        width: 460,
+        margin: const EdgeInsets.only(top: 40),
+        padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+        decoration: BoxDecoration(
+          color: C.field,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: C.warn),
+        ),
+        child: Row(
+          children: [
+            Expanded(child: Text(message, style: const TextStyle(height: 1.4))),
+            TextButton(onPressed: () => setState(() => _message = null), child: const Text('OK')),
+          ],
+        ),
       ),
     );
   }

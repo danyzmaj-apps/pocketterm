@@ -16,7 +16,9 @@ import 'own_server.dart';
 /// the computer keys from links in [keys].
 class _Device extends Session {
   _Device(super.device, {this.phone = false, this.atOnce = false, MemoryDeviceTokens? tokens})
-    : tokens = tokens ?? MemoryDeviceTokens();
+    : tokens = tokens ?? MemoryDeviceTokens() {
+    notices.listen(told.add);
+  }
   final bool phone;
   final bool atOnce;
   final MemoryDeviceTokens tokens;
@@ -39,6 +41,15 @@ class _Device extends Session {
 
   @override
   Future<void> addComputerKey(ComputerKey computer) async => keys.add(computer);
+
+  @override
+  ChannelKey? computerKey(String desktopId) => keys.where((k) => k.desktop == desktopId).lastOrNull?.key;
+
+  @override
+  bool get hostsServer => !phone;
+
+  /// What [notices] said, in order.
+  final told = <String>[];
 
   @override
   Future<ComputerKey?> pairingComputer() async => computer;
@@ -140,7 +151,8 @@ void main() {
     final link = mac.backend!.linkWithCode('ABCD-1234', computer: planted);
     await phone.connectLink(link);
     expect(phone.keys, isEmpty, reason: 'signed in: still no key');
-    expect(phone.authError, isNotNull);
+    expect(phone.told.single, contains('scanner'));
+    expect(phone.authError, isNull, reason: 'the signed-out pages say nothing of it later');
 
     await phone.connectLink(link, scanned: true);
     expect(phone.keys, [planted]);
@@ -208,7 +220,39 @@ void main() {
     expect(phone.user, same(before));
     expect(phone.backend, own.backend);
     expect(phone.keys, [mac.computer], reason: "that computer's key isn't taken");
-    expect(phone.authError, allOf(contains('other.example.com'), contains('Leave this server')));
+    expect(phone.told.single, allOf(contains('other.example.com'), contains('Leave this server')));
+
+    await phone.signOut();
+    expect(phone.authError, isNull);
+  });
+
+  test("a scanned code can't swap the key a phone holds for a computer unless its pairing code works", () async {
+    final phone = _Device('iPhone', phone: true);
+    addTearDown(phone.disconnect);
+    await phone.connectLink(await mac.pairingLink(), scanned: true);
+    final devices = (await mac.server!.devices()).length;
+
+    // A QR anyone could make: this server, a real computer's id, their own key.
+    final planted = (desktop: mac.computer!.desktop, key: ChannelKey.generate());
+    final link = mac.backend!.linkWithCode('ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345', computer: planted);
+    await phone.connectLink(link, scanned: true);
+    expect(phone.computerKey(planted.desktop), mac.computer!.key, reason: 'the key it held stays');
+    expect(phone.told.single, contains("doesn't work"));
+
+    // The computer reset its key: its new code carries the new one, and the phone takes it.
+    mac.computer = (desktop: mac.computer!.desktop, key: ChannelKey.generate());
+    await phone.connectLink(await mac.pairingLink(), scanned: true);
+    expect(phone.computerKey(planted.desktop), mac.computer!.key);
+    expect(phone.told, hasLength(1));
+    expect(phone.user, isNotNull, reason: 'still the same sign-in');
+    expect((await mac.server!.devices()).length, devices, reason: 'the sign-in that tried the code left');
+  });
+
+  test('erasing the server leaves no sign-in problem behind for the setup page', () async {
+    mac.authError = 'Sign out before switching to other.example.com.';
+    await mac.eraseServer();
+    expect(mac.user, isNull);
+    expect(mac.authError, isNull);
   });
 
   test('signing out with the server out of reach still forgets the sign-in here', () async {

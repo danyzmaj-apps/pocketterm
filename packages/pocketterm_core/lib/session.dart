@@ -48,7 +48,29 @@ abstract class Session extends ChangeNotifier {
   Account? _user;
   StreamSubscription<void>? _ended;
 
+  /// Why the last sign-in or connect didn't happen, for the signed-out
+  /// pages; null once one did, and after signing out.
   String? authError;
+
+  /// What a link says to this device while it's signed in, once: one it
+  /// can't use as is (a code for another server, a computer's key that
+  /// wasn't scanned, a code that didn't work). The page in front shows it;
+  /// [authError] stays the signed-out pages'.
+  Stream<String> get notices => _notices.stream;
+  final _notices = StreamController<String>.broadcast(sync: true);
+
+  void _notice(String message) {
+    _notices.add(message);
+    onNotice(message);
+  }
+
+  /// A notice went out ([notices]): the computer brings its window up.
+  @protected
+  void onNotice(String message) {}
+
+  /// The key this device holds for [desktopId], if any (a phone's, from a
+  /// scanned code).
+  ChannelKey? computerKey(String desktopId) => null;
 
   /// The link whose sign-in failed only because the Keychain couldn't keep
   /// it ([keychainProblem]): [retry] tries it again.
@@ -137,8 +159,11 @@ abstract class Session extends ChangeNotifier {
   /// [addComputerKey] only when the link was [scanned] with the in-app
   /// scanner, also when already signed in (a phone scanning one more
   /// computer): anyone can send a link from outside the app, and a key it
-  /// planted would let them read that computer's sessions. Problems land in
-  /// [authError].
+  /// planted would let them read that computer's sessions. A key that would
+  /// replace another one held for that computer counts only once the code's
+  /// pairing code works ([_codeWorks]): only a computer signed in to this
+  /// server makes one. Problems land in [authError], or in [notices] while
+  /// signed in.
   Future<void> connectLink(Uri uri, {bool scanned = false}) async {
     final backend = Backend.fromLink(uri);
     if (backend == null) return;
@@ -148,21 +173,29 @@ abstract class Session extends ChangeNotifier {
     if (user != null) {
       if (backend != this.backend) {
         // A phone keeps one server: a computer on another needs it to leave this one first.
-        authError = phone
-            ? 'That code is for a computer on ${backend.host}, and this phone is on $userName. To switch, leave '
-                  'this server (Account → Leave this server), then scan the code again.'
-            : 'Sign out before switching to ${backend.host}.';
+        _notice(
+          phone
+              ? 'That code is for a computer on ${backend.host}, and this phone is on $userName. To switch, leave '
+                    'this server (Account → Leave this server), then scan the code again.'
+              : 'Sign out before switching to ${backend.host}.',
+        );
       } else if (computer != null) {
+        final held = computerKey(computer.desktop);
+        final problem = held == null || held == computer.key ? null : await _codeWorks(backend, secret);
+        if (problem != null) {
+          _notice(problem);
+          return;
+        }
         await addComputerKey(computer);
       } else if (phone && Backend.computerKey(uri) != null) {
-        authError = "To connect to a computer, scan its code with PocketTerm's scanner.";
+        _notice("To connect to a computer, scan its code with PocketTerm's scanner.");
       }
       notifyListeners();
       return;
     }
     if (secret == null) {
       authError = phone
-          ? 'That link has no sign-in code. On your computer, open PocketTerm: Settings → Add a phone…'
+          ? 'That link has no sign-in code. On your computer, open PocketTerm: Settings → Phone → Add a phone…'
           : 'That link has no setup token. On your server, run `pocketterm-server setup-link` and open the link '
                 'it prints.';
       notifyListeners();
@@ -191,9 +224,7 @@ abstract class Session extends ChangeNotifier {
       return;
     } on ServerException catch (e) {
       authError = switch (e.code) {
-        'invalid_code' when phone =>
-          "That code doesn't work: it was used, or it's more than 10 minutes old. Make a new one on your computer "
-              '(Settings → Add a phone…).',
+        'invalid_code' when phone => _codeUsed,
         'invalid_code' =>
           "That setup link doesn't work: the server has a newer one. Run `pocketterm-server setup-link` on the "
               'server and open the link it prints.',
@@ -209,6 +240,30 @@ abstract class Session extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  static const _codeUsed =
+      "That code doesn't work: it was used, or it's more than 10 minutes old. Make a new one on your computer "
+      '(Settings → Phone → Add a phone…).';
+
+  /// Whether pairing [code] works on [backend]: it's redeemed by a sign-in
+  /// of its own that leaves at once. Null when it did, else why not.
+  Future<String?> _codeWorks(Backend backend, String? code) async {
+    if (code == null) return _codeUsed;
+    final probe = _client(backend, MemoryDeviceTokens());
+    try {
+      await probe.redeemCode(code, label: device, platform: platform);
+      await probe.leave();
+      return null;
+    } on ServerException catch (e) {
+      return e.code == 'invalid_code' ? _codeUsed : e.message;
+    } finally {
+      probe.close();
+    }
+  }
+
+  /// A client for [backend] keeping its sign-in in [tokens].
+  PocketTermServerClient _client(Backend backend, DeviceTokens tokens) =>
+      PocketTermServerClient(backend, tokens: tokens);
 
   /// A computer's key from a scanned setup link: the phone keeps it, over
   /// any it held for that computer.
@@ -242,7 +297,7 @@ abstract class Session extends ChangeNotifier {
   Future<void> connect(Backend backend) async {
     if (_user != null) throw StateError('Sign out before switching servers.');
     await _close();
-    final s = _server = PocketTermServerClient(backend, tokens: deviceTokens);
+    final s = _server = _client(backend, deviceTokens);
     await backend.save();
     _backend = backend;
     authError = null;
@@ -339,7 +394,14 @@ abstract class Session extends ChangeNotifier {
     } on Object catch (e) {
       debugPrint('PocketTerm: the server missed the sign-out: $e');
     }
+    _forgetError();
     _setUser(null);
+  }
+
+  /// A sign-in that went before leaves no problem behind for the next one.
+  void _forgetError() {
+    authError = null;
+    retryLink = null;
   }
 
   /// This computer runs the server it's connected to (the one built into
@@ -357,6 +419,7 @@ abstract class Session extends ChangeNotifier {
     }
     await server!.erase();
     _leaving = "This server's data was erased.";
+    _forgetError();
     _setUser(null);
   }
 
@@ -367,6 +430,7 @@ abstract class Session extends ChangeNotifier {
   void dispose() {
     unawaited(_ended?.cancel());
     unawaited(_links?.cancel());
+    unawaited(_notices.close());
     super.dispose();
   }
 }

@@ -633,6 +633,10 @@ class AppController extends Session {
   @override
   void onLinkToConfirm() => unawaited(openMain());
 
+  /// What a link said while signed in shows in the main window.
+  @override
+  void onNotice(String message) => unawaited(openMain());
+
   // ---------------------------------------------------------------- window
 
   /// Runs when PocketTerm quits, before the app goes (a second at most): the

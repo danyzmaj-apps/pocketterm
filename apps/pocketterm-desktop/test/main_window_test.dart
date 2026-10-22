@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/account.dart';
+import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/wezterm.dart';
@@ -70,6 +71,23 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Quit PocketTerm'));
     expect(app.host.calls.last, 'quit');
+  });
+
+  testWidgets('a setup link for another server opened while signed in says why, in the window it brings up', (
+    tester,
+  ) async {
+    final app = await pumpWindow(tester, (_) {});
+    app.host.calls.clear();
+    final other = const Backend(url: 'https://other.example.com').link;
+    await app.connectLink(other.replace(queryParameters: {...other.queryParameters, 'setup': 's3cret'}));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign out before switching to other.example.com.'), findsOneWidget);
+    expect(app.host.calls, contains('showMain'));
+    expect(app.authError, isNull, reason: 'nothing waits for the sign-in page');
+
+    await tester.tap(find.descendant(of: find.byKey(const ValueKey('link-notice')), matching: find.text('OK')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('link-notice')), findsNothing);
   });
 
   testWidgets('until the setup checklist is done, it is the signed-in window; Settings opens it again', (tester) async {

@@ -751,13 +751,16 @@ final _appleScript = AppleScript();
 /// its answer is looked up first (without asking), and while there is none
 /// macOS is asked once, by a helper that waits for the answer, and every
 /// script throws [AutomationPending] at once instead of piling up. A script
-/// that doesn't finish within [timeout] is killed.
+/// that doesn't finish within [timeout] is killed. An app that answered a
+/// script is allowed: it isn't looked up again (a look that hangs, as it
+/// can for Ghostty, would otherwise hold up every script by [lookFor]).
 class AppleScript {
   AppleScript({
     this.start = Process.start,
     this.timeout = const Duration(seconds: 20),
     this.stuckAfter = const Duration(seconds: 2),
     this.askFor = const Duration(minutes: 3),
+    this.lookFor = const Duration(seconds: 5),
   });
 
   /// Starts osascript; tests hand in their own.
@@ -773,6 +776,9 @@ class AppleScript {
   /// How long the helper waits for the person's answer (macOS gives up on
   /// its question after two minutes).
   final Duration askFor;
+
+  /// How long a look at an app's answer may take.
+  final Duration lookFor;
 
   /// Apps macOS let PocketTerm control, and those it's asking about, by bundle id.
   final _allowed = <String>{};
@@ -795,7 +801,7 @@ class AppleScript {
       _consentScript,
       bundle,
       if (ask) 'ask' else 'look',
-    ], ask ? askFor : const Duration(seconds: 5));
+    ], ask ? askFor : lookFor);
     return r == null || r.code != 0 ? null : int.tryParse(r.out.trim());
   }
 
@@ -844,7 +850,10 @@ function run(argv) {
       _ask(bundle);
       throw AutomationPending(app);
     }
-    if (r.code == 0) return r.out.endsWith('\n') ? r.out.substring(0, r.out.length - 1) : r.out;
+    if (r.code == 0) {
+      _allowed.add(bundle);
+      return r.out.endsWith('\n') ? r.out.substring(0, r.out.length - 1) : r.out;
+    }
     if (r.err.contains('$_refused')) {
       _allowed.remove(bundle);
       throw AutomationDenied(app);

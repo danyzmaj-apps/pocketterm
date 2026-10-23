@@ -232,6 +232,7 @@ void main() {
     AppleScript osa(List<String> looks, {String ask = 'sleep 30', String script = 'echo out'}) => AppleScript(
       timeout: const Duration(milliseconds: 600),
       stuckAfter: const Duration(milliseconds: 200),
+      lookFor: const Duration(milliseconds: 300),
       start: (exe, args) async {
         started.add(args);
         final cmd = !args.contains('JavaScript')
@@ -279,6 +280,15 @@ void main() {
       expect(await o.run('Terminal', 'com.apple.Terminal', 'x'), 'out');
       expect(await o.run('Terminal', 'com.apple.Terminal', 'x'), 'out');
       expect(kinds(), ['look', 'ask', 'script', 'script']);
+    });
+
+    test('an app that answered a script is not looked up again, however long a look hangs', () async {
+      // Ghostty's look can hang until it's killed: every script waited for it.
+      final o = osa(['; sleep 30']);
+      expect(await o.run('Ghostty', 'com.mitchellh.ghostty', 'x'), 'out');
+      expect(await o.run('Ghostty', 'com.mitchellh.ghostty', 'x'), 'out');
+      expect(await o.run('Ghostty', 'com.mitchellh.ghostty', 'x'), 'out');
+      expect(kinds(), ['look', 'script', 'script', 'script']);
     });
 
     test('a "no" fails without sending the app anything', () async {

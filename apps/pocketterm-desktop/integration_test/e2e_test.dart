@@ -53,7 +53,8 @@ void main() {
       await run.end();
     }
     expect(run.report.failures, isEmpty, reason: 'see ${run.c.results}');
-  }, timeout: const Timeout(Duration(minutes: 150)));
+    // kitty on a server across the internet (every phone flow, each phase) took just over 150 minutes.
+  }, timeout: const Timeout(Duration(minutes: 210)));
 }
 
 /// The app's HTTPS and WebSockets also trust [ca] (a test server's own CA),

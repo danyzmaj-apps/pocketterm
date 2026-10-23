@@ -51,11 +51,14 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     visible: ".*fake steered: ${STEER_RE}.*"
     timeout: 90000
-- extendedWaitUntil:
-    visible: ".*fake reply: ${QUEUE_RE}.*"
-    timeout: 30000
+# The queued prompt runs and the agent goes idle; its reply is read once
+# Working… stopped changing the screen (while it animates, a read of the
+# screen can come back failed at once).
 - extendedWaitUntil:
     notVisible: "Stop"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: ".*fake reply: ${QUEUE_RE}.*"
     timeout: 15000
 - takeScreenshot: queued-ran
 - runFlow: sub/back.yaml

@@ -505,6 +505,9 @@ class MobileApp extends StatelessWidget {
     // Material's ink. Either way it's clipped to the card, pill or circle it presses.
     splashFactory: isIos ? NoSplash.splashFactory : InkSparkle.splashFactory,
     highlightColor: const Color(0x14FFFFFF),
+    // No button shows a tooltip on iPhone (iOS has none), so a press held long, or that came in late, still
+    // presses: a long press showed the label and the tap went nowhere. The label stays for VoiceOver.
+    tooltipTheme: isIos ? base.tooltipTheme.copyWith(triggerMode: TooltipTriggerMode.manual) : null,
     // A sheet's rows line up with its title, 20 in.
     listTileTheme: const ListTileThemeData(contentPadding: EdgeInsets.symmetric(horizontal: 20)),
     appBarTheme: AppBarTheme(

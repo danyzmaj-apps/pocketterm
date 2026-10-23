@@ -108,6 +108,18 @@ void main() {
     flush();
   });
 
+  // E2E (iOS, test server): a tap the app got half a second late came as a long press, which showed the
+  // Account tooltip and opened nothing. On iPhone, where no button has a tooltip, a held press still presses.
+  testWidgets('on iPhone a press held past a long press still opens the account sheet', (tester) async {
+    await pumpHome(tester);
+    final press = await tester.startGesture(tester.getCenter(find.byTooltip('Account')));
+    await tester.pump(const Duration(milliseconds: 700));
+    await press.up();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('show-tips')), findsOneWidget);
+    flush();
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
   // E2E (Android): the list's note went while the computer picker was up, and a tap aimed by the accessibility
   // tree (as a screen reader or Maestro aims) landed on the project heading below the row.
   testWidgets('rows say where they are after the list moved under the computer picker', (tester) async {

@@ -16,7 +16,8 @@
 //
 // A prompt, typed here or from the phone, gets `fake reply: <text>` (and a
 // line for each image or @file it carries). A prompt with:
-//   e2e-slow      works for 90 s first; Esc or the phone's Stop ends it
+//   e2e-slow      works for 90 s first, or 5 s more once a prompt waits its
+//                 turn; Esc or the phone's Stop ends it
 //   e2e-question  asks which color (Red, Green, Blue or a typed Other) and
 //                 replies `fake answer: <answer>`
 //   e2e-plan      shows plan mode's review (Approve and execute, Refine the
@@ -372,12 +373,19 @@ class FakeOmp {
     if (text.contains('e2e-question')) return _raiseQuestion();
     if (text.contains('e2e-plan')) return _raisePlan();
     // Long enough for a phone flow to steer and queue while it works (each
-    // Maestro step in the Simulator takes seconds).
+    // Maestro step in the Simulator takes seconds); once a prompt waits its
+    // turn, the run ends soon after (the flow needn't sit out the rest).
     final work = text.contains('e2e-slow') ? const Duration(seconds: 90) : const Duration(milliseconds: 400);
-    final until = DateTime.now().add(work);
+    var until = DateTime.now().add(work);
+    var hurried = false;
     while (DateTime.now().isBefore(until)) {
       await Future<void>.delayed(const Duration(milliseconds: 100));
       if (run != _run) return;
+      if (!hurried && _queue.isNotEmpty) {
+        hurried = true;
+        final soon = DateTime.now().add(const Duration(seconds: 5));
+        if (soon.isBefore(until)) until = soon;
+      }
     }
     final reply = [
       for (final d in described) 'fake image: ${d['bytes']} bytes ${d['mime']}',

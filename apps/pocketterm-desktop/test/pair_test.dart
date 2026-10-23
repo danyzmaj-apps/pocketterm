@@ -21,7 +21,9 @@ void main() {
   Future<void> pump(WidgetTester tester, Session session) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: Center(child: PairingQr(session: session))),
+        home: Scaffold(
+          body: Center(child: PairingQr(session: session)),
+        ),
       ),
     );
     await tester.pump();

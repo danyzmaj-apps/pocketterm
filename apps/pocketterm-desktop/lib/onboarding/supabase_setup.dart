@@ -51,7 +51,8 @@ Migration migrationFromFile(String path, String sql) {
 /// JWT signing key so Realtime takes those tokens.
 Map<String, Object?> newLiveSigningKey({Random? random}) {
   final rng = random ?? Random.secure();
-  final secure = pc.FortunaRandom()..seed(pc.KeyParameter(Uint8List.fromList(List.generate(32, (_) => rng.nextInt(256)))));
+  final secure = pc.FortunaRandom()
+    ..seed(pc.KeyParameter(Uint8List.fromList(List.generate(32, (_) => rng.nextInt(256)))));
   final params = pc.ECKeyGeneratorParameters(pc.ECCurve_secp256r1());
   final pair = (pc.ECKeyGenerator()..init(pc.ParametersWithRandom(params, secure))).generateKeyPair();
   final private = pair.privateKey;
@@ -68,7 +69,8 @@ Map<String, Object?> newLiveSigningKey({Random? random}) {
     'kty': 'EC',
     'crv': 'P-256',
     'alg': 'ES256',
-    'kid': '${kid.substring(0, 8)}-${kid.substring(8, 12)}-4${kid.substring(13, 16)}-a${kid.substring(17, 20)}-'
+    'kid':
+        '${kid.substring(0, 8)}-${kid.substring(8, 12)}-4${kid.substring(13, 16)}-a${kid.substring(17, 20)}-'
         '${kid.substring(20)}',
     'x': b64(public.Q!.x!.toBigInteger()!),
     'y': b64(public.Q!.y!.toBigInteger()!),
@@ -142,7 +144,14 @@ class SupabaseSetup {
     final ws = await WebSocket.connect(
       'wss://${s.ref}.supabase.co/realtime/v1/websocket?apikey=${Uri.encodeQueryComponent(key)}&vsn=1.0.0',
     ).timeout(const Duration(seconds: 15));
-    ws.add(jsonEncode({'topic': 'realtime:pocketterm-setup', 'event': 'phx_join', 'payload': <String, Object>{}, 'ref': '1'}));
+    ws.add(
+      jsonEncode({
+        'topic': 'realtime:pocketterm-setup',
+        'event': 'phx_join',
+        'payload': <String, Object>{},
+        'ref': '1',
+      }),
+    );
     try {
       await ws.first.timeout(const Duration(seconds: 15));
     } finally {
@@ -152,8 +161,7 @@ class SupabaseSetup {
 
   /// Whether PocketTerm is on this project already (an update).
   Future<bool> hasPocketTerm() async =>
-      (await admin.query(ref, "select to_regnamespace('pocketterm') is not null as ours")).firstOrNull?['ours'] ==
-      true;
+      (await admin.query(ref, "select to_regnamespace('pocketterm') is not null as ours")).firstOrNull?['ours'] == true;
 
   /// Applies the migrations the project hasn't had yet, each in its own
   /// transaction, recorded where the Supabase CLI keeps them. How many.

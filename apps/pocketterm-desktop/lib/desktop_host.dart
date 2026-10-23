@@ -86,8 +86,10 @@ class MacHost implements DesktopHost {
     if (now != null && now != on) {
       throw PlatformException(
         code: 'launch_at_login',
-        message: on ? loginItemsHint : 'macOS still starts PocketTerm at login. Turn it off in System Settings > '
-            'General > Login Items.',
+        message: on
+            ? loginItemsHint
+            : 'macOS still starts PocketTerm at login. Turn it off in System Settings > '
+                  'General > Login Items.',
       );
     }
   }

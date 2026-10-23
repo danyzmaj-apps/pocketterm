@@ -193,9 +193,7 @@ void main() {
     expect(find.textContaining('A phone is signed in'), findsOneWidget);
   });
 
-  testWidgets('looking goes on while the window shows, however long it has been', (
-    tester,
-  ) async {
+  testWidgets('looking goes on while the window shows, however long it has been', (tester) async {
     await pump(
       tester,
       (app) => GetReadyPage(app: app, poll: const Duration(milliseconds: 100), lookHidden: Duration.zero),

@@ -78,12 +78,7 @@ class Integrations {
   };
 
   /// [Process.run] with UTF-8 output, killed once it runs longer than [limit].
-  static Future<ProcessResult> _bounded(
-    String exe,
-    List<String> args,
-    Map<String, String>? env,
-    Duration limit,
-  ) async {
+  static Future<ProcessResult> _bounded(String exe, List<String> args, Map<String, String>? env, Duration limit) async {
     final process = await Process.start(exe, args, environment: env);
     final out = process.stdout.transform(utf8.decoder).join();
     final err = process.stderr.transform(utf8.decoder).join();

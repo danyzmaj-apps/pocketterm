@@ -298,7 +298,12 @@ void main() {
         try {
           final req = await client.post('127.0.0.1', api.port!, '/v1/live/http');
           req.headers.set('authorization', 'Bearer $token');
-          final big = utf8.encode(jsonEncode({'frames': [hello()], 'pad': 'x' * LocalApi.maxBody}));
+          final big = utf8.encode(
+            jsonEncode({
+              'frames': [hello()],
+              'pad': 'x' * LocalApi.maxBody,
+            }),
+          );
           if (sayLength) req.contentLength = big.length;
           req.add(big);
           return (await req.close()).statusCode;

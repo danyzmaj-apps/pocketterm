@@ -8,10 +8,8 @@ void main() {
   final messenger = binding.defaultBinaryMessenger;
 
   /// The Mac answers setLaunchAtLogin with [enabled]: whether PocketTerm is a login item after.
-  void macSays({required bool enabled}) => messenger.setMockMethodCallHandler(
-    channel,
-    (call) async => call.method == 'setLaunchAtLogin' ? enabled : null,
-  );
+  void macSays({required bool enabled}) =>
+      messenger.setMockMethodCallHandler(channel, (call) async => call.method == 'setLaunchAtLogin' ? enabled : null);
   tearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
   group('MacHost.setLaunchAtLogin', () {

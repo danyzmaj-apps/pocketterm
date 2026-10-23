@@ -523,8 +523,14 @@ class _Run {
       await until('project folder added', () => app.projectRoots.contains(c.projects));
     });
     await report.step('get ready: phone code', () async {
-      await _see(find.descendant(of: _key('get-ready-phone'), matching: find.byType(QrImageView)));
-      await until('a pairing link made', () => app.pairingLinks.isNotEmpty);
+      // A shared server (--server <url>) may still list another run's phone: then the card says one is signed
+      // in, and this run's links come from Add a phone.
+      if ((await app.serverDevices()).any((d) => d.role == DeviceRole.phone)) {
+        await _see(find.descendant(of: _key('get-ready-phone'), matching: find.textContaining('A phone is signed in')));
+      } else {
+        await _see(find.descendant(of: _key('get-ready-phone'), matching: find.byType(QrImageView)));
+        await until('a pairing link made', () => app.pairingLinks.isNotEmpty);
+      }
       await report.shot('get-ready');
     });
     await report.step('get ready: Done', () async {

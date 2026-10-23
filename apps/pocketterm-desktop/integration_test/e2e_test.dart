@@ -642,8 +642,13 @@ class _Run {
 
   Future<void> _chooseTerminal() async {
     await _tap(_key('settings-tab-terminals'));
+    // The picker lists only the terminals found here: while the page is still
+    // checking this computer it holds just Auto, and an open menu stays as it was.
+    await _see(_key('settings-terminal-$t'));
     await _tap(_key('settings-terminal-app'));
     final label = app.terminals.apps.firstWhere((h) => h.id == t).label;
+    // `.last` throws on no match instead of waiting: wait for the item first.
+    await _see(find.text(label));
     await _tap(find.text(label).last);
     await until('terminal app is $t', () => app.terminalApp == t);
   }

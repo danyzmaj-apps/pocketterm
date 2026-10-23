@@ -292,7 +292,8 @@ class Backend {
     return parse(saved.url, kind: _kind(saved.kind)).backend;
   }
 
-  static BackendKind _kind(String? name) => name == BackendKind.supabase.name ? BackendKind.supabase : BackendKind.pocketterm;
+  static BackendKind _kind(String? name) =>
+      name == BackendKind.supabase.name ? BackendKind.supabase : BackendKind.pocketterm;
 
   Future<void> save({bool? desktop}) async {
     if (!_inPrefs(desktop)) return await Native.setBackend(url: url, kind: isSupabase ? kind.name : null);

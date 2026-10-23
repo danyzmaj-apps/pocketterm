@@ -438,8 +438,7 @@ class PocketTermServerClient implements Server {
   /// A JSON request to [path] as this device, for what a subclass adds
   /// (lib/supabase_server.dart); a 401 ends the sign-in as any other.
   @protected
-  Future<Object?> request(String method, String path, {Map<String, Object?>? body}) =>
-      _json(method, path, body: body);
+  Future<Object?> request(String method, String path, {Map<String, Object?>? body}) => _json(method, path, body: body);
 
   Future<Object?> _json(
     String method,

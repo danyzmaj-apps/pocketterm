@@ -130,6 +130,22 @@ if [ -z "$DEVICE" ]; then
 fi
 echo "$DEVICE" >"$OUT/device.txt"
 
+# Firebase hands the phone its push token over the internet: an emulator
+# whose network never came up (its modem out of service after a cold boot,
+# seen on hopjar_api35) gets none, so there's no Follow and the flows fail
+# far from the cause. Wait a minute for it, then say so.
+if [ "$PLATFORM" = android ]; then
+  online=""
+  for _ in $(seq 30); do
+    if "$ADB" -s "$DEVICE" shell ping -c1 -W2 8.8.8.8 >/dev/null 2>&1; then online=1; break; fi
+    sleep 2
+  done
+  if [ -z "$online" ]; then
+    echo "$DEVICE has no internet, so Firebase gives the phone no push token (no Follow): cold-boot it again (adb -s $DEVICE emu kill)" >&2
+    exit 2
+  fi
+fi
+
 # The server's port, reachable as 127.0.0.1 on the emulator too.
 if [ "$PLATFORM" = android ]; then
   PORT=$(python3 -c 'import sys,urllib.parse as u;q=u.parse_qs(u.urlparse(sys.argv[1]).query);print(u.urlparse(q["url"][0]).port or "")' "$LINK" 2>/dev/null || true)

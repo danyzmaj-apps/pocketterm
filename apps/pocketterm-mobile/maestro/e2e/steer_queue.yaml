@@ -50,7 +50,7 @@ appId: com.danyzmaj.pocketterm
 - tapOn: "\n?Send"
 - extendedWaitUntil:
     visible: ".*fake steered: ${STEER_RE}.*"
-    timeout: 45000
+    timeout: 90000
 - extendedWaitUntil:
     visible: ".*fake reply: ${QUEUE_RE}.*"
     timeout: 30000

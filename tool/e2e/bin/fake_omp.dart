@@ -16,7 +16,7 @@
 //
 // A prompt, typed here or from the phone, gets `fake reply: <text>` (and a
 // line for each image or @file it carries). A prompt with:
-//   e2e-slow      works for 40 s first; Esc or the phone's Stop ends it
+//   e2e-slow      works for 90 s first; Esc or the phone's Stop ends it
 //   e2e-question  asks which color (Red, Green, Blue or a typed Other) and
 //                 replies `fake answer: <answer>`
 //   e2e-plan      shows plan mode's review (Approve and execute, Refine the
@@ -373,7 +373,7 @@ class FakeOmp {
     if (text.contains('e2e-plan')) return _raisePlan();
     // Long enough for a phone flow to steer and queue while it works (each
     // Maestro step in the Simulator takes seconds).
-    final work = text.contains('e2e-slow') ? const Duration(seconds: 40) : const Duration(milliseconds: 400);
+    final work = text.contains('e2e-slow') ? const Duration(seconds: 90) : const Duration(milliseconds: 400);
     final until = DateTime.now().add(work);
     while (DateTime.now().isBefore(until)) {
       await Future<void>.delayed(const Duration(milliseconds: 100));

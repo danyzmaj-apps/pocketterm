@@ -826,7 +826,7 @@ class _Run {
         () =>
             fakeOmpLog(dir('newsess'))
                 .any((e) => e['event'] == 'prompt' && '${e['text']}'.contains('queue from phone')),
-        timeout: const Duration(seconds: 60),
+        timeout: const Duration(seconds: 120),
       );
     });
     await act('stop', () async {

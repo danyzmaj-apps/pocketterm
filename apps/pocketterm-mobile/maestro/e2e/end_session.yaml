@@ -1,17 +1,20 @@
 # Swipe left on a session's row, End session (the swipe was the asking: it
-# ends at once): its window closes on the computer and the row goes.
+# ends at once): its window closes on the computer and the row goes. The row is
+# scrolled to the middle first, clear of the + button (close_window.yaml).
 #   env: SESSION (regex)
 appId: com.danyzmaj.pocketterm
 ---
 - runFlow: sub/home.yaml
 - scrollUntilVisible:
     element: "${SESSION}\n.*"
+    centerElement: true
     timeout: 20000
 - swipe:
     from: "${SESSION}\n.*"
     direction: LEFT
 - tapOn: "End session"
 - takeScreenshot: ending
+- assertNotVisible: "Find a project, or type ~/path"
 - extendedWaitUntil:
     notVisible: "${SESSION}\n.*"
     timeout: 30000

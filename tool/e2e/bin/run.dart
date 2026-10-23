@@ -165,6 +165,10 @@ Future<int> _fromHead(String repo, List<String> args) async {
   final head = '${(await Process.run('git', ['rev-parse', '--short', 'HEAD'], workingDirectory: repo)).stdout}'.trim();
   final src = '/private/tmp/pte2e-src-$head-${DateTime.now().millisecondsSinceEpoch}';
   await _must('git worktree add', 'git', ['worktree', 'add', '--detach', src, 'HEAD'], repo);
+  // Firebase's config stays out of git: without it the Android phone builds
+  // without push, so it has no Follow and its notifications flows can't run.
+  const firebase = 'apps/pocketterm-mobile/android/app/google-services.json';
+  if (File(p.join(repo, firebase)) case final f when f.existsSync()) f.copySync(p.join(src, firebase));
   stdout.writeln('Running HEAD $head from $src');
   try {
     await _must('pub get', 'fvm', ['flutter', 'pub', 'get'], src);

@@ -44,17 +44,18 @@ The desktop app finds your coding sessions (through the omp extension and Claude
 | | **On this computer** | **On my own server** | **Supabase** |
 | --- | --- | --- | --- |
 | Who runs the server | This computer (built into the desktop app) | You, in Docker on a VPS you rent, with Caddy for HTTPS | Supabase, in a region you pick (a free project the wizard sets up) |
-| Who holds the metadata | Only you | You and your VPS host | Supabase |
 | Phone reaches it over | [Tailscale](https://tailscale.com), same account on computer and phone | Your domain, over HTTPS | supabase.co, over HTTPS |
-| Cost | Free | The VPS (a small one is enough) | Free plan (pauses after about a week unused) |
-| Needs this computer awake to connect | Yes | No | No |
-| Contents end-to-end encrypted | Yes | Yes | Yes |
+| Extra apps | Tailscale on the computer and the phone | None | None |
+| Cost | Free (Tailscale Personal plan) | The VPS (a small one is enough) | Free plan (pauses after about a week unused) |
+| Several computers on one server | Yes, through Tailscale | Yes | Yes |
+| This computer must be awake | Yes | Yes | Yes |
+| Contents (sessions, prompts, images, files, notification text) | End-to-end encrypted | End-to-end encrypted | End-to-end encrypted |
+| Who can see metadata (device list, computer names, push tokens, when devices talk) | Only you; Tailscale sees device names and IPs | You and your VPS host | Supabase (also sees connection IPs) |
+| Reachable from the internet | No, only your own Tailscale devices | Yes, but every request needs a device token | Yes, but every request needs a device token |
 
-Sessions always run on the computer, so it stays awake for them in every option; the awake row is about reaching the server. Several computers can share one server in each option.
+Your sessions run on the computer in every option, so it has to be awake, with PocketTerm running and **Terminal from phone** on. While that switch is on, PocketTerm keeps the computer from idle sleep. Pushes go out only when nobody has touched the computer for 60 seconds.
 
 Interactive diagrams of the setups and of pairing: [docs/how-it-works.html](docs/how-it-works.html).
-
-The computer has to be awake, with PocketTerm running and **Terminal from phone** on. While that switch is on, PocketTerm keeps the computer from idle sleep. Pushes go out only when nobody has touched the computer for 60 seconds.
 
 ## Security and privacy
 

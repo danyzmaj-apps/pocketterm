@@ -35,7 +35,7 @@ class OptionsTable extends StatelessWidget {
     ('Who holds the metadata', 'Only you', 'You and your VPS host', 'Supabase'),
     ('Reached through', 'Tailscale', 'Your domain (HTTPS)', 'supabase.co'),
     ('Cost', 'Free', 'A VPS', 'Free plan (pauses after a week unused)'),
-    ('Needs this computer awake to connect', 'Yes', 'No', 'No'),
+    ('This computer must be awake', 'Yes', 'Yes (your sessions run on it)', 'Yes (your sessions run on it)'),
     ('Contents end-to-end encrypted', 'Yes', 'Yes', 'Yes'),
   ];
 
@@ -70,8 +70,8 @@ class OptionsTable extends StatelessWidget {
       ),
       const Text(
         'Your sessions, images, files and notification text are end-to-end encrypted in all three: whoever runs '
-        'the server passes them along but can’t read them. Sessions always run on this computer, so it stays '
-        'awake for them with every option. The awake row is about reaching the server.',
+        'the server passes them along but can’t read them. Your sessions always run on this computer, so it has to '
+        'be awake with every option.',
       ),
     ],
   );

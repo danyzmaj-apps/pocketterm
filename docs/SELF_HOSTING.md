@@ -10,10 +10,10 @@ The server runs in one of three places, and the desktop app sets up each:
 | Who holds the metadata | Only you | You and your VPS host | Supabase |
 | Reached through | [Tailscale](https://tailscale.com) on this computer and on your phone, signed in to the same account | Your domain (HTTPS); the VPS needs a public IP address and ports 80 and 443 open | supabase.co (HTTPS) |
 | Cost | Free | The VPS (a small one is enough) | Free plan (pauses after about a week unused) |
-| Needs this computer awake to connect | Yes | No | No |
+| This computer must be awake | Yes | Yes (your sessions run on it) | Yes (your sessions run on it) |
 | Contents end-to-end encrypted | Yes | Yes | Yes |
 
-Sessions always run on the computer, so it stays awake for them in every option; the awake row is about reaching the server. Several computers can share one server in each option.
+Your sessions always run on the computer, so it has to be awake in every option. Several computers can share one server in each option.
 
 Tailscale's Personal plan is free (up to 3 users, 100 devices). Sign in with a personal Google, Apple, GitHub or Microsoft account; a work email domain may start a paid business trial instead.
 

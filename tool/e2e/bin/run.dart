@@ -30,7 +30,7 @@
 // the server restart stops and starts its function and Realtime.
 // --server supabase-cloud: the desktop's setup makes a new project on
 // supabase.com (Supabase → Set up a project) with the personal access
-// token in --supabase-token-file, in the token's only organization, and
+// token in --supabase-token-file, in the token's first organization, and
 // this run deletes that project after each terminal's run, whatever
 // happened. The free plan allows 2 active projects: one slot must be free.
 // No server restart (a hosted project can't be taken off the network).

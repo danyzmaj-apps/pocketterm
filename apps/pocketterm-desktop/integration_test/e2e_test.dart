@@ -450,9 +450,14 @@ class _Run {
       return _key('supabase-create').evaluate().isNotEmpty && create().onPressed != null;
     }, timeout: const Duration(seconds: 60));
     expect(_key('supabase-existing'), findsNothing, reason: 'the run lists only the project it makes');
+    final shut = find.text('Asia Pacific (Tokyo)').evaluate().length;
     await _tap(_key('supabase-region'));
     await _tap(find.text('Europe (Frankfurt)').last);
-    await _gone(find.byType(DropdownMenuItem<String>));
+    // The button lays every item out (its width); the open menu adds them again.
+    await until('the region menu closed', () async {
+      await _frames(1);
+      return find.text('Asia Pacific (Tokyo)').evaluate().length == shut;
+    }, timeout: const Duration(seconds: 10));
     expect(tester.widget<DropdownButton<String>>(_key('supabase-region')).value, 'eu-central-1');
     await report.shot('supabase-project');
     started = DateTime.now();

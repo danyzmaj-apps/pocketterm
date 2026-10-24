@@ -630,6 +630,7 @@ class PocketTermServer {
         if (!_mayHold(id, me)) throw _Fail(403, 'forbidden', 'Only the computer that added it can change it.');
         final desktop = Desktop(id: id, name: _clip(name, 80), platform: platform, seen: _now(), device: me.id);
         _store.change(() => _store.desktops[id] = desktop);
+        _refreshActivities(id);
         return await _json(req, 200, desktop.toApi(_now()));
       case 'DELETE':
         // Only a computer, and only the one that holds it.
@@ -869,7 +870,10 @@ class PocketTermServer {
         if (state == 'ended' && tokens.isNotEmpty) {
           _store.change(() => _store.activityTokens.removeWhere((t) => t.session == session));
         }
-        return {'sent': _sendActivity(tokens, live, enc as String?, tag as String?)};
+        final sent = _sendActivity(tokens, live, enc as String?, tag as String?);
+        // Kept for refreshing them (_refreshActivities).
+        if (state != 'ended' && tokens.any((t) => t.platform != 'android')) _trySave();
+        return {'sent': sent};
       default:
         throw _unknown();
     }
@@ -914,6 +918,27 @@ class PocketTermServer {
     _sendActivity(tokens, _ended(), null, null);
   }
 
+  /// Sends the iPhones following a session of computer [desktop], which just checked in, their last state again
+  /// when it went out [ActivityToken.refreshAfter] ago or more: a Live Activity goes stale 3 minutes after its
+  /// last push, and an idle session's state doesn't change. Quiet (Apple's low priority): nothing new to show.
+  void _refreshActivities(String desktop) {
+    final now = _now();
+    for (final t in _store.activityTokens) {
+      final live = t.live;
+      final pushed = t.pushed;
+      if (t.desktop != desktop || live == null) continue;
+      if (pushed != null && now.difference(pushed) < ActivityToken.refreshAfter) continue;
+      t.pushed = now;
+      _relay.send({
+        'token': t.token,
+        'kind': 'liveactivity',
+        'event': 'update',
+        'state': live,
+        'quiet': true,
+      }, key: 'a|${t.token}|${t.session}');
+    }
+  }
+
   /// Queues the move of the Live Activities of [tokens] to [live] (ended: ends them); the number queued. An
   /// iPhone gets the state alone at its activity's token (Apple can't hand a Live Activity push to code that would
   /// decrypt it, and its token is all Apple needs); an Android phone gets [enc], the state the computer with push
@@ -926,6 +951,11 @@ class PocketTermServer {
       final Map<String, dynamic> push;
       if (t.platform != 'android') {
         push = {'token': t.token, 'kind': 'liveactivity', 'event': ended ? 'end' : 'update', 'state': live};
+        if (!ended) {
+          t
+            ..live = live
+            ..pushed = _now();
+        }
       } else if (t.ref == null) {
         continue; // Registered before sessions had tags: nothing the phone could match.
       } else if (ended) {

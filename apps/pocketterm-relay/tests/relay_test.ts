@@ -126,6 +126,36 @@ Deno.test("working waits at low priority; an ended activity is dismissed later",
   assertEquals(aps.event, "end");
   assert(aps["dismissal-date"] > now());
 });
+
+Deno.test("a quiet update waits at low priority with a fresh stale-date; quiet is only true, with update", async () => {
+  network(apns());
+  const since = now() - 3600;
+  const res = await relay(post({
+    token: hex(7, 160),
+    kind: "liveactivity",
+    event: "update",
+    state: { state: "needs", since, kind: "question" },
+    quiet: true,
+  }));
+  assertEquals(res.status, 200);
+  assertEquals(sent[0].headers.get("apns-priority"), "5");
+  const { aps } = JSON.parse(sent[0].body);
+  assertEquals(aps["content-state"], { state: "needs", since, kind: "question" });
+  assert(Math.abs(aps["stale-date"] - (now() + 180)) <= 2);
+  assertEquals(aps.alert, undefined);
+
+  network(apns());
+  for (
+    const wrong of [
+      { event: "update", state: { state: "done", since }, quiet: false },
+      { event: "update", state: { state: "done", since }, quiet: "yes" },
+      { event: "end", state: { state: "ended", since }, quiet: true },
+    ]
+  ) {
+    assertEquals((await relay(post({ token: hex(7, 160), kind: "liveactivity", ...wrong }))).status, 400);
+  }
+  assertEquals(sent.length, 0);
+});
 Deno.test("a server whose clock is off still reaches its phones, its since held to the last week", async () => {
   for (const [since, held] of [[now() - 30 * 86400, now() - 7 * 86400], [now() + 7200, now()]]) {
     network(apns());

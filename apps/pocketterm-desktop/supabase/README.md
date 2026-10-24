@@ -2,7 +2,7 @@
 
 The PocketTerm server as a Supabase project: the third setup choice in the desktop wizard ([docs/SELF_HOSTING.md](../../../docs/SELF_HOSTING.md#supabase)). It speaks the same protocol as the PocketTerm server ([PROTOCOL.md](../../../packages/pocketterm_server/PROTOCOL.md#pocketterm-on-supabase)), so the apps use it the same way.
 
-- `migrations/`: the `pocketterm` schema (devices, computers, pairing codes, push and Live Activity tokens, blobs, redeem failures), the `public.pocketterm_*` functions only the service role may call, the private Storage bucket `pocketterm-blobs`, the Realtime policies and the pg_cron tick.
+- `migrations/`: the `pocketterm` schema (devices, computers, pairing codes, push and Live Activity tokens with each iPhone activity's last state, blobs, redeem failures), the `public.pocketterm_*` functions only the service role may call, the private Storage bucket `pocketterm-blobs`, the Realtime policies and the pg_cron tick. A change goes in a new migration: projects set up before keep the ones they applied.
 - `functions/pocketterm/index.ts`: the Edge Function `pocketterm`, deployed without JWT checks (it checks device tokens itself), at `https://<ref>.supabase.co/functions/v1/pocketterm`.
 
 ## How the desktop setup deploys it
@@ -35,7 +35,7 @@ POCKETTERM_SUPABASE=1 fvm flutter test -j 1 test/server_client_test.dart test/se
 - **`pt.left`.** When a device is signed out, an empty `pt.left` is broadcast on every computer's topic; devices then check they're still signed in. A signed-out device keeps its live connection at most until its token runs out.
 - **Blobs.** Sealed images and files sit in the private bucket `pocketterm-blobs` for at most 1 hour, within caps of 200 MiB per device and 1 GiB in all.
 - **Tick.** pg_cron calls the function every minute: it ends Live Activities of computers that went quiet and cleans up old blobs, pairing codes and redeem failures.
-- **Pushes.** Sealed to the relay's key exactly as the PocketTerm server does (sealed request, opaque tags, no ids).
+- **Pushes.** Sealed to the relay's key exactly as the PocketTerm server does (sealed request, opaque tags, no ids). A computer's check-in (`PUT /v1/desktops/:id`) sends the iPhones following its sessions their last state again once it is 110 seconds old, quietly, so their Live Activities don't go stale while it is idle.
 
 Differences from the PocketTerm server:
 

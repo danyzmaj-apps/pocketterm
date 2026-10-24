@@ -455,6 +455,7 @@ async function push(action: string, body: Record<string, unknown>, token: string
     result?: unknown;
     notify?: { token: string; platform: string }[];
     activity?: ActivityRow[];
+    live?: Record<string, unknown>;
   }>("pocketterm_push", { p_token: token, p_action: action, p_body: clean });
   if (out.notify) {
     relay(out.notify.map((n) => ({
@@ -467,10 +468,10 @@ async function push(action: string, body: Record<string, unknown>, token: string
     })));
     return { sent: out.notify.length };
   }
-  if (out.activity) {
-    const live: Record<string, unknown> = { state: body.state, since: Math.floor(Date.now() / 1000) };
-    if (body.state === "needs" && body.kind != null) live.kind = body.kind;
-    const bodies = activityPushes(out.activity, live, body.enc as string | undefined, body.tag as string | undefined);
+  if (out.activity && out.live) {
+    // The state as the database kept it for the iPhones' refresh (pocketterm_put_desktop).
+    const { enc, tag } = body as { enc?: string; tag?: string };
+    const bodies = activityPushes(out.activity, out.live, enc, tag);
     relay(bodies);
     return { sent: bodies.length };
   }
@@ -655,12 +656,20 @@ async function route(req: Request): Promise<Response> {
         if (!DESKTOP_ID.test(id)) throw bad("The computer's id must be 8 characters a-z, 0-9.");
         const body = await readJson(req);
         if (typeof body.name !== "string") throw bad("name must be a string.");
-        return json(200, await rpc("pocketterm_put_desktop", {
-          p_token: token,
-          p_id: id,
-          p_name: clip(body.name, 80),
-          p_platform: platform(body, DESKTOP_PLATFORMS),
-        }));
+        const { refresh, ...desktop } = await rpc<{ refresh: { token: string; state: unknown }[] }>(
+          "pocketterm_put_desktop",
+          { p_token: token, p_id: id, p_name: clip(body.name, 80), p_platform: platform(body, DESKTOP_PLATFORMS) },
+        );
+        // The iPhones following its sessions get their last state again before it goes stale (the relay stamps
+        // a new stale-date), quietly: nothing changed.
+        relay(refresh.map((r) => ({
+          token: r.token,
+          kind: "liveactivity",
+          event: "update",
+          state: r.state,
+          quiet: true,
+        })));
+        return json(200, desktop);
       }
       if (m === "DELETE") {
         const out = await rpc<{ end: ActivityRow[] }>("pocketterm_delete_desktop", { p_token: token, p_id: id });

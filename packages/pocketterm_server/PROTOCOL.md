@@ -139,7 +139,8 @@ key per-server state on it.
 
 Request `{"name": "MacBook Pro", "platform": "macos"}`. Creates or replaces the computer `:id`
 (`[a-z0-9]{8}`) and stamps its `seen_at` with the server's time. Call it on start and every 60 seconds: after 3
-minutes without it, the server ends the Live Activities of that computer's sessions (below).
+minutes without it, the server ends the Live Activities of that computer's sessions (below). Each call also sends the
+iPhones following one of its sessions their last state again when it went out 110 seconds ago or more (below).
 
 The computer that last put `:id` holds it. Another computer gets 403 `forbidden` while that one is still signed in
 and online (`seen_at` less than 150 seconds old); once it is offline or gone, another computer may take the id over
@@ -250,6 +251,13 @@ A server stopping gives what's on its way 3 seconds; what still waits is dropped
   `pocketterm/v1|activity|<desktop id>`, same layout and limits as a notification's `enc`, with `tag`; `enc` needs
   `tag`. Without `enc`, Android phones get nothing for that update. `ended` reaches Android phones as a plain end
   (below), then every token of that session is forgotten.
+- Keeping iPhones fresh: an iPhone's Live Activity goes stale 3 minutes after its last push, and an idle session's
+  state doesn't change. The server keeps each iPhone activity token's last state (`{"state", "since", "kind"?}`, as
+  it went out) and when it went out; when the computer checks in (`PUT /v1/desktops/:id`), every iPhone following
+  one of its sessions whose state went out 110 seconds ago or more gets it again, unchanged (`since` stays when the
+  state began), marked `quiet` so the relay sends it at Apple's low priority with a new `stale-date`. Never after
+  `ended` (the token is forgotten) and never for a computer that stopped checking in. Android phones get no
+  refresh: their ongoing notification has no stale time and their states are sealed, so the server keeps none.
 - Ending by the server: when a computer hasn't `PUT /v1/desktops/:id` for 3 minutes (checked every minute), is
   removed with `DELETE /v1/desktops/:id`, or its device leaves or is revoked, the server sends an end to every Live
   Activity following one of its sessions (session keys starting with `<desktop id>/`) and forgets those tokens. A
@@ -267,8 +275,10 @@ with the one it names (one without `kid` is tried with each); see
   plus `{"enc", "t": <tag>}`, with `collapse` as `apns-collapse-id`
 - notify, Android: `{"platform": "android", "token", "kind": "terminal", "enc", "tag", "collapse"?}`; FCM data
   `{"kind": "terminal", "enc", "t": <tag>}`, with `collapse` as `collapse_key`
-- activity, iOS: `{"token", "kind": "liveactivity", "event": "update" | "end", "state": {"state", "since", "kind"?}}`
-  and nothing more: no session key, computer id or collapse id
+- activity, iOS: `{"token", "kind": "liveactivity", "event": "update" | "end", "state": {"state", "since", "kind"?},
+  "quiet"?: true}` and nothing more: no session key, computer id or collapse id. `quiet` (an update only) is the
+  same state again while the computer checks in; the relay sends it, like `working`, at APNs priority 5, the rest
+  of the updates at 10
 - activity, Android: `{"platform": "android", "token", "kind": "activity", "enc", "tag", "ref"}`; FCM data
   `{"kind": "activity", "enc", "t": <tag>}`, with `ref` as `collapse_key`
 - end, Android: `{"platform": "android", "token", "kind": "activity", "ref", "state": {"state": "ended", "since"}}`;
@@ -277,8 +287,9 @@ with the one it names (one without `kid` is tried with each); see
 
 The relay refuses a body with any field not listed for its kind.
 
-An iPhone's Live Activity update goes stale 3 minutes after it was sent (`stale-date`); an ended one leaves the Lock
-Screen 10 minutes later (`dismissal-date`).
+An iPhone's Live Activity update goes stale 3 minutes after it was sent (`stale-date`), which the server's refresh
+keeps from happening while the computer checks in; an ended one leaves the Lock Screen 10 minutes later
+(`dismissal-date`).
 
 `since` is seconds since the epoch.
 

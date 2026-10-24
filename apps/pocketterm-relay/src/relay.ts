@@ -12,7 +12,8 @@
 //   {"token": hex, "kind": "terminal", "enc": base64, "tag": push tag, "collapse"?: session tag}
 //   {"token": hex, "kind": "liveactivity", "event": "update"|"end",
 //    "state": {"state": "working"|"needs"|"done"|"ended", "since": unix seconds,
-//              "kind"?: "question"|"approval"|"plan"}}
+//              "kind"?: "question"|"approval"|"plan"},
+//    "quiet"?: true (update only: the same state again, at low priority)}
 // Android phones (FCM HTTP v1, a data-only message the app shows itself):
 //   {"platform": "android", "token": FCM registration token,
 //    "kind": "terminal", "enc": base64, "tag": push tag, "collapse"?: session tag}
@@ -115,7 +116,7 @@ const sessionTag = /^[A-Za-z0-9_-]{22}$/;
 /** The fields each kind of push may carry; anything else is refused. */
 const fields = {
   terminal: ["platform", "token", "kind", "enc", "tag", "collapse"],
-  liveactivity: ["platform", "token", "kind", "event", "state"],
+  liveactivity: ["platform", "token", "kind", "event", "state", "quiet"],
   activity: ["platform", "token", "kind", "enc", "tag", "ref"],
   end: ["platform", "token", "kind", "ref", "state"],
 };
@@ -379,12 +380,16 @@ function liveActivity(body: Record<string, unknown>): { payload: string; priorit
   const s = activityState(body.state);
   if (typeof s === "string") return s;
   if (body.event !== "update" && body.event !== "end") return "event must be update or end";
+  if (body.quiet !== undefined && (body.quiet !== true || body.event !== "update")) {
+    return "quiet must be true, with update";
+  }
   const now = Math.floor(Date.now() / 1000);
   const aps: Record<string, unknown> = { timestamp: now, event: body.event, "content-state": s };
   // Gone from the Lock Screen 10 minutes after it ended; otherwise stale (the
   // phone shows it as such) after 3 minutes without news: the server updates a live session more often.
   if (body.event === "end") aps["dismissal-date"] = now + 600;
   else aps["stale-date"] = now + 180;
-  // Apple rations priority 10; working can wait.
-  return { payload: JSON.stringify({ aps }), priority: s.state === "working" ? "5" : "10" };
+  // Apple rations priority 10; working can wait, and so can the same state again (quiet: a server keeping the
+  // activity from going stale while its computer checks in).
+  return { payload: JSON.stringify({ aps }), priority: s.state === "working" || body.quiet === true ? "5" : "10" };
 }

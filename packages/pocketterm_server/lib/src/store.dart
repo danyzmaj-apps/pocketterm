@@ -121,7 +121,14 @@ class PushToken {
 
 /// A Live Activity's push token following coding [session].
 class ActivityToken {
-  ActivityToken({required this.token, required this.session, required this.platform, required this.device, this.ref});
+  ActivityToken({
+    required this.token,
+    required this.session,
+    required this.platform,
+    required this.device,
+    this.ref,
+    this.live,
+  });
 
   factory ActivityToken.fromJson(Map<String, dynamic> j) => ActivityToken(
     token: j['token'] as String,
@@ -129,7 +136,12 @@ class ActivityToken {
     platform: j['platform'] as String,
     device: j['device'] as String,
     ref: j['ref'] as String?,
+    live: j['live'] as Map<String, dynamic>?,
   );
+
+  /// How long after an iPhone's last push its state goes out again when its computer checks in: under the 3
+  /// minutes after which the phone shows it stale, with room for a check-in a little early (every 60 seconds).
+  static const refreshAfter = Duration(seconds: 110);
 
   final String token;
   final String session;
@@ -140,6 +152,13 @@ class ActivityToken {
   /// sessionTag), which the phone registered. An iPhone's activity has none: its token is its own.
   final String? ref;
 
+  /// An iPhone's last state as it was pushed (`{state, since, kind?}`, never `ended`), sent again after
+  /// [refreshAfter] while its computer checks in; Android's states are sealed and never kept.
+  Map<String, dynamic>? live;
+
+  /// When [live] last went out; null before it has (or since the server started), so it goes at the next check-in.
+  DateTime? pushed;
+
   /// The computer whose session it follows: [session] is `<desktop id>/<key>`.
   String get desktop => session.split('/').first;
 
@@ -149,6 +168,7 @@ class ActivityToken {
     'platform': platform,
     'device': device,
     'ref': ?ref,
+    'live': ?live,
   };
 }
 

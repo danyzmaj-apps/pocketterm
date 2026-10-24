@@ -672,6 +672,90 @@ void main() {
       expect(await sentTo(mac.token, 'bbbb2222/s1'), 1);
     });
 
+    test("a computer that checks in sends its iPhones' last state again before it goes stale, quietly", () async {
+      final mac = await h.desktop();
+      final phone = await h.phone(mac.token);
+      await optIn(phone.token);
+      final iphone = 'c1' * 80;
+      Future<void> checkIn() =>
+          h.call('PUT', '/v1/desktops/aaaa1111', token: mac.token, body: {'name': 'Mac', 'platform': 'macos'});
+      await checkIn();
+      await follow(phone.token, 'aaaa1111/s1', iphone);
+      await follow(phone.token, 'aaaa1111/s1', androidToken, 'android');
+      final enc = base64.encode(List<int>.generate(40, (i) => i));
+      final start = h.now;
+      await h.call(
+        'POST',
+        '/v1/push/activity',
+        token: mac.token,
+        body: {'session': 'aaaa1111/s1', 'state': 'needs', 'kind': 'question', 'tag': _tag, 'enc': enc},
+      );
+      final live = {'state': 'needs', 'since': start.millisecondsSinceEpoch ~/ 1000, 'kind': 'question'};
+      final refresh = {'token': iphone, 'kind': 'liveactivity', 'event': 'update', 'state': live, 'quiet': true};
+
+      h.relay.received.clear();
+      h.now = start.add(const Duration(seconds: 60));
+      await checkIn();
+      expect(h.relay.received, isEmpty);
+
+      // The same state, since when it began, at the iPhone only: the relay stamps a new stale-date.
+      h.now = start.add(const Duration(seconds: 130));
+      await checkIn();
+      expect(h.relay.received, [refresh]);
+
+      h.relay.received.clear();
+      h.now = start.add(const Duration(seconds: 130 + 60));
+      await checkIn();
+      h.now = start.add(const Duration(seconds: 130 + 100));
+      await checkIn();
+      expect(h.relay.received, isEmpty);
+      h.now = start.add(const Duration(seconds: 130 + 120));
+      await checkIn();
+      expect(h.relay.received, [refresh]);
+
+      // A restarted server still has the state: it goes out at the first check-in.
+      await h.restart();
+      h.relay.received.clear();
+      await checkIn();
+      expect(h.relay.received, [refresh]);
+
+      // An ended activity takes nothing more.
+      await h.call('POST', '/v1/push/activity', token: mac.token, body: {'session': 'aaaa1111/s1', 'state': 'ended'});
+      h.relay.received.clear();
+      h.now = h.now.add(const Duration(minutes: 5));
+      await checkIn();
+      expect(h.relay.received, isEmpty);
+    });
+
+    test("a silent computer's Live Activities are not refreshed, and end after 3 minutes", () async {
+      final mac = await h.desktop();
+      final phone = await h.phone(mac.token);
+      await optIn(phone.token);
+      final quiet = 'c1' * 80;
+      final busy = 'c2' * 80;
+      final start = h.now;
+      for (final id in ['aaaa1111', 'bbbb2222']) {
+        await h.call('PUT', '/v1/desktops/$id', token: mac.token, body: {'name': id, 'platform': 'macos'});
+      }
+      await follow(phone.token, 'aaaa1111/s1', quiet);
+      await follow(phone.token, 'bbbb2222/s1', busy);
+      expect(await sentTo(mac.token, 'aaaa1111/s1'), 1);
+      expect(await sentTo(mac.token, 'bbbb2222/s1'), 1);
+      expect(h.relay.received, hasLength(2));
+      h.relay.received.clear();
+
+      // Only bbbb2222 checks in: its follower is refreshed, aaaa1111's isn't.
+      h.now = start.add(const Duration(seconds: 130));
+      await h.call('PUT', '/v1/desktops/bbbb2222', token: mac.token, body: {'name': 'Busy', 'platform': 'macos'});
+      await h.sweep();
+      expect([for (final b in h.relay.received) (b['token'], b['event'], b['quiet'])], [(busy, 'update', true)]);
+
+      h.relay.received.clear();
+      h.now = start.add(const Duration(minutes: 3));
+      await h.sweep();
+      expect([for (final b in h.relay.received) (b['token'], b['event'])], [(quiet, 'end')]);
+    });
+
     test('removing a computer, or signing it out, ends its Live Activities', () async {
       final mac = await h.desktop();
       final other = await h.desktop('Other');

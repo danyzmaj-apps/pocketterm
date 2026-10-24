@@ -26,13 +26,14 @@ What's inside the seal (the server builds it; see
 
 - iPhone alert: `{"token", "kind": "terminal", "enc", "tag", "collapse"?}`
 - iPhone Live Activity:
-  `{"token", "kind": "liveactivity", "event": "update"|"end", "state": {"state", "since", "kind"?}}`
+  `{"token", "kind": "liveactivity", "event": "update"|"end", "state": {"state", "since", "kind"?}, "quiet"?: true}`
 - Android alert: `{"platform": "android", "token", "kind": "terminal", "enc", "tag", "collapse"?}`
 - Android coding session: `{"platform": "android", "token", "kind": "activity", "enc", "tag", "ref"}`, or its end in
   plain text: `{"platform": "android", "token", "kind": "activity", "ref", "state": {"state": "ended", "since"}}`
 - Any other field is refused (`400`).
 - iPhone Live Activities go stale 3 minutes after an update (`stale-date`) and leave the Lock Screen 10 minutes after
-  their end (`dismissal-date`).
+  their end (`dismissal-date`). Updates go at Apple's priority 10, except `working` and `quiet` ones (the same state
+  again, which a server sends while the computer checks in so the activity doesn't go stale) at priority 5.
 
 `enc` is the notification (or an Android session's state), sealed on your computer with its channel key; the relay
 passes it to the phone as it is. No computer id or session key reaches the relay: `tag` is an HMAC under the computer's

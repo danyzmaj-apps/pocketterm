@@ -75,6 +75,86 @@ void main() {
     },
   );
 
+  test(
+    "on Supabase, a computer that checks in sends its iPhones' last state again before it goes stale; "
+    'not after an end, and not for a silent computer, which the tick ends at 3 minutes',
+    skip: SupabaseServer.skip,
+    () async {
+      final own = await SupabaseServer.start();
+      addTearDown(own.stop);
+      final mac = await own.desktop();
+      final phone = await own.phone(mac);
+      await phone.push('register', {'token': 'ab' * 32, 'platform': 'ios'});
+      final iphone = 'c1' * 80;
+      final silentPhone = 'c2' * 80;
+      Future<void> checkIn(String id) => mac.putDesktop(id, name: id, platform: 'macos');
+      await checkIn('aaaa1111');
+      await checkIn('bbbb2222');
+      await phone.push('activity_register', {'token': iphone, 'session': 'aaaa1111/s1'});
+      await phone.push('activity_register', {'token': silentPhone, 'session': 'bbbb2222/s1'});
+
+      // The pushes the relay got within [wait], opened.
+      Future<List<Map<String, dynamic>>> relayed({
+        required int count,
+        Duration wait = const Duration(seconds: 5),
+      }) async {
+        final end = DateTime.now().add(wait);
+        while (own.relayed.length < count && DateTime.now().isBefore(end)) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+        if (count == 0) await Future<void>.delayed(const Duration(milliseconds: 500));
+        final out = [for (final r in own.relayed) await SupabaseServer.open(r)];
+        own.relayed.clear();
+        return out;
+      }
+
+      // The fake clock: when each token's state last went out, and when each computer last checked in.
+      Future<void> pushedAgo(String token, int seconds) => SupabaseServer.sql(
+        "update pocketterm.activity_tokens set pushed_at = now() - interval '$seconds seconds' where token = '$token'",
+      );
+
+      expect((await mac.push('activity', {'session': 'aaaa1111/s1', 'state': 'needs', 'kind': 'question'}))['sent'], 1);
+      expect((await mac.push('activity', {'session': 'bbbb2222/s1', 'state': 'working'}))['sent'], 1);
+      final first = await relayed(count: 2);
+      final live = first.singleWhere((b) => b['token'] == iphone)['state'] as Map<String, dynamic>;
+      expect(live, {'state': 'needs', 'since': isA<int>(), 'kind': 'question'});
+      final refresh = {'token': iphone, 'kind': 'liveactivity', 'event': 'update', 'state': live, 'quiet': true};
+
+      await checkIn('aaaa1111');
+      expect(await relayed(count: 0), isEmpty, reason: 'pushed just now');
+
+      // 130 seconds on: the same state, since when it began, once.
+      await pushedAgo(iphone, 130);
+      await pushedAgo(silentPhone, 130);
+      await checkIn('aaaa1111');
+      expect(await relayed(count: 1), [refresh]);
+      await checkIn('aaaa1111');
+      await pushedAgo(iphone, 100);
+      await checkIn('aaaa1111');
+      expect(await relayed(count: 0), isEmpty, reason: 'not again before another 110 seconds');
+      await pushedAgo(iphone, 120);
+      await checkIn('aaaa1111');
+      expect(await relayed(count: 1), [refresh]);
+
+      // bbbb2222 stopped checking in: its follower isn't refreshed, and the tick ends it at 3 minutes.
+      await SupabaseServer.sql(
+        "update pocketterm.desktops set seen_at = now() - interval '3 minutes 1 second' where id = 'bbbb2222'",
+      );
+      final tick = await HttpClient().postUrl(Uri.parse('${SupabaseServer.url}/functions/v1/pocketterm/v1/tick'));
+      tick.headers.set('x-pocketterm-tick', await SupabaseServer.sql('select tick_secret from pocketterm.server'));
+      expect((await tick.close()).statusCode, 200);
+      final ended = await relayed(count: 1);
+      expect([for (final b in ended) (b['token'], b['event'])], [(silentPhone, 'end')]);
+
+      // An ended activity is never refreshed.
+      await mac.push('activity', {'session': 'aaaa1111/s1', 'state': 'ended'});
+      expect([for (final b in await relayed(count: 1)) (b['token'], b['event'])], [(iphone, 'end')]);
+      await pushedAgo(iphone, 600);
+      await checkIn('aaaa1111');
+      expect(await relayed(count: 0), isEmpty);
+    },
+  );
+
   // A connection kept open from before the app went to the background can be dead without having said so: a
   // request on it waited out its whole timeout, and the phone said it couldn't reach the server.
   test('back at the front, requests go on new connections, not on ones that went quiet meanwhile', () async {

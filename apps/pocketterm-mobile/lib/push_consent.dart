@@ -25,7 +25,7 @@ class _PushConsentPageState extends State<PushConsentPage> {
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
     final allowed = await widget.session.setPushEnabled(on: on);
-    if (on && !allowed) messenger.showSnackBar(pushNotAllowedSnackBar());
+    if (on && !allowed) messenger.showSnackBar(pushNotAllowedSnackBar(allowed: widget.session.notificationsAllowed));
     if (mounted) setState(() => _busy = false);
   }
 
@@ -100,11 +100,20 @@ class _PushConsentPageState extends State<PushConsentPage> {
 const pushNotAllowed =
     'Notifications are off for PocketTerm in this phone’s Settings. Allow them there, then try again.';
 
-/// [pushNotAllowed], with a way to that setting.
-SnackBar pushNotAllowedSnackBar() => SnackBar(
-  content: const Text(pushNotAllowed),
-  action: SnackBarAction(label: 'Settings', onPressed: () => unawaited(Native.openSettings(notifications: true))),
-);
+/// Turned on and allowed, but Apple or Google gave this phone no push address
+/// (no internet, or their service didn't answer).
+const pushNoToken =
+    'This phone couldn’t get a notification address from Apple or Google. Check its internet connection, then '
+    'try again.';
+
+/// Why turning push on didn't take: the phone's setting is off ([allowed]
+/// false: with a way there) or Apple or Google gave no push address.
+SnackBar pushNotAllowedSnackBar({bool? allowed}) => allowed == false
+    ? SnackBar(
+        content: const Text(pushNotAllowed),
+        action: SnackBarAction(label: 'Settings', onPressed: () => unawaited(Native.openSettings(notifications: true))),
+      )
+    : const SnackBar(content: Text(pushNoToken));
 
 /// On here, but turned off since in the phone's Settings: nothing shows.
 const pushBlocked =

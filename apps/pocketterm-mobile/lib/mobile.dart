@@ -1125,7 +1125,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       onChanged: (on) async {
                         final messenger = ScaffoldMessenger.of(sheet);
                         if (!await widget.session.setPushEnabled(on: on) && on) {
-                          messenger.showSnackBar(pushNotAllowedSnackBar());
+                          messenger.showSnackBar(pushNotAllowedSnackBar(allowed: widget.session.notificationsAllowed));
                         }
                       },
                     ),

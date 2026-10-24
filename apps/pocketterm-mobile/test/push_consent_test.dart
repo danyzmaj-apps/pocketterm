@@ -21,18 +21,22 @@ void main() {
   /// The phone never answers registerPush (no network, APNs silent).
   late bool pushHangs;
 
+  /// What the phone says of its notification permission.
+  late bool allowed;
+
   setUp(() {
     dir = Directory.systemTemp.createTempSync('pocketterm_push');
     calls = [];
     pushToken = 'apns-token';
     pushHangs = false;
+    allowed = true;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       ..setMockMethodCallHandler(const MethodChannel('pocketterm/native'), (call) async {
         calls.add(call);
         return switch (call.method) {
           'registerPush' when pushHangs => Completer<Object?>().future,
           'registerPush' => pushToken == null ? null : {'token': pushToken},
-          'notificationsAllowed' => true,
+          'notificationsAllowed' => allowed,
           'liveActivities' => [
             {'key': 'mac00001/kitty-1/1', 'token': 'activity-token'},
           ],
@@ -124,12 +128,24 @@ void main() {
 
   testWidgets('a phone that refuses notifications stays off and says where to allow them', (tester) async {
     pushToken = null;
+    allowed = false;
     final (session, remote) = await pumpApp(tester);
     await tester.tap(find.byKey(const ValueKey('push-accept')));
     await tester.pumpAndSettle();
     expect(session.pushEnabled, isFalse);
     expect(session.server.pushes, isEmpty);
     expect(find.text(pushNotAllowed), findsOneWidget);
+    remote.flush();
+  });
+
+  testWidgets('allowed, but no push address from Apple or Google: says so, not that Settings is off', (tester) async {
+    pushToken = null;
+    final (session, remote) = await pumpApp(tester);
+    await tester.tap(find.byKey(const ValueKey('push-accept')));
+    await tester.pumpAndSettle();
+    expect(session.pushEnabled, isFalse);
+    expect(find.text(pushNoToken), findsOneWidget);
+    expect(find.text(pushNotAllowed), findsNothing);
     remote.flush();
   });
 

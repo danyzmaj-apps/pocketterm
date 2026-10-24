@@ -550,7 +550,8 @@ export function register(on: On): void {
 				await sendMeta($);
 			} catch {}
 			// A phone prompt waits: the run goes on.
-			if (queued === 0) send($, { t: "busy", busy: false, summary: summary(e.answer) || undefined });
+			if (queued === 0)
+				send($, { t: "busy", busy: false, summary: summary(e.answer) || undefined, stopped: e.isAborted || undefined });
 		}
 		return next(e);
 	});

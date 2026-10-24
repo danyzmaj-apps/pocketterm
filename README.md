@@ -27,7 +27,7 @@ PocketTerm is a desktop app (macOS menu bar, Windows tray) and a phone app (iPho
 
 ## What it does
 
-- **Conversations.** Each coding session reads as a conversation: streamed Markdown answers, tool calls as cards. Prompt, steer or queue, stop a run, and type `/` for the agent's slash commands.
+- **Conversations.** Each coding session reads as a conversation: streamed Markdown answers, tool calls as cards. Prompt, steer or queue, stop a run, and type `/` for the agent's slash commands. Queued prompts wait on your computer, where you can edit, reorder, delete or pause them from the phone until each one's turn.
 - **Images and files.** Up to 10 per message, from the camera roll, the clipboard or the phone's files, up to 20 MB each. The agent gets them the way you would give them at the computer: saved there and named in the prompt as `@path`.
 - **Approvals and questions.** Answer the agent's questions, approve tool calls and review plans with a tap.
 - **Screens and keys.** Every other terminal window is a live screen you can type and press keys in.

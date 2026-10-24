@@ -398,7 +398,8 @@ case $PHASE in
     flow steer-queue steer_queue.yaml -e SESSION="$ASK_SESSION_RE" -e SLOW="e2e-slow steer run $TERMINAL_ID" \
       -e STEER="steer from phone $TERMINAL_ID" -e STEER_RE="$(re_escape "steer from phone $TERMINAL_ID")" \
       -e QUEUE="queue from phone $TERMINAL_ID" -e QUEUE_RE="$(re_escape "queue from phone $TERMINAL_ID")"
-    flow stop stop.yaml -e SESSION="$ASK_SESSION_RE" -e SLOW="e2e-slow stop run $TERMINAL_ID"
+    flow stop stop.yaml -e SESSION="$ASK_SESSION_RE" -e SLOW="e2e-slow stop run $TERMINAL_ID" \
+      -e HELD="after stop $TERMINAL_ID" -e HELD_RE="$(re_escape "after stop $TERMINAL_ID")"
     flow question question.yaml -e SESSION="$ASK_SESSION_RE" -e PROMPT="e2e-question $TERMINAL_ID"
     flow plan plan.yaml -e SESSION="$ASK_SESSION_RE" -e PROMPT="e2e-plan $TERMINAL_ID"
     flow menu-model menu_model.yaml -e SESSION="$ASK_SESSION_RE"

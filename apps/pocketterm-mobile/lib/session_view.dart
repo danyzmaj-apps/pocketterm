@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' show min;
 
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -212,7 +213,7 @@ class _SessionPageState extends State<SessionPage> {
         ..problem = null;
     });
     try {
-      await remote.prompt(
+      final queued = await remote.prompt(
         key,
         o.text,
         images: [
@@ -225,6 +226,7 @@ class _SessionPageState extends State<SessionPage> {
         ],
         followUp: o.followUp,
       );
+      o.queued = queued;
       // Followed from here on (Lock Screen, Android's notifications), as working.
       final s = remote.session(key);
       if (s != null) unawaited(remote.activities?.prompted(key, title: _title(s)));
@@ -435,6 +437,12 @@ class _SessionPageState extends State<SessionPage> {
     final items = v?.items ?? const <LiveItem>[];
     // Those whose item has come in show as it, in their place.
     if (v != null && _outgoing.isNotEmpty) _outgoing.removeWhere(_cameBack(_outgoing, v).contains);
+    // Queued ones show in the queue strip once it lists them; one that left it at rest went to the agent.
+    if (s != null && _outgoing.isNotEmpty) {
+      final waiting = {for (final q in s.queue) q.id};
+      final atRest = !s.busy && s.ask == null;
+      _outgoing.removeWhere((o) => o.queued != null && (waiting.contains(o.queued) || atRest));
+    }
     if (v != null && items.isNotEmpty && (_anchor == null || _anchorEpoch != v.epoch)) {
       _anchor = items.last.order + 1;
       _anchorEpoch = v.epoch;
@@ -653,6 +661,14 @@ class _SessionPageState extends State<SessionPage> {
                   ),
                 ),
               ),
+            ),
+            _QueueStrip(
+              remote: remote,
+              session: key,
+              summary: s,
+              online: online,
+              steers: agent.steers,
+              toastAbove: _composerKey,
             ),
             Reveal(
               visible: busy && online,
@@ -930,6 +946,9 @@ class _Outgoing {
   /// Why it wasn't sent, when it wasn't.
   String? problem;
 
+  /// The id it waits under in the session's queue on the computer, when it went there.
+  String? queued;
+
   /// The transcript when it went: the person's items there already aren't this one coming back.
   final String? _epoch;
   final int _last;
@@ -983,8 +1002,8 @@ class _OutgoingBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final o = message;
     final problem = o.sending ? null : o.problem;
-    // Accepted, but waiting for the run to end: stays dimmed until the agent takes it.
-    final queued = !o.sending && problem == null && o.followUp;
+    // Accepted, but waiting for the run to end: stays dimmed until the queue strip or the agent shows it.
+    final queued = !o.sending && problem == null && (o.followUp || o.queued != null);
     return GestureDetector(
       onTap: problem != null ? onRetry : null,
       child: Column(
@@ -1052,6 +1071,359 @@ class _OutgoingBubble extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// The prompts waiting on the computer for the run to end, next first: each can be edited, moved, sent now (an agent
+/// that steers) or deleted, and the whole queue paused. A move or a delete shows at once, until the computer's queue
+/// says the same.
+class _QueueStrip extends StatefulWidget {
+  const _QueueStrip({
+    required this.remote,
+    required this.session,
+    required this.summary,
+    required this.online,
+    required this.steers,
+    required this.toastAbove,
+  });
+  final TerminalRemote remote;
+  final String session;
+  final LiveSummary? summary;
+  final bool online;
+
+  /// Its agent takes a prompt mid-run: one can be sent now.
+  final bool steers;
+  final GlobalKey toastAbove;
+
+  @override
+  State<_QueueStrip> createState() => _QueueStripState();
+}
+
+class _QueueStripState extends State<_QueueStrip> {
+  bool _folded = false;
+  bool _pausing = false;
+
+  /// The order set here (ids), until the computer's queue has it.
+  List<String>? _order;
+
+  /// Deleted or sent from here, until the computer's queue no longer has them.
+  final _gone = <String>{};
+
+  /// About one row's height: the list shows three and a half, and scrolls for more.
+  static const _row = 56.0;
+
+  TerminalRemote get remote => widget.remote;
+
+  /// The computer's [queue] in the order set here, and of those the ones that show.
+  (List<LiveQueued>, List<LiveQueued>) _items(List<LiveQueued> queue) {
+    final ids = [for (final q in queue) q.id];
+    _gone.removeWhere((id) => !ids.contains(id));
+    final order = _order;
+    if (order != null && listEquals(ids.where(order.contains).toList(), order.where(ids.contains).toList())) {
+      _order = null;
+    }
+    final byId = {for (final q in queue) q.id: q};
+    final all = _order == null
+        ? queue
+        : [
+            for (final id in _order!) ?byId[id],
+            for (final q in queue)
+              if (!_order!.contains(q.id)) q,
+          ];
+    return (
+      all,
+      [
+        for (final q in all)
+          if (!_gone.contains(q.id)) q,
+      ],
+    );
+  }
+
+  void _toast(Object e) => termToast(context, e, above: widget.toastAbove);
+
+  /// Moves the one shown at [from] to [to] (its place once moved).
+  Future<void> _move(List<LiveQueued> all, List<LiveQueued> shown, int from, int to) async {
+    if (to == from) return;
+    final id = shown[from].id;
+    final seen = [for (final q in shown) q.id]
+      ..removeAt(from)
+      ..insert(to, id);
+    // Where it goes among all of them, those going too: before the one it now sits above, else after the one below.
+    final order = [for (final q in all) q.id]..remove(id);
+    order.insert(to + 1 < seen.length ? order.indexOf(seen[to + 1]) : order.indexOf(seen[to - 1]) + 1, id);
+    setState(() => _order = order);
+    try {
+      await remote.moveQueued(widget.session, id, order.indexOf(id));
+    } on Object catch (e) {
+      if (!mounted) return;
+      setState(() => _order = null);
+      _toast(e);
+    }
+  }
+
+  /// Takes [id] out of the list at once, back if [request] fails.
+  Future<void> _drop(String id, Future<void> Function() request) async {
+    setState(() => _gone.add(id));
+    try {
+      await request();
+    } on Object catch (e) {
+      if (!mounted) return;
+      setState(() => _gone.remove(id));
+      _toast(e);
+    }
+  }
+
+  Future<void> _edit(LiveQueued q) async {
+    final text = await showAppSheet<String>(context, isScrollControlled: true, builder: (_) => _EditQueuedSheet(q));
+    if (text == null || !mounted) return;
+    try {
+      await remote.editQueued(widget.session, q.id, text);
+    } on Object catch (e) {
+      if (mounted) _toast(e);
+    }
+  }
+
+  Future<void> _pause({required bool paused}) async {
+    setState(() => _pausing = true);
+    try {
+      await remote.pauseQueue(widget.session, paused: paused);
+    } on Object catch (e) {
+      if (mounted) _toast(e);
+    }
+    if (mounted) setState(() => _pausing = false);
+  }
+
+  void _act(String what, LiveQueued q) {
+    switch (what) {
+      case 'edit':
+        unawaited(_edit(q));
+      case 'send':
+        unawaited(_drop(q.id, () => remote.sendQueuedNow(widget.session, q.id)));
+      case 'delete':
+        unawaited(_drop(q.id, () => remote.removeQueued(widget.session, q.id)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.summary;
+    final (all, shown) = _items(s?.queue ?? const []);
+    final paused = s?.paused ?? false;
+    final online = widget.online;
+    return Reveal(
+      visible: shown.isNotEmpty,
+      child: shown.isEmpty
+          ? const SizedBox.shrink()
+          : TextFieldTapRegion(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 0, 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Semantics(
+                      identifier: 'queue-strip',
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              key: const ValueKey('queue-fold'),
+                              canRequestFocus: false,
+                              borderRadius: BorderRadius.circular(6),
+                              onTap: () => setState(() => _folded = !_folded),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                child: Row(
+                                  children: [
+                                    Icon(_folded ? Icons.chevron_right : Icons.expand_more, size: 18, color: C.dim),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${paused ? 'Queue paused' : 'Queued'} · ${shown.length}',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: paused ? C.warn : C.dim,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            key: ValueKey(paused ? 'queue-resume' : 'queue-pause'),
+                            onPressed: online && !_pausing ? () => unawaited(_pause(paused: !paused)) : null,
+                            child: Text(paused ? 'Resume' : 'Pause'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (paused && !(s?.busy ?? false))
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(22, 0, 8, 4),
+                        child: Text('Nothing goes until you resume.', style: TextStyle(fontSize: 12, color: C.dim)),
+                      ),
+                    if (!_folded)
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: _row * 3.5),
+                        child: ReorderableListView(
+                          shrinkWrap: true,
+                          buildDefaultDragHandles: false,
+                          padding: EdgeInsets.zero,
+                          onReorderItem: (from, to) => unawaited(_move(all, shown, from, to)),
+                          children: [for (final (i, q) in shown.indexed) _rowFor(q, i, online: online)],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+
+  Widget _rowFor(LiveQueued q, int index, {required bool online}) {
+    final extras = [if (q.images > 0) '⊕ ${q.images} image${q.images == 1 ? '' : 's'}', ...q.files];
+    return Dismissible(
+      key: ValueKey('queued-${q.id}'),
+      direction: online ? DismissDirection.endToStart : DismissDirection.none,
+      background: Container(
+        color: _danger.withValues(alpha: .15),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 16),
+        child: const Icon(Icons.delete_outline, color: _danger),
+      ),
+      onDismissed: (_) => _act('delete', q),
+      child: ColoredBox(
+        color: C.bar,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: _row - 8),
+          child: Row(
+            children: [
+              ReorderableDragStartListener(
+                index: index,
+                enabled: online,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 8, 8, 8),
+                  child: Icon(Icons.drag_handle, size: 20, color: online ? C.dim : C.dim2),
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      q.text.isEmpty ? '(no text)' : q.text,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: q.text.isEmpty
+                          ? const TextStyle(fontSize: 14, color: C.dim, fontStyle: FontStyle.italic)
+                          : const TextStyle(fontSize: 14, color: C.text, height: 1.3),
+                    ),
+                    if (extras.isNotEmpty)
+                      Text(
+                        extras.join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, color: C.dim),
+                      ),
+                  ],
+                ),
+              ),
+              PopupMenuButton<String>(
+                key: ValueKey('queued-menu-${q.id}'),
+                tooltip: 'More',
+                enabled: online,
+                icon: Icon(Icons.more_vert, size: 20, color: online ? C.dim : C.dim2),
+                color: C.bar,
+                onSelected: (what) => _act(what, q),
+                itemBuilder: (_) => [
+                  if (!q.cut) const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                  if (widget.steers) const PopupMenuItem(value: 'send', child: Text('Send now')),
+                  const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A queued prompt's text to change. Pops the new text, null if not. Empty only when images or files go with it.
+class _EditQueuedSheet extends StatefulWidget {
+  const _EditQueuedSheet(this.item);
+  final LiveQueued item;
+
+  @override
+  State<_EditQueuedSheet> createState() => _EditQueuedSheetState();
+}
+
+class _EditQueuedSheetState extends State<_EditQueuedSheet> {
+  late final _field = TextEditingController(text: widget.item.text);
+
+  @override
+  void initState() {
+    super.initState();
+    _field.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _field.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = widget.item;
+    final text = _field.text.trim();
+    final canSave = text.isNotEmpty || q.images > 0 || q.files.isNotEmpty;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Edit queued prompt', style: sheetTitleStyle),
+              const SizedBox(height: 12),
+              TextField(
+                key: const ValueKey('queued-edit-field'),
+                controller: _field,
+                autofocus: true,
+                minLines: 3,
+                maxLines: 10,
+                textCapitalization: TextCapitalization.sentences,
+                style: const TextStyle(fontSize: 16, height: 1.4),
+                decoration: setupField('Prompt'),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                alignment: WrapAlignment.end,
+                runSpacing: 4,
+                children: [
+                  TextButton(
+                    key: const ValueKey('queued-edit-cancel'),
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel', style: TextStyle(color: C.text)),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    key: const ValueKey('queued-edit-save'),
+                    onPressed: canSave ? () => Navigator.of(context).pop(text) : null,
+                    child: const Text('Save'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

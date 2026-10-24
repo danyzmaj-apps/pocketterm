@@ -201,11 +201,22 @@ export function assistantItems(msg: Msg, id: string): Item[] {
 	return items;
 }
 
+/** Whether the person stopped this answer (not a silent abort omp does itself). */
+export function wasInterrupted(msg: Msg): boolean {
+	return msg.stopReason === "aborted" && msg.errorMessage !== SILENT_ABORT;
+}
+
 /** What to say when an answer broke off: the error (unless a retry got past it), or that it was interrupted. */
 export function endNotice(msg: Msg): string | undefined {
 	if (msg.stopReason === "error" && !msg.retryRecovery) return msg.errorMessage?.trim() || "Error";
-	if (msg.stopReason === "aborted" && msg.errorMessage !== SILENT_ABORT) return "Interrupted";
+	if (wasInterrupted(msg)) return "Interrupted";
 	return undefined;
+}
+
+/** Whether a run ended because the person stopped it: its last answer was interrupted. */
+export function runStopped(messages: readonly unknown[]): boolean {
+	const last = (messages as Msg[]).findLast((m) => m?.role === "assistant");
+	return last !== undefined && wasInterrupted(last);
 }
 
 /** A `!command` (or `$code`) the person ran themselves. */
@@ -829,7 +840,8 @@ export default function liveExtension(pi: ExtensionAPI) {
 			tools.clear();
 			toolArgs.clear();
 			const summary = lastAnswer(event.messages);
-			send({ t: "busy", busy: false, summary: summary || undefined });
+			const stopped = runStopped(event.messages) || undefined;
+			send({ t: "busy", busy: false, summary: summary || undefined, stopped });
 		}),
 	);
 	pi.on("turn_end", (_event, c) =>

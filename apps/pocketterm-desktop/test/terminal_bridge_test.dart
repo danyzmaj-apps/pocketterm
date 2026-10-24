@@ -12,6 +12,7 @@ import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/ghostty.dart';
 import 'package:pocketterm_core/kitty.dart';
+import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/live_activity.dart';
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/terminal.dart';
@@ -102,6 +103,28 @@ void main() {
       final fit = TerminalBridge.fitState(state(windows: 4000, projects: 0), watched: const {}, maxBytes: 100000);
       expect(size(fit), lessThanOrEqualTo(100000));
       expect((fit['windows'] as List).first, containsPair('key', 'kitty-1/0'));
+    });
+
+    test("unwatched sessions' queued prompts keep their start before anything a phone shows goes", () {
+      final long = List.filled(4000, 'word').join(' ');
+      final s = state(sessions: 8, projects: 100);
+      for (final session in (s['sessions'] as List).cast<Map<String, dynamic>>()) {
+        session['queue'] = [
+          for (var i = 0; i < 4; i++) {'id': '${session['key']}-$i', 't': long, 'im': 1},
+        ];
+      }
+      final fit = TerminalBridge.fitState(s, watched: {'kitty-1/3'});
+      expect(size(fit), lessThanOrEqualTo(150000));
+      final sessions = (fit['sessions'] as List).cast<Map<String, dynamic>>();
+      final watched = (sessions[3]['queue'] as List).cast<Map<String, dynamic>>();
+      expect(watched.map((q) => q['t']), everyElement(long), reason: 'the session a phone shows keeps them whole');
+      expect(watched.map((q) => q['c']), everyElement(isNull));
+      final other = LiveSummary.fromJson(sessions[0]).queue;
+      expect(other.map((q) => q.cut), everyElement(isTrue));
+      expect(other.first.text, startsWith('word word'));
+      expect(other.first.text.length, lessThan(long.length));
+      expect(other.first.images, 1);
+      expect((fit['projects'] as List).length, 100, reason: 'nothing else had to go');
     });
 
     test('a screen keeps its newest lines; a single line too long keeps its start', () {

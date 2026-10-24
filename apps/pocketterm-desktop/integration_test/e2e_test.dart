@@ -946,7 +946,9 @@ class _Run {
       await r.prompt(key, 'e2e-slow steer run $t');
       await working(key);
       await r.prompt(key, 'steer from phone $t');
-      await r.prompt(key, 'queue from phone $t', followUp: true);
+      final queued = await r.prompt(key, 'queue from phone $t', followUp: true);
+      expect(queued, isNotNull, reason: 'it waits in the queue on the computer');
+      await until('the prompt in the queue', () => r.session(key)?.queue.any((q) => q.id == queued) ?? false);
       await until(
         'the queued prompt ran',
         () =>
@@ -954,12 +956,22 @@ class _Run {
                 .any((e) => e['event'] == 'prompt' && '${e['text']}'.contains('queue from phone')),
         timeout: const Duration(seconds: 120),
       );
+      await until('the queue empty', () => r.session(key)?.queue.isEmpty ?? false);
     });
     await act('stop', () async {
       final key = await atRest();
       await r.prompt(key, 'e2e-slow stop run $t');
       await working(key);
+      await r.prompt(key, 'after stop $t', followUp: true);
       await r.abort(key);
+      await atRest();
+      await until('the queue held', () => r.session(key)?.paused ?? false);
+      expect(r.session(key)!.queue.map((q) => q.text), ['after stop $t']);
+      await r.pauseQueue(key, paused: false);
+      await until(
+        'the held prompt ran on Resume',
+        () => fakeOmpLog(dir('newsess')).any((e) => e['event'] == 'prompt' && '${e['text']}'.contains('after stop')),
+      );
       await atRest();
     });
     await act('question', () async {
@@ -1143,17 +1155,29 @@ class _Run {
       expect('${e['text']}'.startsWith('steer from phone'), isTrue, reason: '$e');
     });
     await report.step('phone: a queued prompt runs after the turn', () async {
-      await until('queued, then run', () {
+      await until('steered, then run on its own', () {
         final l = log('newsess');
-        final queued = l.indexWhere((e) => says(e, 'queued', 'queue from phone'));
-        return queued >= 0 && l.skip(queued + 1).any((e) => says(e, 'prompt', 'queue from phone'));
+        final steer = l.indexWhere((e) => says(e, 'steer', 'steer from phone'));
+        return steer >= 0 && l.skip(steer + 1).any((e) => says(e, 'prompt', 'queue from phone'));
       }, timeout: const Duration(seconds: 60));
+      expect(
+        log('newsess').where((e) => says(e, 'queued', 'queue from phone')),
+        isEmpty,
+        reason: 'it waited on the computer, not in the agent',
+      );
     });
     await report.step('phone: Stop interrupts the agent', () async {
       await until('stopped from the phone', () {
         final l = log('newsess');
         final slow = l.indexWhere((e) => says(e, 'prompt', 'e2e-slow stop run'));
         return slow >= 0 && l.skip(slow + 1).any((e) => e['event'] == 'abort' && e['why'] == 'phone');
+      }, timeout: const Duration(seconds: 60));
+    });
+    await report.step('phone: Stop holds the queue; Resume sends what waits', () async {
+      await until('stopped, then the held prompt', () {
+        final l = log('newsess');
+        final stop = l.indexWhere((e) => e['event'] == 'abort' && e['why'] == 'phone');
+        return stop >= 0 && l.skip(stop + 1).any((e) => says(e, 'prompt', 'after stop'));
       }, timeout: const Duration(seconds: 60));
     });
     await report.step('phone: the agent\u2019s question answered', () async {

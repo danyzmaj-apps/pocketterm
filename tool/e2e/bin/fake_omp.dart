@@ -240,11 +240,16 @@ class FakeOmp {
 
   // ------------------------------------------------------------ the agent
 
-  void _setBusy(bool busy, {String? summary}) {
+  void _setBusy(bool busy, {String? summary, bool stopped = false}) {
     _busy = busy;
     _spin?.cancel();
     _spin = busy ? Timer.periodic(const Duration(milliseconds: 150), (_) => _render(spin: true)) : null;
-    _send({'t': 'busy', 'busy': busy, if (!busy && summary != null && summary.isNotEmpty) 'summary': summary});
+    _send({
+      't': 'busy',
+      'busy': busy,
+      if (!busy && summary != null && summary.isNotEmpty) 'summary': summary,
+      if (!busy && stopped) 'stopped': true,
+    });
     _render();
   }
 
@@ -439,7 +444,7 @@ class FakeOmp {
     _streaming = null;
     _dropAsk();
     _put({'id': _itemId(), 'k': 'notice', 't': 'Interrupted'});
-    _setBusy(false);
+    _setBusy(false, stopped: true);
   }
 
   // ------------------------------------------------------------ keys

@@ -1,6 +1,6 @@
 # While the agent works: a prompt steers it at once (shown right away, and
 # the agent says it took it when the run ends), and with Queue on a prompt
-# waits for the run to end and then runs on its own.
+# waits in the queue above the field for the run to end and then runs on its own.
 #   env: SESSION (regex), SLOW, STEER, STEER_RE, QUEUE, QUEUE_RE
 appId: com.danyzmaj.pocketterm
 ---
@@ -48,6 +48,11 @@ appId: com.danyzmaj.pocketterm
     id: "session-input"
 - inputText: ${QUEUE}
 - tapOn: "\n?Send"
+- extendedWaitUntil:
+    visible:
+      id: "queue-strip"
+    timeout: 15000
+- takeScreenshot: queued
 - extendedWaitUntil:
     visible: ".*fake steered: ${STEER_RE}.*"
     timeout: 90000

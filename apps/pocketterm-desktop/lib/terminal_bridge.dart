@@ -401,10 +401,11 @@ class TerminalBridge {
   }
 
   /// [state] cut to at most [maxBytes] of JSON, least needed first: the slash commands of the sessions no phone
-  /// shows ([watched]: the ones phones show), the repositories in the Project folders that don't fit, every
-  /// command's description, every session's commands, then windows from the end of the list. Many coding sessions
-  /// (each with its agent's whole list of commands) or a Project folder with thousands of repositories would
-  /// otherwise make a state the server can't take.
+  /// shows ([watched]: the ones phones show), the queued prompts of those sessions to their start, the repositories
+  /// in the Project folders that don't fit, every command's description, every session's commands, every queued
+  /// prompt to its start, then windows from the end of the list. Many coding sessions (each with its agent's whole
+  /// list of commands) or a Project folder with thousands of repositories would otherwise make a state the server
+  /// can't take.
   @visibleForTesting
   static Map<String, dynamic> fitState(
     Map<String, dynamic> state, {
@@ -434,6 +435,29 @@ class TerminalBridge {
     }
 
     cmds((s, c) => watched.contains(s['key']) ? c : null);
+    // A queued prompt cut to its start: the phone shows it, but doesn't offer to edit it.
+    void queues(bool Function(Map<String, dynamic> session) which) {
+      if (total <= maxBytes) return;
+      out['sessions'] = [
+        for (final s in (out['sessions'] as List).cast<Map<String, dynamic>>())
+          if (s['queue'] case final List<Object?> queue when which(s))
+            {
+              ...s,
+              'queue': [
+                for (final q in queue.cast<Map<String, dynamic>>())
+                  if (q['t'] case final String t when t.length > _queuedStart)
+                    {...q, 't': '${t.substring(0, _queuedStart)}…', 'c': true}
+                  else
+                    q,
+              ],
+            }
+          else
+            s,
+      ];
+      total = size(out);
+    }
+
+    queues((s) => !watched.contains(s['key']));
     if (out['projects'] case final List<Object?> projects when total > maxBytes) {
       var room = maxBytes - (total - size(projects));
       out['projects'] = [
@@ -451,6 +475,7 @@ class TerminalBridge {
       );
     }
     if (total > maxBytes) cmds((s, c) => null);
+    queues((s) => true);
     if (total > maxBytes) {
       final windows = (out['windows'] as List).toList();
       while (total > maxBytes && windows.isNotEmpty) {
@@ -460,6 +485,9 @@ class TerminalBridge {
     }
     return out;
   }
+
+  /// How much of a queued prompt's text a state too big for it keeps.
+  static const _queuedStart = 200;
 
   bool _askingAgents = false;
 
@@ -611,6 +639,7 @@ class TerminalBridge {
     String? error;
     String? window;
     bool? busy;
+    String? queued;
     try {
       switch (p['op']) {
         case 'send':
@@ -648,7 +677,9 @@ class TerminalBridge {
             agent: p['agent'] == true ? _agent() : null,
           );
         case 'prompt':
-          await _prompt(p);
+          queued = await _prompt(p);
+        case 'queue':
+          await _queue(p);
         case 'abort':
           await _hub.abort(p['session'] as String);
         case 'answer':
@@ -665,15 +696,15 @@ class TerminalBridge {
     } on Object catch (e) {
       error = 'The computer could not do that: $e';
     }
-    final ran = {'id': id, 'error': ?error, 'window': ?window, 'busy': ?busy};
+    final ran = {'id': id, 'error': ?error, 'window': ?window, 'busy': ?busy, 'queued': ?queued};
     _runs.done(id, ran);
     _send('ran', ran);
     unawaited(_poll(windows: const {'launch', 'create', 'close', 'switch'}.contains(p['op'])));
   }
 
   /// The phone's prompt, with its images and files fetched from Storage
-  /// (and deleted).
-  Future<void> _prompt(Map<String, dynamic> p) async {
+  /// (and deleted): the id it waits under in the session's queue, if it waits there.
+  Future<String?> _prompt(Map<String, dynamic> p) async {
     // The agent's own commands (/resume, /model …) are read by its editor,
     // not the model: type them into its window like the person would, and
     // follow the pickers they open.
@@ -694,7 +725,7 @@ class TerminalBridge {
       if (cantCommand(_terms, window) case final why?) throw LiveException(why);
       await _terms.send(window!, text, enter: true);
       unawaited(_followMenus(key));
-      return;
+      return null;
     }
     for (final path in blobs) {
       if (!Server.isBlobPath(path)) throw const LiveException('Bad image or file path.');
@@ -705,12 +736,13 @@ class TerminalBridge {
         for (final f in files)
           (name: f.name, mime: f.mime, bytes: await openBlob(_key, f.path, await _server.getBlob(f.path))),
       ];
-      await _hub.prompt(
+      return await _hub.prompt(
         p['session'] as String,
         p['text'] as String? ?? '',
         images: images,
         files: opened,
         followUp: p['deliver'] == 'followUp',
+        id: p['id'] as String?,
       );
     } finally {
       // The server drops one once it's downloaded; one that didn't come down goes too.
@@ -719,6 +751,28 @@ class TerminalBridge {
           _server.deleteBlob(path).then((_) {}, onError: (Object e) => debugPrint('PocketTerm: blob cleanup: $e')),
         );
       }
+    }
+  }
+
+  /// The phone's change to a session's queue (LiveHub).
+  Future<void> _queue(Map<String, dynamic> p) async {
+    final key = p['session'] as String;
+    final item = p['item'] as String? ?? '';
+    switch (p['do']) {
+      case 'edit':
+        _hub.editQueued(key, item, p['text'] as String? ?? '');
+      case 'remove':
+        _hub.removeQueued(key, item);
+      case 'move':
+        _hub.moveQueued(key, item, (p['to'] as num?)?.toInt() ?? 0);
+      case 'send':
+        await _hub.sendQueuedNow(key, item);
+      case 'pause':
+        _hub.pauseQueue(key, paused: true);
+      case 'resume':
+        _hub.pauseQueue(key, paused: false);
+      default:
+        throw const LiveException('Unknown change to the queue.');
     }
   }
 

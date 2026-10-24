@@ -122,7 +122,30 @@ void main() {
       if (r['op'] == 'prompt') r,
   ];
 
-  void ran(Map<String, dynamic> run, {String? error}) => remote.handle('ran', {'id': run['id'], 'error': ?error});
+  void ran(Map<String, dynamic> run, {String? error, String? queued}) =>
+      remote.handle('ran', {'id': run['id'], 'error': ?error, 'queued': ?queued});
+
+  /// The computer's state: the session at work, with [queue] waiting in it.
+  void working({List<Map<String, dynamic>> queue = const []}) => remote.handle('state', {
+    'windows': [
+      {'key': _session, 'title': 'omp', 'cwd': '/Users/me/a', 'program': 'omp', 'app': 'kitty'},
+    ],
+    'sessions': [
+      {
+        'key': _session,
+        'id': 's2',
+        'agent': 'omp',
+        'window': _session,
+        'title': 'The session',
+        'cwd': '/Users/me/a',
+        'busy': true,
+        'at': DateTime.now().millisecondsSinceEpoch,
+        if (queue.isNotEmpty) 'queue': queue,
+      },
+    ],
+    'home': '/Users/me',
+    'agent': 'omp',
+  });
 
   final outgoing = find.byKey(const ValueKey('outgoing'));
   final sending = find.byKey(const ValueKey('outgoing-sending'));
@@ -202,32 +225,16 @@ void main() {
     expect(find.text('deploy it'), findsOneWidget);
   });
 
-  testWidgets('a queued prompt stays dimmed and says Queued until the agent takes it', (tester) async {
-    remote.handle('state', {
-      'windows': [
-        {'key': _session, 'title': 'omp', 'cwd': '/Users/me/a', 'program': 'omp', 'app': 'kitty'},
-      ],
-      'sessions': [
-        {
-          'key': _session,
-          'id': 's2',
-          'agent': 'omp',
-          'window': _session,
-          'title': 'The session',
-          'cwd': '/Users/me/a',
-          'busy': true,
-          'at': DateTime.now().millisecondsSinceEpoch,
-        },
-      ],
-      'home': '/Users/me',
-      'agent': 'omp',
-    });
+  testWidgets('a queued prompt stays dimmed and says Queued until the queue lists it, then shows there', (
+    tester,
+  ) async {
+    working();
     await open(tester);
     await tester.tap(find.byKey(const ValueKey('follow-up')));
     await tester.pump();
     await send(tester, 'then update the docs');
     expect(prompts().single, containsPair('deliver', 'followUp'));
-    ran(prompts().single);
+    ran(prompts().single, queued: 'q1');
     await tester.pump();
     final queued = find.byKey(const ValueKey('outgoing-queued'));
     expect(queued, findsOneWidget);
@@ -236,6 +243,29 @@ void main() {
       tester.widget<AnimatedOpacity>(find.descendant(of: outgoing, matching: find.byType(AnimatedOpacity))).opacity,
       .6,
     );
+
+    working(
+      queue: [
+        {'id': 'q1', 't': 'then update the docs'},
+      ],
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(outgoing, findsNothing);
+    expect(find.byKey(const ValueKey('queued-q1')), findsOneWidget);
+    expect(find.text('then update the docs'), findsOneWidget, reason: 'once, in the queue');
+  });
+
+  testWidgets('a follow-up an older computer took without a queue id stays Queued until the agent takes it', (
+    tester,
+  ) async {
+    working();
+    await open(tester);
+    await tester.tap(find.byKey(const ValueKey('follow-up')));
+    await tester.pump();
+    await send(tester, 'then update the docs');
+    ran(prompts().single);
+    await tester.pump();
+    expect(find.byKey(const ValueKey('outgoing-queued')), findsOneWidget);
 
     echo('then update the docs');
     await tester.pump();

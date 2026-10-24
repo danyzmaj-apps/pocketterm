@@ -1,6 +1,7 @@
 # Stop while the agent works: the run ends at once, the transcript says
-# Interrupted, and Stop goes away.
-#   env: SESSION (regex), SLOW
+# Interrupted, and Stop goes away. A prompt queued before Stop stays in the
+# queue, paused, until Resume sends it.
+#   env: SESSION (regex), SLOW, HELD, HELD_RE
 appId: com.danyzmaj.pocketterm
 ---
 - runFlow: sub/home.yaml
@@ -18,6 +19,18 @@ appId: com.danyzmaj.pocketterm
     visible: "Stop"
     timeout: 15000
 - takeScreenshot: working
+# Queue on: the prompt waits in the queue on the computer, shown above the field.
+- tapOn: "Queue(\n.*)?"
+- tapOn:
+    id: "session-input"
+- inputText: ${HELD}
+- tapOn: "\n?Send"
+- extendedWaitUntil:
+    visible:
+      id: "queue-strip"
+    timeout: 15000
+- assertVisible: ".*${HELD_RE}.*"
+- takeScreenshot: queued
 - tapOn: "Stop"
 - extendedWaitUntil:
     visible: ".*Interrupted.*"
@@ -25,5 +38,18 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     notVisible: "Stop"
     timeout: 15000
+# Stopped: the queue holds what waits until Resume.
+- extendedWaitUntil:
+    visible: "Queue paused.*"
+    timeout: 15000
 - takeScreenshot: stopped
+- tapOn: "Resume"
+- extendedWaitUntil:
+    visible: ".*fake reply: ${HELD_RE}.*"
+    timeout: 30000
+- extendedWaitUntil:
+    notVisible:
+      id: "queue-strip"
+    timeout: 15000
+- takeScreenshot: resumed
 - runFlow: sub/back.yaml

@@ -79,8 +79,8 @@ Run the e2e suite on a quiet Mac: it opens throwaway terminal windows and refuse
 | New session (+): plain shell | flow `new_shell`; step "phone: new shell opens in <terminal> without an agent" | none |
 | New session (+): New project… | flow `new_project`; step "phone: new project made in the project folder" | none |
 | Conversation: prompt and streamed reply | flows `conversation-*`; step "phone: prompt reaches the agent" | none |
-| Conversation: steer while it works, Queue | flow `steer_queue`; steps "phone: steer reaches the agent while it works", "phone: a queued prompt runs after the turn" | none |
-| Conversation: Stop | flow `stop`; step "phone: Stop interrupts the agent" | none |
+| Conversation: steer while it works, Queue | flow `steer_queue`; steps "phone: steer reaches the agent while it works", "phone: a queued prompt runs after the turn"; `live_hub_test.dart` "the queue" (edit, move, remove, Send now, limits, reconnect); `queue_strip_test.dart` | none |
+| Conversation: Stop | flow `stop`; steps "phone: Stop interrupts the agent", "phone: Stop holds the queue; Resume sends what waits" | none |
 | Conversation: Continue chip | flow `switch` (Just restart) | none |
 | Slash commands: / list, /new | flows `slash_new`, `real_omp`; step "phone: /new starts a fresh session in place" | none |
 | Slash command pickers: /model, /resume (search, Cancel) | flows `menu_model`, `menu_resume`; steps "phone: /model picker answered", "phone: /resume picker searched and answered"; `live_test.dart` (parseMenu) | none |

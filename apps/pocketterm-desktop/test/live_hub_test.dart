@@ -391,6 +391,188 @@ void main() {
     await expectLater(failing, throwsA(isA<LiveException>().having((e) => e.message, 'message', 'Nothing to stop.')));
   });
 
+  group('the queue', () {
+    const key = 'kitty-1/7';
+    List<String> queued() => [for (final q in hub[key]!.summary.queue) q.text];
+
+    /// An omp session at work.
+    Future<_Ext> working() async {
+      final ext = await connect();
+      ext
+        ..hello()
+        ..send({'t': 'busy', 'busy': true});
+      await until(() => hub[key]?.busy ?? false);
+      return ext;
+    }
+
+    /// The prompt the hub hands [ext] next, answered.
+    Future<Map<String, dynamic>> handed(_Ext ext) async {
+      final req = await ext.request();
+      expect(req, containsPair('t', 'prompt'));
+      ext.send({'t': 'reply', 'req': req['req']});
+      return req;
+    }
+
+    test(
+      'a prompt sent to wait goes when the run ends, one per run, and the session never looks done between',
+      () async {
+        final events = <LiveEvent>[];
+        final sub = hub.events.listen(events.add);
+        addTearDown(sub.cancel);
+        final ext = await working();
+        final first = await hub.prompt(key, 'then the docs', followUp: true);
+        await hub.prompt(key, 'then the changelog', followUp: true);
+        expect(first, isNotNull);
+        expect(queued(), ['then the docs', 'then the changelog']);
+        expect(hub[key]!.summary.queue.first.id, first);
+
+        ext.send({'t': 'busy', 'busy': false, 'summary': 'Fixed.'});
+        final req = await handed(ext);
+        expect(req['text'], 'then the docs');
+        expect(req['deliver'], 'followUp', reason: 'an agent that started meanwhile keeps it for the run end');
+        expect(hub[key]!.busy, isTrue, reason: 'working from the hand-off on');
+        expect(queued(), ['then the changelog']);
+
+        ext
+          ..send({'t': 'busy', 'busy': true})
+          ..send({'t': 'busy', 'busy': false, 'summary': 'Docs done.'});
+        expect((await handed(ext))['text'], 'then the changelog');
+        ext
+          ..send({'t': 'busy', 'busy': true})
+          ..send({'t': 'busy', 'busy': false, 'summary': 'All done.'});
+        await until(() => !hub[key]!.busy);
+        expect(queued(), isEmpty);
+        await Future<void>.delayed(Duration.zero);
+        expect([for (final e in events.whereType<LiveFinished>()) e.summary], ['All done.']);
+      },
+    );
+
+    test('a steer and a prompt to an agent at rest go now; Claude Code queues any prompt while it works', () async {
+      final ext = await working();
+      final steer = hub.prompt(key, 'look at the tests too');
+      final req = await handed(ext);
+      expect(await steer, isNull);
+      expect(req['deliver'], 'steer');
+
+      final claude = await connect();
+      claude.send({
+        't': 'hello',
+        'agent': 'claude',
+        'session': {'id': 'c1', 'cwd': '/tmp'},
+        'window': 'kitty-1/8',
+        'busy': true,
+      });
+      await until(() => hub['kitty-1/8']?.busy ?? false);
+      expect(await hub.prompt('kitty-1/8', 'and then this'), isNotNull);
+      expect(hub['kitty-1/8']!.summary.queue.single.text, 'and then this');
+      await expectLater(
+        hub.sendQueuedNow('kitty-1/8', hub['kitty-1/8']!.summary.queue.single.id),
+        throwsA(isA<LiveException>()),
+      );
+    });
+
+    test('Stop holds the queue until Resume; so does a run stopped at the computer', () async {
+      final ext = await working();
+      await hub.prompt(key, 'next', followUp: true);
+      final stopping = hub.abort(key);
+      final abort = await ext.request();
+      expect(abort['t'], 'abort');
+      ext
+        ..send({'t': 'reply', 'req': abort['req']})
+        ..send({'t': 'busy', 'busy': false, 'stopped': true});
+      await stopping;
+      await until(() => !hub[key]!.busy);
+      expect(hub[key]!.summary.paused, isTrue);
+      expect(queued(), ['next']);
+
+      hub.pauseQueue(key, paused: false);
+      expect((await handed(ext))['text'], 'next');
+
+      // Esc at the computer: the extension says the run was stopped.
+      ext.send({'t': 'busy', 'busy': true});
+      await until(() => hub[key]!.busy && queued().isEmpty);
+      await hub.prompt(key, 'after that', followUp: true);
+      ext.send({'t': 'busy', 'busy': false, 'stopped': true});
+      await until(() => !hub[key]!.busy);
+      expect(hub[key]!.summary.paused, isTrue);
+      expect(queued(), ['after that']);
+    });
+
+    test('edits, moves and removals change what goes; an emptied queue is no longer paused', () async {
+      final ext = await working();
+      final a = (await hub.prompt(key, 'a', followUp: true))!;
+      final b = (await hub.prompt(key, 'b', followUp: true))!;
+      final c = (await hub.prompt(key, 'c', followUp: true))!;
+      hub
+        ..editQueued(key, b, 'b, but better')
+        ..moveQueued(key, c, 0)
+        ..removeQueued(key, a);
+      expect(queued(), ['c', 'b, but better']);
+      expect(() => hub.editQueued(key, c, '  '), throwsA(isA<LiveException>()), reason: 'nothing left to send');
+      expect(() => hub.removeQueued(key, a), throwsA(isA<LiveException>()), reason: 'gone already');
+
+      hub
+        ..pauseQueue(key, paused: true)
+        ..removeQueued(key, c)
+        ..removeQueued(key, b);
+      expect(hub[key]!.summary.paused, isFalse);
+
+      await hub.prompt(key, 'd', followUp: true);
+      ext.send({'t': 'busy', 'busy': false});
+      expect((await handed(ext))['text'], 'd');
+    });
+
+    test('Send now steers the run with it, out of the queue', () async {
+      final ext = await working();
+      await hub.prompt(key, 'first', followUp: true);
+      final now = (await hub.prompt(key, 'right away', followUp: true))!;
+      final sending = hub.sendQueuedNow(key, now);
+      final req = await handed(ext);
+      await sending;
+      expect(req['text'], 'right away');
+      expect(req['deliver'], 'steer');
+      expect(queued(), ['first']);
+    });
+
+    test("one the agent doesn't take goes back first, and the queue pauses", () async {
+      final ext = await working();
+      await hub.prompt(key, 'one', followUp: true);
+      await hub.prompt(key, 'two', followUp: true);
+      ext.send({'t': 'busy', 'busy': false});
+      final req = await ext.request();
+      ext.send({'t': 'reply', 'req': req['req'], 'error': 'No model.'});
+      await until(() => !hub[key]!.busy);
+      expect(queued(), ['one', 'two']);
+      expect(hub[key]!.summary.paused, isTrue);
+    });
+
+    test('the same agent back in the same window keeps the queue', () async {
+      final ext = await working();
+      await hub.prompt(key, 'still wanted', followUp: true);
+      await ext.ws.close();
+      await until(() => hub[key] == null);
+
+      final again = await connect();
+      again.send({
+        't': 'hello',
+        'session': {'id': 's1', 'cwd': '/tmp'},
+        'window': key,
+        'busy': true,
+      });
+      await until(() => hub[key] != null);
+      expect(queued(), ['still wanted']);
+    });
+
+    test('it holds at most ${LiveHub.maxQueued} prompts', () async {
+      await working();
+      for (var i = 0; i < LiveHub.maxQueued; i++) {
+        await hub.prompt(key, 'p$i', followUp: true);
+      }
+      await expectLater(hub.prompt(key, 'one more', followUp: true), throwsA(isA<LiveException>()));
+      expect(queued(), hasLength(LiveHub.maxQueued));
+    });
+  });
+
   group('a prompt with files', () {
     late Directory dir;
     final png = Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 1]);

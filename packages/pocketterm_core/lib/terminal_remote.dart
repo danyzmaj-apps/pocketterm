@@ -639,8 +639,10 @@ class TerminalRemote extends ChangeNotifier {
   /// [files] (any file, as it is). Their bytes pass through the server
   /// sealed with [key]; a file's name and type go inside the sealed request.
   /// While omp works the prompt steers it, or waits for the turn to end if
-  /// [followUp]; Claude Code always waits.
-  Future<void> prompt(
+  /// [followUp]; Claude Code always waits. One that waits goes to the
+  /// session's queue on the computer: the id it waits under there
+  /// ([LiveSummary.queue]), else null.
+  Future<String?> prompt(
     String session,
     String text, {
     List<Uint8List> images = const [],
@@ -711,6 +713,7 @@ class TerminalRemote extends ChangeNotifier {
       _unanswered = null;
       // The computer had it already, with the images and files sent the first time.
       if (reply['repeat'] == true) forget();
+      return reply['queued'] as String?;
     } on TerminalException catch (e) {
       _unanswered = e is _NoAnswer ? (what: what, id: id, at: again?.at ?? now) : null;
       // The Mac deletes them once used; unanswered, nobody would.
@@ -721,6 +724,26 @@ class TerminalRemote extends ChangeNotifier {
 
   /// Esc: stops what the agent is doing.
   Future<void> abort(String session) => _run({'op': 'abort', 'session': session});
+
+  /// Changes [session]'s queue on the computer ([LiveSummary.queue]): [item]'s text to [text].
+  Future<void> editQueued(String session, String item, String text) =>
+      _queue(session, 'edit', {'item': item, 'text': text});
+
+  /// Takes [item] out of [session]'s queue: it never goes.
+  Future<void> removeQueued(String session, String item) => _queue(session, 'remove', {'item': item});
+
+  /// Moves [item] to place [to] (0: next) in [session]'s queue.
+  Future<void> moveQueued(String session, String item, int to) => _queue(session, 'move', {'item': item, 'to': to});
+
+  /// Sends [item] now, out of [session]'s queue: it steers the run (omp).
+  Future<void> sendQueuedNow(String session, String item) => _queue(session, 'send', {'item': item});
+
+  /// Holds [session]'s queue, or lets it go on ([paused] false): the next prompt goes when the run ends, or now if
+  /// it has ended.
+  Future<void> pauseQueue(String session, {required bool paused}) => _queue(session, paused ? 'pause' : 'resume');
+
+  Future<void> _queue(String session, String what, [Map<String, Object?> args = const {}]) =>
+      _run({'op': 'queue', 'session': session, 'do': what, ...args});
 
   /// Answers [ask]: [answers] (one per question), or [approve] an approval.
   Future<void> answer(String session, LiveAsk ask, {List<LiveAnswer> answers = const [], bool approve = false}) =>

@@ -24,7 +24,8 @@ import 'package:pocketterm_core/agent.dart';
 //   phone → Mac   hello  {from, session?, window?}   every 4 s while the app is in front;
 //                        session: the live session it shows, window: the screen it shows
 //   Mac → phone   state  {windows, sessions, projects, roots, home, agent, agents?, error?}   on every hello and on changes;
-//                        sessions: LiveSummary.toJson, its slash commands as `cmds` [[name, description?]];
+//                        sessions: LiveSummary.toJson, its slash commands as `cmds` [[name, description?]], the
+//                        prompts waiting in its queue as `queue` [LiveQueued.toJson] and `paused` while it's held;
 //                        agent: what a new session starts (Agent.name, the Mac's setting);
 //                        agents: {agent: installed | outdated | missing | off} for the coding agents found on the
 //                        computer; missing from an older computer
@@ -36,8 +37,15 @@ import 'package:pocketterm_core/agent.dart';
 //                        whole (lines) or as a ScreenDiff on version v - 1
 //   phone → Mac   run    {id, op, …}   see TerminalBridge._onRun; probe {window}: does its screen change over 2 s,
 //                        switch {window, agent}: a screen-only agent window to its conversation (omp quits and
-//                        runs omp -c, Claude Code types /reload-plugins)
-//   Mac → phone   ran    {id, error?, window?, busy?}   busy: probe's answer
+//                        runs omp -c, Claude Code types /reload-plugins); queue {session, do, item?, text?, to?}:
+//                        changes the session's queue (do: edit item text, remove item, move item to, send item now
+//                        as a steer, pause, resume)
+//   Mac → phone   ran    {id, error?, window?, busy?, queued?}   busy: probe's answer; queued: the id a prompt
+//                        waits under in the session's queue, when it went there instead of to the agent
+//
+// The queue is the computer's (LiveHub): a prompt sent to wait for the run's end (or any prompt, to an agent that
+// can't steer, while it works) waits there, where the phone can edit, reorder and remove it, and goes to the agent
+// when a run ends, one per run. A run that was stopped (Stop, Esc at the computer) pauses it until Resume.
 //
 // Extension ↔ Mac, as JSON frames with the local API's bearer token, over
 // either transport (one connection per session, frames in order):
@@ -57,7 +65,8 @@ import 'package:pocketterm_core/agent.dart';
 //   ext → Mac  meta   {title?, model?, ctx?, commands?}
 //   ext → Mac  item   {item}   a new or changed item (whole)
 //   ext → Mac  append {id, text}   streamed text added to an assistant item
-//   ext → Mac  busy   {busy, summary?}   summary: the last answer, when a run has really ended
+//   ext → Mac  busy   {busy, summary?, stopped?}   summary: the last answer, when a run has really ended;
+//                     stopped: the run was interrupted (Stop from the phone, Esc at the computer)
 //   ext → Mac  ask    {ask?}   the agent waits for an answer (null: not anymore): LiveAsk.toJson; a plan
 //                     review comes without options, which the Mac reads off the agent's screen
 //   ext → Mac  reply  {req, error?, items?, older?}
@@ -66,7 +75,8 @@ import 'package:pocketterm_core/agent.dart';
 //                     files: the images saved on this Mac instead, for an agent that reads them from disk
 //                     (Claude Code); docs: the files sent with the prompt, saved on this Mac and named in text as
 //                     @path, which that agent may read without asking; an agent that can't steer queues every
-//                     prompt for the run's end
+//                     prompt for the run's end. The Mac's queue sends each prompt as a followUp: an agent at rest
+//                     takes it as a prompt, one that started a run meanwhile keeps it for the run's end
 //   Mac → ext  abort  {req}
 //   Mac → ext  older  {req, limit}   items before the oldest one sent
 
@@ -156,6 +166,42 @@ class LiveItem {
   };
 
   LiveItem copy() => LiveItem.fromJson(toJson());
+}
+
+/// A prompt waiting in a session's queue on the computer (LiveHub), for a run to end.
+class LiveQueued {
+  const LiveQueued({required this.id, required this.text, this.images = 0, this.files = const [], this.cut = false});
+
+  factory LiveQueued.fromJson(Map<String, dynamic> j) => LiveQueued(
+    id: j['id'] as String,
+    text: j['t'] as String? ?? '',
+    images: j['im'] as int? ?? 0,
+    files: [
+      for (final f in j['f'] as List? ?? const [])
+        if (f is String) f,
+    ],
+    cut: j['c'] == true,
+  );
+
+  final String id;
+
+  /// What the person typed, without the files' `@path`s.
+  final String text;
+
+  /// How many images go with it, and the names of its files.
+  final int images;
+  final List<String> files;
+
+  /// [text] is only its start: the state was too big for it whole (a session no phone shows). Not to edit.
+  final bool cut;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    if (text.isNotEmpty) 't': text,
+    if (images > 0) 'im': images,
+    if (files.isNotEmpty) 'f': files,
+    if (cut) 'c': true,
+  };
 }
 
 /// A change to a session's transcript: [item] whole, or [append] added to
@@ -1130,6 +1176,8 @@ class LiveSummary {
     this.at,
     this.older = false,
     this.commands = const [],
+    this.queue = const [],
+    this.paused = false,
   });
 
   factory LiveSummary.fromJson(Map<String, dynamic> j) => LiveSummary(
@@ -1153,6 +1201,11 @@ class LiveSummary {
         if (c is List && c.isNotEmpty && c[0] is String)
           (name: c[0] as String, description: c.length > 1 && c[1] is String ? c[1] as String : ''),
     ],
+    queue: [
+      for (final q in j['queue'] as List? ?? const [])
+        if (q is Map && q['id'] is String) LiveQueued.fromJson(q.cast()),
+    ],
+    paused: j['paused'] == true,
   );
 
   /// Stable for the agent's process: its terminal window's key (`kitty-<pid>/<id>`,
@@ -1187,6 +1240,10 @@ class LiveSummary {
   /// The agent's slash commands, for the composer.
   final List<LiveCommand> commands;
 
+  /// Prompts waiting on the computer for the run to end, next first; [paused] holds them (a stopped run, Pause).
+  final List<LiveQueued> queue;
+  final bool paused;
+
   Map<String, dynamic> toJson() => {
     'key': key,
     'id': id,
@@ -1207,6 +1264,8 @@ class LiveSummary {
       'cmds': [
         for (final c in commands) [c.name, if (c.description.isNotEmpty) c.description],
       ],
+    if (queue.isNotEmpty) 'queue': [for (final q in queue) q.toJson()],
+    if (paused) 'paused': true,
   };
 }
 

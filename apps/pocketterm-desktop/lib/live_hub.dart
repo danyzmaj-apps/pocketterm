@@ -71,6 +71,14 @@ class LiveSession {
   List<LiveCommand> commands = const [];
   DateTime at = DateTime.now();
 
+  /// Prompts waiting for a run to end, next first ([LiveHub.prompt]); [paused] holds them.
+  final _queue = <_Queued>[];
+  bool paused = false;
+
+  /// The queue's next prompt went to the agent, which hasn't said yet that it started; [_handoff] gives up on that.
+  bool _handing = false;
+  Timer? _handoff;
+
   int _req = 0;
   final _pending = <int, Completer<Map<String, dynamic>>>{};
 
@@ -91,6 +99,8 @@ class LiveSession {
     seq: log.seq,
     older: log.older,
     commands: commands,
+    queue: [for (final q in _queue) q.summary],
+    paused: paused,
   );
 
   Future<Map<String, dynamic>> _request(String type, Map<String, dynamic> payload, Duration timeout) async {
@@ -115,6 +125,32 @@ class LiveSession {
     }
     _pending.clear();
   }
+}
+
+/// A prompt in a session's queue, as it will go to the agent.
+class _Queued {
+  _Queued(this.id, this.text, {required this.images, required this.imageFiles, required this.docs});
+
+  final String id;
+
+  /// What the person typed; [docs] are named after it as `@path` when it goes.
+  String text;
+
+  /// For an agent that steers (omp): the images themselves; else saved on this computer for it to read.
+  final List<Map<String, String>> images;
+  final List<String> imageFiles;
+
+  /// The files sent with it, saved on this computer ([PromptFiles]).
+  final List<String> docs;
+
+  bool get empty => text.trim().isEmpty && images.isEmpty && imageFiles.isEmpty && docs.isEmpty;
+
+  LiveQueued get summary => LiveQueued(
+    id: id,
+    text: text,
+    images: images.length + imageFiles.length,
+    files: [for (final d in docs) p.basename(d)],
+  );
 }
 
 class LiveException implements Exception {
@@ -220,13 +256,35 @@ class LiveHub {
       debugPrint('PocketTerm: live session: $e');
     } finally {
       if (session != null) {
-        session._fail();
+        session
+          .._fail()
+          .._handoff?.cancel();
         if (identical(_byKey[session.key], session)) {
           _byKey.remove(session.key);
+          _keepQueue(session);
           _changes.add(null);
         }
       }
     }
+  }
+
+  /// Sessions gone with prompts in their queue, by key: the same agent saying hello again in the same window soon
+  /// (restarted, reconnected) takes them over.
+  final _orphans = <String, (LiveSession, Timer)>{};
+  static const _orphanFor = Duration(minutes: 10);
+
+  void _keepQueue(LiveSession s) {
+    if (s._queue.isEmpty && !s._handing) return;
+    _orphans.remove(s.key)?.$2.cancel();
+    _orphans[s.key] = (s, Timer(_orphanFor, () => _orphans.remove(s.key)));
+  }
+
+  /// [to] takes over [from]'s queue, when they're the same agent.
+  static void _takeQueue(LiveSession to, LiveSession? from) {
+    if (from == null || identical(from, to) || from.agent != to.agent || from._queue.isEmpty) return;
+    to._queue.addAll(from._queue);
+    to.paused = from.paused;
+    from._queue.clear();
   }
 
   /// The session's key is the window it runs in: where its `term` says
@@ -260,12 +318,18 @@ class LiveHub {
       // Another session in the same agent (/new, /resume, /clear): a new transcript.
       session = current..log = log;
     } else {
-      if (current != null && identical(_byKey[current.key], current)) _byKey.remove(current.key);
-      session = LiveSession._(link, key, log);
+      final moved = current != null && identical(_byKey[current.key], current) ? current : null;
+      if (moved != null) _byKey.remove(moved.key);
+      session = LiveSession._(link, key, log)..agent = agent;
       // The same window's previous agent, if its connection hasn't closed yet.
       final old = _byKey[key];
       if (old != null && !identical(old._link, link)) unawaited(old._link.close());
       _byKey[key] = session;
+      final orphan = _orphans.remove(key);
+      orphan?.$2.cancel();
+      _takeQueue(session, moved);
+      _takeQueue(session, old);
+      _takeQueue(session, orphan?.$1);
     }
     session
       ..agent = agent
@@ -276,12 +340,15 @@ class LiveHub {
       ..cwd = cwd
       ..model = s['model'] as String? ?? ''
       ..busy = m['busy'] == true
+      .._handing = false
       ..ctx = (m['ctx'] as num?)?.round()
       ..ask = null
       ..commands = liveCommands(m['commands'])
       ..preview = _preview(log.items.lastWhere((i) => i.kind == ItemKind.assistant, orElse: () => _none).text)
       ..at = DateTime.now();
+    session._handoff?.cancel();
     _changes.add(null);
+    _drain(session);
     // A window claimed can leave another session the one window left.
     if (window != null) _relinkSoon();
     return session;
@@ -368,8 +435,14 @@ class LiveHub {
       case 'busy':
         final busy = m['busy'] == true;
         s
+          .._handing = false
+          .._handoff?.cancel()
           ..busy = busy
           ..at = DateTime.now();
+        // Stopped (Stop from the phone, Esc at the computer): what waits stays until Resume.
+        if (!busy && m['stopped'] == true && s._queue.isNotEmpty) s.paused = true;
+        // The queue's next prompt goes now: the agent goes on, so nothing finished.
+        if (_drainable(s)) return _drain(s);
         _changes.add(null);
         final summary = m['summary'] as String?;
         if (!busy && summary != null) _events.add(LiveFinished(s, summary));
@@ -378,6 +451,7 @@ class LiveHub {
         s.ask = ask;
         _changes.add(null);
         if (ask != null) _events.add(LiveAsked(s, ask));
+        _drain(s);
       case 'meta':
         if (m['title'] is String && m['title'] != s.title) {
           s.title = m['title'] as String;
@@ -408,6 +482,7 @@ class LiveHub {
     if (s == null || s.ask?.id != id) return false;
     s.ask = ask;
     _changes.add(null);
+    _drain(s);
     return true;
   }
 
@@ -422,26 +497,179 @@ class LiveHub {
   /// text as `@path`, as one would at the computer: omp reads them in when
   /// it isn't working, else the agent opens them; Claude Code's extension
   /// lets it read them without asking.
-  Future<void> prompt(
+  ///
+  /// One that waits goes to the session's queue, under [id] (a new one by
+  /// default), which it returns; it goes to the agent when a run ends, next
+  /// in line. Null when it went to the agent now.
+  Future<String?> prompt(
     String key,
     String text, {
     List<({Uint8List bytes, String mimeType})> images = const [],
     List<PromptFile> files = const [],
     bool followUp = false,
+    String? id,
   }) async {
-    final s = _session(key);
-    final steers = s.agent.steers;
+    final steers = _session(key).agent.steers;
     final saved = await _files.save(files);
-    await s._request('prompt', {
-      'text': withMentions(text, saved),
-      'images': [
+    final q = _Queued(
+      id ?? _newId(),
+      text,
+      images: [
         if (steers)
           for (final i in images) {'data': base64Encode(i.bytes), 'mimeType': i.mimeType},
       ],
-      if (!steers) 'files': await _saveImages(images),
-      if (!steers && saved.isNotEmpty) 'docs': saved,
-      'deliver': followUp || !steers ? 'followUp' : 'steer',
-    }, const Duration(seconds: 15));
+      imageFiles: steers ? const [] : await _saveImages(images),
+      docs: saved,
+    );
+    // As it is now: it may have started or ended a run, or said hello again, meanwhile.
+    final s = _session(key);
+    if ((followUp || !steers) && (s.busy || s.ask != null)) {
+      _room(s, q.text.length, another: true);
+      s._queue.add(q);
+      _changes.add(null);
+      return q.id;
+    }
+    await _send(s, q, deliver: followUp || !steers ? 'followUp' : 'steer');
+    return null;
+  }
+
+  /// At most this many prompts wait in a session's queue, with at most [maxQueuedText] characters of text together:
+  /// the phones get every one whole with each state.
+  static const maxQueued = 20;
+  static const maxQueuedText = 32000;
+
+  /// Throws unless [s]'s queue has room for [chars] more characters, and [another] prompt.
+  static void _room(LiveSession s, int chars, {bool another = false}) {
+    if (another && s._queue.length >= maxQueued) {
+      throw const LiveException('The queue is full: $maxQueued prompts wait already.');
+    }
+    if (s._queue.fold(0, (n, q) => n + q.text.length) + chars > maxQueuedText) {
+      throw const LiveException('That is more text than the queue holds: send it when the run ends.');
+    }
+  }
+
+  static final _random = Random.secure();
+  static String _newId() => List.generate(16, (_) => _random.nextInt(36).toRadixString(36)).join();
+
+  Future<void> _send(LiveSession s, _Queued q, {required String deliver}) => s._request('prompt', {
+    'text': withMentions(q.text, q.docs),
+    'images': q.images,
+    if (!s.agent.steers) 'files': q.imageFiles,
+    if (!s.agent.steers && q.docs.isNotEmpty) 'docs': q.docs,
+    'deliver': deliver,
+  }, const Duration(seconds: 15));
+
+  /// Whether [s]'s queue's next prompt can go: the agent is at rest and asks nothing, nothing holds the queue.
+  bool _drainable(LiveSession s) =>
+      s._queue.isNotEmpty && !s.paused && !s.busy && s.ask == null && !s._handing && identical(_byKey[s.key], s);
+
+  /// How long the agent may take to say it started on a prompt from the queue before it's taken to be at rest.
+  static const handoffWait = Duration(seconds: 10);
+
+  /// Hands [s]'s queue's next prompt to the agent, if it can go ([_drainable]). The session shows as working from
+  /// here on, so it never looks done in between. One that doesn't go returns to the front, and the queue pauses.
+  void _drain(LiveSession s) {
+    if (!_drainable(s)) return;
+    final q = s._queue.removeAt(0);
+    s
+      .._handing = true
+      ..busy = true
+      ..at = DateTime.now();
+    if (s._queue.isEmpty) s.paused = false;
+    _changes.add(null);
+    unawaited(_handOff(s, q));
+  }
+
+  Future<void> _handOff(LiveSession s, _Queued q) async {
+    try {
+      await _send(s, q, deliver: 'followUp');
+    } on Object catch (e) {
+      debugPrint('PocketTerm: a queued prompt did not go: $e');
+      s._queue.insert(0, q);
+      s.paused = true;
+      if (s._handing) {
+        s
+          .._handing = false
+          ..busy = false;
+      }
+      _changes.add(null);
+      return;
+    }
+    if (!s._handing) return;
+    s._handoff?.cancel();
+    s._handoff = Timer(handoffWait, () {
+      if (!s._handing) return;
+      s
+        .._handing = false
+        ..busy = false;
+      if (_drainable(s)) return _drain(s);
+      _changes.add(null);
+    });
+  }
+
+  _Queued _queued(LiveSession s, String id) =>
+      s._queue.where((q) => q.id == id).firstOrNull ??
+      (throw const LiveException('That prompt has gone to the agent already.'));
+
+  /// Replaces the text of prompt [id] in session [key]'s queue.
+  void editQueued(String key, String id, String text) {
+    final s = _session(key);
+    final q = _queued(s, id);
+    final was = q.text;
+    q.text = text;
+    if (q.empty) {
+      q.text = was;
+      throw const LiveException('A prompt needs some text, an image or a file.');
+    }
+    q.text = was;
+    _room(s, text.length - was.length);
+    q.text = text;
+    _changes.add(null);
+  }
+
+  /// Takes prompt [id] out of session [key]'s queue: it never goes.
+  void removeQueued(String key, String id) {
+    final s = _session(key);
+    s._queue.remove(_queued(s, id));
+    if (s._queue.isEmpty) s.paused = false;
+    _changes.add(null);
+  }
+
+  /// Moves prompt [id] to place [to] (0: next) in session [key]'s queue.
+  void moveQueued(String key, String id, int to) {
+    final s = _session(key);
+    final q = _queued(s, id);
+    s._queue
+      ..remove(q)
+      ..insert(to.clamp(0, s._queue.length - 1), q);
+    _changes.add(null);
+  }
+
+  /// Sends prompt [id] out of session [key]'s queue now: it steers the run. omp only; Claude Code can't take a
+  /// prompt while it works. One that doesn't go goes back where it was.
+  Future<void> sendQueuedNow(String key, String id) async {
+    final s = _session(key);
+    if (!s.agent.steers) throw LiveException("${s.agent.label} can't take a prompt while it works.");
+    final q = _queued(s, id);
+    final at = s._queue.indexOf(q);
+    s._queue.removeAt(at);
+    if (s._queue.isEmpty) s.paused = false;
+    _changes.add(null);
+    try {
+      await _send(s, q, deliver: 'steer');
+    } on Object {
+      s._queue.insert(min(at, s._queue.length), q);
+      _changes.add(null);
+      rethrow;
+    }
+  }
+
+  /// Holds session [key]'s queue, or lets it go on: its next prompt goes now if the agent is at rest.
+  void pauseQueue(String key, {required bool paused}) {
+    final s = _session(key);
+    s.paused = paused && s._queue.isNotEmpty;
+    _changes.add(null);
+    _drain(s);
   }
 
   Future<List<String>> _saveImages(List<({Uint8List bytes, String mimeType})> images) async {
@@ -479,8 +707,15 @@ class LiveHub {
     }
   }
 
-  /// Esc: stops what the agent is doing.
-  Future<void> abort(String key) => _session(key)._request('abort', const {}, const Duration(seconds: 5));
+  /// Esc: stops what the agent is doing. What waits in its queue stays there until Resume.
+  Future<void> abort(String key) {
+    final s = _session(key);
+    if (s._queue.isNotEmpty && !s.paused) {
+      s.paused = true;
+      _changes.add(null);
+    }
+    return s._request('abort', const {}, const Duration(seconds: 5));
+  }
 
   /// Fetches the items before the oldest one the hub has; they go out as ops.
   Future<void> older(String key, {int limit = 150}) async {

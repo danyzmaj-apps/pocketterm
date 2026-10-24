@@ -11,6 +11,8 @@ import 'package:pocketterm_desktop/channel_keys.dart';
 import 'package:pocketterm_desktop/controller.dart';
 import 'package:pocketterm_desktop/desktop_host.dart';
 import 'package:pocketterm_desktop/integrations.dart';
+import 'package:pocketterm_desktop/onboarding/supabase_admin.dart';
+import 'package:pocketterm_desktop/setup_page.dart' show SupabaseTools;
 import 'package:pocketterm_e2e/e2e.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -54,6 +56,54 @@ class E2eApp extends AppController {
     final link = await super.pairingLink();
     pairingLinks.add(link);
     return link;
+  }
+}
+
+/// The setup's Supabase branch on the real Management API, kept to what the
+/// run makes: the project it creates is named for the run and its ref
+/// written at once (bin/run.dart deletes it after), and the project list
+/// holds only that one, so the setup never looks into, nor offers to
+/// update, the account's other projects.
+class E2eSupabaseTools extends SupabaseTools {
+  E2eSupabaseTools(this.e2e);
+  final E2eConfig e2e;
+
+  @override
+  SupabaseAdmin admin(String token) => _RunAdmin(token, e2e);
+}
+
+class _RunAdmin extends SupabaseAdmin {
+  // SupabaseAdmin's token parameter is private (`this._token`): no super parameter can match its name.
+  // ignore: use_super_parameters
+  _RunAdmin(String token, this.e2e) : super(token);
+  final E2eConfig e2e;
+
+  @override
+  Future<List<Project>> projects() async => [
+    for (final p in await super.projects())
+      if (_made().contains(p.ref)) p,
+  ];
+
+  Set<String> _made() {
+    final f = File(e2e.supabaseProject);
+    return f.existsSync() ? {f.readAsStringSync().trim()} : const {};
+  }
+
+  @override
+  Future<Project> createProject({
+    required String org,
+    required String name,
+    required String region,
+    required String dbPassword,
+  }) async {
+    final made = await super.createProject(
+      org: org,
+      name: '$name e2e ${e2e.terminal} ${p.basename(p.dirname(e2e.artifacts))}',
+      region: region,
+      dbPassword: dbPassword,
+    );
+    File(e2e.supabaseProject).writeAsStringSync('${made.ref}\n', flush: true);
+    return made;
   }
 }
 

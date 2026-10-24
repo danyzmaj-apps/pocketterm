@@ -30,8 +30,11 @@ import 'package:url_launcher/url_launcher.dart';
 /// until it's done, then Settings. Closing it only hides it
 /// (lib/desktop_host.dart); the app keeps running.
 class MainWindow extends StatelessWidget {
-  const MainWindow({required this.app, super.key});
+  const MainWindow({required this.app, this.supabase = const SupabaseTools(), super.key});
   final AppController app;
+
+  /// What the setup's Supabase branch talks to (the E2E run passes its own).
+  final SupabaseTools supabase;
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +44,7 @@ class MainWindow extends StatelessWidget {
       child: Stack(
         children: [
           if (app.backend == null)
-            SetupPage(app: app)
+            SetupPage(app: app, supabase: supabase)
           else if (!signedIn)
             SignInPage(session: app)
           else if (!app.getReadyDone)

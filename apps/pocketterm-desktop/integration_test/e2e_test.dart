@@ -21,6 +21,7 @@ import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/backend.dart';
 import 'package:pocketterm_core/live.dart' show LiveAnswer, LiveAsk, routedKey;
 import 'package:pocketterm_core/server_client.dart';
+import 'package:pocketterm_core/supabase_server.dart' show SupabaseServerClient;
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_remote.dart' show TerminalLink;
 import 'package:pocketterm_core/ui.dart';
@@ -29,7 +30,8 @@ import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:pocketterm_desktop/local_api.dart';
 import 'package:pocketterm_desktop/main_window.dart';
-import 'package:pocketterm_desktop/setup_page.dart' show SetupPage, setupLinkProblem;
+import 'package:pocketterm_desktop/setup_page.dart'
+    show CheckState, SetupCheck, SetupPage, SupabaseTools, setupLinkProblem;
 import 'package:pocketterm_e2e/e2e.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -128,6 +130,11 @@ class _Run {
         _thisComputer,
         critical: true,
       );
+    } else if (c.supabaseCloud) {
+      await report.step('setup: Supabase, set up a new project (real Management API)', _supabaseCloud, critical: true);
+      await report.step('setup: Supabase set up with no Retry', () async {
+        if (_supabaseErrors.isNotEmpty) throw StateError('Retry needed after: ${_supabaseErrors.join(' | ')}');
+      });
     } else {
       await report.step('setup: own server, paste link', _ownServer, critical: true);
     }
@@ -153,7 +160,11 @@ class _Run {
     await _verifyMain();
     await report.step('phone: computer off, then Retry brings it back', _computerOff);
 
-    await report.step('restart: server', _serverRestart);
+    if (c.supabaseCloud) {
+      report.skip('restart: server', 'a project on supabase.com can\u2019t be taken off the network for the test');
+    } else {
+      await report.step('restart: server', _serverRestart);
+    }
     await report.step('restart: desktop app', _desktopRestart);
     if (File(_omp).existsSync()) {
       await report.step('real omp: /new from the phone starts a fresh session in place', _realOmp);
@@ -249,7 +260,8 @@ class _Run {
             child: Toaster(
               child: ListenableBuilder(
                 listenable: a,
-                builder: (_, _) => MainWindow(app: a),
+                builder: (_, _) =>
+                    MainWindow(app: a, supabase: c.supabaseCloud ? E2eSupabaseTools(c) : const SupabaseTools()),
               ),
             ),
           ),
@@ -396,6 +408,99 @@ class _Run {
     await _see(find.textContaining('answers'));
     await _tap(_key('setup-connect'));
     await until('signed in', () => app.user != null);
+    await _see(find.text('Get this computer ready'));
+    expect(app.terminalOn, isTrue, reason: 'the first sign-in turns Terminal from phone on');
+    expect(await app.host.launchAtLogin(), isFalse, reason: 'the first sign-in adds no login item on its own');
+  }
+
+  /// What the Supabase setup said went wrong, each time Retry was needed.
+  final _supabaseErrors = <String>[];
+
+  /// Supabase, Set up a project, on supabase.com with the run's access
+  /// token: a non-token is refused without asking Supabase; the token
+  /// lists the organizations (the only one picked), the region is picked,
+  /// Create makes the project (E2eSupabaseTools names it for the run and
+  /// keeps it to itself) and the setup goes through its steps (Supabase's
+  /// wait between signing keys included), then signs this computer in.
+  /// An error is retried as a person would, at most 3 times, and recorded.
+  Future<void> _supabaseCloud() async {
+    final token = File(c.supabaseTokenFile!).readAsStringSync().trim();
+    await _toChoose();
+    await _tap(_key('setup-supabase'));
+    await _tap(_key('supabase-new'));
+    await _see(_key('supabase-security'));
+    await _type(_key('supabase-token'), 'not-a-token');
+    await _tap(_key('supabase-continue'));
+    await _see(find.textContaining('starts with sbp_'));
+    await report.shot('supabase-token');
+    await _type(_key('supabase-token'), token);
+    var started = DateTime.now();
+    await _tap(_key('supabase-continue'));
+
+    final org = await _see(_key('supabase-org'), timeout: const Duration(seconds: 60));
+    final orgs = tester.widget<DropdownButton<String>>(org).items!;
+    report.log('supabase: ${orgs.length} organization(s) after ${DateTime.now().difference(started).inSeconds} s');
+    if (tester.widget<DropdownButton<String>>(org).value == null) {
+      await _tap(org);
+      await _tap(find.text((orgs.first.child as Text).data!).last);
+    }
+    FilledButton create() => tester.widget<FilledButton>(_key('supabase-create'));
+    await until('Create the project on', () async {
+      await _frames(1);
+      return _key('supabase-create').evaluate().isNotEmpty && create().onPressed != null;
+    }, timeout: const Duration(seconds: 60));
+    expect(_key('supabase-existing'), findsNothing, reason: 'the run lists only the project it makes');
+    await _tap(_key('supabase-region'));
+    await _tap(find.text('Europe (Frankfurt)').last);
+    await _gone(find.byType(DropdownMenuItem<String>));
+    expect(tester.widget<DropdownButton<String>>(_key('supabase-region')).value, 'eu-central-1');
+    await report.shot('supabase-project');
+    started = DateTime.now();
+    await _tap(_key('supabase-create'));
+
+    // The steps as they go, until this computer is signed in.
+    final seen = <String, CheckState>{};
+    var waited = false;
+    String? shownError;
+    await until(
+      'signed in on the new Supabase project',
+      () async {
+        await _frames(1);
+        if (app.user != null) return true;
+        final at = '${DateTime.now().difference(started).inSeconds} s';
+        for (final f in find.byType(SetupCheck).evaluate()) {
+          final w = f.widget as SetupCheck;
+          if (seen[w.title] != w.state) {
+            seen[w.title] = w.state;
+            report.log('supabase: ${w.title} → ${w.state.name} at $at');
+          }
+        }
+        if (!waited && _key('supabase-wait').evaluate().isNotEmpty) {
+          waited = true;
+          report.log('supabase: waiting for Supabase to take the signing key, at $at');
+          await report.shot('supabase-key-wait');
+        }
+        final error = _key('supabase-error').evaluate().isEmpty
+            ? null
+            : tester.widget<Text>(_key('supabase-error')).data;
+        if (error != null && error != shownError) {
+          shownError = error;
+          _supabaseErrors.add(error);
+          report.log('supabase: error at $at: $error');
+          await report.shot('supabase-error-${_supabaseErrors.length}');
+          if (_key('supabase-retry').evaluate().isEmpty) throw StateError('Supabase setup: $error (no Retry)');
+          if (_supabaseErrors.length > 3) throw StateError('Supabase setup still failing: $error');
+          await _tap(_key('supabase-retry'));
+          shownError = null;
+        }
+        return false;
+      },
+      timeout: const Duration(minutes: 30),
+      every: const Duration(milliseconds: 500),
+    );
+    final ref = File(c.supabaseProject).readAsStringSync().trim();
+    report.log('supabase: project $ref set up and signed in after ${DateTime.now().difference(started).inSeconds} s');
+    expect(app.backend?.host, '$ref.supabase.co');
     await _see(find.text('Get this computer ready'));
     expect(app.terminalOn, isTrue, reason: 'the first sign-in turns Terminal from phone on');
     expect(await app.host.launchAtLogin(), isFalse, reason: 'the first sign-in adds no login item on its own');
@@ -684,7 +789,11 @@ class _Run {
     };
     // A second computer on the same server that no phone link names: the
     // phone lists it locked. It leaves the server at the end.
-    final setup = c.builtIn ? app.computerSetupLink()! : Uri.parse(c.setupLink);
+    final setup = c.builtIn
+        ? app.computerSetupLink()!
+        : c.supabaseCloud
+        ? await (app.server! as SupabaseServerClient).newSetupLink()
+        : Uri.parse(c.setupLink);
     final spare = _spare = Server(Backend.fromLink(setup)!, tokens: MemoryDeviceTokens());
     await spare.redeemSetup(Backend.setupToken(setup)!, label: 'Spare Mac $t', platform: 'macos');
     await spare.putDesktop('spare${t.substring(0, 3)}', name: 'Spare Mac $t', platform: 'macos');

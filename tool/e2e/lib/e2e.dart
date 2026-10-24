@@ -31,6 +31,7 @@ class E2eConfig {
     required this.phone,
     required this.terminalPath,
     this.serverCa,
+    this.supabaseTokenFile,
   });
 
   factory E2eConfig.fromJson(Map<String, dynamic> j) => E2eConfig(
@@ -42,6 +43,7 @@ class E2eConfig {
     phone: j['phone'] as bool,
     terminalPath: j['terminalPath'] as String,
     serverCa: j['serverCa'] as String?,
+    supabaseTokenFile: j['supabaseTokenFile'] as String?,
   );
 
   factory E2eConfig.read(String path) =>
@@ -59,11 +61,22 @@ class E2eConfig {
   final String work;
 
   /// The server's URL, or `builtin`: the desktop's own ("On this
-  /// computer"), which makes its links itself ([setupLink] is empty).
+  /// computer"), which makes its links itself ([setupLink] is empty), or
+  /// `supabase-cloud`: a new project the setup's Supabase branch makes with
+  /// the access token in [supabaseTokenFile] ([setupLink] is empty).
   final String serverUrl;
   final String setupLink;
 
   bool get builtIn => serverUrl == 'builtin';
+  bool get supabaseCloud => serverUrl == 'supabase-cloud';
+
+  /// The file with the Supabase personal access token (its path only: the
+  /// token stays out of the config and the artifacts).
+  final String? supabaseTokenFile;
+
+  /// The ref of the project the run made on Supabase, written as soon as it
+  /// exists: bin/run.dart deletes that project after the run.
+  String get supabaseProject => p.join(artifacts, 'supabase-project.txt');
 
   /// Whether the phone's phases run (else the desktop goes on alone).
   final bool phone;
@@ -86,6 +99,7 @@ class E2eConfig {
     'phone': phone,
     'terminalPath': terminalPath,
     'serverCa': ?serverCa,
+    'supabaseTokenFile': ?supabaseTokenFile,
   };
 
   String get home => p.join(work, 'home');

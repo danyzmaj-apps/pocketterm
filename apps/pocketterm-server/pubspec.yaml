@@ -1,7 +1,7 @@
 name: pocketterm_server_app
 description: "The pocketterm-server command: PocketTerm's own server for a VPS or any always-on machine."
 publish_to: 'none'
-version: 0.1.0
+version: 0.1.1
 resolution: workspace
 
 environment:

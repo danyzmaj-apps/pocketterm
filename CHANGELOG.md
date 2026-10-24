@@ -2,6 +2,16 @@
 
 What each PocketTerm release brings.
 
+## 0.1.1
+
+Update the desktop app and the phone app together: the queue lives on the computer. Servers and the push relay need no update.
+
+### Phone app (iPhone and Android)
+
+- **A sent prompt shows at once.** Your message appears at the bottom of the conversation as you tap Send, dimmed with **Sending…** until the computer takes it, and gives way to the agent's own copy when that comes. One that didn't go says why, with **Not sent. Tap to retry**. Slash commands show nothing: their picker or screen answers them.
+- **A queue you can change.** A prompt you queue while the agent works (with **Queue** on in omp, any prompt to Claude Code) waits on your computer, listed above the field as **Queued · N**: its **⋮** menu edits or deletes it (and in omp **Send now** steers the run with it), its handle drags it to another place, and a swipe left deletes it. Each run end sends the next one; the session shows as working in between, with no "finished" push. **Stop** (or Esc at the computer) holds the queue as **Queue paused** until you tap **Resume**; **Pause** holds it too. A queue takes up to 20 prompts and keeps them when the agent restarts in the same window.
+- **Notifications come back by themselves.** A push registration that didn't reach the server goes again as soon as the server answers or the account sheet opens, which shows **Registering…** meanwhile.
+
 ## 0.1.0
 
 The first release of PocketTerm: the omp and Claude Code sessions on your computer, on your phone, end-to-end encrypted, through a PocketTerm server of your own: on the computer, on a VPS or on a Supabase project.
@@ -27,8 +37,6 @@ The first release of PocketTerm: the omp and Claude Code sessions on your comput
 - **Try the demo.** Made-up sessions to look around without a computer. Nothing connects.
 - **Your sessions by project.** omp and Claude Code sessions grouped by project, then every other terminal window. Sort projects by name or recent activity, tap a project's heading to fold it, long-press it for a new session there or to fold the others.
 - **Sessions as conversations.** Streamed Markdown answers, tool calls as cards, prompts with images and files, steer, queue and stop, questions, approvals, plan reviews and `/` slash commands.
-- **A sent prompt shows at once.** Your message appears at the bottom of the conversation as you tap Send, dimmed with **Sending…** until the computer takes it, and gives way to the agent's own copy when that comes. One that didn't go says why, with **Not sent. Tap to retry**. Slash commands show nothing: their picker or screen answers them.
-- **A queue you can change.** A prompt you queue while the agent works (with **Queue** on in omp, any prompt to Claude Code) waits on your computer, listed above the field as **Queued · N**: its **⋮** menu edits or deletes it (and in omp **Send now** steers the run with it), its handle drags it to another place, and a swipe left deletes it. Each run end sends the next one; the session shows as working in between, with no "finished" push. **Stop** (or Esc at the computer) holds the queue as **Queue paused** until you tap **Resume**; **Pause** holds it too. A queue takes up to 20 prompts and keeps them when the agent restarts in the same window.
 - **Images and files with a prompt.** Up to 10 per message, from Photos, the clipboard or **Choose from Files** (the system's file picker: Files on iPhone, the document picker on Android), each file up to 20 MB. Images are scaled down to 2048 px; other files go as they are. The computer saves each file under its own name in a folder of its own in its temp folder (`pocketterm-files`, removed after a day) and names it in the prompt as `@path`, as you would at the computer: omp reads it in (a prompt that steers a run names it for the agent to open), Claude Code opens it without asking.
 - **Screens.** Every other terminal window is a live screen you can type and press keys in.
 - **Switch to conversation.** A session opened before PocketTerm was installed in its agent shows only its screen. **Switch to conversation** restarts omp on the same conversation (`omp -c`); if it was working, **Restart and continue** has it carry on and **Just restart** leaves it stopped. In Claude Code it types `/reload-plugins` and nothing restarts.

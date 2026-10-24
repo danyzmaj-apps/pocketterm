@@ -148,6 +148,10 @@ void main() {
     expect(files.map((f) => f['name']), [for (var i = 0; i < 10; i++) 'doc$i.txt']);
     expect(files.map((f) => f['mime']).toSet(), {'text/plain'});
     expect(uploaded.keys, unorderedEquals(files.map((f) => f['path'])), reason: 'each one sealed and uploaded');
-    expect(find.text('doc0.txt'), findsNothing, reason: 'sent, they leave the composer');
+    expect(
+      find.descendant(of: find.byType(AttachmentStrip), matching: find.text('doc0.txt')),
+      findsNothing,
+      reason: 'sent, they leave the composer',
+    );
   });
 }

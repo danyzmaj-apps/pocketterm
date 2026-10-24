@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' show min;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -95,6 +96,12 @@ class _SessionPageState extends State<SessionPage> {
   /// rebuilds only the items that changed.
   final _built = <String, (Object, Widget)>{};
 
+  /// Prompts sent from here that haven't come back in the transcript yet, oldest first.
+  final _outgoing = <_Outgoing>[];
+
+  /// One of [_outgoing] is on its way to the computer.
+  bool get _delivering => _outgoing.any((o) => o.sending);
+
   TerminalRemote get remote => widget.remote;
   String get key => widget.sessionKey;
 
@@ -147,7 +154,7 @@ class _SessionPageState extends State<SessionPage> {
   Future<void> _send({required bool busy}) async {
     final typed = _field.text;
     final text = typed.trim();
-    if ((text.isEmpty && _attachments.isEmpty) || _sending) return;
+    if ((text.isEmpty && _attachments.isEmpty) || _sending || _delivering) return;
     final attached = List.of(_attachments.items);
     // A slash command is typed into the agent's window, where its editor
     // reads it; sent as a prompt, the agent would take it for chat.
@@ -158,47 +165,74 @@ class _SessionPageState extends State<SessionPage> {
     if (command && !_can(_windowKey(remote.session(key)), TermCap.line)) {
       return termToast(context, _noCommands(_agent(remote.session(key))), above: _composerKey);
     }
+    final queue = busy && (_followUp || !_agent(remote.session(key)).steers);
+    if (!command) return await _prompt(text, attached, followUp: queue);
     setState(() => _sending = true);
-    // A prompt of their own replaces the `continue` a restart would send.
-    if (!command && _autoContinue) {
-      _autoContinue = false;
-      remote.removeListener(_continueWhenReady);
-    }
     try {
-      final queue = busy && (_followUp || !_agent(remote.session(key)).steers);
       final before = remote.session(key)?.id;
-      await remote.prompt(
-        key,
-        text,
-        images: [
-          for (final a in attached)
-            if (a is ChatImage) a.bytes,
-        ],
-        files: [
-          for (final a in attached)
-            if (a is ChatFile) (name: a.name, mime: a.mime, bytes: a.bytes),
-        ],
-        followUp: queue,
-      );
-      final s = remote.session(key);
-      // Followed from here on (Lock Screen, Android's notifications), as working.
-      if (s != null && !command) unawaited(remote.activities?.prompted(key, title: _title(s)));
-      // Left meanwhile (back, signed out): the field and attachments are gone.
+      await remote.prompt(key, text, followUp: queue);
+      // Left meanwhile (back, signed out): the field is gone.
       if (!mounted) return;
-      final window = s?.window;
-      if (command && window != null) unawaited(_menuOrScreen(window, before));
-      // A prompt of their own says what comes next instead of Continue.
-      if (!command) _continue = false;
+      final window = remote.session(key)?.window;
+      if (window != null) unawaited(_menuOrScreen(window, before));
       // Only what went: the field stays editable while it goes, and what was
-      // typed or attached meanwhile is the next prompt.
+      // typed meanwhile is the next prompt.
       final now = _field.text;
       _field.text = now.startsWith(typed) ? now.substring(typed.length).trimLeft() : now;
-      _attachments.removeSent(attached);
       _atBottom = true;
     } on Object catch (e) {
       if (mounted) termToast(context, e, above: _composerKey);
     }
     if (mounted) setState(() => _sending = false);
+  }
+
+  /// Sends [text] and [attached] as the person's message, which shows at once at the bottom of the transcript
+  /// while the field and the attachments are free for the next one.
+  Future<void> _prompt(String text, List<ChatAttachment> attached, {required bool followUp}) async {
+    // A prompt of their own replaces the `continue` a restart would send, and says what comes next instead of
+    // Continue.
+    if (_autoContinue) {
+      _autoContinue = false;
+      remote.removeListener(_continueWhenReady);
+    }
+    _continue = false;
+    final o = _Outgoing(text, attached, followUp: followUp, transcript: remote.view(key));
+    _field.clear();
+    _attachments.removeSent(attached);
+    _atBottom = true;
+    _outgoing.add(o);
+    await _deliver(o);
+  }
+
+  /// Sends [o] (again): a failure stays on its bubble, with why.
+  Future<void> _deliver(_Outgoing o) async {
+    setState(() {
+      o
+        ..sending = true
+        ..problem = null;
+    });
+    try {
+      await remote.prompt(
+        key,
+        o.text,
+        images: [
+          for (final a in o.attachments)
+            if (a is ChatImage) a.bytes,
+        ],
+        files: [
+          for (final a in o.attachments)
+            if (a is ChatFile) (name: a.name, mime: a.mime, bytes: a.bytes),
+        ],
+        followUp: o.followUp,
+      );
+      // Followed from here on (Lock Screen, Android's notifications), as working.
+      final s = remote.session(key);
+      if (s != null) unawaited(remote.activities?.prompted(key, title: _title(s)));
+    } on Object catch (e) {
+      o.problem = e is TerminalException ? e.message : '$e';
+    }
+    o.sending = false;
+    if (mounted) setState(() {});
   }
 
   /// Prompts `continue`: the run a restart from the phone stopped carries on. Once; again only if it didn't go.
@@ -399,6 +433,8 @@ class _SessionPageState extends State<SessionPage> {
 
   Widget _transcript(LiveView? v, LiveSummary? s, {required bool ended}) {
     final items = v?.items ?? const <LiveItem>[];
+    // Those whose item has come in show as it, in their place.
+    if (v != null && _outgoing.isNotEmpty) _outgoing.removeWhere(_cameBack(_outgoing, v).contains);
     if (v != null && items.isNotEmpty && (_anchor == null || _anchorEpoch != v.epoch)) {
       _anchor = items.last.order + 1;
       _anchorEpoch = v.epoch;
@@ -409,7 +445,7 @@ class _SessionPageState extends State<SessionPage> {
       final ids = {for (final i in items) i.id};
       _built.removeWhere((id, _) => !ids.contains(id));
     }
-    if (items.isEmpty) {
+    if (items.isEmpty && _outgoing.isEmpty) {
       final agent = _agent(s).label;
       final starting = widget.starting && !_seen;
       final late = DateTime.now().difference(_openedAt) > _startWait;
@@ -463,7 +499,7 @@ class _SessionPageState extends State<SessionPage> {
       }
     }
     final above = lo;
-    final earlier = v!.older;
+    final earlier = v?.older ?? false;
     const center = ValueKey('center');
     _followBottom();
     return SelectionArea(
@@ -486,6 +522,18 @@ class _SessionPageState extends State<SessionPage> {
             key: center,
             delegate: SliverChildBuilderDelegate((_, i) => _item(items[above + i]), childCount: items.length - above),
           ),
+          // Sent from here, until each comes back in the transcript.
+          if (_outgoing.isNotEmpty)
+            SliverList(
+              delegate: SliverChildListDelegate([
+                for (final o in _outgoing)
+                  Padding(
+                    key: ObjectKey(o),
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                    child: _OutgoingBubble(o, key: const ValueKey('outgoing'), onRetry: () => unawaited(_deliver(o))),
+                  ),
+              ]),
+            ),
           if (s != null && s.busy && s.ask == null)
             const SliverToBoxAdapter(
               child: Padding(
@@ -567,7 +615,8 @@ class _SessionPageState extends State<SessionPage> {
   Widget _composer(LiveSummary? s, {required bool online}) {
     final busy = s?.busy ?? false;
     final agent = _agent(s);
-    final canSend = online && !_sending && (_field.text.trim().isNotEmpty || !_attachments.isEmpty);
+    // One at a time, in order: the next waits until the computer has the one sending.
+    final canSend = online && !_sending && !_delivering && (_field.text.trim().isNotEmpty || !_attachments.isEmpty);
     final slash = _field.text.startsWith('/');
     final commanding = online && s != null && slash;
     final noWindow = commanding && !_can(_windowKey(s), TermCap.line);
@@ -856,6 +905,148 @@ class _SessionPageState extends State<SessionPage> {
       );
     },
   );
+}
+
+/// A prompt sent from the page: shown as the person's message until its item comes back in the transcript, and
+/// sent again as it is.
+class _Outgoing {
+  _Outgoing(this.text, this.attachments, {required this.followUp, required LiveView? transcript})
+    : _epoch = transcript?.epoch,
+      _last = transcript == null || transcript.items.isEmpty ? -1 : transcript.items.last.order,
+      _seen = {
+        for (final i in transcript?.items ?? const <LiveItem>[])
+          if (i.kind == ItemKind.user) i.id,
+      };
+
+  final String text;
+  final List<ChatAttachment> attachments;
+
+  /// Sent to wait for the run to end.
+  final bool followUp;
+
+  /// On its way to the computer.
+  bool sending = true;
+
+  /// Why it wasn't sent, when it wasn't.
+  String? problem;
+
+  /// The transcript when it went: the person's items there already aren't this one coming back.
+  final String? _epoch;
+  final int _last;
+  final Set<String> _seen;
+
+  /// Whether user item [i] of a transcript in [epoch] came after this went.
+  bool _sentBefore(LiveItem i, String epoch) => !_seen.contains(i.id) && (epoch != _epoch || i.order > _last);
+}
+
+/// [s] with its runs of whitespace as single spaces, trimmed: how a prompt and the agent's copy of it compare.
+String _plain(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+/// Which of [outgoing] (oldest first) have come back in transcript [v]: each is the first of the person's items
+/// since it went, in order, whose text holds its own (the computer may add to it: files named as @path).
+Set<_Outgoing> _cameBack(List<_Outgoing> outgoing, LiveView v) {
+  final items = v.items;
+  // From just after the oldest went; from the start once the transcript started over.
+  var start = 0;
+  if (outgoing.every((o) => o._epoch == v.epoch)) {
+    final last = outgoing.map((o) => o._last).reduce(min);
+    start = items.length;
+    while (start > 0 && items[start - 1].order > last) {
+      start--;
+    }
+  }
+  final back = Set<_Outgoing>.identity();
+  var next = start;
+  for (final o in outgoing) {
+    final want = _plain(o.text);
+    for (var j = next; j < items.length; j++) {
+      final i = items[j];
+      if (i.kind != ItemKind.user || !o._sentBefore(i, v.epoch) || !_plain(i.text).contains(want)) continue;
+      back.add(o);
+      next = j + 1;
+      break;
+    }
+  }
+  return back;
+}
+
+/// A prompt sent from the page, shown as the person's own until its item comes back: dimmed, with a spinner, while
+/// it goes. One that didn't go says why, and a tap sends it again.
+class _OutgoingBubble extends StatelessWidget {
+  const _OutgoingBubble(this.message, {required this.onRetry, super.key});
+  final _Outgoing message;
+  final VoidCallback onRetry;
+
+  static const _note = TextStyle(fontSize: 12, color: C.dim);
+
+  @override
+  Widget build(BuildContext context) {
+    final o = message;
+    final problem = o.sending ? null : o.problem;
+    return GestureDetector(
+      onTap: problem != null ? onRetry : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedOpacity(
+            opacity: o.sending ? .6 : 1,
+            duration: const Duration(milliseconds: 200),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .82),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                decoration: BoxDecoration(
+                  color: C.sel,
+                  borderRadius: BorderRadius.circular(14),
+                  border: problem != null ? Border.all(color: _danger.withValues(alpha: .6)) : null,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (o.attachments.isNotEmpty)
+                      AttachmentThumbs(o.attachments, size: 48, alignment: WrapAlignment.end),
+                    if (o.text.isNotEmpty)
+                      Padding(
+                        padding: EdgeInsets.only(top: o.attachments.isEmpty ? 0 : 6),
+                        child: Text(o.text, style: const TextStyle(fontSize: 15, height: 1.4)),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (o.sending)
+            const Padding(
+              key: ValueKey('outgoing-sending'),
+              padding: EdgeInsets.only(top: 4, right: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5)),
+                  SizedBox(width: 6),
+                  Text('Sending…', style: _note),
+                ],
+              ),
+            )
+          else if (problem != null)
+            Padding(
+              key: const ValueKey('outgoing-failed'),
+              padding: const EdgeInsets.only(top: 4, right: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(problem, textAlign: TextAlign.end, maxLines: 3, overflow: TextOverflow.ellipsis, style: _note),
+                  const Text('Not sent. Tap to retry', style: TextStyle(fontSize: 12, color: _danger)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _UserBubble extends StatelessWidget {

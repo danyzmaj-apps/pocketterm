@@ -282,6 +282,28 @@ class AttachmentStrip extends StatelessWidget {
   );
 }
 
+/// Images and files as they went with a message: [AttachmentStrip]'s thumbnails and chips, without their ✕.
+class AttachmentThumbs extends StatelessWidget {
+  const AttachmentThumbs(this.items, {this.size = 56, this.alignment = WrapAlignment.start, super.key});
+  final List<ChatAttachment> items;
+  final double size;
+  final WrapAlignment alignment;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: 6,
+    runSpacing: 6,
+    alignment: alignment,
+    children: [
+      for (final item in items)
+        switch (item) {
+          ChatImage(:final bytes) => _Thumb(bytes: bytes, size: size),
+          final ChatFile file => _FileChip(file: file, height: size),
+        },
+    ],
+  );
+}
+
 /// A thumbnail or chip with its ✕ dot on the corner. The dot is 20pt but a
 /// 40pt square catches the tap, and the corner room keeps both inside the
 /// Stack, which only hit-tests within its own size.

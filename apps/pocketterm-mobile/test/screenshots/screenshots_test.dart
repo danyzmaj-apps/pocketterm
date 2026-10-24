@@ -270,6 +270,26 @@ void main() {
     r.flush();
   });
 
+  testWidgets('session, a prompt on its way', variant: _ios, (tester) async {
+    if (skipped()) return;
+    final r = remote();
+    await app(tester, terminal: r);
+    await tester.tap(find.text('Add a soil moisture endpoint'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('session-input')), 'Also add the endpoint to the README');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('session-send')));
+    // The computer hasn't answered yet: the message shows, sending.
+    await tester.pump(Duration.zero);
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    await save(tester, 'phone-session-sending.png');
+    // It never answers: the wait for it ends.
+    await tester.pump(r.answerWait);
+    r.flush();
+  });
+
   testWidgets('setup', variant: _ios, (tester) async {
     if (skipped()) return;
     final r = remote();

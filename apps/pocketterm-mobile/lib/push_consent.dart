@@ -121,7 +121,7 @@ const pushBlocked =
 
 /// On here, but the server couldn't be reached to take this phone's token.
 const pushNotSent =
-    'On, but the server could not be reached to register this phone. PocketTerm tries again when you come back to it.';
+    'On, but your server could not be reached to register this phone. PocketTerm tries again as soon as it can.';
 
 /// Where notifications go and what each one on the way can see.
 class PushExplainer extends StatelessWidget {

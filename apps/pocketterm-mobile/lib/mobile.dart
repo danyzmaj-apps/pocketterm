@@ -301,14 +301,35 @@ class MobileSession extends Session {
   int _pushChoice = 0;
 
   /// Push is on, but the server missed this phone's token (offline): it is
-  /// sent again when the app comes back ([retryPush]).
+  /// sent again ([retryPush]) when the app comes back, when the computer's
+  /// connection is back, and when the account sheet opens.
   bool get pushUnsent => _pushUnsent;
   bool _pushUnsent = false;
 
-  /// Coming back to the app: a token the server missed goes again.
-  Future<void> retryPush() async {
+  /// A missed token is on its way to the server again: the account sheet
+  /// shows that instead of the old warning.
+  bool get pushRegistering => _pushRegistering;
+  bool _pushRegistering = false;
+  DateTime? _pushTried;
+
+  /// Sends a token the server missed again, one try at a time. [force] (the
+  /// app coming back, the account sheet opening) tries at once; otherwise
+  /// (the connection back) not within 30 s of the last try, so a server that
+  /// keeps refusing isn't asked on every state.
+  Future<void> retryPush({bool force = false}) async {
     final user = this.user;
-    if (_pushUnsent && user != null && (pushEnabled ?? false)) await _registerPush(user.device.id);
+    if (!_pushUnsent || _pushRegistering || user == null || !(pushEnabled ?? false)) return;
+    final tried = _pushTried;
+    if (!force && tried != null && DateTime.now().difference(tried) < const Duration(seconds: 30)) return;
+    _pushTried = DateTime.now();
+    _pushRegistering = true;
+    notifyListeners();
+    try {
+      await _registerPush(user.device.id);
+    } finally {
+      _pushRegistering = false;
+      notifyListeners();
+    }
   }
 
   /// Hands this phone's push token (APNs on iOS, FCM on Android) to the
@@ -377,6 +398,8 @@ class MobileSession extends Session {
   Future<void> _forgetHere() async {
     _openedSession = null;
     _pushUnsent = false;
+    _pushRegistering = false;
+    _pushTried = null;
     // Every server's: the sign-in may already be gone, and with it its id.
     for (final k in _prefs.getKeys().where((k) => k.startsWith('${_pushChoiceKey}_'))) {
       await _prefs.remove(k);
@@ -636,6 +659,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ..desktopName = d.name
         ..desktopSeenAt = d.seenAt;
       _syncFollow(next);
+      next.addListener(_pushWhenOnline);
     }
     if (old != null) {
       if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
@@ -662,10 +686,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   void _dropRemote(TerminalRemote t) {
     _terminalAttached = false;
+    t.removeListener(_pushWhenOnline);
     t.activities?.dispose();
     t.activities = null;
     if (widget.remoteFor != null) return;
     t.dispose();
+  }
+
+  /// The computer's connection is back: a push token the server missed goes again.
+  void _pushWhenOnline() {
+    final t = _terminal;
+    if (t != null && t.online && widget.session.pushUnsent && !_demo) unawaited(widget.session.retryPush());
   }
 
   Future<void> _findSupportDir() async {
@@ -848,7 +879,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (!_demo) {
           unawaited(widget.session.checkNotifications());
           // A push token the server missed while it was unreachable.
-          unawaited(widget.session.retryPush());
+          unawaited(widget.session.retryPush(force: true));
         }
       case AppLifecycleState.hidden || AppLifecycleState.paused:
         if (state == AppLifecycleState.paused) timing('paused');
@@ -1065,7 +1096,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _openAccount() => showAppSheet<void>(
+  Future<void> _openAccount() {
+    // A token the server missed: try now, so the sheet shows how it stands, not how it stood.
+    unawaited(widget.session.retryPush(force: true));
+    return _accountSheet();
+  }
+
+  Future<void> _accountSheet() => showAppSheet<void>(
     context,
     builder: (sheet) => SafeArea(
       child: SingleChildScrollView(
@@ -1101,7 +1138,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 final on = widget.session.pushEnabled ?? false;
                 // On here, off in the phone's Settings (changed there after saying yes): nothing shows.
                 final blocked = on && widget.session.notificationsAllowed == false;
-                final unsent = on && !blocked && widget.session.pushUnsent;
+                final registering = on && !blocked && widget.session.pushRegistering;
+                final unsent = on && !blocked && !registering && widget.session.pushUnsent;
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -1109,18 +1147,32 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       key: const ValueKey('push-toggle'),
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Notifications'),
-                      subtitle: Text(
-                        blocked
-                            ? pushBlocked
-                            : unsent
-                            ? pushNotSent
-                            : on
-                            ? 'Encrypted, through the push relay at push.danyzmaj.com.'
-                            : isIos
-                            ? 'Off: no notifications and no Lock Screen sessions.'
-                            : 'Off: no notifications and no followed sessions.',
-                        style: TextStyle(color: blocked || unsent ? C.warn : C.dim, height: 1.4),
-                      ),
+                      subtitle: registering
+                          ? const Row(
+                              key: ValueKey('push-registering'),
+                              children: [
+                                SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
+                                SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    'Registering this phone with your server…',
+                                    style: TextStyle(color: C.dim),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Text(
+                              blocked
+                                  ? pushBlocked
+                                  : unsent
+                                  ? pushNotSent
+                                  : on
+                                  ? 'Encrypted, through the push relay at push.danyzmaj.com.'
+                                  : isIos
+                                  ? 'Off: no notifications and no Lock Screen sessions.'
+                                  : 'Off: no notifications and no followed sessions.',
+                              style: TextStyle(color: blocked || unsent ? C.warn : C.dim, height: 1.4),
+                            ),
                       value: on,
                       onChanged: (on) async {
                         final messenger = ScaffoldMessenger.of(sheet);

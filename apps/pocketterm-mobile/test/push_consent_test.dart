@@ -218,4 +218,23 @@ void main() {
     expect(find.text(pushNotSent), findsNothing);
     remote.flush();
   });
+
+  testWidgets('opening the account sheet sends a missed token at once, so it never shows a stale warning', (
+    tester,
+  ) async {
+    final (session, remote) = await pumpApp(tester);
+    session.server.offline = true;
+    await tester.tap(find.byKey(const ValueKey('push-accept')));
+    await tester.pumpAndSettle();
+    expect(session.pushUnsent, isTrue);
+
+    session.server.offline = false;
+    await tester.tap(find.byTooltip('Account'));
+    await tester.pumpAndSettle();
+    expect(session.server.pushes.map((p) => p.$1), ['register']);
+    expect(session.pushUnsent, isFalse);
+    expect(find.text(pushNotSent), findsNothing);
+    expect(find.text('Encrypted, through the push relay at push.danyzmaj.com.'), findsOneWidget);
+    remote.flush();
+  });
 }

@@ -201,4 +201,45 @@ void main() {
     expect(outgoing, findsNothing);
     expect(find.text('deploy it'), findsOneWidget);
   });
+
+  testWidgets('a queued prompt stays dimmed and says Queued until the agent takes it', (tester) async {
+    remote.handle('state', {
+      'windows': [
+        {'key': _session, 'title': 'omp', 'cwd': '/Users/me/a', 'program': 'omp', 'app': 'kitty'},
+      ],
+      'sessions': [
+        {
+          'key': _session,
+          'id': 's2',
+          'agent': 'omp',
+          'window': _session,
+          'title': 'The session',
+          'cwd': '/Users/me/a',
+          'busy': true,
+          'at': DateTime.now().millisecondsSinceEpoch,
+        },
+      ],
+      'home': '/Users/me',
+      'agent': 'omp',
+    });
+    await open(tester);
+    await tester.tap(find.byKey(const ValueKey('follow-up')));
+    await tester.pump();
+    await send(tester, 'then update the docs');
+    expect(prompts().single, containsPair('deliver', 'followUp'));
+    ran(prompts().single);
+    await tester.pump();
+    final queued = find.byKey(const ValueKey('outgoing-queued'));
+    expect(queued, findsOneWidget);
+    expect(sending, findsNothing);
+    expect(
+      tester.widget<AnimatedOpacity>(find.descendant(of: outgoing, matching: find.byType(AnimatedOpacity))).opacity,
+      .6,
+    );
+
+    echo('then update the docs');
+    await tester.pump();
+    expect(outgoing, findsNothing);
+    expect(find.text('then update the docs'), findsOneWidget);
+  });
 }

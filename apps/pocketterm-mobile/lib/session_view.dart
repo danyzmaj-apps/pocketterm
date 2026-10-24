@@ -983,6 +983,8 @@ class _OutgoingBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final o = message;
     final problem = o.sending ? null : o.problem;
+    // Accepted, but waiting for the run to end: stays dimmed until the agent takes it.
+    final queued = !o.sending && problem == null && o.followUp;
     return GestureDetector(
       onTap: problem != null ? onRetry : null,
       child: Column(
@@ -990,7 +992,7 @@ class _OutgoingBubble extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           AnimatedOpacity(
-            opacity: o.sending ? .6 : 1,
+            opacity: o.sending || queued ? .6 : 1,
             duration: const Duration(milliseconds: 200),
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .82),
@@ -1029,6 +1031,12 @@ class _OutgoingBubble extends StatelessWidget {
                   Text('Sending…', style: _note),
                 ],
               ),
+            )
+          else if (queued)
+            const Padding(
+              key: ValueKey('outgoing-queued'),
+              padding: EdgeInsets.only(top: 4, right: 4),
+              child: Text('Queued: goes when the run ends', style: _note),
             )
           else if (problem != null)
             Padding(

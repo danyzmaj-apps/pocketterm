@@ -30,14 +30,16 @@ The repo is a pub workspace: `apps/pocketterm-desktop` (the desktop app for macO
   # the relay: its crypto must match the server's
   (cd packages/pocketterm_server && fvm dart run tool/relay_vectors.dart ../../apps/pocketterm-relay/tests/vectors.json)
   (cd apps/pocketterm-relay && deno fmt --check && deno check main.ts tests/*.ts && deno task test)
-  # the Claude Code plugin, in apps/pocketterm-desktop/integrations/claude, locally
-  # (CI can't: Claude Code mods need a logged-in claude)
-  claude plugin validate . && claude plugin test plugins/pocketterm
+  # the Claude Code plugin, in apps/pocketterm-desktop/integrations/claude/plugins/pocketterm
+  deno check --no-config hooks/items.ts
+  claude plugin validate --strict . && claude plugin test .
+  # PocketTerm on Supabase (not in CI): in packages/pocketterm_core, after tool/supabase-local.sh start
+  POCKETTERM_SUPABASE=1 fvm flutter test -j 1 test/server_client_test.dart test/session_test.dart
   ```
 - Add a test when you change behavior that can quietly break: parsing, the terminal protocol, session routing, platform paths. Platform checks take an injectable `windows` flag, so Windows behavior is testable on a Mac too.
 - A change to the server's API keeps [PROTOCOL.md](packages/pocketterm_server/PROTOCOL.md) in step, and says in the PR whether apps and servers of different versions still work together.
 - Note user-visible changes in the next version's `## <version>` section at the top of `CHANGELOG.md` (add it if it isn't there), and say whether servers or the relay must be updated.
-- End-to-end: `tool/e2e/run.sh` runs a local server, the desktop app, real terminals and the phone in the Simulator on a Mac.
+- End-to-end: `tool/e2e/run.sh` runs a server, the desktop app, real terminals and the phone in the iOS Simulator or an Android emulator on a Mac; [docs/TESTING.md](docs/TESTING.md) says what tests each feature.
 - Never commit `config/Local.xcconfig`, `apps/pocketterm-mobile/android/key.properties`, `google-services.json`, a server's data folder, keystores or any key.
 
 ## Style

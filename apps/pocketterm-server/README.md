@@ -7,15 +7,16 @@ For admins who run their own servers already; the Docker walkthrough is [below](
 - **One process:** one container (`ghcr.io/danyzmaj-apps/pocketterm-server`) or one binary, `pocketterm-server serve`. No database, no other services.
 - **Port 47900, plain HTTP** (`--port`, `--address`, default `0.0.0.0`). Terminate HTTPS in front of it and set `--public-url` to that `https://` address.
 - **WebSocket at `/v1/ws`** must pass through the proxy (Upgrade headers), with an idle timeout above 60 seconds. The server pings every 25 seconds.
+- **Request bodies up to 20 MB** through the proxy: sealed images and files on their way from a phone to a computer.
 - **`--trust-proxy`** when it sits behind a proxy that sets `X-Forwarded-For`, so rate limits count the real caller. Leave it off when clients reach it directly.
-- **One data folder to back up:** `/data` in the container (`--data`, default `./data` for the binary).
+- **One data folder to back up:** `/data` in the container (`--data`, default `./data` for the binary). Waiting images and files take at most 1 GiB of it (200 MiB per device), each gone once downloaded or after an hour.
 - **Health:** `pocketterm-server health` exits 0 when it answers; or `GET /v1/health` returns 200.
 - **Outbound:** HTTPS to `push.danyzmaj.com`, only if phones turn notifications on.
 
 Every option also reads an environment variable (`POCKETTERM_PORT`, `POCKETTERM_DATA`, `POCKETTERM_PUBLIC_URL`, `POCKETTERM_TRUST_PROXY=1`, …); `pocketterm-server help` lists them.
 
 The server your computers and phones talk to: pairing, the list of your computers, the live channel between a
-computer and its phones, images on their way from phone to computer, and push notifications. It serves one
+computer and its phones, images and files on their way from phone to computer, and push notifications. It serves one
 owner. Everything between a computer and a phone is end-to-end encrypted by the apps, so the server only ever
 passes on ciphertext.
 
@@ -50,8 +51,8 @@ internet (Caddy gets the HTTPS certificate from Let's Encrypt, which checks port
    docker compose up -d
    ```
 
-3. Print the setup link and open it on each of your computers (PocketTerm, Your own server). Phones are added
-   from a computer afterwards (Add a phone).
+3. Print the setup link and paste it on each of your computers (PocketTerm's setup: **On my own server → Yes**).
+   Phones are added from a computer afterwards (**Settings → Phone → Add a phone…**).
 
    ```sh
    docker compose exec server pocketterm-server setup-link
@@ -171,7 +172,7 @@ It speaks plain HTTP: put it behind something that adds HTTPS, or reach it over 
 In the data directory: `state.json` (devices with the SHA-256 of their tokens, computers, pairing codes, push
 tokens), rewritten atomically on every change, with the state before the last change in `state.json.bak`;
 `setup-token`; `.lock`, held while a server runs (a second server on the same folder refuses to start); and `blobs/`,
-images waiting for their computer, deleted once downloaded or after an hour. Push notifications go to the
+sealed images and files waiting for their computer, deleted once downloaded or after an hour. Push notifications go to the
 publisher's relay, which holds the Apple and Google keys and sees only the phone's push token and the encrypted text.
 
 A `state.json` that doesn't read (edited by hand, a broken disk) is never replaced by an empty one: the server

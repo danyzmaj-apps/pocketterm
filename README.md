@@ -110,7 +110,7 @@ Full model: [SECURITY.md](SECURITY.md). What the publisher collects: the [privac
 4. **Scan the code.** In the phone app, tap **Scan the code from your computer** and scan the QR code the checklist shows (later: **Settings → Phone → Add a phone…**). The code is single-use for sign-in, expires in 10 minutes and carries the computer's key: show it only to your own phone. With several computers, scan each one's code once.
 
 <p align="center">
-  <img src="docs/images/mac-setup.png" width="45%" align="top" alt="Setup: On this computer, or On my own server">
+  <img src="docs/images/mac-setup.png" width="45%" align="top" alt="Setup: On this computer, On my own server or Supabase">
   <img src="docs/images/get-ready.png" width="45%" align="top" alt="Get this computer ready: coding agents, terminals, project folders, your phone">
 </p>
 
@@ -126,14 +126,14 @@ One Dart pub workspace, Flutter pinned in `.fvmrc`.
 
 | Path | What |
 | --- | --- |
-| [`apps/pocketterm-desktop`](apps/pocketterm-desktop) | Desktop app for macOS and Windows, with the built-in server, the omp extension and Claude Code plugin |
+| [`apps/pocketterm-desktop`](apps/pocketterm-desktop) | Desktop app for macOS and Windows, with the built-in server, the Supabase setup ([`supabase/`](apps/pocketterm-desktop/supabase)), the omp extension and Claude Code plugin |
 | [`apps/pocketterm-mobile`](apps/pocketterm-mobile) | Phone app for iPhone and Android |
 | [`packages/pocketterm_core`](packages/pocketterm_core) | Shared code: server client, end-to-end encryption, terminal protocol and hosts |
 | [`packages/pocketterm_server`](packages/pocketterm_server) | The server: HTTP and WebSocket API ([PROTOCOL.md](packages/pocketterm_server/PROTOCOL.md)), storage, relay client |
 | [`apps/pocketterm-server`](apps/pocketterm-server) | Server command, Docker image and compose file |
 | [`apps/pocketterm-relay`](apps/pocketterm-relay) | Push relay (Deno) to APNs and FCM |
-| [`tool/e2e`](tool/e2e) | End-to-end harness |
-| [`docs`](docs) | [Architecture](docs/ARCHITECTURE.md), [building](docs/BUILDING.md), [releasing](docs/RELEASING.md), [self-hosting](docs/SELF_HOSTING.md) |
+| [`tool/e2e`](tool/e2e), [`tool/smoke`](tool/smoke) | End-to-end harness; installed-app smoke |
+| [`docs`](docs) | [Architecture](docs/ARCHITECTURE.md), [building](docs/BUILDING.md), [testing](docs/TESTING.md), [releasing](docs/RELEASING.md), [self-hosting](docs/SELF_HOSTING.md) |
 
 ```sh
 fvm install && fvm flutter pub get                 # repo root
@@ -149,7 +149,7 @@ fvm dart format -l 120 lib test && fvm dart analyze --fatal-infos && fvm dart te
 deno fmt --check && deno check main.ts tests/*.ts && deno task test
 ```
 
-End to end on a Mac (real server, desktop app, kitty, Ghostty and WezTerm, phone in the iOS Simulator; results in `build/e2e/`):
+End to end on a Mac (a server, the desktop app, kitty, Ghostty and WezTerm, the phone in the iOS Simulator or an Android emulator; results in `build/e2e/`). `--server` picks a local server (the default), the built-in one over Tailscale, Supabase (local or a new project on supabase.com) or a server elsewhere; what each covers: [docs/TESTING.md](docs/TESTING.md).
 
 ```sh
 tool/e2e/run.sh --terminal all

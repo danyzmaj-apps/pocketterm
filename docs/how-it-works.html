@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PocketTerm: how the two setups work</title>
+<title>PocketTerm: how the three setups work</title>
 <style>
   :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --text:#e7e9ee; --dim:#9aa1ad; --accent:#7c9cff; --ok:#4ade80; --warn:#fbbf24; --lock:#f472b6; }
   * { box-sizing: border-box; }
@@ -93,7 +93,7 @@
 
       <rect class="box third" x="350" y="380" width="220" height="70" rx="12"/>
       <text class="t" x="366" y="408">tailscale serve</text>
-      <text class="s" x="366" y="430">https://&lt;mac&gt;.ts.net → 127.0.0.1</text>
+      <text class="s" x="366" y="430">https://&lt;computer&gt;.ts.net → 127.0.0.1</text>
 
       <rect class="box yours" x="780" y="230" width="230" height="130" rx="12"/>
       <text class="t" x="796" y="258">PocketTerm phone</text>
@@ -123,11 +123,11 @@
 
     <h3>What happens, step by step</h3>
     <ol class="steps">
-      <li><b>Setup wizard checks Tailscale</b><small>Installed, running, signed in, HTTPS certificates on. Each row turns green on its own; buttons install or open things only after you confirm.</small></li>
+      <li><b>Setup wizard checks Tailscale</b><small>Installed, running, signed in, HTTPS certificates on, port 443 free. Each row turns green on its own; buttons install or open things only after you confirm.</small></li>
       <li><b>The desktop app starts its own server</b><small>It listens on 127.0.0.1 only, so nothing on your Wi-Fi or the internet can reach it directly.</small></li>
-      <li><b>Tailscale publishes it privately</b><small><code>tailscale serve</code> gives it an HTTPS address like <code>https://your-mac.tail1234.ts.net</code> that only devices signed in to your Tailscale can open.</small></li>
+      <li><b>Tailscale publishes it privately</b><small><code>tailscale serve</code> gives it an HTTPS address like <code>https://your-computer.tail1234.ts.net</code> that only devices signed in to your Tailscale can open.</small></li>
       <li><b>You scan the QR code with your phone</b><small>The code carries the server address, a one-time pairing code and this computer's encryption key. It never goes through any server.</small></li>
-      <li><b>The phone connects through its Tailscale app</b><small>From anywhere: home Wi-Fi, mobile data, a café. Tailscale makes a direct encrypted tunnel to your Mac.</small></li>
+      <li><b>The phone connects through its Tailscale app</b><small>From anywhere: home Wi-Fi, mobile data, a café. Tailscale makes a direct encrypted tunnel to your computer. If your tailnet has device approval on, approve the phone in Tailscale's admin console first.</small></li>
       <li><b>Everything inside is sealed again</b><small>Conversations, screens, prompts, images and files are encrypted with the computer's key before they leave, so even the server only passes ciphertext.</small></li>
     </ol>
   </section>
@@ -207,6 +207,66 @@
 
   <!-- ============ SUPABASE ============ -->
   <section class="panel" id="supabase">
+    <svg viewBox="0 0 1060 520" role="img" aria-label="Supabase setup diagram">
+      <rect class="zone home" x="20" y="60" width="330" height="420" rx="14"/>
+      <text class="zl" x="40" y="86" fill="#9aa1ad">Your computer(s)</text>
+
+      <rect class="box" x="45" y="110" width="280" height="70" rx="12"/>
+      <text class="t" x="61" y="138">omp / Claude Code</text>
+      <text class="s" x="61" y="160">in kitty, Ghostty+tmux, WezTerm</text>
+
+      <rect class="box mine" x="45" y="240" width="280" height="90" rx="12"/>
+      <text class="t" x="61" y="268">PocketTerm desktop</text>
+      <text class="s" x="61" y="290">connects OUT to your project</text>
+      <text class="s" x="61" y="308">(no ports opened at home)</text>
+
+      <rect class="box mine" x="45" y="370" width="280" height="80" rx="12" opacity=".55"/>
+      <text class="t" x="61" y="398" opacity=".7">Another computer (optional)</text>
+      <text class="s" x="61" y="420">joins with a setup link</text>
+
+      <rect class="zone net" x="400" y="60" width="300" height="420" rx="14"/>
+      <text class="zl" x="420" y="86" fill="#9aa1ad">Your Supabase project (region you pick)</text>
+
+      <rect class="box third" x="425" y="120" width="250" height="90" rx="12"/>
+      <text class="t" x="441" y="148">Edge Function pocketterm</text>
+      <text class="s" x="441" y="170">same requests as the server</text>
+      <text class="s" x="441" y="188">checks device tokens</text>
+
+      <rect class="box third" x="425" y="250" width="250" height="90" rx="12"/>
+      <text class="t" x="441" y="278">Realtime</text>
+      <text class="s" x="441" y="300">live channel, private topics</text>
+      <text class="s" x="441" y="318">10-minute token per device</text>
+
+      <rect class="box" x="425" y="380" width="250" height="70" rx="12"/>
+      <text class="t" x="441" y="406">Database + Storage</text>
+      <text class="s" x="441" y="428">device list, names, sealed blobs</text>
+
+      <rect class="box yours" x="770" y="230" width="260" height="110" rx="12"/>
+      <text class="t" x="786" y="258">PocketTerm phone</text>
+      <text class="s" x="786" y="280">no Tailscale needed</text>
+      <text class="s" x="786" y="300">holds the computer's key</text>
+      <text class="s" x="786" y="320">(from scanning its QR)</text>
+
+      <rect class="box third" x="770" y="400" width="260" height="70" rx="12"/>
+      <text class="t" x="786" y="428">Push relay (optional)</text>
+      <text class="s" x="786" y="450">push.danyzmaj.com → Apple/Google</text>
+
+      <path class="flow plain" d="M185 180 V240"/>
+      <text class="lbl" x="195" y="216">local API</text>
+      <path class="flow e2e anim" d="M325 285 H425"/>
+      <path class="flow e2e anim" d="M675 295 H770"/>
+      <text class="lbl" x="790" y="214">HTTPS from anywhere</text>
+      <path class="flow plain" d="M325 270 C370 270 380 165 425 165"/>
+      <path class="flow plain" d="M675 165 C730 165 720 260 770 260"/>
+      <path class="flow plain" d="M550 340 V380"/>
+      <path class="flow push" d="M675 190 C730 260 730 430 770 435"/>
+    </svg>
+    <div class="legend">
+      <span style="--c:#f472b6">sealed with the computer's key</span>
+      <span style="--c:#5b6475">requests with a device token, or storage</span>
+      <span style="--c:#fbbf24">push (opt-in), still sealed</span>
+    </div>
+
     <h3>What happens, step by step</h3>
     <ol class="steps">
       <li><b>You paste a Supabase access token</b><small>It covers your whole Supabase organization. PocketTerm uses it only during setup and never stores it: best, an organization of its own for PocketTerm, and delete the token afterwards.</small></li>
@@ -242,7 +302,7 @@
       <text class="lbl" x="420" y="135">light only: screen → camera. No server sees the key.</text>
 
       <rect class="box third" x="400" y="210" width="260" height="110" rx="12"/>
-      <text class="t" x="416" y="238">Server (either setup)</text>
+      <text class="t" x="416" y="238">Server (any setup)</text>
       <text class="s" x="416" y="260">sees: who is paired, when,</text>
       <text class="s" x="416" y="278">how much. Never the contents.</text>
       <text class="s" x="416" y="296">Can't read, can't forge.</text>
@@ -260,7 +320,7 @@
       <div class="card"><h4>Visible to the server</h4><p>Your device list, computer names, pairing codes (hashed), push tokens, and when devices talk. Images and files wait there sealed until the computer fetches them, at most an hour.</p></div>
       <div class="card"><h4>Push relay (only if you turn notifications on)</h4><p>Run by Danijel Lovric on his server in Germany. Receives requests sealed to its own key, forwards the still-sealed notification to Apple or Google and stores nothing. The relay and Apple or Google see an encrypted message, a push token and when it was sent, never which computer or session it is about.</p></div>
       <div class="card"><h4>Lock Screen updates (iPhone)</h4><p>When you follow a session, iOS shows its state on the Lock Screen: working, needs you, or finished. Apple doesn't let apps decrypt these updates, so this state travels unencrypted. It never includes any text from your sessions, and it carries no names, folders or ids.</p></div>
-      <div class="card"><h4>Lost a phone?</h4><p>Settings → Phone → Reset key. The computer makes a new key; every phone scans again; the old key opens nothing new.</p></div>
+      <div class="card"><h4>Lost a phone?</h4><p>Settings → Account: Sign out… next to it ends its sign-in. Settings → Phone → Reset key: the computer makes a new key; every phone you keep scans again; the old key opens nothing new.</p></div>
       <div class="card"><h4>Links from outside</h4><p>A link opened from a message or website can never install a key. Only the in-app scanner can.</p></div>
     </div>
   </section>

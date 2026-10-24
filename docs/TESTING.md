@@ -2,8 +2,8 @@
 
 Every user-facing feature, and what tests it. Four layers:
 
-- **Unit and widget tests**: `fvm flutter test` (or `fvm dart test`) in each package and app; `deno test` in `apps/pocketterm-relay`; `bun test` in the Claude Code plugin (`apps/pocketterm-desktop/integrations/claude/plugins/pocketterm/tests`).
-- **End-to-end run**: `tool/e2e/run.sh` (see `tool/e2e/bin/run.dart`). For each terminal (kitty, Ghostty, WezTerm): a server (local, built-in over Tailscale, or another one), the real desktop app under `apps/pocketterm-desktop/integration_test/e2e_test.dart` with throwaway terminals running a fake omp (`tool/e2e/bin/fake_omp.dart`), and the phone app in the iPhone Simulator or an Android emulator driven by Maestro (`apps/pocketterm-mobile/maestro/e2e/run.sh`, phases in order `main`, `computer-off`, `server-down`, `server-restart`, `desktop-restart`, `real-omp`, `revoke`). Below, *flow* `x` is `apps/pocketterm-mobile/maestro/e2e/x.yaml` and *step* "y" is a `report.step` in the desktop test.
+- **Unit and widget tests**: `fvm flutter test` (or `fvm dart test`) in each package and app; `deno test` in `apps/pocketterm-relay`; `claude plugin test .` in the Claude Code plugin (`apps/pocketterm-desktop/integrations/claude/plugins/pocketterm`, its tests in `tests/`). The core client tests also run against PocketTerm on a local Supabase (`POCKETTERM_SUPABASE=1 fvm flutter test -j 1 test/server_client_test.dart test/session_test.dart`, after `tool/supabase-local.sh start`); CI doesn't run those.
+- **End-to-end run**: `tool/e2e/run.sh` (see `tool/e2e/bin/run.dart`). For each terminal (kitty, Ghostty, WezTerm): a server (`--server local`; `builtin`, over Tailscale; `supabase`, on a local Supabase in Docker; `supabase-cloud`, a new project on supabase.com made by the desktop's setup and deleted after; or a server's URL), the real desktop app under `apps/pocketterm-desktop/integration_test/e2e_test.dart` with throwaway terminals running a fake omp (`tool/e2e/bin/fake_omp.dart`), and the phone app in the iPhone Simulator or an Android emulator driven by Maestro (`apps/pocketterm-mobile/maestro/e2e/run.sh`, phases in order `main`, `computer-off`, `server-down`, `server-restart`, `desktop-restart`, `real-omp`, `revoke`; `supabase-cloud` has no server restart). Below, *flow* `x` is `apps/pocketterm-mobile/maestro/e2e/x.yaml` and *step* "y" is a `report.step` in the desktop test.
 - **Installed-app smoke**: `tool/smoke/run.sh` and `tool/smoke/scenario.sh`: a release build copied to a throwaway place, opened as from Finder, driven through accessibility (scenarios `wizard`, `getready`, `settings`, `menubar`, `quit`).
 - **Manual**: what needs a camera, real push delivery, a real right click, Windows, or the owner's own accounts.
 
@@ -13,12 +13,15 @@ Run the e2e suite on a quiet Mac: it opens throwaway terminal windows and refuse
 
 | Feature | How it's tested | Gap |
 | --- | --- | --- |
-| Setup: choose On this computer / On my own server | step "setup: On this computer shows Tailscale as it is" / "…starts its server, Tailscale serves it" (`--server builtin`); `setup_page_test.dart`; smoke `wizard` | none |
+| Setup: choose On this computer / On my own server / Supabase | step "setup: On this computer shows Tailscale as it is" / "…starts its server, Tailscale serves it" (`--server builtin`); step "setup: Supabase, set up a new project (real Management API)" (`--server supabase-cloud`); `setup_page_test.dart`; smoke `wizard` | none |
 | Setup, On this computer: Tailscale checklist (installed, running, signed in, HTTPS, port 443 free) and each row's button | step reads the real Tailscale state and checks every row and that Start is on only when all are done; smoke `wizard` walks Stopped, NeedsLogin, HTTPS off and serve taken with a stand-in CLI; `setup_page_test.dart` "On this computer" | Install Tailscale (brew/winget) and Turn on HTTPS open other apps: unit only |
 | Setup, On this computer: Start, the server runs and Tailscale serves it | step (builtin); smoke `wizard` (stand-in Tailscale) | none |
 | Setup, own server: I have one, paste link, Connect | step "setup: own server, paste link" | none |
 | Setup link problems (not a link, no setup token, server not answering, phone link) | step "setup: link problems are explained"; `setup_page_test.dart` | none |
 | Setup, own server: Not yet (server guide, address check, commands, DNS/HTTPS/health checks) | step "setup: Not yet shows the server guide" (address check, commands); `setup_page_test.dart` "not yet" | DNS/HTTPS/health against a real new VPS: manual |
+| Setup, Supabase: Set up a project (token, organization, region, Create, the step checklist, sign-in) | steps "setup: Supabase, set up a new project (real Management API)" and "setup: Supabase set up with no Retry" (`--server supabase-cloud`, a project made and deleted on supabase.com); `supabase_setup_test.dart` | Update that project on an existing one: unit only (the cloud run lists only the project it makes) |
+| Setup, Supabase: Paste a setup link | the `--server supabase` run signs in with the local project's link (step "setup: own server, paste link"); `supabase_setup_test.dart` (the Supabase branch's paste screen) | none |
+| Sign-in when the Keychain refuses (locked, missing): message and Try again | core `session_test.dart`; `setup_page_test.dart`, `hosting_test.dart` | a real locked Keychain: manual |
 | First sign-in turns Terminal from phone on, adds no login item | steps "setup: …" assert both | none |
 | Get ready: omp gets PocketTerm | step "get ready: omp gets PocketTerm"; `get_ready_test.dart`, `integrations_test.dart` | Claude Code install: plugin tests and `integrations_test.dart` only (the e2e never touches the owner's Claude Code) |
 | Get ready: sessions already open (unreported) | step "get ready: sessions already open are listed" | none |
@@ -38,8 +41,9 @@ Run the e2e suite on a quiet Mac: it opens throwaway terminal windows and refuse
 | Terminals tab: Ghostty Start new windows in tmux / Remove / line upgrade | steps "ghostty: Start new windows in tmux", "ghostty: Remove takes tmux out"; `ghostty_config_test.dart`, `settings_test.dart` | none |
 | Terminals tab: tmux install (brew, MacPorts, no Homebrew) | `terminals_card_test.dart`, `commands_test.dart` | installing for real: manual |
 | WezTerm on Windows (install, PATH) | `wezterm_setup_test.dart`, `windows_test.dart` | manual: Windows hardware |
-| Account tab: Your server, Add a computer… | step "account: Add a computer" (built-in server); `settings_account_test.dart`, `hosting_test.dart` | none |
-| Account tab: Launch at login | step "settings: launch at login switch" (E2E host records it, no login item); `controller_test.dart` | the real login item: manual (it changes the owner's login items) |
+| Account tab: Your server, Add a computer… | step "account: Add a computer" (built-in server); `settings_account_test.dart`, `hosting_test.dart` | Add a computer… on Supabase (`POST /v1/setup/new`): core client tests against the local Supabase only |
+| Account tab: phones signed in, Sign out… | `settings_account_test.dart`; step "revoke: phone removed on the server" revokes through the same API call (+ phone phase `revoke`) | the Sign out… button itself: unit only |
+| Account tab: Launch at login (off until turned on; Login Items hint) | step "settings: launch at login switch" (E2E host records it, no login item); `controller_test.dart`, `desktop_host_test.dart` | the real login item: manual (it changes the owner's login items) |
 | Account tab: Erase… | step "account: Erase" (built-in server); `settings_account_test.dart`; server `edge_test.dart` | none |
 | Account tab: Sign out | step "account: sign out"; `settings_account_test.dart` | none |
 | Account tab: How your data is protected | step "settings: data protection"; smoke `settings` | none |
@@ -64,7 +68,8 @@ Run the e2e suite on a quiet Mac: it opens throwaway terminal windows and refuse
 | Tour prompt (New here? Show me / No thanks) | `coach_test.dart` | an E2E build starts it answered; release-build behavior: unit only |
 | First-use tips, Show tips again | flow `tips_home`; `coach_test.dart` | none |
 | Notifications consent (Turn on / Not now) | flow `pair` (both answers); `push_consent_test.dart` | none |
-| Notifications switch in the account sheet | flow `push_toggle` | none |
+| Notifications switch in the account sheet; why turning on failed (off in Settings, no address from Apple or Google) | flow `push_toggle`; `push_consent_test.dart` | no address from Apple or Google: unit only |
+| Tailscale Awaiting Approval help | `phone_edges_test.dart` | a tailnet with device approval: manual |
 | Account sheet rows, Leave this server (Cancel and Leave) | flows `account_sheet`, `signout`; `home_page_test.dart` | none |
 | Computer picker, locked computer | flow `computers`; `home_page_test.dart`, `phone_edges_test.dart` | scanning a locked computer's code: manual (camera) |
 | Project list: sort, fold, long-press menu | flow `project_list`; `terminal_list_test.dart` | none |
@@ -107,12 +112,13 @@ Run the e2e suite on a quiet Mac: it opens throwaway terminal windows and refuse
 | Devices list, revoke, erase | `server_test.dart`; steps "revoke: …", "account: Erase" | none |
 | Restart keeps state; state on disk | `edge_test.dart`; step "restart: server" | none |
 | Blobs (20 MB, download once, 1 h) | `server_test.dart`, `edge_test.dart`; flows `image`, `file`, `too_large` | none |
+| PocketTerm on Supabase (function, migrations, Realtime, blobs, push) | core `server_client_test.dart`, `session_test.dart` with `POCKETTERM_SUPABASE=1`; e2e `--server supabase` (local) and `--server supabase-cloud` | not in CI |
 | Live channel, reconnect, no replays | `terminal_channel_test.dart`, `terminal_remote_test.dart`; phases `server-restart`, `desktop-restart` | none |
 | Push forwarding, sealed to the relay | `server_test.dart` push, `edge_test.dart` relay and queue; relay `tests` | real delivery: manual |
 | omp extension | fake omp in the e2e (same protocol), real omp phase | none |
 | Claude Code plugin | plugin `tests` (`pocketterm.test.ts`, `streaming.test.ts`) | never installed by the e2e (it would change the owner's Claude Code); manual |
 | kitty adapter | `kitty_test.dart`; e2e `--terminal kitty` | none |
-| Ghostty adapter (no screen, tmux) | `ghostty_test.dart`, `ghostty_surface_test.dart`, `terminals_test.dart`; e2e `--terminal ghostty` | none |
+| Ghostty adapter (no screen, tmux, one row per window in tmux, config line upgrade) | `ghostty_test.dart`, `ghostty_surface_test.dart`, `terminals_test.dart`, `ghostty_config_test.dart`; e2e `--terminal ghostty` | none |
 | WezTerm adapter | `wezterm_test.dart`; e2e `--terminal wezterm` | Windows: unit only |
 | tmux adapter | `tmux_test.dart`; Ghostty's tmux windows in the e2e | none |
 
@@ -123,11 +129,27 @@ The e2e runs every phone flow on each terminal. Where a terminal can't do someth
 - **Ghostty** can't share its screen: `screen` checks the phone says so; `approval` checks the phone is told to answer on the computer (the desktop then answers). Sessions the phone starts open in tmux inside Ghostty, which can: `question`, `plan`, `menu_model`, `menu_resume`, `steer_queue` and `stop` run on that session for every terminal.
 - **kitty** and **WezTerm**: everything, screens included.
 
+## What ran end to end for 0.1.0 (build 14)
+
+| Server | Phone | Terminals | Result |
+| --- | --- | --- | --- |
+| Local (`--server local`) | iPhone Simulator | kitty, Ghostty, WezTerm | Every desktop step and every phone phase passed, except `steer_queue` on all three (a harness timing, which passed after the fake's fix in a phone-only kitty run) and Ghostty's `resume-60s`, where Maestro's driver died taking a screenshot after every check had passed |
+| Local | Android emulator, API 35 | kitty, Ghostty, WezTerm | All passed |
+| Local | Android emulator, API 26 (Android 8) | kitty: `fresh`, `pair`, a prompt, `/new` | All passed |
+| Supabase in Docker (`--server supabase`) | iPhone Simulator | kitty, Ghostty, WezTerm | All passed |
+| Supabase in Docker | Android emulator, API 35 | kitty | All passed |
+| Supabase on supabase.com (`--server supabase-cloud`) | iPhone Simulator | kitty | All passed: the desktop's setup made the project on the real Management API, phone `main` (notifications and Follow through push.danyzmaj.com), `computer-off`, `desktop-restart`, `real-omp`, `revoke`; the project was deleted after |
+| The test server, pocketterm-test.danyzmaj.com (Docker image, behind a Cloudflare Tunnel) | iPhone Simulator | kitty, Ghostty, WezTerm | Every phone phase passed on all three, and every desktop step; kitty again in full after two harness fixes: all passed |
+| Built in, over Tailscale (`--server builtin`) | iPhone Simulator | kitty, Ghostty | Stopped before the end: kitty passed every desktop step it reached (51) and phone `main`; Ghostty passed 20 desktop steps and 10 phone flows. WezTerm didn't run |
+
+The installed-app smoke last ran on the 2026-10-22 build, walked by hand through `tool/smoke/run.sh`: On this computer with the stand-in Tailscale, Get this computer ready, Settings, sign out, the own-server branch, the real Tailscale's port-taken screen and the folder picker. The `scenario.sh` set (`wizard`, `getready`, `settings`, `menubar`, `quit`) has never run, and the smoke wasn't rerun on build 14.
+
 ## Manual only
 
 - Camera scanning of a code (the Simulator has no camera; E2E builds paste the code).
-- Real push delivery (APNs, FCM through the relay) and what a Live Activity or notification shows on a locked phone.
+- Real push delivery to a real device (APNs, FCM through the relay) and what a Live Activity or notification shows on a locked phone.
 - The menu bar icon's right-click menu and Check for Updates… (Sparkle).
-- Launch at login for real (it changes the person's login items), macOS Automation and Accessibility permission prompts.
+- Launch at login for real (it changes the person's login items), macOS Automation and Accessibility permission prompts, a locked Keychain.
 - Windows: WezTerm install and PATH, the tray menu, the update notice, start at login.
-- Installing Tailscale, tmux or WezTerm for real; a new VPS's DNS and HTTPS.
+- Installing Tailscale, tmux or WezTerm for real; a new VPS's DNS and HTTPS; a tailnet with device approval.
+- Updating an existing Supabase project (**Update that project**) and a paused free project.

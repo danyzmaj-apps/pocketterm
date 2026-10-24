@@ -125,8 +125,10 @@ Everything the server keeps is in the `pocketterm-data` Docker volume; back it u
 
 PocketTerm puts its server on a free [Supabase](https://supabase.com) project in your Supabase organization, in a region you pick. Nothing runs on a machine of yours, and no Tailscale is needed. It's the same server as the other options (same sign-in, same end-to-end encryption), built from Supabase parts: a database, one Edge Function named `pocketterm`, a private Storage bucket for sealed images and files, and Supabase Realtime for the live channel. How it's built: [apps/pocketterm-desktop/supabase/README.md](../apps/pocketterm-desktop/supabase/README.md).
 
-1. **A personal access token.** Make one at [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens) and paste it in the wizard. It covers your whole Supabase organization (every project in it). PocketTerm uses it only during setup and never stores it. Best: a Supabase organization of its own for PocketTerm, and deleting the token once setup is done.
-2. **Organization and region.** Pick the organization and the region the project lives in. Supabase holds your server's metadata there. PocketTerm creates a project named PocketTerm; if the organization already has a project with PocketTerm on it, it offers **Update that project** instead. Your other projects are never offered or touched.
+The wizard first asks: **Is PocketTerm already on a Supabase project of yours?** **Paste a setup link** is for a project another computer of yours already uses ([More computers](#more-computers-on-supabase) below). **Set up a project** makes a new one:
+
+1. **A personal access token.** The wizard first says what Supabase holds and what stays private. Make a token at [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens) (**Create a token** opens the page) and paste it. It covers your whole Supabase organization (every project in it). PocketTerm uses it only during setup and never stores it. Best: a Supabase organization of its own for PocketTerm, and deleting the token once setup is done.
+2. **Organization and region.** Pick the organization and the region the project lives in. Supabase holds your server's metadata there. **Create the project** makes a project named PocketTerm; if the organization already has a project with PocketTerm on it, the wizard offers **Update that project** instead. Your other projects are never offered or touched.
 3. **The setup runs.** A checklist follows each step: **Starting the project**, **Database**, **Live channel key**, **Server function**, **Signing this computer in**. Supabase may hold the live channel key step for several minutes; the wizard says so and waits. Every step can run again: the database keeps what it has, and the function is deployed anew.
 
 Then the computer is signed in, as with a pasted setup link, and **Get this computer ready** opens.
@@ -136,7 +138,7 @@ Good to know:
 - **Free projects pause** after about a week without use. Phones and computers can't connect until you restore it at [supabase.com/dashboard](https://supabase.com/dashboard). The free plan allows 2 active projects per account.
 - **A signing key.** The setup imports a key PocketTerm made into the project as its JWT signing key, and the function keeps it as a secret to sign 10-minute live channel tokens. Anyone with access to the project (members of the organization, Supabase) could use it: the same trust as the project itself.
 - **Revoking** a phone or computer tells it at once over the live channel; at worst its live connection lasts until its 10-minute token runs out (messages stay sealed).
-- **More computers** don't need a token: on a computer already signed in, **Settings → Account → Add a computer…** shows a new setup link (the one before stops working); paste it in the other computer's wizard (**Supabase → paste a setup link from another computer**).
+- <a id="more-computers-on-supabase"></a>**More computers** don't need a token: on a computer already signed in, **Settings → Account → Add a computer…** shows a new setup link (the one before stops working; nobody is signed out); paste it in the other computer's wizard (**Supabase → Paste a setup link**).
 
 ## After the first sign-in
 
@@ -151,7 +153,7 @@ The first sign-in on a computer opens **Get this computer ready**, a checklist w
   <img src="images/get-ready.png" width="45%" alt="Get this computer ready: agents, terminals, project folders, your phone">
 </p>
 
-**Done** goes to Settings and says what's still left. Settings starts with a status bar: **All set**, or how many things need attention; **Show** lists them with the button that fixes each, including a coding agent installed later, and a dot marks the tab they're on. **Open setup checklist** shows the checklist again. On Windows, a bar under it links to a new version when one is out. Below it are four tabs: **Phone** (Terminal from phone, **Add a phone…**, **Reset key**, project folders), **Coding agents** (PocketTerm in each agent with **Install** or **Update**, sessions to reopen, **Make default**), **Terminals** (where new sessions open, each terminal with its fix) and **Account** (your server and the phones signed in to it, each with **Sign out…**, Tailscale when this computer runs it, **Add a computer…**, Launch at login, **How your data is protected**, the version and **Quit PocketTerm**).
+**Done** goes to Settings and says what's still left. Settings starts with a status bar: **All set**, or how many things need attention; **Show** lists them with the button that fixes each, including a coding agent installed later, and a dot marks the tab they're on. **Open setup checklist** shows the checklist again. On Windows, a bar under it links to a new version when one is out. Below it are four tabs: **Phone** (Terminal from phone, **Add a phone…**, **Reset key**, project folders), **Coding agents** (PocketTerm in each agent with **Install** or **Update**, sessions to reopen, **Make default**), **Terminals** (where new sessions open, each terminal with its fix) and **Account** (**Sign out**; your server and the phones signed in to it, each with **Sign out…**, Tailscale when this computer runs it, **Add a computer…**; **Launch at login**, off until you turn it on; **Erase this server's data** on a computer that runs the server; **How your data is protected**; the version and **Quit PocketTerm**). When macOS holds a login item back, **Launch at login** says to allow PocketTerm in System Settings → General → Login Items.
 
 <p align="center">
   <img src="images/mac-settings-phone.png" width="49%" alt="Settings, Phone: Terminal from phone, your phones, project folders">
@@ -162,7 +164,7 @@ The first sign-in on a computer opens **Get this computer ready**, a checklist w
 
 ## Connect the apps
 
-- **More computers**: install PocketTerm and paste the setup link in the wizard (**On my own server → Yes**): the VPS's from `setup-link`, or, for a server built into another computer, the link from that computer's **Settings → Account → Add a computer…**. On Supabase, paste the link from **Add a computer…** under **Supabase** instead ([Supabase](#supabase)). Every computer you sign in on shows up in the phone's list of computers.
+- **More computers**: install PocketTerm and paste the setup link in the wizard (**On my own server → Yes**): the VPS's from `setup-link`, or, for a server built into another computer, the link from that computer's **Settings → Account → Add a computer…**. On Supabase, paste the link from **Add a computer…** under **Supabase → Paste a setup link** instead ([Supabase](#supabase)). Every computer you sign in on shows up in the phone's list of computers.
 - **iPhone and Android**: phones sign in only with a code from a computer. On the computer, **Settings → Phone → Add a phone…** shows a QR code. In the phone app, tap **Scan the code from your computer**. The code carries the server address, a one-time sign-in code and that computer's encryption key, so the phone signs in and can read that computer's sessions. The sign-in code works once and expires after 10 minutes; the key works until you **Reset key** (**Settings → Phone**). Anyone who scans the code can read that computer's sessions, so only show it to your own phone. No camera? **Paste a code instead** takes the same code as text (the whole `pocketterm://setup?…&code=…` link).
 
 One phone sign-in covers all your computers, but each computer encrypts its sessions with its own key: scan each computer's code once. A computer the phone can't read yet shows as locked with a **Scan** button (or **Scan a computer's code** in the computer picker). After **Reset key**, every phone scans that computer's code again.
@@ -195,6 +197,7 @@ PUSH_RELAY_KEY=<the relay's public key, base64; the relay logs it at start>
 ## Updating
 
 - **On this computer**: the server is part of the app and updates with it. The Mac app updates itself; on Windows, Settings links to a new version when one is out.
+- **On Supabase**: the project runs the server function and database of the app that set it up. When a newer app needs a newer one, it says so: set PocketTerm up on Supabase again from a computer (**Supabase → Set up a project**, the same organization, **Update that project**). Applied migrations stay as they are and the function is deployed anew; devices stay signed in.
 - **On my own server**: the compose file runs the server version it came with. To move to another one, on the VPS run (with that version for `<version>`)
 
   ```sh
@@ -215,8 +218,13 @@ PUSH_RELAY_KEY=<the relay's public key, base64; the relay logs it at start>
 | Settings: "This computer's Tailscale address changed" | The computer was renamed or Tailscale signed in to another account. Each phone scans this computer's code again (**Add a phone…**); each other computer pastes a new link (**Add a computer…**). Rename it back and the old address works again. |
 | Setup or Settings: "This device's clock is N minutes behind/ahead of the server's" | Every message between your computers and phones carries its time, and one more than 5 minutes off is dropped (so an old one can't be replayed). Turn on setting the time automatically (macOS: System Settings → General → Date & Time; Windows: Settings → Time & language → Date & time), on the phone too. |
 | Setup: "That isn't a setup link" | Copy the whole line `setup-link` printed, starting with `pocketterm://setup?url=`. |
-| Setup: "That link signs in a phone, not a computer" | That's a phone's code. Use the server's setup link (`setup-link` on the server, or **Add a computer…** on a computer that runs the server). |
+| Setup: "That link signs in a phone, not a computer" | That's a phone's code. Use the server's setup link (`setup-link` on the server, or **Add a computer…** on a computer that runs the server or is signed in to your Supabase project). |
 | Setup: "Couldn't reach …" | Check the address, that the server runs (`cd ~/pocketterm && sudo docker compose ps`) and that ports 80 and 443 are open. For a server built into another computer, this computer must be signed in to the same Tailscale account. |
+| Setup: "PocketTerm can't use your keychain (it may be locked or missing)" | macOS didn't let PocketTerm keep its sign-in in the login Keychain. Unlock the login keychain in Keychain Access (or allow PocketTerm when macOS asks), then **Try again**. |
+| Setup, Supabase: "Supabase refused that access token" | The token was mistyped, deleted or expired: make a new one at [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens) and paste it. |
+| Setup, Supabase: "Supabase is still starting the project" or "Supabase lets a project change its signing key only every few minutes" | Supabase is still working on the project. Wait, then retry: every step can run again. |
+| Setup or phone: "Your Supabase project runs PocketTerm X; this app needs Y or newer" | Set PocketTerm up on Supabase again from a computer (**Supabase → Set up a project**, **Update that project**), then retry. |
+| Nothing connects to a Supabase project that worked before | Free projects pause after about a week without use: restore it at [supabase.com/dashboard](https://supabase.com/dashboard). |
 | Setup: "Couldn't make a secure connection to <host>: its HTTPS certificate isn't valid or isn't there yet" | Caddy hasn't got a certificate. `cd ~/pocketterm && sudo docker compose logs caddy` says why: ports 80 and 443 closed in the provider's firewall, the name not pointing at the VPS, or Let's Encrypt's limit (5 certificates per name a week; sslip.io names share one big weekly quota that sometimes runs out: wait, or use a domain of your own). Add an AAAA record only if the VPS answers on IPv6. |
 | Setup: "<host> answers, but the PocketTerm server behind it doesn't (502)" | The server container is stopped or failing: `sudo docker compose ps` and `sudo docker compose logs server`. |
 | Setup: "Your server runs PocketTerm server X; this app needs Y or newer" | `cd ~/pocketterm && sudo docker compose pull && sudo docker compose up -d` (built into a computer: update PocketTerm there). "Your server is newer than this app": update PocketTerm. |
@@ -242,11 +250,13 @@ PUSH_RELAY_KEY=<the relay's public key, base64; the relay logs it at start>
 | Phone: "Can't reach <host>. Check your connection." | The phone has no route to the server (offline, captive Wi-Fi not signed in, server down). PocketTerm tries again by itself; coming back to the app retries at once. |
 | Phone: "This phone's clock and <computer>'s differ by …" | Set the time automatically on the phone (iPhone: Settings → General → Date & Time → Set Automatically; Android: Date & time → Set automatically) and on the computer. |
 | Phone: Notifications says "On, but notifications are off for PocketTerm in this phone's Settings" | They were turned off in the phone's Settings after you said yes. Tap **Open Settings** and allow them. |
+| Phone: "Notifications are off for PocketTerm in this phone's Settings" when turning them on | Tap **Settings** on the message and allow notifications for PocketTerm, then turn them on again. |
+| Phone: "This phone couldn't get a notification address from Apple or Google" | Notifications are allowed, but Apple or Google didn't answer the phone. Check its internet connection, then turn notifications on again. |
 | Phone: "Your iPhone shows only a few Live Activities at once" | iOS limits Live Activities per app and in all. Stop following another session (or end one on the Lock Screen), then follow again. |
 | Phone: "That code is for a computer on <host>, and this phone is on …" | A phone uses one server at a time. **Account → Leave this server**, then scan the code again. |
 | Phone: the camera needs permission, or there is no camera | Tap **Open Settings** and allow Camera. A phone or iPad without a camera can't scan a code: use one that has one (the demo works without). |
 | Android: notifications late or missing | Some Android makers stop apps in the background. Let PocketTerm run unrestricted (Settings → Apps → PocketTerm → Battery → Unrestricted). |
-| Phone: signed out while offline | The phone forgets its keys and sign-in at once; the server lists it until you remove it on the computer (**Settings → Phone**). |
+| Phone: signed out while offline | The phone forgets its keys and sign-in at once; the server lists it until you sign it out on a computer (**Settings → Account**, **Sign out…** next to the phone). |
 | Terminal: "PocketTerm may not control Ghostty" | Allow it in System Settings → Privacy & Security → Automation → PocketTerm. |
 | Terminal: kitty windows don't show | **Settings → Terminals → Set up**, then restart kitty. |
 | Terminal: Ghostty shows no screen, or the phone can't answer | Install tmux (`brew install tmux`, or `sudo port install tmux` with MacPorts): sessions the phone starts in Ghostty run in tmux. For windows you open yourself, **Settings → Terminals → Start new windows in tmux**. |
@@ -265,7 +275,7 @@ PUSH_RELAY_KEY=<the relay's public key, base64; the relay logs it at start>
 
 ### Known limits
 
-- **On this computer, it must be awake.** Asleep, phones can't reach it; when it wakes, Tailscale reconnects and Settings shows the server as ready again within a minute. Use **Launch at login**, and keep the computer from sleeping while you're away (or run the server on a VPS).
+- **The computer must be awake** in every option: your sessions run on it. While **Terminal from phone** is on, PocketTerm keeps it from idle sleep; a lid closed or a sleep you start still stops it. With the server on this computer, phones can't reach the server either while it sleeps; when it wakes, Tailscale reconnects and Settings shows the server as ready again within a minute. Turn on **Launch at login** so PocketTerm is back after a restart.
 - **One PocketTerm per computer.** A second copy doesn't start (Windows) or isn't offered (macOS opens the running one). Starting a second one by force (`open -n`) isn't supported: both would want the same Tailscale port.
 - **Port 47900** on 127.0.0.1 is the built-in server's; when another app has it, the server takes the next free one and remembers it. Only Tailscale's port 443 faces your devices.
 - **Tailscale Funnel isn't used.** The built-in server is reachable from your own tailnet only, never from the internet.
@@ -273,6 +283,6 @@ PUSH_RELAY_KEY=<the relay's public key, base64; the relay logs it at start>
 
 ## Removing it
 
-**Settings → Account → Sign out** on each computer. On a computer that runs the server, **Erase this server's data** first signs every computer and phone out and deletes what it keeps. On a VPS, `cd ~/pocketterm && sudo docker compose down -v` stops the server and deletes its data; then delete the VPS.
+**Settings → Account → Sign out** on each computer. On a computer that runs the server, **Erase this server's data** first signs every computer and phone out and deletes what it keeps. On a VPS, `cd ~/pocketterm && sudo docker compose down -v` stops the server and deletes its data; then delete the VPS. On Supabase, delete the PocketTerm project at [supabase.com/dashboard](https://supabase.com/dashboard), and the access token if you kept it.
 
 Uninstalling PocketTerm on Windows keeps its data: `%APPDATA%\Danijel Lovric\PocketTerm` (settings, the encrypted sign-in and keys, the built-in server's data) and `%USERPROFILE%\.config\pocketterm`. Delete both for a clean slate. PocketTerm's add-ons stay in omp (`~/.omp`) and Claude Code until you remove them there.

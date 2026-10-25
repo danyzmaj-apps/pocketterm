@@ -5,11 +5,13 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show kTouchSlop;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter/services.dart';
 import 'package:pocketterm_core/speech.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/e2e_hooks.dart';
+import 'package:pocketterm_mobile/motion.dart';
 
 /// Where the voice sheet hears from: the phone's on-device recognizer, or in an E2E build (no microphone in the
 /// Simulator) a made-up speaker that says [ScriptedSpeech.words]. Tests put a fake here.
@@ -63,6 +65,14 @@ class _VoiceMicState extends State<VoiceMic> {
   VoiceHold? _hold;
   bool _open = false;
 
+  /// A finger is on it and it hasn't opened yet: it grows on a disc, so a hold shows it's taking before the sheet
+  /// slides up.
+  bool _pressed = false;
+
+  void _press(bool pressed) {
+    if (pressed != _pressed && mounted) setState(() => _pressed = pressed);
+  }
+
   @override
   void dispose() {
     _holdTimer?.cancel();
@@ -75,11 +85,21 @@ class _VoiceMicState extends State<VoiceMic> {
     _down = e.position;
     _device = e.device;
     _holdTimer = Timer(_holdAfter, _startHold);
+    _press(true);
   }
 
   void _pointerMove(PointerMoveEvent e) {
     // Moved before it counted as a hold: a scroll or a slip, neither a tap nor a hold.
-    if (_hold == null && _down != null && (e.position - _down!).distance > kTouchSlop) _reset();
+    if (_hold == null && _down != null && (e.position - _down!).distance > kTouchSlop) {
+      _reset();
+      _press(false);
+    }
+  }
+
+  void _pointerCancel(PointerCancelEvent e) {
+    // A hold's sheet takes the finger as it opens (see [_startHold]): only a press that hadn't become one ends here.
+    if (_hold == null) _reset();
+    _press(false);
   }
 
   void _pointerUp(PointerUpEvent e) {
@@ -116,6 +136,7 @@ class _VoiceMicState extends State<VoiceMic> {
 
   Future<void> _openSheet(VoiceHold? hold) async {
     _open = true;
+    _press(false);
     final result = await showVoiceSheet(context, existing: widget.existing(), hold: hold);
     _open = false;
     _down = null;
@@ -142,10 +163,30 @@ class _VoiceMicState extends State<VoiceMic> {
         onPointerDown: _pointerDown,
         onPointerMove: _pointerMove,
         onPointerUp: _pointerUp,
+        onPointerCancel: _pointerCancel,
         child: SizedBox(
           width: widget.small ? 36 : 48,
           height: 48,
-          child: Icon(Icons.mic_none_rounded, size: widget.small ? 20 : 24, color: color),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              AnimatedOpacity(
+                opacity: _pressed ? 1 : 0,
+                duration: Motion.of(context, Motion.quick),
+                curve: Motion.ease,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(color: color.withValues(alpha: .16), borderRadius: C.round(20)),
+                  child: SizedBox.square(dimension: widget.small ? 32 : 40),
+                ),
+              ),
+              AnimatedScale(
+                scale: _pressed ? 1.15 : 1,
+                duration: Motion.of(context, Motion.quick),
+                curve: Motion.ease,
+                child: Icon(Icons.mic_none_rounded, size: widget.small ? 20 : 24, color: color),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -511,13 +552,9 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
     _Phase.downloading => [
       Text('Downloading English for speech recognition…', style: TextStyle(fontSize: 18, height: 1.4, color: C.dim)),
     ],
-    _Phase.checking || _Phase.listening || _Phase.stopping => [
-      Text(
-        _heard.isEmpty ? 'Speak now…' : _heard,
-        key: const ValueKey('voice-live'),
-        style: _big.copyWith(color: _heard.isEmpty ? C.dim2 : C.text),
-      ),
-    ],
+    _Phase.checking ||
+    _Phase.listening ||
+    _Phase.stopping => [_LiveWords(_heard, key: const ValueKey('voice-live'), style: _big)],
     _Phase.review => [
       Semantics(
         identifier: 'voice-edit',
@@ -544,7 +581,22 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
     ],
   };
 
-  Widget _bottom() {
+  /// The controls under what's said: Stop becomes Cancel, Insert and Send (and a problem's buttons come and go) by a
+  /// cross-fade, the room they take changing with it.
+  Widget _bottom() => FadeSwap(
+    scale: .95,
+    alignment: Alignment.bottomCenter,
+    resize: true,
+    child: KeyedSubtree(
+      key: ValueKey(switch (_phase) {
+        _Phase.checking || _Phase.listening || _Phase.stopping => _Phase.listening,
+        final phase => phase,
+      }),
+      child: _controls(),
+    ),
+  );
+
+  Widget _controls() {
     const pad = EdgeInsets.fromLTRB(20, 8, 20, 12);
     switch (_phase) {
       case _Phase.problem:
@@ -646,6 +698,90 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
           ),
         );
     }
+  }
+}
+
+/// What's being said, large: each word fades in as the recognizer adds it. A recognizer revises as it goes, so a
+/// word it changed fades in again, and the words it kept stay as they are. One string (no widgets between the words),
+/// so it wraps, reads to VoiceOver and is found as the text it is. Until something's heard, "Speak now…".
+class _LiveWords extends StatefulWidget {
+  const _LiveWords(this.text, {required this.style, super.key});
+  final String text;
+  final TextStyle style;
+
+  @override
+  State<_LiveWords> createState() => _LiveWordsState();
+}
+
+class _LiveWordsState extends State<_LiveWords> with SingleTickerProviderStateMixin {
+  static final _word = RegExp(r'\S+\s*');
+
+  final _clock = Stopwatch()..start();
+  late final Ticker _ticker = createTicker((_) {
+    setState(() {});
+    if (_born.every((t) => _clock.elapsed - t >= Motion.fast)) _ticker.stop();
+  });
+  List<String> _words = const [];
+
+  /// When each word showed, on [_clock].
+  List<Duration> _born = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _words = _split(widget.text);
+    // Already there when the sheet opens (it never is, but a rebuild of the sheet may make one anew): no fade.
+    _born = List.filled(_words.length, -Motion.fast);
+  }
+
+  @override
+  void didUpdateWidget(_LiveWords old) {
+    super.didUpdateWidget(old);
+    if (old.text == widget.text) return;
+    final words = _split(widget.text);
+    var kept = 0;
+    while (kept < words.length && kept < _words.length && words[kept].trim() == _words[kept].trim()) {
+      kept++;
+    }
+    final now = _clock.elapsed;
+    _born = [..._born.take(kept), for (var i = kept; i < words.length; i++) now];
+    _words = words;
+    if (kept < words.length && !_ticker.isActive && !Motion.reduced(context)) _ticker.start();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  static List<String> _split(String text) => [for (final m in _word.allMatches(text)) m[0]!];
+
+  @override
+  Widget build(BuildContext context) {
+    if (_words.isEmpty) return Text('Speak now…', style: widget.style.copyWith(color: C.dim2));
+    final reduced = Motion.reduced(context);
+    final now = _clock.elapsed;
+    return Text.rich(
+      TextSpan(
+        children: [
+          for (final (i, w) in _words.indexed)
+            TextSpan(
+              text: w,
+              style: TextStyle(
+                color: C.text.withValues(
+                  alpha: reduced
+                      ? 1
+                      : Motion.ease.transform(
+                          ((now - _born[i]).inMicroseconds / Motion.fast.inMicroseconds).clamp(0.0, 1.0),
+                        ),
+                ),
+              ),
+            ),
+        ],
+      ),
+      style: widget.style,
+    );
   }
 }
 

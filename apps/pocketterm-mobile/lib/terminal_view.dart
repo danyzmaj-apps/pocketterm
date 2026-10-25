@@ -14,6 +14,7 @@ import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/coach.dart';
+import 'package:pocketterm_mobile/motion.dart';
 import 'package:pocketterm_mobile/session_view.dart';
 import 'package:pocketterm_mobile/swipe_action.dart';
 import 'package:pocketterm_mobile/switch_view.dart';
@@ -180,7 +181,7 @@ class CloseConfirm extends StatelessWidget {
           );
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
-      duration: Motion.fast,
+      duration: Motion.of(context),
       curve: Motion.ease,
       builder: (context, t, child) => Opacity(
         opacity: t,
@@ -463,6 +464,12 @@ class _TerminalListState extends State<TerminalList> {
   String? _switchTipRow;
   String? _swipeTipRow;
 
+  /// The session and window rows shown last time; null before the list first showed.
+  Set<String>? _rows;
+
+  /// Rows that weren't there last time: they come in.
+  Set<String> _entering = const {};
+
   @override
   void dispose() {
     _openTimer?.cancel();
@@ -558,37 +565,55 @@ class _TerminalListState extends State<TerminalList> {
   Widget _session(LiveSummary s) {
     final title = s.title.isNotEmpty ? s.title : s.agent.label;
     final w = s.window == null ? null : remote.window(s.window!);
-    return _swipe(
-      s.key,
-      w,
-      _tipped(
-        s.window != null && s.window == Coach.maybeOf(context)?.switchedWindow ? Tip.switchDone : null,
-        ListTile(
-          key: ValueKey('session-${s.key}'),
-          contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          onTap: () => openSession(context, remote, s.key),
-          leading: Icon(Icons.auto_awesome, size: 18, color: sessionColor(s)),
-          title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15)),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _badged(
-                w,
-                Text(
-                  sessionState(s),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 13, color: s.ask != null || s.busy ? sessionColor(s) : C.dim),
-                ),
+    // A session that started since the list showed comes in; its state changing (working, needs you, done) shows
+    // in place: the icon's color turns, the words cross-fade, and needing you lights the row up once.
+    return Entrance(
+      key: ValueKey('in-${s.key}'),
+      animate: _entering.contains(s.key),
+      child: _swipe(
+        s.key,
+        w,
+        _tipped(
+          s.window != null && s.window == Coach.maybeOf(context)?.switchedWindow ? Tip.switchDone : null,
+          _Pulse(
+            on: s.ask != null,
+            child: ListTile(
+              key: ValueKey('session-${s.key}'),
+              contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+              onTap: () => openSession(context, remote, s.key),
+              leading: TweenAnimationBuilder<Color?>(
+                tween: ColorTween(end: sessionColor(s)),
+                duration: Motion.of(context),
+                builder: (_, color, _) => Icon(Icons.auto_awesome, size: 18, color: color),
               ),
-              if (s.preview.isNotEmpty)
-                Text(
-                  s.preview,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 13, color: C.dim2),
-                ),
-            ],
+              title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15)),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _badged(
+                    w,
+                    FadeSwap(
+                      scale: 1,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        sessionState(s),
+                        key: ValueKey(sessionState(s)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, color: s.ask != null || s.busy ? sessionColor(s) : C.dim),
+                      ),
+                    ),
+                  ),
+                  if (s.preview.isNotEmpty)
+                    Text(
+                      s.preview,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13, color: C.dim2),
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -772,36 +797,41 @@ class _TerminalListState extends State<TerminalList> {
     ProjectSort.activity => 'Recent activity',
   };
 
-  Widget _window(TermWindow w) => _swipe(
-    w.key,
-    w,
-    _tipped(
-      w.key == _switchTipRow ? Tip.switchOpen : null,
-      ListTile(
-        key: ValueKey('term-${w.key}'),
-        contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-        onTap: () => openWindow(context, remote, w.key),
-        leading: Icon(
-          w.agent != null ? Icons.auto_awesome : Icons.terminal,
-          size: 18,
-          color: w.focused ? C.accent : C.dim2,
-        ),
-        title: Text(
-          w.title.isEmpty ? w.program : w.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 15),
-        ),
-        subtitle: _badged(
-          w,
-          Text(
-            '${w.program} · ${shortPath(remote, w.cwd)}',
+  /// A window's row; one that opened since the list showed comes in.
+  Widget _window(TermWindow w) => Entrance(
+    key: ValueKey('in-${w.key}'),
+    animate: _entering.contains(w.key),
+    child: _swipe(
+      w.key,
+      w,
+      _tipped(
+        w.key == _switchTipRow ? Tip.switchOpen : null,
+        ListTile(
+          key: ValueKey('term-${w.key}'),
+          contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          onTap: () => openWindow(context, remote, w.key),
+          leading: Icon(
+            w.agent != null ? Icons.auto_awesome : Icons.terminal,
+            size: 18,
+            color: w.focused ? C.accent : C.dim2,
+          ),
+          title: Text(
+            w.title.isEmpty ? w.program : w.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 13, color: C.dim),
+            style: const TextStyle(fontSize: 15),
           ),
-          // The rows here are the windows no live session claims.
-          screenOnly: w.agent != null,
+          subtitle: _badged(
+            w,
+            Text(
+              '${w.program} · ${shortPath(remote, w.cwd)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 13, color: C.dim),
+            ),
+            // The rows here are the windows no live session claims.
+            screenOnly: w.agent != null,
+          ),
         ),
       ),
     ),
@@ -864,6 +894,9 @@ class _TerminalListState extends State<TerminalList> {
       if (_sort == ProjectSort.activity) _ranked = [for (final g in groups) g.cwd];
       final claimed = {for (final s in remote.sessions) ?s.window};
       final windows = remote.windows.where((w) => !claimed.contains(w.key)).toList();
+      final rows = {for (final s in remote.sessions) s.key, for (final w in windows) w.key};
+      _entering = _rows == null ? const {} : rows.difference(_rows!);
+      _rows = rows;
       // Agent windows the phone can switch to the conversation view; the others say why they show as screens.
       final switchable = windows.where((w) => canSwitch(remote, w)).length;
       // The rows that carry the switch tour's first tip and the swipe tip: the first that can.
@@ -976,6 +1009,49 @@ String _screensOnly(Agent agent, AgentIntegration? integration, String computer)
           'isn’t reporting from them. It may be out of date (update it in PocketTerm’s Settings on the computer), '
           'or $name there started before it was installed. Then $pickUp to see it above, as a conversation.',
   };
+}
+
+/// [child], whose row lights up once in the warning color when [on] turns on (a session starts needing you), so the
+/// change catches the eye in a long list. Not with reduced motion.
+class _Pulse extends StatefulWidget {
+  const _Pulse({required this.on, required this.child});
+  final bool on;
+  final Widget child;
+
+  @override
+  State<_Pulse> createState() => _PulseState();
+}
+
+class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
+  // Up quickly, down slowly: a light coming on and fading, once.
+  static final _curve = TweenSequence<double>([
+    TweenSequenceItem(tween: Tween<double>(begin: 0, end: 1).chain(CurveTween(curve: Motion.ease)), weight: 3),
+    TweenSequenceItem(tween: Tween<double>(begin: 1, end: 0).chain(CurveTween(curve: Motion.fold)), weight: 7),
+  ]);
+
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+
+  @override
+  void didUpdateWidget(_Pulse old) {
+    super.didUpdateWidget(old);
+    if (widget.on && !old.on && !Motion.reduced(context)) _c.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _c,
+    builder: (_, child) => DecoratedBox(
+      decoration: BoxDecoration(color: C.warn.withValues(alpha: .16 * _curve.evaluate(_c))),
+      child: child,
+    ),
+    child: widget.child,
+  );
 }
 
 /// The screen stays on while the Terminal list is up (and the session and

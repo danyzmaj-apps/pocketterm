@@ -7,6 +7,7 @@ import 'package:pocketterm_core/terminal.dart' show TerminalException;
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
+import 'package:pocketterm_mobile/motion.dart';
 import 'package:pocketterm_mobile/terminal_view.dart' show baseName;
 
 /// A session's queue as the phone shows it: the computer's, with the moves and deletes made here ahead of it until
@@ -110,6 +111,27 @@ class _QueueScreenState extends State<QueueScreen> {
   final _view = QueueView();
   final _messenger = GlobalKey<ScaffoldMessengerState>();
   bool _pausing = false;
+
+  /// The ids shown last time, so one queued since (added, duplicated, back with Undo) comes in; null before the
+  /// list first showed.
+  Set<String>? _seen;
+
+  /// The next build only notes where rows are: a dragged row was dropped, or a swiped one folded away, and they
+  /// already moved there.
+  bool _inPlace = false;
+
+  /// The one whose editor just closed: its text fades back in.
+  String? _closed;
+
+  void _settledInPlace() {
+    _inPlace = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _inPlace = false);
+  }
+
+  void _stopEditing() {
+    _closed = _editing;
+    _editing = null;
+  }
 
   /// The one being edited in place, and its text.
   String? _editing;
@@ -318,6 +340,7 @@ class _QueueScreenState extends State<QueueScreen> {
 
   void _startEdit(LiveQueued q) {
     setState(() {
+      _closed = null;
       _editing = q.id;
       _editField.text = _edited[q.id] ?? q.text;
     });
@@ -343,7 +366,7 @@ class _QueueScreenState extends State<QueueScreen> {
 
   Future<void> _save(LiveQueued q) async {
     final text = _editField.text.trim();
-    setState(() => _editing = null);
+    setState(_stopEditing);
     if (text == (_edited[q.id] ?? q.text)) return;
     setState(() => _edited[q.id] = text);
     try {
@@ -410,6 +433,8 @@ class _QueueScreenState extends State<QueueScreen> {
     final (all, shown) = _view.items(s?.queue ?? const []);
     final paused = s?.paused ?? false;
     final steers = s?.agent.steers ?? false;
+    final seen = _seen;
+    _seen = {for (final q in shown) q.id};
     final (state, stateColor) = switch (s) {
       null => ('Ended', C.dim),
       _ when paused => ('Paused', C.warn),
@@ -498,6 +523,15 @@ class _QueueScreenState extends State<QueueScreen> {
                   buildDefaultDragHandles: false,
                   padding: const EdgeInsets.only(bottom: 12),
                   header: Column(children: [for (final sent in _sent) _sentRow(sent)]),
+                  // Lifted and dropped, felt as a click; the list moves the rows itself meanwhile, so they don't glide.
+                  onReorderStart: (_) {
+                    Haptics.picked();
+                    setState(() => _inPlace = true);
+                  },
+                  onReorderEnd: (_) {
+                    Haptics.picked();
+                    _settledInPlace();
+                  },
                   onReorderItem: (from, to) {
                     if (from == to) return;
                     final id = shown[from].id;
@@ -507,7 +541,15 @@ class _QueueScreenState extends State<QueueScreen> {
                   },
                   children: [
                     for (final (i, q) in shown.indexed)
-                      _row(q, i, all, online: online, steers: steers, last: i == shown.length - 1),
+                      _row(
+                        q,
+                        i,
+                        all,
+                        online: online,
+                        steers: steers,
+                        last: i == shown.length - 1,
+                        entering: seen != null && !seen.contains(q.id),
+                      ),
                   ],
                 ),
         ),
@@ -573,6 +615,7 @@ class _QueueScreenState extends State<QueueScreen> {
     required bool online,
     required bool steers,
     required bool last,
+    required bool entering,
   }) {
     final editing = _editing == q.id;
     final extras = [if (q.images > 0) '⊕ ${q.images} image${q.images == 1 ? '' : 's'}', ...q.files];
@@ -601,7 +644,15 @@ class _QueueScreenState extends State<QueueScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (editing) _editor(q) else _text(q),
+                // Editing opens the prompt into a field in place, and Save or Cancel closes it again.
+                AnimatedSize(
+                  duration: Motion.resize(context),
+                  curve: Motion.fold,
+                  alignment: Alignment.topCenter,
+                  child: editing
+                      ? Entrance(key: const ValueKey('editor'), rise: 0, child: _editor(q))
+                      : Entrance(key: const ValueKey('text'), rise: 0, animate: _closed == q.id, child: _text(q)),
+                ),
                 if (extras.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
@@ -650,29 +701,40 @@ class _QueueScreenState extends State<QueueScreen> {
         ],
       ),
     );
-    return Dismissible(
-      key: ValueKey('queue-item-${q.id}'),
-      direction: online && !editing ? DismissDirection.endToStart : DismissDirection.none,
-      background: Container(
-        color: C.error.withValues(alpha: .15),
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        child: Icon(Icons.delete_outline, color: C.error),
-      ),
-      confirmDismiss: (_) => _sureToDelete(q),
-      onDismissed: (_) => unawaited(_delete(q, at, asked: true)),
-      child: ReorderableDelayedDragStartListener(
-        index: index,
-        enabled: online && !editing,
-        child: Material(
-          color: editing ? C.field : C.card,
-          child: InkWell(
-            onTap: online && !editing && !q.cut ? () => _startEdit(q) : null,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                border: last ? null : Border(bottom: BorderSide(color: C.divider, width: .5)),
+    // It glides to a new place (moved to the top or bottom, a gap closing above it); one queued since comes in.
+    return Glide(
+      key: ValueKey('queue-glide-${q.id}'),
+      glide: !_inPlace,
+      child: Entrance(
+        animate: entering,
+        child: Dismissible(
+          key: ValueKey('queue-item-${q.id}'),
+          direction: online && !editing ? DismissDirection.endToStart : DismissDirection.none,
+          background: Container(
+            color: C.error.withValues(alpha: .15),
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.only(right: 20),
+            child: Icon(Icons.delete_outline, color: C.error),
+          ),
+          confirmDismiss: (_) => _sureToDelete(q),
+          onDismissed: (_) {
+            _settledInPlace();
+            unawaited(_delete(q, at, asked: true));
+          },
+          child: ReorderableDelayedDragStartListener(
+            index: index,
+            enabled: online && !editing,
+            child: Material(
+              color: editing ? C.field : C.card,
+              child: InkWell(
+                onTap: online && !editing && !q.cut ? () => _startEdit(q) : null,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: last ? null : Border(bottom: BorderSide(color: C.divider, width: .5)),
+                  ),
+                  child: row,
+                ),
               ),
-              child: row,
             ),
           ),
         ),
@@ -753,7 +815,7 @@ class _QueueScreenState extends State<QueueScreen> {
           children: [
             TextButton(
               key: const ValueKey('queue-edit-cancel'),
-              onPressed: () => setState(() => _editing = null),
+              onPressed: () => setState(_stopEditing),
               child: Text('Cancel', style: TextStyle(color: C.text)),
             ),
             const SizedBox(width: 8),

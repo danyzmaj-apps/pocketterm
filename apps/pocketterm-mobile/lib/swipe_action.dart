@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pocketterm_core/ui.dart';
-import 'package:pocketterm_mobile/chrome.dart';
+import 'package:pocketterm_mobile/motion.dart';
 
 /// What a [SwipeAction] shows its action on, and its icon and label in.
 Color get swipeActionColor => C.error;
@@ -87,7 +87,7 @@ class _SwipeActionState extends State<SwipeAction> with SingleTickerProviderStat
     final to = open ? 1.0 : 0.0;
     if (_shown.isAnimating ? _to == to : _shown.value == to) return;
     _to = to;
-    _shown.animateTo(to, duration: Motion.fast, curve: Motion.ease);
+    _shown.animateTo(to, duration: Motion.of(context), curve: Motion.ease);
   }
 
   void _start(DragStartDetails _) {

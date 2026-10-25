@@ -21,6 +21,7 @@ import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/coach.dart';
 import 'package:pocketterm_mobile/demo/demo.dart';
 import 'package:pocketterm_mobile/links.dart';
+import 'package:pocketterm_mobile/motion.dart';
 import 'package:pocketterm_mobile/onboarding/scan.dart';
 import 'package:pocketterm_mobile/push_consent.dart';
 import 'package:pocketterm_mobile/setup_page.dart';
@@ -467,13 +468,13 @@ class MobileApp extends StatelessWidget {
   final TerminalRemote Function(String desktopId, ChannelKey key)? remoteFor;
 
   @override
-  Widget build(BuildContext context) => Themed(builder: _app);
+  Widget build(BuildContext context) => ThemeCrossfade(child: Themed(builder: _app));
 
   Widget _app(BuildContext context, PtTheme theme) => MaterialApp(
     title: 'PocketTerm',
     debugShowCheckedModeBanner: false,
     theme: _theme(appTheme(theme)),
-    // Every part changes at once: what reads [C] has no theme animation.
+    // Every part changes at once (what reads [C] has no theme animation); [ThemeCrossfade] fades the old look out.
     themeAnimationStyle: AnimationStyle.noAnimation,
     navigatorObservers: [SemanticsRefresh()],
     // The status and navigation bars' icons read on the theme's background.

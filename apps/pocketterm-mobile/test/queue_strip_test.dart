@@ -245,6 +245,8 @@ void main() {
 
     ran(lastChange(), error: 'That prompt already went.');
     await tester.pump(const Duration(milliseconds: 500));
+    // The rows glide back to the computer's order.
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('That prompt already went.'), findsOneWidget);
     expect(top(tester, 'q2'), lessThan(top(tester, 'q3')));
   });

@@ -222,18 +222,19 @@ void main() {
     expect(mic, findsOneWidget);
     expect(send, findsNothing);
 
+    // The microphone and Send cross-fade: settled, only the one coming is there.
     await tester.enterText(field, 'fix it');
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(send, findsOneWidget);
     expect(mic, findsNothing);
     expect(smallMic, findsOneWidget, reason: 'speaking can still add to what is typed');
 
     await tester.enterText(field, '/');
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(smallMic, findsNothing, reason: 'a command name is not spoken');
 
     await tester.enterText(field, '  ');
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(mic, findsOneWidget);
     expect(send, findsNothing);
   });
@@ -319,7 +320,8 @@ void main() {
   testWidgets('what is said goes after what was typed, which shows dimmed above it', (tester) async {
     await open(tester);
     await tester.enterText(field, 'Run the tests');
-    await tester.pump();
+    // The small microphone slides in beside Send.
+    await tester.pumpAndSettle();
     await tapOpen(tester, smallMic);
     expect(tester.widget<Text>(find.byKey(const ValueKey('voice-existing'))).data, 'Run the tests');
     speech.say('and fix what fails');
@@ -377,6 +379,22 @@ void main() {
     expect(speech.discarded, isTrue);
     expect(speech.stops, 0);
     expect(typed(tester), isEmpty);
+  });
+
+  testWidgets('a press the system takes back before it is a hold opens nothing', (tester) async {
+    await open(tester);
+    final gesture = await tester.startGesture(tester.getCenter(mic));
+    await tester.pump(const Duration(milliseconds: 100));
+    // A scroll or an edge swipe claims the finger: the press ends there.
+    await gesture.cancel();
+    await tester.pump(const Duration(milliseconds: 400));
+    await settle(tester);
+    expect(sheet, findsNothing, reason: 'the hold it would have become never starts');
+    expect(speech.listening, isFalse);
+
+    // The next tap still opens it.
+    await tapOpen(tester, mic);
+    expect(sheet, findsOneWidget);
   });
 
   testWidgets('a refused microphone says so and opens Settings', (tester) async {

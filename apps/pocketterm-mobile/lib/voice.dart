@@ -635,8 +635,8 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _LevelMic(level: _level, away: away, busy: _phase != _Phase.listening),
-              const SizedBox(height: 16),
+              _Waveform(level: _level, away: away, busy: _phase != _Phase.listening),
+              const SizedBox(height: 12),
               SizedBox(
                 height: 48,
                 child: Center(
@@ -784,68 +784,102 @@ class _LiveWordsState extends State<_LiveWords> with SingleTickerProviderStateMi
   }
 }
 
-/// The microphone, in the theme's shape (a disc when soft, a rounded square when crisp, a framed square when
-/// boxy), with a halo that swells with how loud the voice is.
-class _LevelMic extends StatelessWidget {
-  const _LevelMic({required this.level, required this.away, required this.busy});
+/// How loud the voice is, as thin bars scrolling left, the newest on the right: tall while you talk, a flat dotted
+/// line in silence. Red while a held press is slid away to cancel; dim while it isn't listening yet or is stopping.
+class _Waveform extends StatefulWidget {
+  const _Waveform({required this.level, required this.away, required this.busy});
   final ValueListenable<double> level;
   final bool away;
   final bool busy;
 
-  static const _size = 88.0;
+  @override
+  State<_Waveform> createState() => _WaveformState();
+}
+
+class _WaveformState extends State<_Waveform> with SingleTickerProviderStateMixin {
+  /// A new bar this often; the bars between glide so the row scrolls smoothly.
+  static const _every = Duration(milliseconds: 70);
+  static const _bars = 64;
+
+  final _levels = List<double>.filled(_bars, 0, growable: true);
+  late final Ticker _ticker = createTicker(_tick);
+  Duration _last = Duration.zero;
+  double _shift = 0;
+  double _smooth = 0;
+
+  void _tick(Duration now) {
+    // Rises at once with the voice, falls back a little slower, so words read as bumps rather than flicker.
+    final target = widget.busy ? 0.0 : widget.level.value;
+    _smooth = target > _smooth ? target : _smooth * .85 + target * .15;
+    while (now - _last >= _every) {
+      _last += _every;
+      _levels
+        ..removeAt(0)
+        ..add(_smooth);
+    }
+    setState(() => _shift = (now - _last).inMicroseconds / _every.inMicroseconds);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_ticker.start());
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final color = away ? C.error : C.accent;
-    final radius = C.round(_size / 2);
-    return SizedBox(
-      width: _size * 1.7,
-      height: _size * 1.7,
-      child: ValueListenableBuilder<double>(
-        valueListenable: level,
-        builder: (context, l, _) => TweenAnimationBuilder<double>(
-          tween: Tween(end: l),
-          duration: const Duration(milliseconds: 120),
-          builder: (context, v, _) => Stack(
-            alignment: Alignment.center,
-            children: [
-              for (final (i, alpha) in [(2, .12), (1, .22)])
-                Transform.scale(
-                  scale: 1 + v * .35 * i,
-                  child: Container(
-                    key: i == 1 ? const ValueKey('voice-level') : null,
-                    width: _size,
-                    height: _size,
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: alpha),
-                      borderRadius: radius,
-                    ),
-                  ),
-                ),
-              Container(
-                width: _size,
-                height: _size,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: radius,
-                  border: C.t.shape == ThemeShape.boxy ? Border.all(color: C.text, width: C.border) : null,
-                ),
-                child: busy
-                    ? Center(
-                        child: SizedBox(
-                          width: 28,
-                          height: 28,
-                          child: CircularProgressIndicator(strokeWidth: 2.5, color: C.onAccent),
-                        ),
-                      )
-                    : Icon(away ? Icons.close_rounded : Icons.mic_rounded, size: 40, color: C.onAccent),
-              ),
-            ],
+    final color = widget.away ? C.error : (widget.busy ? C.dim2 : C.accent);
+    return Semantics(
+      label: 'Listening',
+      child: SizedBox(
+        key: const ValueKey('voice-level'),
+        height: 56,
+        width: double.infinity,
+        child: CustomPaint(
+          painter: _WavePainter(
+            _levels,
+            Motion.reduced(context) ? 0 : _shift,
+            color,
+            square: C.t.shape == ThemeShape.boxy,
           ),
         ),
       ),
     );
   }
+}
+
+class _WavePainter extends CustomPainter {
+  _WavePainter(List<double> levels, this.shift, this.color, {required this.square}) : levels = List.of(levels);
+  final List<double> levels;
+  final double shift;
+  final Color color;
+  final bool square;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final step = size.width / (levels.length - 1);
+    final double bar = math.max(2, step * .45);
+    final mid = size.height / 2;
+    final paint = Paint()..color = color;
+    for (final (i, l) in levels.indexed) {
+      final x = (i - shift) * step;
+      if (x < -bar || x > size.width + bar) continue;
+      // Older bars fade toward the left edge.
+      paint.color = color.withValues(alpha: color.a * (.25 + .75 * i / (levels.length - 1)));
+      final h = math.max(bar, l * size.height);
+      final r = Rect.fromCenter(center: Offset(x, mid), width: bar, height: h);
+      canvas.drawRRect(RRect.fromRectAndRadius(r, Radius.circular(square ? 0 : bar / 2)), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_WavePainter old) => true;
 }
 
 /// An E2E build's speaker (no microphone in the Simulator): says [words] one by one, a loudness swinging with

@@ -216,11 +216,9 @@ ico(mocha, traySizes, to: "assets/tray.ico")
 // What the window goes back to from another theme's (lib/windows_host.dart).
 ico(mocha, runtimeSizes, to: "assets/icon/windows-default.ico")
 
-// Each other theme's.
-for (name, resName, look) in themes {
-  let title = name.prefix(1).uppercased() + name.dropFirst()
-  // iOS: an alternate app icon set (Runner's ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES lists it), one opaque
-  // 1024 image that Xcode scales.
+/// An iOS alternate app icon set (Runner's ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES lists it): one opaque
+/// 1024 image that Xcode scales.
+func iosAlternate(_ look: Look, title: String) {
   let set = "\(mobile)/ios/Runner/Assets.xcassets/AppIcon-\(title).appiconset"
   mkdir(set)
   render(look, size: 1024, inset: 0, radius: 0, to: "\(set)/icon-1024.png")
@@ -243,6 +241,16 @@ for (name, resName, look) in themes {
     }
 
     """, to: "\(set)/Contents.json")
+}
+
+// iOS keeps 0.1.2's Mocha alternate, the same picture as the app's own icon: a phone that picked Mocha in
+// 0.1.2 has it set, and an update without that icon fails to install there ("Unable to Install").
+iosAlternate(mocha, title: "Mocha")
+
+// Each other theme's.
+for (name, resName, look) in themes {
+  let title = name.prefix(1).uppercased() + name.dropFirst()
+  iosAlternate(look, title: title)
   // Android: the adaptive icon's two layers at each density (108 dp), as for the default icon.
   for (dpi, px) in [("mdpi", 108), ("hdpi", 162), ("xhdpi", 216), ("xxhdpi", 324), ("xxxhdpi", 432)] {
     mkdir("\(res)/drawable-\(dpi)")

@@ -6,6 +6,8 @@ What each PocketTerm release brings.
 
 Servers and the push relay need no update.
 
+The iPhone build is 261: build 260 couldn't install over 0.1.2 on a phone that had picked Mocha, whose icon it had dropped (TestFlight said "Unable to Install"). 261 keeps that icon.
+
 ### Desktop app and phone app
 
 - **Catppuccin Mocha is the default theme; Auto is gone.** The apps no longer switch with your system's light or dark: a new install starts in Mocha, and if you were on Auto you're now on Mocha. Pick another of the four themes any time, as before.

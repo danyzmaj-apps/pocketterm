@@ -151,7 +151,9 @@ import UserNotifications
 /// takes the change from an active app: one asked for before that waits for it.
 enum AppIcons {
   /// 0.1.2's Mocha alternate, now the app's own icon: still set on a phone that had picked it, and the same
-  /// picture, so it counts as the app's own rather than costing an alert to clear.
+  /// picture, so it counts as the app's own rather than costing an alert to clear. The bundle must keep it
+  /// (AppIcon-Mocha.appiconset, in ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES): 0.1.3 build 260 dropped
+  /// it, and that update failed to install on such phones ("Unable to Install").
   private static let retired: Set<String> = ["AppIcon-Mocha"]
 
   static func set(_ icon: String, result: @escaping FlutterResult) {

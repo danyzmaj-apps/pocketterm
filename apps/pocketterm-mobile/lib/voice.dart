@@ -823,7 +823,7 @@ class _WaveformState extends State<_Waveform> with SingleTickerProviderStateMixi
   @override
   void initState() {
     super.initState();
-    unawaited(_ticker.start());
+    _ticker.start();
   }
 
   @override

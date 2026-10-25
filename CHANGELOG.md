@@ -11,6 +11,7 @@ What each PocketTerm release brings.
 ### Phone app
 
 - **Your words keep up with you.** On iOS 26 the transcript updates after every word instead of at each pause, and a word the phone corrects changes in place instead of fading in again.
+- **A waveform shows it's listening.** The big microphone is gone: while you talk, thin bars scroll across the bottom of the voice screen, tall with your voice and flat in silence, red while a held press is slid away to cancel.
 
 ## 0.1.4
 

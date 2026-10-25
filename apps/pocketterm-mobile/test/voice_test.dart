@@ -281,6 +281,24 @@ void main() {
     await answered(tester);
   });
 
+  testWidgets('Keep talking listens again and adds the new words after the edited ones', (tester) async {
+    await open(tester);
+    await tapOpen(tester, mic);
+    speech.say('fix the tests');
+    await stop(tester);
+    await tester.enterText(edit, 'fix the flaky tests');
+    await tester.tap(find.byKey(const ValueKey('voice-more')));
+    await settle(tester);
+    expect(speech.listening, isTrue);
+    expect(find.text('fix the flaky tests'), findsOneWidget, reason: 'what was there stays while listening');
+
+    speech.say('and push');
+    await heard(tester);
+    expect(find.text('fix the flaky tests and push'), findsOneWidget);
+    await stop(tester);
+    expect(tester.widget<TextField>(edit).controller!.text, 'fix the flaky tests and push');
+  });
+
   testWidgets('Insert puts it in the field with the keyboard up; Cancel and dragging the sheet down drop it', (
     tester,
   ) async {

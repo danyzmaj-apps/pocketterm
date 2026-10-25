@@ -317,6 +317,9 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
   late SpeechCheck _problem;
   StreamSubscription<SpeechEvent>? _sub;
   String _heard = '';
+
+  /// What was said (and edited) before Keep talking: the new words go after it.
+  String _before = '';
   final _level = ValueNotifier<double>(0);
   final _edit = TextEditingController();
   Timer? _stopWait;
@@ -416,7 +419,9 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
   void _on(SpeechEvent e) {
     switch (e) {
       case SpeechHeard(:final text):
-        if (_phase == _Phase.listening || _phase == _Phase.stopping) setState(() => _heard = text);
+        if (_phase == _Phase.listening || _phase == _Phase.stopping) {
+          setState(() => _heard = appendSpoken(_before, text));
+        }
       case SpeechLevel(:final level):
         _level.value = level;
       case SpeechEnded(:final why, :final message, :final status):
@@ -457,6 +462,14 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
     };
     _edit.text = _heard.trim();
     _go(_Phase.review);
+  }
+
+  /// Listens again, the new words after what's in the editor now.
+  void _keepTalking() {
+    _before = _edit.text.trim();
+    _heard = _before;
+    _note = null;
+    unawaited(_start());
   }
 
   Future<void> _fix(SpeechFix fix) async {
@@ -671,6 +684,15 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
             spacing: 8,
             children: [
               Semantics(
+                identifier: 'voice-more',
+                child: TextButton.icon(
+                  key: const ValueKey('voice-more'),
+                  onPressed: _keepTalking,
+                  icon: const Icon(Icons.mic_rounded, size: 18),
+                  label: Text(C.label('Keep talking')),
+                ),
+              ),
+              Semantics(
                 identifier: 'voice-cancel',
                 child: TextButton(
                   key: const ValueKey('voice-cancel'),
@@ -808,8 +830,9 @@ class _WaveformState extends State<_Waveform> with SingleTickerProviderStateMixi
   double _smooth = 0;
 
   void _tick(Duration now) {
-    // Rises at once with the voice, falls back a little slower, so words read as bumps rather than flicker.
-    final target = widget.busy ? 0.0 : widget.level.value;
+    // Rises at once with the voice, falls back a little slower, so words read as bumps rather than flicker. A curve
+    // that lifts quiet speech: normal talking fills most of the height, not just shouting.
+    final target = widget.busy ? 0.0 : math.min(1, math.pow(widget.level.value, .5) * 1.25).toDouble();
     _smooth = target > _smooth ? target : _smooth * .85 + target * .15;
     while (now - _last >= _every) {
       _last += _every;
@@ -839,7 +862,7 @@ class _WaveformState extends State<_Waveform> with SingleTickerProviderStateMixi
       label: 'Listening',
       child: SizedBox(
         key: const ValueKey('voice-level'),
-        height: 56,
+        height: 96,
         width: double.infinity,
         child: CustomPaint(
           painter: _WavePainter(

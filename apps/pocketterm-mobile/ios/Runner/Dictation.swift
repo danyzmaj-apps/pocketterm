@@ -28,9 +28,11 @@ final class Dictation: NSObject, FlutterStreamHandler {
   }
 
   @available(iOS 26.0, *)
-  private static func transcriber(_ locale: Locale) -> SpeechTranscriber {
-    // Volatile results: the words being said show at once and settle as the transcriber is sure of them.
-    SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [.volatileResults], attributeOptions: [])
+  fileprivate static func transcriber(_ locale: Locale) -> SpeechTranscriber {
+    // Volatile results: the words being said show at once and settle as the transcriber is sure of them. Fast
+    // results: it guesses after each word instead of waiting for a pause, so the text keeps up with the voice.
+    SpeechTranscriber(
+      locale: locale, transcriptionOptions: [], reportingOptions: [.volatileResults, .fastResults], attributeOptions: [])
   }
 
   /// SpeechTranscriber runs on this iPhone (iOS 26, and hardware it supports).
@@ -293,8 +295,7 @@ private final class ModernRecognizer: Recognizer {
     -> ModernRecognizer
   {
     let locale = await SpeechTranscriber.supportedLocale(equivalentTo: locale) ?? locale
-    let transcriber = SpeechTranscriber(
-      locale: locale, transcriptionOptions: [], reportingOptions: [.volatileResults], attributeOptions: [])
+    let transcriber = Dictation.transcriber(locale)
     // The analyzer takes one format and converts nothing itself: the microphone's buffers are converted to it.
     guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber], considering: natural),
       let converter = AVAudioConverter(from: natural, to: format)

@@ -8,6 +8,10 @@ What each PocketTerm release brings.
 
 - **Get this computer ready installs nothing by itself.** Opening it only checks your coding agents; PocketTerm goes into omp or Claude Code when you click its **Install** (or **Update**).
 
+### Phone app
+
+- **Your words keep up with you.** On iOS 26 the transcript updates after every word instead of at each pause, and a word the phone corrects changes in place instead of fading in again.
+
 ## 0.1.4
 
 Servers and the push relay need no update.

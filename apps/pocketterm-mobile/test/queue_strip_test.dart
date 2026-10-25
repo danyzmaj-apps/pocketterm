@@ -148,6 +148,18 @@ void main() {
     expect(find.text('Queued · 3'), findsOneWidget);
   });
 
+  testWidgets('its header opens the whole queue over the screen', (tester) async {
+    await open(tester);
+    await tester.tap(find.byKey(const ValueKey('queue-open-header')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('queue-title')), findsOneWidget);
+    expect(find.byKey(const ValueKey('queue-item-q3')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('queue-close')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('queue-title')), findsNothing);
+    expect(row('q3'), findsOneWidget);
+  });
+
   testWidgets('no strip while nothing waits', (tester) async {
     state();
     await open(tester);

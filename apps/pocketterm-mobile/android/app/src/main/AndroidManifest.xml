@@ -7,6 +7,9 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- A device without a camera can still try the demo. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Voice prompts, recognized on the phone; asked for the first time the composer's microphone is used. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
     <!-- No backup and no device-to-device transfer (dataExtractionRules, Android 12+, where
          allowBackup alone doesn't stop the transfer): the computers' channel keys and the
@@ -158,6 +161,10 @@
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
+        </intent>
+        <!-- Voice prompts: Android 11+ shows the speech recognizer only to apps that ask for it here. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
         </intent>
     </queries>
 </manifest>

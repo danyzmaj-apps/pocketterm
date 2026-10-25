@@ -10,6 +10,10 @@
 	<string>Pick images to attach to a coding session on your computer.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan the setup code your computer shows, to connect and sign in.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Hear what you say to a coding agent and turn it into a prompt, on this iPhone.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Turn what you say into a prompt for a coding agent. It's recognized on this iPhone only.</string>
 	<key>CFBundleDisplayName</key>
 	<string>PocketTerm</string>
 	<key>CFBundleExecutable</key>

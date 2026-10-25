@@ -93,6 +93,93 @@ Future<T?> showAppSheet<T>(
   ),
 );
 
+/// A screen-high sheet that slides up from the bottom over everything, under the status bar too: the raised
+/// surface, the theme's corners on top, a grab handle, then a row with [title], [actions] and a close button,
+/// then what [builder] shows, which fills the rest and stays clear of the home indicator and the keyboard.
+/// Dragged down, or closed, it pops null; [dismissible] false leaves only the builder's own buttons to close it
+/// (no handle, no close button then). [closeKey] names the close button for tests and Maestro.
+Future<T?> showFullscreenModal<T>(
+  BuildContext context, {
+  required Widget title,
+  required WidgetBuilder builder,
+  List<Widget> actions = const [],
+  bool dismissible = true,
+  Key closeKey = const ValueKey('modal-close'),
+}) {
+  // The sheet's route takes the status bar out of its MediaQuery, and so does a Scaffold with an app bar for its
+  // body: its height comes from above the routes, where the app's MediaQuery still has it.
+  final statusBar = MediaQuery.viewPaddingOf(Navigator.of(context).context).top;
+  return showModalBottomSheet<T>(
+    context: context,
+    isScrollControlled: true,
+    isDismissible: dismissible,
+    enableDrag: dismissible,
+    // Not useSafeArea: the surface runs under the status bar, and its content keeps clear of it below.
+    constraints: const BoxConstraints.expand(),
+    builder: (context) {
+      final media = MediaQuery.of(context);
+      final bottom = media.viewInsets.bottom > media.viewPadding.bottom
+          ? media.viewInsets.bottom
+          : media.viewPadding.bottom;
+      return PopScope(
+        canPop: dismissible,
+        child: Padding(
+          padding: EdgeInsets.only(top: statusBar, bottom: bottom),
+          // The padding above is already applied: what's inside doesn't add it again.
+          child: MediaQuery.removePadding(
+            context: context,
+            removeTop: true,
+            removeBottom: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  height: 20,
+                  child: dismissible
+                      ? Center(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: C.line2,
+                              borderRadius: BorderRadius.all(Radius.circular(C.r(2))),
+                            ),
+                            child: const SizedBox(width: 36, height: 4),
+                          ),
+                        )
+                      : null,
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 8, 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: DefaultTextStyle(
+                          style: sheetTitleStyle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          child: title,
+                        ),
+                      ),
+                      ...actions,
+                      if (dismissible)
+                        IconButton(
+                          key: closeKey,
+                          tooltip: 'Close',
+                          onPressed: () => Navigator.of(context).maybePop(),
+                          icon: Icon(Icons.close, color: C.dim),
+                        ),
+                    ],
+                  ),
+                ),
+                Expanded(child: builder(context)),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
 /// Once a sheet, dialog or menu has gone, the page under it says again where
 /// its parts are. Flutter (3.47) drops the semantics geometry of what moved
 /// under such a popup's barrier, so a screen reader (and Maestro, which aims

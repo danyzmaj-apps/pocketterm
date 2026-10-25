@@ -1,0 +1,778 @@
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart' show kTouchSlop;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:pocketterm_core/speech.dart';
+import 'package:pocketterm_core/ui.dart';
+import 'package:pocketterm_mobile/chrome.dart';
+import 'package:pocketterm_mobile/e2e_hooks.dart';
+
+/// Where the voice sheet hears from: the phone's on-device recognizer, or in an E2E build (no microphone in the
+/// Simulator) a made-up speaker that says [ScriptedSpeech.words]. Tests put a fake here.
+SpeechSource voiceSource = e2eBuild ? ScriptedSpeech() : const NativeSpeech();
+
+/// What the person did with what they said: [send] it as the composer would, or insert it into the composer.
+class VoiceResult {
+  const VoiceResult(this.text, {required this.send});
+  final String text;
+  final bool send;
+}
+
+/// [existing] and then [spoken], a space between them when [existing] has words.
+String appendSpoken(String existing, String spoken) {
+  final before = existing.trimRight();
+  return before.isEmpty ? spoken : '$before $spoken';
+}
+
+/// The composer's microphone. A tap opens the voice sheet, which listens until Stop; a hold opens it at once and
+/// listens while held: lifting the finger stops and leaves what was said to check, sliding far up or left first
+/// cancels. [existing]: the composer's text then, shown dimmed above what's said.
+class VoiceMic extends StatefulWidget {
+  const VoiceMic({
+    required this.enabled,
+    required this.existing,
+    required this.onResult,
+    this.small = false,
+    super.key,
+  });
+  final bool enabled;
+  final String Function() existing;
+  final void Function(VoiceResult result) onResult;
+
+  /// Inside the field, beside the send button: smaller and dimmer.
+  final bool small;
+
+  @override
+  State<VoiceMic> createState() => _VoiceMicState();
+}
+
+/// Held this long, a press is a hold rather than a tap.
+const _holdAfter = Duration(milliseconds: 300);
+
+/// Slid this far up or left while held, lifting the finger cancels.
+const voiceCancelDistance = 100.0;
+
+class _VoiceMicState extends State<VoiceMic> {
+  Timer? _holdTimer;
+  Offset? _down;
+  late int _device;
+  VoiceHold? _hold;
+  bool _open = false;
+
+  @override
+  void dispose() {
+    _holdTimer?.cancel();
+    _hold?.dispose();
+    super.dispose();
+  }
+
+  void _pointerDown(PointerDownEvent e) {
+    if (!widget.enabled || _open || _down != null) return;
+    _down = e.position;
+    _device = e.device;
+    _holdTimer = Timer(_holdAfter, _startHold);
+  }
+
+  void _pointerMove(PointerMoveEvent e) {
+    // Moved before it counted as a hold: a scroll or a slip, neither a tap nor a hold.
+    if (_hold == null && _down != null && (e.position - _down!).distance > kTouchSlop) _reset();
+  }
+
+  void _pointerUp(PointerUpEvent e) {
+    if (_hold != null || _down == null) return;
+    _reset();
+    unawaited(_openSheet(null));
+  }
+
+  void _reset() {
+    _holdTimer?.cancel();
+    _holdTimer = null;
+    _down = null;
+  }
+
+  void _startHold() {
+    final origin = _down;
+    if (origin == null || !mounted) return;
+    _holdTimer = null;
+    final hold = _hold = VoiceHold();
+    final ratio = View.of(context).devicePixelRatio;
+    // The sheet's route takes the finger from every widget as it's pushed (NavigatorState cancels the pointers it
+    // saw go down on each navigation, and a cancelled pointer's moves and lift reach no widget after), so the
+    // hold follows the finger's raw touches from the platform instead.
+    hold.finger = RawFinger.follow(
+      _device,
+      onMove: (at) {
+        final d = at / ratio - origin;
+        hold.away = d.dy < -voiceCancelDistance || d.dx < -voiceCancelDistance;
+      },
+      onUp: hold.release,
+    );
+    unawaited(_openSheet(hold));
+  }
+
+  Future<void> _openSheet(VoiceHold? hold) async {
+    _open = true;
+    final result = await showVoiceSheet(context, existing: widget.existing(), hold: hold);
+    _open = false;
+    _down = null;
+    if (identical(_hold, hold)) _hold = null;
+    hold?.dispose();
+    if (result != null && mounted) widget.onResult(result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = !widget.enabled
+        ? C.dim2
+        : widget.small
+        ? C.dim
+        : C.accent;
+    return Semantics(
+      identifier: widget.small ? 'session-mic-small' : 'session-mic',
+      button: true,
+      enabled: widget.enabled,
+      label: 'Voice prompt',
+      onTap: widget.enabled ? () => unawaited(_openSheet(null)) : null,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: _pointerDown,
+        onPointerMove: _pointerMove,
+        onPointerUp: _pointerUp,
+        child: SizedBox(
+          width: widget.small ? 36 : 48,
+          height: 48,
+          child: Icon(Icons.mic_none_rounded, size: widget.small ? 20 : 24, color: color),
+        ),
+      ),
+    );
+  }
+}
+
+/// A hold on the microphone in progress: whether the finger is still down, and whether it slid away to cancel.
+class VoiceHold extends ChangeNotifier {
+  RawFinger? finger;
+  bool down = true;
+  bool _away = false;
+
+  bool get away => _away;
+  set away(bool v) {
+    if (v == _away || !down) return;
+    _away = v;
+    notifyListeners();
+  }
+
+  void release() {
+    if (!down) return;
+    down = false;
+    finger?.stop();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    finger?.stop();
+    super.dispose();
+  }
+}
+
+/// One finger's touches as the platform reports them, before the framework routes them: they keep coming after
+/// a route push cancels the pointer for every widget. [onMove] gets positions in physical pixels.
+class RawFinger {
+  RawFinger._(this.device, this.onMove, this.onUp);
+
+  /// Follows touch [device] (a [PointerEvent.device]) until it lifts or [stop].
+  factory RawFinger.follow(int device, {required void Function(Offset at) onMove, required VoidCallback onUp}) {
+    final f = RawFinger._(device, onMove, onUp);
+    _fingers.add(f);
+    _install();
+    return f;
+  }
+
+  final int device;
+  final void Function(Offset at) onMove;
+  final VoidCallback onUp;
+
+  static final _fingers = <RawFinger>[];
+  static ui.PointerDataPacketCallback? _framework;
+
+  static void _install() {
+    if (_framework != null) return;
+    final dispatcher = WidgetsBinding.instance.platformDispatcher;
+    _framework = dispatcher.onPointerDataPacket;
+    dispatcher.onPointerDataPacket = _packet;
+  }
+
+  static void _uninstall() {
+    final framework = _framework;
+    if (framework == null) return;
+    WidgetsBinding.instance.platformDispatcher.onPointerDataPacket = framework;
+    _framework = null;
+  }
+
+  static void _packet(ui.PointerDataPacket packet) {
+    for (final d in packet.data) {
+      for (final f in List.of(_fingers)) {
+        if (f.device != d.device) continue;
+        switch (d.change) {
+          case ui.PointerChange.move:
+            f.onMove(Offset(d.physicalX, d.physicalY));
+          case ui.PointerChange.up || ui.PointerChange.cancel:
+            f.stop();
+            f.onUp();
+          case ui.PointerChange.add ||
+              ui.PointerChange.remove ||
+              ui.PointerChange.hover ||
+              ui.PointerChange.down ||
+              ui.PointerChange.panZoomStart ||
+              ui.PointerChange.panZoomUpdate ||
+              ui.PointerChange.panZoomEnd:
+        }
+      }
+    }
+    // The framework still gets every touch, as before.
+    _framework?.call(packet);
+  }
+
+  void stop() {
+    _fingers.remove(this);
+    if (_fingers.isEmpty) _uninstall();
+  }
+}
+
+/// Opens the voice sheet: listening at once, and once stopped what was said, editable, to Send, Insert or Cancel.
+/// [hold]: opened by a hold, which lifting stops. Null: cancelled, closed or dragged away.
+Future<VoiceResult?> showVoiceSheet(BuildContext context, {required String existing, VoiceHold? hold}) {
+  final title = ValueNotifier<String>('Listening');
+  return showFullscreenModal<VoiceResult>(
+    context,
+    closeKey: const ValueKey('voice-close'),
+    title: ValueListenableBuilder(valueListenable: title, builder: (_, t, _) => Text(t)),
+    builder: (context) => VoiceSheet(source: voiceSource, existing: existing, hold: hold, title: title),
+  ).whenComplete(title.dispose);
+}
+
+enum _Phase { checking, problem, downloading, listening, stopping, review }
+
+/// What the voice sheet shows: the composer's [existing] text dimmed, then what's said, live and large; once
+/// stopped, editable in place with Cancel, Insert and Send. Leaving the app, a call or Siri stop it, keeping what
+/// was said.
+class VoiceSheet extends StatefulWidget {
+  const VoiceSheet({required this.source, required this.existing, required this.title, this.hold, super.key});
+  final SpeechSource source;
+  final String existing;
+  final ValueNotifier<String> title;
+  final VoiceHold? hold;
+
+  @override
+  State<VoiceSheet> createState() => _VoiceSheetState();
+}
+
+class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
+  _Phase _phase = _Phase.checking;
+  late SpeechCheck _problem;
+  StreamSubscription<SpeechEvent>? _sub;
+  String _heard = '';
+  final _level = ValueNotifier<double>(0);
+  final _edit = TextEditingController();
+  Timer? _stopWait;
+
+  /// Why listening ended early, shown under the text.
+  String? _note;
+
+  /// Still held to talk: lifting stops. False after a lift, or for a tap.
+  bool _held = false;
+
+  VoiceHold? get _hold => widget.hold;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _held = _hold?.down ?? false;
+    _hold?.addListener(_holdChanged);
+    _edit.addListener(() => setState(() {}));
+    unawaited(_start());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _hold?.removeListener(_holdChanged);
+    _stopWait?.cancel();
+    // Closed or dragged away while listening: what was heard goes, and the microphone stops at once.
+    unawaited(_sub?.cancel());
+    _level.dispose();
+    _edit.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Out of sight: the microphone stops, what was said stays to check when the person is back.
+    if (state == AppLifecycleState.hidden || state == AppLifecycleState.paused) unawaited(_stop());
+  }
+
+  void _holdChanged() {
+    final hold = _hold!;
+    if (!hold.down && _held) {
+      _held = false;
+      if (hold.away) {
+        unawaited(_sub?.cancel());
+        _sub = null;
+        Navigator.of(context).maybePop();
+        return;
+      }
+      // Lifted before listening began (a permission prompt took the finger): it goes on until Stop, as for a tap.
+      if (_phase == _Phase.listening) unawaited(_stop());
+    }
+    setState(_retitle);
+  }
+
+  void _retitle() {
+    widget.title.value = switch (_phase) {
+      _Phase.checking ||
+      _Phase.listening ||
+      _Phase.stopping => _held && _hold!.away ? 'Release to cancel' : 'Listening',
+      _Phase.downloading => 'Downloading',
+      _Phase.problem || _Phase.review => 'Voice prompt',
+    };
+  }
+
+  void _go(_Phase phase) {
+    if (!mounted) return;
+    setState(() {
+      _phase = phase;
+      _retitle();
+    });
+  }
+
+  Future<void> _start() async {
+    _go(_Phase.checking);
+    SpeechCheck check;
+    try {
+      check = await widget.source.check();
+    } on Object {
+      check = const SpeechCheck(SpeechStatus.unavailable);
+    }
+    if (!mounted) return;
+    if (!check.ready) {
+      _problem = check;
+      return _go(_Phase.problem);
+    }
+    unawaited(HapticFeedback.mediumImpact());
+    _sub = widget.source.listen().listen(
+      _on,
+      onError: (Object e) => _ended(SpeechEnd.error, message: e is PlatformException ? e.message : '$e'),
+      onDone: () => _ended(SpeechEnd.stopped),
+    );
+    _go(_Phase.listening);
+  }
+
+  void _on(SpeechEvent e) {
+    switch (e) {
+      case SpeechHeard(:final text):
+        if (_phase == _Phase.listening || _phase == _Phase.stopping) setState(() => _heard = text);
+      case SpeechLevel(:final level):
+        _level.value = level;
+      case SpeechEnded(:final why, :final message, :final status):
+        if (status != null && status != SpeechStatus.ready && _heard.trim().isEmpty) {
+          unawaited(_sub?.cancel());
+          _sub = null;
+          _problem = SpeechCheck(status, fix: status == SpeechStatus.noEnglish ? SpeechFix.speechSettings : null);
+          return _go(_Phase.problem);
+        }
+        _ended(why, message: message);
+    }
+  }
+
+  Future<void> _stop() async {
+    if (_phase != _Phase.listening) return;
+    _go(_Phase.stopping);
+    // The recognizer settles the last words and says so; one that doesn't answer still leaves what it heard.
+    _stopWait = Timer(const Duration(seconds: 3), () => _ended(SpeechEnd.stopped));
+    try {
+      await widget.source.stop();
+    } on Object catch (e) {
+      _ended(SpeechEnd.error, message: e is PlatformException ? e.message : '$e');
+    }
+  }
+
+  void _ended(SpeechEnd why, {String? message}) {
+    if (!mounted || (_phase != _Phase.listening && _phase != _Phase.stopping)) return;
+    _stopWait?.cancel();
+    unawaited(_sub?.cancel());
+    _sub = null;
+    _level.value = 0;
+    unawaited(HapticFeedback.lightImpact());
+    _held = false;
+    _note = switch (why) {
+      SpeechEnd.stopped => null,
+      SpeechEnd.interrupted => 'Stopped: something else took the microphone.',
+      SpeechEnd.error => message == null || message.isEmpty ? 'Listening stopped.' : 'Listening stopped: $message',
+    };
+    _edit.text = _heard.trim();
+    _go(_Phase.review);
+  }
+
+  Future<void> _fix(SpeechFix fix) async {
+    if (fix != SpeechFix.download) return await widget.source.fix(fix);
+    _go(_Phase.downloading);
+    try {
+      await widget.source.fix(fix);
+    } on Object catch (e) {
+      if (!mounted) return;
+      _problem = const SpeechCheck(SpeechStatus.noEnglish, fix: SpeechFix.download);
+      _note = e is PlatformException ? e.message : '$e';
+      return _go(_Phase.problem);
+    }
+    _note = null;
+    await _start();
+  }
+
+  void _finish({required bool send}) {
+    final text = _edit.text.trim();
+    if (text.isEmpty) return;
+    Navigator.of(context).pop(VoiceResult(text, send: send));
+  }
+
+  static String problemText(SpeechCheck c) => switch ((c.status, c.fix)) {
+    (SpeechStatus.denied, _) =>
+      isIos
+          ? 'PocketTerm isn’t allowed to use the microphone or speech recognition. Allow them in Settings.'
+          : 'PocketTerm isn’t allowed to use the microphone. Allow it in Settings.',
+    (SpeechStatus.restricted, _) => 'Speech recognition is turned off on this phone.',
+    (SpeechStatus.noEnglish, SpeechFix.download) =>
+      'English for speech recognition isn’t on this phone yet. Download it once; what you say stays on the phone.',
+    (SpeechStatus.noEnglish, SpeechFix.speechSettings) =>
+      'This phone has no English for speech recognition on the device. Add it in the phone’s speech settings.',
+    (SpeechStatus.noEnglish, _) =>
+      isIos
+          ? 'This iPhone can’t recognize English on the device yet. Turn on Dictation in Settings → General → '
+                'Keyboard, and English downloads.'
+          : 'This phone can’t recognize English on the device.',
+    (SpeechStatus.downloading, _) => 'English for speech recognition is downloading. Try again when it’s done.',
+    (SpeechStatus.unavailable || SpeechStatus.ready, _) =>
+      'This phone can’t recognize speech on the device, so voice prompts are off here.',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final existing = widget.existing.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, box) => SingleChildScrollView(
+              // The newest words stay in view as they come; while they fit, they read from the top.
+              reverse: true,
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: box.maxHeight - 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (existing.isNotEmpty && _phase != _Phase.problem)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          existing,
+                          key: const ValueKey('voice-existing'),
+                          style: TextStyle(fontSize: 20, height: 1.35, color: C.dim2),
+                        ),
+                      ),
+                    ..._body(),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        _bottom(),
+      ],
+    );
+  }
+
+  static const _big = TextStyle(fontSize: 28, height: 1.3, fontWeight: FontWeight.w500);
+
+  List<Widget> _body() => switch (_phase) {
+    _Phase.problem => [
+      Text(
+        problemText(_problem),
+        key: const ValueKey('voice-problem'),
+        style: TextStyle(fontSize: 18, height: 1.4, color: C.text),
+      ),
+      if (_note != null) ...[const SizedBox(height: 8), Text(_note!, style: TextStyle(fontSize: 14, color: C.dim))],
+    ],
+    _Phase.downloading => [
+      Text('Downloading English for speech recognition…', style: TextStyle(fontSize: 18, height: 1.4, color: C.dim)),
+    ],
+    _Phase.checking || _Phase.listening || _Phase.stopping => [
+      Text(
+        _heard.isEmpty ? 'Speak now…' : _heard,
+        key: const ValueKey('voice-live'),
+        style: _big.copyWith(color: _heard.isEmpty ? C.dim2 : C.text),
+      ),
+    ],
+    _Phase.review => [
+      Semantics(
+        identifier: 'voice-edit',
+        child: TextField(
+          key: const ValueKey('voice-edit'),
+          controller: _edit,
+          onTapOutside: dismissKeyboard,
+          maxLines: null,
+          style: _big.copyWith(color: C.text),
+          decoration: plainInput.copyWith(
+            hintText: 'Nothing heard',
+            hintStyle: _big.copyWith(color: C.dim2),
+          ),
+        ),
+      ),
+      if (_note != null) ...[
+        const SizedBox(height: 12),
+        Text(
+          _note!,
+          key: const ValueKey('voice-note'),
+          style: TextStyle(fontSize: 14, color: C.warn),
+        ),
+      ],
+    ],
+  };
+
+  Widget _bottom() {
+    const pad = EdgeInsets.fromLTRB(20, 8, 20, 12);
+    switch (_phase) {
+      case _Phase.problem:
+        final p = _problem;
+        final (String? label, VoidCallback? act) = switch ((p.status, p.fix)) {
+          (SpeechStatus.downloading, _) => ('Try again', () => unawaited(_start())),
+          (_, SpeechFix.download) => ('Download', () => unawaited(_fix(SpeechFix.download))),
+          (_, final fix?) => ('Open Settings', () => unawaited(_fix(fix))),
+          _ => (null, null),
+        };
+        return Padding(
+          padding: pad,
+          child: OverflowBar(
+            alignment: MainAxisAlignment.end,
+            spacing: 8,
+            children: [
+              TextButton(
+                key: const ValueKey('voice-cancel'),
+                onPressed: () => Navigator.of(context).maybePop(),
+                child: Text(C.label('Cancel')),
+              ),
+              if (label != null)
+                FilledButton(key: const ValueKey('voice-fix'), onPressed: act, child: Text(C.label(label))),
+            ],
+          ),
+        );
+      case _Phase.downloading:
+        return const Padding(
+          padding: pad,
+          child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
+        );
+      case _Phase.checking || _Phase.listening || _Phase.stopping:
+        final away = _held && _hold!.away;
+        return Padding(
+          padding: pad,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _LevelMic(level: _level, away: away, busy: _phase != _Phase.listening),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 48,
+                child: Center(
+                  child: _held
+                      ? Text(
+                          away ? 'Release to cancel' : 'Release to stop · Slide away to cancel',
+                          key: const ValueKey('voice-hold-hint'),
+                          style: TextStyle(fontSize: 14, color: away ? C.error : C.dim),
+                        )
+                      : Semantics(
+                          identifier: 'voice-stop',
+                          child: FilledButton.icon(
+                            key: const ValueKey('voice-stop'),
+                            onPressed: _phase == _Phase.listening ? () => unawaited(_stop()) : null,
+                            icon: const Icon(Icons.stop_rounded),
+                            label: Text(C.label('Stop')),
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        );
+      case _Phase.review:
+        final can = _edit.text.trim().isNotEmpty;
+        return Padding(
+          padding: pad,
+          // Large text: the buttons stack rather than run off the screen.
+          child: OverflowBar(
+            alignment: MainAxisAlignment.end,
+            overflowAlignment: OverflowBarAlignment.end,
+            spacing: 8,
+            children: [
+              Semantics(
+                identifier: 'voice-cancel',
+                child: TextButton(
+                  key: const ValueKey('voice-cancel'),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  child: Text(C.label('Cancel')),
+                ),
+              ),
+              Semantics(
+                identifier: 'voice-insert',
+                child: OutlinedButton(
+                  key: const ValueKey('voice-insert'),
+                  onPressed: can ? () => _finish(send: false) : null,
+                  child: Text(C.label('Insert')),
+                ),
+              ),
+              Semantics(
+                identifier: 'voice-send',
+                child: FilledButton(
+                  key: const ValueKey('voice-send'),
+                  onPressed: can ? () => _finish(send: true) : null,
+                  child: Text(C.label('Send')),
+                ),
+              ),
+            ],
+          ),
+        );
+    }
+  }
+}
+
+/// The microphone, in the theme's shape (a disc when soft, a rounded square when crisp, a framed square when
+/// boxy), with a halo that swells with how loud the voice is.
+class _LevelMic extends StatelessWidget {
+  const _LevelMic({required this.level, required this.away, required this.busy});
+  final ValueListenable<double> level;
+  final bool away;
+  final bool busy;
+
+  static const _size = 88.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = away ? C.error : C.accent;
+    final radius = C.round(_size / 2);
+    return SizedBox(
+      width: _size * 1.7,
+      height: _size * 1.7,
+      child: ValueListenableBuilder<double>(
+        valueListenable: level,
+        builder: (context, l, _) => TweenAnimationBuilder<double>(
+          tween: Tween(end: l),
+          duration: const Duration(milliseconds: 120),
+          builder: (context, v, _) => Stack(
+            alignment: Alignment.center,
+            children: [
+              for (final (i, alpha) in [(2, .12), (1, .22)])
+                Transform.scale(
+                  scale: 1 + v * .35 * i,
+                  child: Container(
+                    key: i == 1 ? const ValueKey('voice-level') : null,
+                    width: _size,
+                    height: _size,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: alpha),
+                      borderRadius: radius,
+                    ),
+                  ),
+                ),
+              Container(
+                width: _size,
+                height: _size,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: radius,
+                  border: C.t.shape == ThemeShape.boxy ? Border.all(color: C.text, width: C.border) : null,
+                ),
+                child: busy
+                    ? Center(
+                        child: SizedBox(
+                          width: 28,
+                          height: 28,
+                          child: CircularProgressIndicator(strokeWidth: 2.5, color: C.onAccent),
+                        ),
+                      )
+                    : Icon(away ? Icons.close_rounded : Icons.mic_rounded, size: 40, color: C.onAccent),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// An E2E build's speaker (no microphone in the Simulator): says [words] one by one, a loudness swinging with
+/// each, then goes quiet until stopped.
+class ScriptedSpeech implements SpeechSource {
+  ScriptedSpeech({this.words = _sentence});
+
+  static const _sentence = [
+    'Add',
+    'a',
+    'dark',
+    'mode',
+    'toggle',
+    'to',
+    'the',
+    'settings',
+    'page',
+    'and',
+    'write',
+    'a',
+    'test',
+    'for',
+    'it.',
+  ];
+
+  final List<String> words;
+  StreamController<SpeechEvent>? _out;
+  Timer? _timer;
+  String _said = '';
+
+  @override
+  Future<SpeechCheck> check() async => const SpeechCheck(SpeechStatus.ready);
+
+  @override
+  Stream<SpeechEvent> listen() {
+    _timer?.cancel();
+    _said = '';
+    var tick = 0;
+    final out = _out = StreamController<SpeechEvent>(onCancel: () => _timer?.cancel());
+    _timer = Timer.periodic(const Duration(milliseconds: 120), (_) {
+      tick++;
+      final word = tick ~/ 3;
+      out.add(SpeechLevel(word < words.length ? .45 + .4 * math.sin(tick * 1.3).abs() : .04));
+      if (tick % 3 == 0 && word <= words.length) {
+        _said = words.take(word).join(' ');
+        out.add(SpeechHeard(_said));
+      }
+    });
+    return out.stream;
+  }
+
+  @override
+  Future<void> stop() async {
+    _timer?.cancel();
+    final out = _out;
+    if (out == null || out.isClosed) return;
+    out
+      ..add(SpeechHeard(_said))
+      ..add(const SpeechEnded(SpeechEnd.stopped));
+    await out.close();
+  }
+
+  @override
+  Future<void> fix(SpeechFix fix) async {}
+}

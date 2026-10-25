@@ -7,6 +7,7 @@ import UserNotifications
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private let notifications = Notifications()
   private let activities = SessionActivities()
+  private let dictation = Dictation()
 
   /// Waiting for APNs to hand over this iPhone's device token (registerPush).
   private var pushWaiter: FlutterResult?
@@ -53,7 +54,8 @@ import UserNotifications
     notifications.channel = channel
     activities.channel = channel
     activities.install()
-    channel.setMethodCallHandler { [notifications, activities, weak self] call, result in
+    FlutterEventChannel(name: "pocketterm/speech", binaryMessenger: registrar.messenger()).setStreamHandler(dictation)
+    channel.setMethodCallHandler { [notifications, activities, dictation, weak self] call, result in
       let args = call.arguments as? [String: Any] ?? [:]
       switch call.method {
       case "setAppIcon":
@@ -137,6 +139,12 @@ import UserNotifications
         activities.end(args, result: result)
       case "liveActivities":
         result(activities.running())
+      case "speechCheck":
+        dictation.check(result: result)
+      case "speechStop":
+        dictation.stop(result: result)
+      case "speechFix":
+        dictation.fix(args, result: result)
       default:
         result(FlutterMethodNotImplemented)
       }

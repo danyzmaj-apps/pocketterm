@@ -2,6 +2,15 @@
 
 What each PocketTerm release brings.
 
+## 0.1.4
+
+Servers and the push relay need no update.
+
+### Phone app
+
+- **The whole queue on its own screen.** Tap **Queued · N** above the field and every queued prompt opens over the screen, numbered and whole (a long one opens with **Show more**), with its images and files. Tap one to edit it in place; drag it by its handle, or hold it, to move it. Its menu has **Send now** (omp), **Move to top**, **Move to bottom**, **Duplicate** and **Delete**; a swipe left deletes too, and a prompt with only text comes back with **Undo**. **Clear all**, **Pause** and **Resume** sit at the top, and the field at the bottom adds a prompt to the end while the agent works. The screen follows the computer: the prompt that goes shows as **Sent** for a moment. Offline you can look but not change anything. The demo's working session has a queue to try it on.
+- **Talk to the agent.** With nothing typed, the button beside the field is a microphone. Tap it and a screen slides up that listens until **Stop**, your words appearing large as you speak; or hold it, talk, and let go (slide away first to cancel). Then fix any word in place and **Send** it as the field would (steering or queued while the agent works), **Insert** it into the field to go on typing, or **Cancel**. With text in the field, a smaller microphone beside **Send** adds what you say after it. English only, recognized on the phone itself (an iPhone, or Android 12 and later; older Android, or one without an on-device recognizer, asks its recognizer to stay offline): if the phone has no English for that, the screen says so and offers its download (iOS 26, Android 13) or the setting. A call, Siri or leaving the app stops listening and keeps what you said. The first use asks for the microphone (and, on an iPhone before iOS 26, speech recognition).
+
 ## 0.1.3
 
 Servers and the push relay need no update.

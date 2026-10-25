@@ -6,12 +6,13 @@
 #
 #   run.sh --run-dir build/e2e/<ts> [--platform ios|android]
 #          [--phase main|server-restart|desktop-restart|real-omp|revoke|server-down|computer-off]
-#          [--only <flow>[,<flow>…]] [--device <id>] [--avd <name>] [--no-build]
+#          [--only <flow>[,<flow>…]] [--device <id>] [--avd <name>] [--no-build | --from-tree]
 #
 # The app is built from HEAD in a detached git worktree ($PHONE_SRC, default
 # $TMPDIR/pocketterm-e2e-phone), not from the working tree, so edits in flight
-# don't get in; commit what the run should test. --no-build reuses the
-# installed app.
+# don't get in; commit what the run should test. --from-tree builds this
+# checkout as it is instead (uncommitted work under test). --no-build reuses
+# the installed app.
 # iOS: the Simulator "PocketTerm E2E" (made and booted when missing), an E2E
 # debug build (its scanner takes a pasted code: lib/e2e_hooks.dart).
 # Android: the running emulator, or --avd cold-booted (its snapshot neither
@@ -29,7 +30,7 @@ ADB=${ADB:-$HOME/Library/Android/sdk/platform-tools/adb}
 EMULATOR=${EMULATOR:-$HOME/Library/Android/sdk/emulator/emulator}
 SIM_NAME="PocketTerm E2E"
 
-RUN_DIR="" PLATFORM=ios PHASE=main ONLY="" DEVICE="" AVD="" BUILD=1
+RUN_DIR="" PLATFORM=ios PHASE=main ONLY="" DEVICE="" AVD="" BUILD=1 FROM_TREE=0
 while [ $# -gt 0 ]; do
   case $1 in
     --run-dir) RUN_DIR=$2; shift 2 ;;
@@ -39,6 +40,7 @@ while [ $# -gt 0 ]; do
     --device) DEVICE=$2; shift 2 ;;
     --avd) AVD=$2; shift 2 ;;
     --no-build) BUILD=0; shift ;;
+    --from-tree) FROM_TREE=1; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -175,14 +177,19 @@ if [ "$PHASE" = main ]; then
   done
 fi
 if [ "$PHASE" = main ] && [ $BUILD = 1 ]; then
-  HEAD_SHA=$(git -C "$REPO" rev-parse HEAD)
-  if [ -e "$PHONE_SRC/.git" ]; then
-    git -C "$PHONE_SRC" checkout -q --force --detach "$HEAD_SHA" || exit 1
+  if [ $FROM_TREE = 1 ]; then
+    SRC_APP=$APP
+    echo "phone build: working tree $APP" | tee -a "$SUMMARY"
   else
-    git -C "$REPO" worktree add -q --detach "$PHONE_SRC" "$HEAD_SHA" || exit 1
+    HEAD_SHA=$(git -C "$REPO" rev-parse HEAD)
+    if [ -e "$PHONE_SRC/.git" ]; then
+      git -C "$PHONE_SRC" checkout -q --force --detach "$HEAD_SHA" || exit 1
+    else
+      git -C "$REPO" worktree add -q --detach "$PHONE_SRC" "$HEAD_SHA" || exit 1
+    fi
+    SRC_APP="$PHONE_SRC/${APP#"$REPO"/}"
+    echo "phone build: $HEAD_SHA in $PHONE_SRC" | tee -a "$SUMMARY"
   fi
-  SRC_APP="$PHONE_SRC/${APP#"$REPO"/}"
-  echo "phone build: $HEAD_SHA in $PHONE_SRC" | tee -a "$SUMMARY"
   # Flutter regenerates the Dart plugin registrant only when the workspace's
   # package_config.json changes; a plugin the desktop app already pulled in
   # (file_selector) leaves it as it was, and the phone gets the plugin's
@@ -194,7 +201,7 @@ if [ "$PHASE" = main ] && [ $BUILD = 1 ]; then
     xcrun simctl install "$DEVICE" "$SRC_APP/build/ios/iphonesimulator/Runner.app"
   else
     # Push needs the Firebase config, kept out of git.
-    cp "$APP/android/app/google-services.json" "$SRC_APP/android/app/" 2>/dev/null
+    [ "$SRC_APP" = "$APP" ] || cp "$APP/android/app/google-services.json" "$SRC_APP/android/app/" 2>/dev/null
     (cd "$SRC_APP" && fvm flutter build apk --debug --dart-define=POCKETTERM_E2E=true) >"$OUT/build.log" 2>&1 ||
       { echo "build failed: $OUT/build.log" >&2; exit 1; }
     "$ADB" -s "$DEVICE" install -r "$SRC_APP/build/app/outputs/flutter-apk/app-debug.apk" >/dev/null
@@ -414,6 +421,7 @@ case $PHASE in
     flow attach-limit attach_limit.yaml -e SESSION="$SESSION_0_RE"
     flow too-large too_large.yaml -e SESSION="$SESSION_0_RE"
     flow account-sheet account_sheet.yaml
+    flow theme theme.yaml -e SESSION="$SESSION_0_RE"
     flow switch-continue switch.yaml -e WINDOW=".*$SWITCH_CONTINUE_RE" -e HOW="Restart and continue"
     flow switch-restart switch.yaml -e WINDOW=".*$SWITCH_RESTART_RE" -e HOW="Just restart"
     flow end-session end_session.yaml -e SESSION="$END_SESSION_RE"

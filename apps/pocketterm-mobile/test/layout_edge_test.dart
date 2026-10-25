@@ -117,7 +117,7 @@ void main() {
     debugDefaultTargetPlatformOverride = screen.platform;
     await tester.pumpWidget(
       MaterialApp(
-        theme: appTheme(),
+        theme: appTheme(C.t),
         builder: (context, child) {
           Widget app = Directionality(textDirection: screen.rtl ? TextDirection.rtl : TextDirection.ltr, child: child!);
           if (session != null) app = Coach(controller: session.tips, child: app);

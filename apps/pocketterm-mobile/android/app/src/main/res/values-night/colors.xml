@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The system in dark mode: values/colors.xml's pocketterm_win as Catppuccin Mocha's background. -->
+    <color name="pocketterm_win">#FF1E1E2E</color>
+</resources>

@@ -71,7 +71,7 @@ class DataProtection extends StatelessWidget {
                 spacing: 3,
                 children: [
                   Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                  Text(text, style: const TextStyle(fontSize: 12.5, color: C.dim, height: 1.45)),
+                  Text(text, style: TextStyle(fontSize: 12.5, color: C.dim, height: 1.45)),
                 ],
               ),
             ),

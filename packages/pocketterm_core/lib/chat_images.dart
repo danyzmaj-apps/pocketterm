@@ -272,7 +272,7 @@ class AttachmentStrip extends StatelessWidget {
                     if (problem != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 6),
-                        child: Text(problem, style: const TextStyle(fontSize: 12, color: Color(0xFFFCA5A5))),
+                        child: Text(problem, style: TextStyle(fontSize: 12, color: C.error)),
                       ),
                   ],
                 ),
@@ -336,9 +336,9 @@ class _Removable extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: C.bar,
                     shape: BoxShape.circle,
-                    border: Border.all(color: C.line2),
+                    border: Border.all(color: C.line2, width: C.border),
                   ),
-                  child: const Icon(Icons.close, size: 12, color: C.text),
+                  child: Icon(Icons.close, size: 12, color: C.text),
                 ),
               ),
             ),
@@ -356,14 +356,14 @@ class _Thumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(8),
+    borderRadius: C.round(8),
     child: Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         color: C.field,
-        border: Border.all(color: C.line),
-        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: C.line, width: C.border),
+        borderRadius: C.round(8),
       ),
       child: Image.memory(bytes, fit: BoxFit.cover, cacheWidth: (size * 3).round(), gaplessPlayback: true),
     ),
@@ -383,13 +383,13 @@ class _FileChip extends StatelessWidget {
     padding: const EdgeInsets.only(left: 10, right: 14),
     decoration: BoxDecoration(
       color: C.field,
-      border: Border.all(color: C.line),
-      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: C.line, width: C.border),
+      borderRadius: C.round(8),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.insert_drive_file_outlined, size: 20, color: C.dim),
+        Icon(Icons.insert_drive_file_outlined, size: 20, color: C.dim),
         const SizedBox(width: 8),
         Flexible(
           child: Column(
@@ -400,10 +400,10 @@ class _FileChip extends StatelessWidget {
                 file.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13, color: C.text),
+                style: TextStyle(fontSize: 13, color: C.text),
               ),
               const SizedBox(height: 2),
-              Text(formatBytes(file.bytes.length), style: const TextStyle(fontSize: 11, color: C.dim)),
+              Text(formatBytes(file.bytes.length), style: TextStyle(fontSize: 11, color: C.dim)),
             ],
           ),
         ),

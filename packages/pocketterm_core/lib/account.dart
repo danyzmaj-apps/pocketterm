@@ -25,20 +25,20 @@ class SignInPage extends StatelessWidget {
             height: 72,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              gradient: const LinearGradient(
-                colors: [Color(0xFF2A3150), Color(0xFF141722)],
+              borderRadius: C.round(18),
+              gradient: LinearGradient(
+                colors: [Color.lerp(C.bar, C.accent, .2)!, C.bar],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              border: Border.all(color: const Color(0xFF3A4160)),
+              border: Border.all(color: C.line, width: C.border),
             ),
             child: const PocketTermLogo(size: 52),
           ),
           const SizedBox(height: 18),
           const Text('PocketTerm', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Sign in to connect this computer to your phone.',
             textAlign: TextAlign.center,
             style: TextStyle(color: C.dim),
@@ -49,7 +49,7 @@ class SignInPage extends StatelessWidget {
                 'Open your server\u2019s setup link on this computer. To see it again, run '
                     '`pocketterm-server setup-link` on the server.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: session.authError == null ? C.dim2 : const Color(0xFFFCA5A5)),
+            style: TextStyle(fontSize: 12, color: session.authError == null ? C.dim2 : C.error),
           ),
           if (session.retryLink != null) ...[
             const SizedBox(height: 12),
@@ -60,7 +60,7 @@ class SignInPage extends StatelessWidget {
             onPressed: () => unawaited(session.disconnect()),
             child: Text(
               'Connected to ${session.backend?.host ?? '?'} · Use a different server',
-              style: const TextStyle(fontSize: 11, color: C.dim2),
+              style: TextStyle(fontSize: 11, color: C.dim2),
             ),
           ),
         ],
@@ -81,13 +81,13 @@ class Avatar extends StatelessWidget {
       width: size,
       height: size,
       alignment: Alignment.center,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: LinearGradient(colors: [Color(0xFF7C9CFF), Color(0xFFC084FC)]),
+        gradient: LinearGradient(colors: [C.accent, Color.lerp(C.accent, C.error, .5)!]),
       ),
       child: Text(
         name.isEmpty ? '?' : name[0].toUpperCase(),
-        style: TextStyle(fontSize: size * .45, fontWeight: FontWeight.w700, color: const Color(0xFF111111)),
+        style: TextStyle(fontSize: size * .45, fontWeight: FontWeight.w700, color: C.onAccent),
       ),
     );
     if (url == null) return letter;

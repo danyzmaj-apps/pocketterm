@@ -132,7 +132,7 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
           found.isEmpty && all != null
               ? 'No terminal app found. PocketTerm works with kitty, Ghostty and WezTerm.'
               : 'Sessions you start from your phone open in the one you used last (Settings can pin one).',
-          style: const TextStyle(color: C.dim, height: 1.45, fontSize: 13),
+          style: TextStyle(color: C.dim, height: 1.45, fontSize: 13),
         ),
         if (all == null)
           const Padding(
@@ -144,7 +144,7 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
           const SizedBox(height: 14),
           const Text('Recommended: tmux', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
-          const Text(tmuxWhy, style: TextStyle(color: C.dim, height: 1.45, fontSize: 12.5)),
+          Text(tmuxWhy, style: TextStyle(color: C.dim, height: 1.45, fontSize: 12.5)),
           const SizedBox(height: 8),
           if (widget.commands case final c? when c.brew != null) ...[
             Align(
@@ -158,19 +158,19 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text('Or type it in a terminal:', style: TextStyle(fontSize: 11.5, color: C.dim)),
+            Text('Or type it in a terminal:', style: TextStyle(fontSize: 11.5, color: C.dim)),
             const SizedBox(height: 6),
             const CopyCommand(tmuxCommand),
           ] else if (widget.commands?.macPorts != null) ...[
-            const Text('With MacPorts, type this in a terminal:', style: TextStyle(fontSize: 11.5, color: C.dim)),
+            Text('With MacPorts, type this in a terminal:', style: TextStyle(fontSize: 11.5, color: C.dim)),
             const SizedBox(height: 6),
             const CopyCommand(macPortsCommand, key: ValueKey('tmux-macports')),
           ] else ...[
-            const Text(
+            Text(
               'tmux comes from Homebrew, the free installer most Mac developers use, which isn’t on this Mac. Install '
               'Homebrew from brew.sh, then come back: PocketTerm installs tmux from here. With MacPorts: '
               '$macPortsCommand.',
-              key: ValueKey('tmux-no-homebrew'),
+              key: const ValueKey('tmux-no-homebrew'),
               style: TextStyle(color: C.dim, height: 1.45, fontSize: 12.5),
             ),
             const SizedBox(height: 8),
@@ -192,16 +192,16 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
     final command = _ghosttyCommand;
     if (command == null || tmux == null || tmux.state == TermState.missing) return const [];
     if (!found.any((s) => s.id == 'ghostty')) return const [];
-    Widget note(String text) => Text(text, style: const TextStyle(color: C.dim, height: 1.45, fontSize: 12.5));
+    Widget note(String text) => Text(text, style: TextStyle(color: C.dim, height: 1.45, fontSize: 12.5));
     return [
       const SizedBox(height: 14),
       switch (command.state) {
-        GhosttyCommandState.ours => const Row(
-          key: ValueKey('ghostty-tmux-on'),
+        GhosttyCommandState.ours => Row(
+          key: const ValueKey('ghostty-tmux-on'),
           children: [
             Icon(Icons.check_circle, size: 18, color: C.ok),
-            SizedBox(width: 10),
-            Expanded(child: Text('New Ghostty windows open in tmux')),
+            const SizedBox(width: 10),
+            const Expanded(child: Text('New Ghostty windows open in tmux')),
           ],
         ),
         GhosttyCommandState.theirs => note(
@@ -218,7 +218,7 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
               onPressed: () => unawaited(_ghosttyTmux()),
               child: const Text('Start new windows in tmux'),
             ),
-            if (_ghosttyError case final e?) Text(e, style: const TextStyle(fontSize: 12, color: Color(0xFFFCA5A5))),
+            if (_ghosttyError case final e?) Text(e, style: TextStyle(fontSize: 12, color: C.error)),
           ],
         ),
       },
@@ -244,7 +244,7 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(s.label),
-                if (note.isNotEmpty) Text(note, style: const TextStyle(fontSize: 11.5, color: C.dim, height: 1.35)),
+                if (note.isNotEmpty) Text(note, style: TextStyle(fontSize: 11.5, color: C.dim, height: 1.35)),
               ],
             ),
           ),
@@ -272,18 +272,18 @@ class WezTermCard extends StatelessWidget {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: setup,
     builder: (context, _) => setup.installed
-        ? const Row(
-            key: ValueKey('wezterm-installed'),
+        ? Row(
+            key: const ValueKey('wezterm-installed'),
             children: [
               Icon(Icons.check_circle, size: 18, color: C.ok),
-              SizedBox(width: 10),
-              Expanded(child: Text('WezTerm is installed: your phone can reach its windows.')),
+              const SizedBox(width: 10),
+              const Expanded(child: Text('WezTerm is installed: your phone can reach its windows.')),
             ],
           )
         : Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
+              Text(
                 'On Windows, PocketTerm works through WezTerm, a free terminal app. Sessions you start from '
                 'your phone open in it, and its windows show on your phone. Windows Terminal and PowerShell '
                 "windows don't.",
@@ -308,17 +308,10 @@ class WezTermCard extends StatelessWidget {
               ],
               if (setup.note case final n? when setup.state != WezTermSetupState.downloading) ...[
                 const SizedBox(height: 8),
-                Text(
-                  n,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    height: 1.4,
-                    color: setup.error != null ? const Color(0xFFFCA5A5) : C.dim,
-                  ),
-                ),
+                Text(n, style: TextStyle(fontSize: 12.5, height: 1.4, color: setup.error != null ? C.error : C.dim)),
               ],
               const SizedBox(height: 12),
-              const Text('Or type this in PowerShell', style: TextStyle(fontSize: 11.5, color: C.dim)),
+              Text('Or type this in PowerShell', style: TextStyle(fontSize: 11.5, color: C.dim)),
               const SizedBox(height: 6),
               const CopyCommand(WezTermSetup.wingetCommand),
             ],

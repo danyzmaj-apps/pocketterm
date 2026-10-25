@@ -119,7 +119,7 @@ Future<bool?> askForTour(BuildContext context) {
           key: const ValueKey('tour-ask'),
           backgroundColor: M.containerHigh,
           title: const Text(title),
-          content: const Text(text, style: TextStyle(color: C.dim, height: 1.4)),
+          content: Text(text, style: TextStyle(color: C.dim, height: 1.4)),
           actions: [
             TextButton(
               key: const ValueKey('tour-no'),
@@ -147,9 +147,9 @@ Future<bool?> askForTour(BuildContext context) {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(title, textAlign: TextAlign.center, style: sheetTitleStyle),
+            Text(title, textAlign: TextAlign.center, style: sheetTitleStyle),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               text,
               textAlign: TextAlign.center,
               style: TextStyle(color: C.dim, height: 1.4),
@@ -375,7 +375,7 @@ class _CoachState extends State<Coach> {
             _Spotlight(
               key: ValueKey(t.widget.tip),
               tip: t.widget.tip,
-              hole: RRect.fromRectAndRadius(rect.inflate(t.widget.padding), Radius.circular(t.widget.radius)),
+              hole: RRect.fromRectAndRadius(rect.inflate(t.widget.padding), Radius.circular(C.r(t.widget.radius))),
               onDismiss: _dismiss,
             ),
         ],
@@ -470,7 +470,7 @@ class _Spotlight extends StatelessWidget {
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: onDismiss,
-                    child: CustomPaint(painter: _Dim(hole)),
+                    child: CustomPaint(painter: _Dim(hole, C.accent)),
                   ),
                 ),
                 Positioned(
@@ -504,8 +504,8 @@ class _Bubble extends StatelessWidget {
       elevation: isIos ? 0 : 3,
       shadowColor: Colors.black,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(isIos ? 14 : 12),
-        side: isIos ? const BorderSide(color: C.line2, width: .5) : BorderSide.none,
+        borderRadius: C.round(isIos ? 14 : 12),
+        side: isIos ? BorderSide(color: C.line2, width: .5) : BorderSide.none,
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 8, 4),
@@ -515,7 +515,7 @@ class _Bubble extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.only(right: 8),
-              child: Text(tip.caption, style: const TextStyle(fontSize: 15, color: C.text, height: 1.4)),
+              child: Text(tip.caption, style: TextStyle(fontSize: 15, color: C.text, height: 1.4)),
             ),
             Align(
               alignment: Alignment.centerRight,
@@ -533,8 +533,9 @@ class _Bubble extends StatelessWidget {
 }
 
 class _Dim extends CustomPainter {
-  _Dim(this.hole);
+  _Dim(this.hole, this.ring);
   final RRect hole;
+  final Color ring;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -548,12 +549,12 @@ class _Dim extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5
-          ..color = C.accent,
+          ..color = ring,
       );
   }
 
   @override
-  bool shouldRepaint(_Dim old) => old.hole != hole;
+  bool shouldRepaint(_Dim old) => old.hole != hole || old.ring != ring;
 }
 
 /// Touches in [hole] go to what's under it, not to [child].

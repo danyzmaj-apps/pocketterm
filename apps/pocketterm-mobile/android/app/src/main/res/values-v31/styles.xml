@@ -1,9 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Android 12+ draws its own splash (the launcher icon) on this colour. -->
+    <!-- Android 12+ draws its own splash on this colour; no icon on it (the intro shows the icon), so the splash
+         is the plain background the intro starts on. This one is Auto's; a chosen theme's follows. -->
     <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">@color/pocketterm_win</item>
         <item name="android:windowSplashScreenBackground">@color/pocketterm_win</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+    </style>
+    <!-- The splash for a chosen theme: MainActivity hands it to the system (Android 13+), which keeps it for
+         the next cold starts. The colours are AppIcons.themeBackground's. -->
+    <style name="LaunchTheme.Mocha">
+        <item name="android:windowBackground">@color/pocketterm_mocha</item>
+        <item name="android:windowSplashScreenBackground">@color/pocketterm_mocha</item>
+    </style>
+    <style name="LaunchTheme.Dawn">
+        <item name="android:windowBackground">@color/pocketterm_dawn</item>
+        <item name="android:windowSplashScreenBackground">@color/pocketterm_dawn</item>
+    </style>
+    <style name="LaunchTheme.TokyoNight">
+        <item name="android:windowBackground">@color/pocketterm_tokyo_night</item>
+        <item name="android:windowSplashScreenBackground">@color/pocketterm_tokyo_night</item>
+    </style>
+    <style name="LaunchTheme.Gruvbox">
+        <item name="android:windowBackground">@color/pocketterm_gruvbox</item>
+        <item name="android:windowSplashScreenBackground">@color/pocketterm_gruvbox</item>
     </style>
     <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">@color/pocketterm_win</item>

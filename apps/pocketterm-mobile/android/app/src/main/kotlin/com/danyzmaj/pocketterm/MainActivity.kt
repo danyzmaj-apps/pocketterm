@@ -3,6 +3,7 @@ package com.danyzmaj.pocketterm
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -51,6 +52,9 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // After the system's splash, until Flutter's first frame: the chosen theme's background, which the
+        // intro starts on (before Android 13 the splash itself can only follow the system's light or dark).
+        window.setBackgroundDrawable(ColorDrawable(AppIcons.themeBackground(this)))
         // A recreated activity has already handled its intent.
         if (savedInstanceState == null) tapped(intent)
         PocketTermShared.forgetPushKey(this)
@@ -59,6 +63,12 @@ class MainActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         tapped(intent)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Out of sight: the launcher can swap the icon without closing the app on the person.
+        AppIcons.applyPending(this)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -89,6 +99,15 @@ class MainActivity : FlutterActivity() {
     private fun handle(call: MethodCall, result: MethodChannel.Result) {
         val args = call.arguments as? Map<*, *> ?: emptyMap<String, Any?>()
         when (call.method) {
+            "setAppIcon" -> {
+                val icon = args["icon"] as? String ?: "default"
+                AppIcons.request(icon)
+                // The icon goes with the theme, so its splash does too; the system keeps it for later starts.
+                if (Build.VERSION.SDK_INT >= 33) {
+                    AppIcons.splashTheme(icon)?.let { splashScreen.setSplashScreenTheme(it) }
+                }
+                result.success(null)
+            }
             "setKeepAwake" -> {
                 if (args["on"] == true) {
                     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

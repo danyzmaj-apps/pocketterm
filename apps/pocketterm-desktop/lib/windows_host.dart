@@ -53,6 +53,11 @@ class WindowsHost with WindowListener implements DesktopHost {
 
   UpdateInfo? _update;
 
+  /// What [setAppIcon] last showed; the tray item starts with it.
+  String _icon = 'default';
+
+  String get _trayIcon => _icon == 'default' ? 'assets/tray.ico' : 'assets/icon/tray-$_icon.ico';
+
   @override
   Future<void> start({required FutureOr<void> Function(String event) onEvent}) async {
     _onEvent = onEvent;
@@ -65,7 +70,8 @@ class WindowsHost with WindowListener implements DesktopHost {
     _ensureStartupApproved();
     _registerLink();
     _startTray();
-    if (!_startedHidden()) await showMain();
+    // Through the app, which counts each showing (the intro plays at the first).
+    if (!_startedHidden()) _emit('openMain');
   }
 
   /// Started at login: the command line has `--hidden`.
@@ -78,7 +84,7 @@ class WindowsHost with WindowListener implements DesktopHost {
       return;
     }
     item
-      ..icon = tray.ImageAsset.fromAsset('assets/tray.ico')
+      ..icon = tray.ImageAsset.fromAsset(_trayIcon)
       ..setTooltip('PocketTerm')
       ..setContextMenuTrigger(tray.ContextMenuTrigger.rightClicked)
       ..addListener((e) {
@@ -200,6 +206,15 @@ class WindowsHost with WindowListener implements DesktopHost {
 
   @override
   Future<void> startDrag() => windowManager.startDragging();
+
+  /// The window's icon (title bar, taskbar, Alt-Tab) and the tray item's;
+  /// the installer's and Explorer's stay the runner's app_icon.ico.
+  @override
+  Future<void> setAppIcon(String icon) async {
+    _icon = icon;
+    _tray?.icon = tray.ImageAsset.fromAsset(_trayIcon);
+    await windowManager.setIcon('assets/icon/windows-$icon.ico');
+  }
 
   /// launch_at_startup reads and writes `Explorer\StartupApproved\Run`
   /// (Task Manager's Startup apps switch) and throws when that key is

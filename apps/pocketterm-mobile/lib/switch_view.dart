@@ -169,7 +169,7 @@ class _SwitchBannerState extends State<SwitchBanner> {
       builder: (context, box) => Row(
         children: [
           Expanded(
-            child: Text(text, style: const TextStyle(fontSize: 14, color: C.dim)),
+            child: Text(text, style: TextStyle(fontSize: 14, color: C.dim)),
           ),
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: box.maxWidth * .55),
@@ -230,24 +230,24 @@ class _SwitchSheetState extends State<SwitchSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Switch to conversation', style: sheetTitleStyle),
+            Text('Switch to conversation', style: sheetTitleStyle),
             const SizedBox(height: 8),
             Text(
               omp
                   ? 'PocketTerm restarts omp in this window and picks the same conversation back up '
                         '(${Agent.omp.resume}). Nothing is lost.'
                   : 'PocketTerm types ${Agent.claude.pickUp} in it. Nothing restarts.',
-              style: const TextStyle(fontSize: 14, color: C.dim, height: 1.4),
+              style: TextStyle(fontSize: 14, color: C.dim, height: 1.4),
             ),
             if (busy ?? false)
-              const Padding(
-                key: ValueKey('switch-busy'),
-                padding: EdgeInsets.only(top: 12),
+              Padding(
+                key: const ValueKey('switch-busy'),
+                padding: const EdgeInsets.only(top: 12),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(Icons.warning_amber_rounded, size: 18, color: C.warn),
-                    SizedBox(width: 8),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'It’s working right now, and restarting stops it. Restart and continue has it carry on; '
@@ -295,7 +295,7 @@ class _SwitchSheetState extends State<SwitchSheet> {
   Widget _notNow() => TextButton(
     key: const ValueKey('switch-cancel'),
     onPressed: () => Navigator.of(context).pop(),
-    child: const Text('Not now', style: TextStyle(color: C.text)),
+    child: Text('Not now', style: TextStyle(color: C.text)),
   );
 
   /// omp at work: restart and have it carry on, or just restart, stacked so both read in full.

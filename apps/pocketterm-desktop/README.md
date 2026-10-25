@@ -12,7 +12,7 @@ The desktop app: one window holding the first-run setup (**On this computer**: t
 | `windows/` | Windows runner (single instance, `pocketterm://` links) and `installer.iss`, the Inno Setup installer |
 | `assets/` | App assets, including the tray icon (`tray.ico`) |
 | `tool/release.sh` | Build, notarize and publish a Mac release |
-| `tool/make_icon.swift` | Draw the app icons |
+| `tool/make_icon.swift` | Draw the app icons: the default one and each theme's, for both apps |
 | `integrations/omp/` | omp extension `pocketterm-live.ts`: sessions for the phone |
 | `integrations/claude/` | Claude Code marketplace with PocketTerm's `pocketterm` plugin: sessions for the phone (`plugins/pocketterm/hooks/`); `claude plugin test integrations/claude/plugins/pocketterm` runs its tests |
 | `integration_test/e2e_test.dart` | The desktop half of the end-to-end run ([`tool/e2e`](../../tool/e2e/)) |

@@ -111,7 +111,7 @@ class _ScanPageState extends State<_ScanPage> {
                               child: Container(
                                 width: box,
                                 height: box,
-                                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24)),
+                                decoration: BoxDecoration(color: Colors.white, borderRadius: C.round(24)),
                               ),
                             ),
                           ],
@@ -122,7 +122,7 @@ class _ScanPageState extends State<_ScanPage> {
                           width: box,
                           height: box,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(24),
+                            borderRadius: C.round(24),
                             border: Border.all(color: Colors.white, width: 3),
                           ),
                         ),
@@ -209,7 +209,7 @@ class _PasteCodeState extends State<_PasteCode> {
         if (widget.problem case final problem?)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Text(problem, style: const TextStyle(color: C.warn)),
+            child: Text(problem, style: TextStyle(color: C.warn)),
           ),
         Row(
           children: [

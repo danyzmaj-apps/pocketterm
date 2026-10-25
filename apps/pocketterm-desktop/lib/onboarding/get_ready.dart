@@ -213,7 +213,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
             children: [
               const Text('Get this computer ready', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'A few things so your phone sees your coding sessions and terminals. Each one checks itself off '
                 'when it\u2019s done.',
                 style: TextStyle(color: C.dim, height: 1.45),
@@ -228,7 +228,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
                 Text(
                   'Still to do: ${left.join(' and ')}. Settings keeps track of what\u2019s left.',
                   key: const ValueKey('get-ready-left'),
-                  style: const TextStyle(fontSize: 12.5, color: C.dim, height: 1.4),
+                  style: TextStyle(fontSize: 12.5, color: C.dim, height: 1.4),
                 ),
                 const SizedBox(height: 10),
               ],
@@ -250,8 +250,8 @@ class _GetReadyPageState extends State<GetReadyPage> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: C.field,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: C.line2),
+        borderRadius: C.round(10),
+        border: Border.all(color: C.line2, width: C.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -261,9 +261,9 @@ class _GetReadyPageState extends State<GetReadyPage> {
               SizedBox.square(
                 dimension: 18,
                 child: switch (status) {
-                  _Status.done => const Icon(Icons.check_circle, size: 18, color: C.ok),
-                  _Status.action => const Icon(Icons.error_outline, size: 18, color: C.warn),
-                  _Status.optional => const Icon(Icons.circle_outlined, size: 18, color: C.dim2),
+                  _Status.done => Icon(Icons.check_circle, size: 18, color: C.ok),
+                  _Status.action => Icon(Icons.error_outline, size: 18, color: C.warn),
+                  _Status.optional => Icon(Icons.circle_outlined, size: 18, color: C.dim2),
                   _Status.working => const Padding(
                     padding: EdgeInsets.all(1),
                     child: CircularProgressIndicator(strokeWidth: 2),
@@ -278,7 +278,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                     children: [
                       if (optional && status != _Status.done)
-                        const TextSpan(
+                        TextSpan(
                           text: '  Optional',
                           style: TextStyle(fontWeight: FontWeight.normal, fontSize: 12, color: C.dim),
                         ),
@@ -320,7 +320,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
             style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'PocketTerm talks to your phone through a small add-on inside omp and Claude Code. An agent loads '
             'add-ons when it starts, so sessions opened before PocketTerm don\u2019t have it yet: your phone sees '
             'only their screen, not the conversation. Do this once in each; new sessions don\u2019t need it.',
@@ -338,7 +338,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
                 }, style: _note),
               ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Afterwards your phone shows the conversation: answer questions and approvals there and get a '
             'notification when a run finishes.',
             style: _note,
@@ -380,7 +380,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
     };
   }
 
-  static const _note = TextStyle(fontSize: 12.5, color: C.dim, height: 1.4);
+  static TextStyle get _note => TextStyle(fontSize: 12.5, color: C.dim, height: 1.4);
 
   Widget _unreportedLine(TermWindow w) => Padding(
     padding: const EdgeInsets.only(top: 8),
@@ -440,7 +440,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
+        Text(
           'Your phone lists the git repositories in these and starts new projects there.',
           style: TextStyle(color: C.dim, height: 1.45, fontSize: 13),
         ),
@@ -469,9 +469,9 @@ class _GetReadyPageState extends State<GetReadyPage> {
     );
   }
 
-  static final ButtonStyle _chipStyle = OutlinedButton.styleFrom(
+  static ButtonStyle get _chipStyle => OutlinedButton.styleFrom(
     foregroundColor: C.text,
-    side: const BorderSide(color: C.line2),
+    side: BorderSide(color: C.line2, width: C.border),
     padding: const EdgeInsets.symmetric(horizontal: 12),
     visualDensity: VisualDensity.compact,
   );
@@ -480,7 +480,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
 
   Widget _phoneBody() {
     if (app.phoneSignedIn ?? false) {
-      return const Text(
+      return Text(
         'A phone is signed in. To add another: Settings \u2192 Phone \u2192 Add a phone\u2026',
         style: TextStyle(color: C.dim, height: 1.45, fontSize: 13),
       );
@@ -493,16 +493,16 @@ class _GetReadyPageState extends State<GetReadyPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (tailscale) ...[
-          const Text(
+          Text(
             phoneTailscaleNote,
-            key: ValueKey('get-ready-phone-tailscale'),
+            key: const ValueKey('get-ready-phone-tailscale'),
             style: TextStyle(color: C.dim, height: 1.45, fontSize: 13),
           ),
           const SizedBox(height: 12),
         ],
         PairingQr(session: app),
         const SizedBox(height: 10),
-        const Text(
+        Text(
           'PocketTerm for iPhone is on TestFlight and for Android on Google Play internal testing, '
           'for invited testers.',
           textAlign: TextAlign.center,
@@ -523,13 +523,13 @@ class _GetReadyPageState extends State<GetReadyPage> {
         SizedBox.square(
           dimension: 16,
           child: switch (status) {
-            _Status.done => const Icon(Icons.check, size: 16, color: C.ok),
+            _Status.done => Icon(Icons.check, size: 16, color: C.ok),
             _Status.action => Icon(
               error ? Icons.error_outline : Icons.warning_amber_rounded,
               size: 16,
-              color: error ? const Color(0xFFFCA5A5) : C.warn,
+              color: error ? C.error : C.warn,
             ),
-            _Status.optional => const Icon(Icons.remove, size: 16, color: C.dim2),
+            _Status.optional => Icon(Icons.remove, size: 16, color: C.dim2),
             _Status.working => const Padding(
               padding: EdgeInsets.all(2),
               child: CircularProgressIndicator(strokeWidth: 2),
@@ -543,7 +543,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
             style: TextStyle(
               fontSize: 13,
               height: 1.4,
-              color: error ? const Color(0xFFFCA5A5) : (status == _Status.optional ? C.dim : C.text),
+              color: error ? C.error : (status == _Status.optional ? C.dim : C.text),
             ),
           ),
         ),
@@ -591,7 +591,7 @@ class _SessionToPickUpState extends State<SessionToPickUp> {
     final typed = agent.pickUp.replaceAll('\u00A0', ' ').replaceAll('\u2060', '');
     return Row(
       children: [
-        const Icon(Icons.refresh, size: 18, color: C.warn),
+        Icon(Icons.refresh, size: 18, color: C.warn),
         const SizedBox(width: 10),
         Expanded(child: Text('${Integrations.name(agent)} $where', style: const TextStyle(fontSize: 13))),
         const SizedBox(width: 8),
@@ -599,8 +599,8 @@ class _SessionToPickUpState extends State<SessionToPickUp> {
           padding: const EdgeInsets.only(left: 8),
           decoration: BoxDecoration(
             color: C.win,
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: C.line2),
+            borderRadius: C.round(6),
+            border: Border.all(color: C.line2, width: C.border),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,

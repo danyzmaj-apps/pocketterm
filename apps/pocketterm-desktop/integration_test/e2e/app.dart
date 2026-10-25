@@ -148,6 +148,9 @@ class E2eHost implements DesktopHost {
 
   @override
   Future<void> startDrag() => _mac.startDrag();
+
+  @override
+  Future<void> setAppIcon(String icon) => _mac.setAppIcon(icon);
 }
 
 /// The keychain, in memory: the owner's PocketTerm items stay untouched. One

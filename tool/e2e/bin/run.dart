@@ -9,13 +9,15 @@
 //        --setup-link-file <file>) [--server-stop-cmd <sh> --server-start-cmd <sh>]
 //        [--server-ca <pem>]]
 //       [--no-phone] [--platform ios|android [--avd <name>]]
-//       [--phone-only <flow>,…] [--from-head] [--artifacts <dir>]
+//       [--phone-only <flow>,…] [--phone-from-tree] [--from-head] [--artifacts <dir>]
 //
 // --from-head runs what's committed: a detached worktree of HEAD in /tmp
 // (others' uncommitted edits stay out), artifacts still in this checkout's
 // build/e2e. --artifacts: where the stamped run folders go. --avd: the
 // Android emulator the phone phases boot when none is running. --phone-only:
-// just these phone flows (the phone run.sh's --only).
+// just these phone flows (the phone run.sh's --only). --phone-from-tree: the
+// phone app built from this checkout as it is, uncommitted edits included
+// (by default the phone builds HEAD; the desktop always runs this checkout).
 //
 // --server builtin: the desktop's own "On this computer" server, published
 // by `tailscale serve` (Tailscale must be running with HTTPS on and serve
@@ -148,6 +150,8 @@ Map<String, String> _parse(List<String> args) {
         o['phone'] = 'no';
       case '--from-head':
         o['from-head'] = 'yes';
+      case '--phone-from-tree':
+        o['phone-from-tree'] = 'yes';
       default:
         stderr.writeln('Unknown argument: ${args[i]}');
         exit(64);
@@ -648,6 +652,7 @@ Future<String> _phonePhase(String repo, String artifacts, String phase, Map<Stri
       ...['--run-dir', artifacts, '--phase', phase, '--platform', opts['platform']!],
       if (opts['avd'] case final avd?) ...['--avd', avd],
       if (opts['phone-only'] case final only?) ...['--only', only],
+      if (opts['phone-from-tree'] != null) '--from-tree',
     ],
     workingDirectory: repo,
     environment: cleanEnv(),

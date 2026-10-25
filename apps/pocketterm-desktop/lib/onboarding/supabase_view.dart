@@ -47,7 +47,9 @@ class OptionsTable extends StatelessWidget {
       Table(
         key: const ValueKey('compare-table'),
         columnWidths: const {0: FlexColumnWidth(1.25)},
-        border: const TableBorder(horizontalInside: BorderSide(color: C.line2)),
+        border: TableBorder(
+          horizontalInside: BorderSide(color: C.line2, width: C.border),
+        ),
         children: [
           for (final (i, r) in _rows.indexed)
             TableRow(
@@ -330,9 +332,9 @@ class _SupabaseSetupViewState extends State<SupabaseSetupView> {
     builder: (h) => Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: h ? const Color(0xFF23252E) : C.field,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: h ? C.accent : C.line2),
+        color: h ? C.sel : C.field,
+        borderRadius: C.round(12),
+        border: Border.all(color: h ? C.accent : C.line2, width: C.border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -345,12 +347,12 @@ class _SupabaseSetupViewState extends State<SupabaseSetupView> {
               spacing: 4,
               children: [
                 Text(title, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
-                Text(text, style: const TextStyle(fontSize: 12.5, color: C.dim, height: 1.45)),
+                Text(text, style: TextStyle(fontSize: 12.5, color: C.dim, height: 1.45)),
               ],
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.only(top: 4),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
             child: Icon(Icons.chevron_right, size: 20, color: C.dim2),
           ),
         ],
@@ -393,7 +395,7 @@ class _SupabaseSetupViewState extends State<SupabaseSetupView> {
     spacing: 4,
     children: [
       Text(title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
-      Text(text, style: const TextStyle(fontSize: 12.5, color: C.dim, height: 1.45)),
+      Text(text, style: TextStyle(fontSize: 12.5, color: C.dim, height: 1.45)),
     ],
   );
 
@@ -403,7 +405,7 @@ class _SupabaseSetupViewState extends State<SupabaseSetupView> {
       _error!,
       key: const ValueKey('supabase-error'),
       textAlign: TextAlign.center,
-      style: const TextStyle(fontSize: 12, color: _errorColor, height: 1.4),
+      style: TextStyle(fontSize: 12, color: _errorColor, height: 1.4),
     ),
   );
 
@@ -462,7 +464,7 @@ class _SupabaseSetupViewState extends State<SupabaseSetupView> {
     const SizedBox(height: 16),
     Row(
       children: [
-        const Expanded(
+        Expanded(
           child: Text(
             'Create a token at supabase.com/dashboard/account/tokens, then paste it here.',
             style: TextStyle(fontSize: 12.5, color: C.dim, height: 1.45),
@@ -496,8 +498,8 @@ class _SupabaseSetupViewState extends State<SupabaseSetupView> {
     padding: const EdgeInsets.only(left: 12, right: 6),
     decoration: BoxDecoration(
       color: C.field,
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: C.line2),
+      borderRadius: C.round(8),
+      border: Border.all(color: C.line2, width: C.border),
     ),
     child: DropdownButtonHideUnderline(
       child: DropdownButton<T>(
@@ -506,8 +508,8 @@ class _SupabaseSetupViewState extends State<SupabaseSetupView> {
         isExpanded: true,
         focusColor: Colors.transparent,
         dropdownColor: C.bar,
-        borderRadius: BorderRadius.circular(8),
-        hint: const Text('Choose…', style: TextStyle(color: C.dim2)),
+        borderRadius: C.round(8),
+        hint: Text('Choose…', style: TextStyle(color: C.dim2)),
         style: DefaultTextStyle.of(context).style.copyWith(fontSize: 13, color: C.text),
         items: [
           for (final MapEntry(:key, value: label) in items.entries) DropdownMenuItem(value: key, child: Text(label)),
@@ -523,7 +525,7 @@ class _SupabaseSetupViewState extends State<SupabaseSetupView> {
 
   Widget _label(String text) => Padding(
     padding: const EdgeInsets.only(bottom: 6),
-    child: Text(text, style: const TextStyle(fontSize: 12.5, color: C.dim)),
+    child: Text(text, style: TextStyle(fontSize: 12.5, color: C.dim)),
   );
 
   List<Widget> _projectScreen() {
@@ -547,7 +549,7 @@ class _SupabaseSetupViewState extends State<SupabaseSetupView> {
         _label('Region'),
         _dropdown<String>('supabase-region', _region, supabaseRegions, (r) => setState(() => _region = r)),
         const SizedBox(height: 6),
-        const Text(
+        Text(
           'Pick one near you: your device list is kept there.',
           style: TextStyle(fontSize: 12, color: C.dim2, height: 1.4),
         ),

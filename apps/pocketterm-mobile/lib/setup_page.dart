@@ -67,11 +67,11 @@ class _SetupPageState extends State<SetupPage> {
                 Text(
                   reason,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: C.warn, height: 1.4),
+                  style: TextStyle(color: C.warn, height: 1.4),
                 ),
               ],
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 'Your computer\u2019s coding sessions on your phone, end-to-end encrypted. This phone connects by '
                 'scanning the code PocketTerm on your computer shows.',
                 textAlign: TextAlign.center,
@@ -87,7 +87,7 @@ class _SetupPageState extends State<SetupPage> {
                 Text(
                   error,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 12, color: Color(0xFFFCA5A5)),
+                  style: TextStyle(fontSize: 12, color: C.error),
                 ),
               ],
               if (widget.onDemo case final onDemo?) ...[
@@ -95,11 +95,13 @@ class _SetupPageState extends State<SetupPage> {
                 OutlinedButton(
                   key: const ValueKey('try-demo'),
                   onPressed: _busy ? null : onDemo,
-                  style: OutlinedButton.styleFrom(side: const BorderSide(color: C.line2)),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: C.line2, width: C.border),
+                  ),
                   child: const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Text('Try the demo')),
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   'No computer yet? See PocketTerm with made-up sessions. Nothing connects.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 12, color: C.dim, height: 1.4),
@@ -117,8 +119,8 @@ class _SetupPageState extends State<SetupPage> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: C.field,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: C.line2),
+        borderRadius: C.round(12),
+        border: Border.all(color: C.line2, width: C.border),
       ),
       child: const Text(
         '1.  Install PocketTerm on your computer and open it. Its setup connects it to your server.\n'

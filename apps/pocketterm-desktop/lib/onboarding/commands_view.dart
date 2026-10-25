@@ -37,8 +37,8 @@ class _CopyCommandState extends State<CopyCommand> {
     padding: const EdgeInsets.only(left: 10),
     decoration: BoxDecoration(
       color: C.win,
-      borderRadius: BorderRadius.circular(6),
-      border: Border.all(color: C.line2),
+      borderRadius: C.round(6),
+      border: Border.all(color: C.line2, width: C.border),
     ),
     child: Row(
       children: [
@@ -112,19 +112,19 @@ class _ConfirmedCommandState extends State<ConfirmedCommand> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             spacing: 12,
             children: [
-              Text(widget.what, style: const TextStyle(color: C.dim, height: 1.45)),
-              const Text('PocketTerm will run:', style: TextStyle(fontSize: 12.5, color: C.dim)),
+              Text(widget.what, style: TextStyle(color: C.dim, height: 1.45)),
+              Text('PocketTerm will run:', style: TextStyle(fontSize: 12.5, color: C.dim)),
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: C.win,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: C.line2),
+                  borderRadius: C.round(6),
+                  border: Border.all(color: C.line2, width: C.border),
                 ),
                 child: SelectableText(_command, key: const ValueKey('command-shown'), style: commandStyle),
               ),
               if (widget.password != null)
-                const Text(
+                Text(
                   'macOS asks for your Mac password during the install.',
                   style: TextStyle(fontSize: 12, color: C.dim2),
                 ),
@@ -172,18 +172,18 @@ class _ConfirmedCommandState extends State<ConfirmedCommand> {
         const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2)),
         const SizedBox(width: 8),
         Flexible(
-          child: Text('Running $_command…', style: const TextStyle(fontSize: 12, color: C.dim)),
+          child: Text('Running $_command…', style: TextStyle(fontSize: 12, color: C.dim)),
         ),
       ],
     ),
-    _Run.done => const Row(
+    _Run.done => Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(Icons.check, size: 14, color: C.ok),
-        SizedBox(width: 6),
+        const SizedBox(width: 6),
         Text(
           'Done',
-          key: ValueKey('command-done'),
+          key: const ValueKey('command-done'),
           style: TextStyle(fontSize: 12, color: C.dim),
         ),
       ],
@@ -195,7 +195,7 @@ class _ConfirmedCommandState extends State<ConfirmedCommand> {
         Text(
           'That didn’t work:\n$_failure',
           key: const ValueKey('command-failed'),
-          style: const TextStyle(fontSize: 12, color: Color(0xFFFCA5A5), height: 1.4),
+          style: TextStyle(fontSize: 12, color: C.error, height: 1.4),
         ),
         _button('Try again'),
       ],
@@ -207,7 +207,7 @@ class _ConfirmedCommandState extends State<ConfirmedCommand> {
     onPressed: () => unawaited(_confirm()),
     style: OutlinedButton.styleFrom(
       foregroundColor: C.text,
-      side: const BorderSide(color: C.line2),
+      side: BorderSide(color: C.line2, width: C.border),
       padding: const EdgeInsets.symmetric(horizontal: 12),
       visualDensity: VisualDensity.compact,
     ),

@@ -9,6 +9,8 @@ import Sparkle
 class MainFlutterWindow: NSWindow, NSWindowDelegate {
   private var channel: FlutterMethodChannel!
   private var statusItem: NSStatusItem?
+  /// The theme's Dock icon (lib/desktop_host.dart's setAppIcon); nil: the app's own.
+  private var appIcon: NSImage?
 
   override func awakeFromNib() {
     // Runs before any window shows: PocketTerm starts in the menu bar, and Dart
@@ -21,7 +23,21 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     }
     engine.run(withEntrypoint: nil)
     let controller = FlutterViewController(engine: engine, nibName: nil, bundle: nil)
-    controller.backgroundColor = NSColor(red: 0.09, green: 0.094, blue: 0.114, alpha: 1)
+    // The chosen theme's background (packages/pocketterm_core/lib/theme.dart, kept by shared_preferences as
+    // `flutter.theme`; Auto's by the system's light or dark), under the intro's first frame.
+    controller.backgroundColor = NSColor(name: nil) { appearance in
+      let rgb: UInt32 =
+        switch UserDefaults.standard.string(forKey: "flutter.theme") {
+        case "mocha": 0x1E1E2E
+        case "dawn": 0xFAF4ED
+        case "tokyoNight": 0x1A1B26
+        case "gruvbox": 0x282828
+        default: appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? 0x1E1E2E : 0xFAF4ED
+        }
+      return NSColor(
+        srgbRed: CGFloat(rgb >> 16 & 0xFF) / 255, green: CGFloat(rgb >> 8 & 0xFF) / 255,
+        blue: CGFloat(rgb & 0xFF) / 255, alpha: 1)
+    }
 
     contentViewController = controller
     styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
@@ -83,6 +99,12 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       } catch {
         result(FlutterError(code: "launch_at_login", message: error.localizedDescription, details: nil))
       }
+    case "setAppIcon":
+      // {png?}: the Dock icon while the window is open; none, the app's own (Finder and a quit app's Dock
+      // tile always show the bundle's).
+      appIcon = (args["png"] as? FlutterStandardTypedData).flatMap { NSImage(data: $0.data) }
+      NSApp.applicationIconImage = appIcon
+      result(nil)
     case "startDrag":
       if let event = NSApp.currentEvent, let window = event.window { window.performDrag(with: event) }
       result(nil)
@@ -126,6 +148,7 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   private func showMain() {
     // A real app while the window is open: Dock icon, menu bar, ⌘-Tab.
     NSApp.setActivationPolicy(.regular)
+    if let appIcon { NSApp.applicationIconImage = appIcon }
     makeKeyAndOrderFront(nil)
     activate()
   }

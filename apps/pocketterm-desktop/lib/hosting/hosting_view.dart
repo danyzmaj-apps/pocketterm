@@ -22,7 +22,7 @@ Widget smallButton(String label, VoidCallback? onPressed, {Key? key}) => Outline
   onPressed: onPressed,
   style: OutlinedButton.styleFrom(
     foregroundColor: C.text,
-    side: const BorderSide(color: C.line2),
+    side: BorderSide(color: C.line2, width: C.border),
     padding: const EdgeInsets.symmetric(horizontal: 12),
     visualDensity: VisualDensity.compact,
   ),
@@ -86,14 +86,14 @@ class HostingStatusView extends StatelessWidget {
                   dimension: 16,
                   child: switch (ok) {
                     null => const Padding(padding: EdgeInsets.all(2), child: CircularProgressIndicator(strokeWidth: 2)),
-                    true => const Icon(Icons.check, size: 16, color: C.ok),
-                    false => const Icon(Icons.warning_amber_rounded, size: 16, color: C.warn),
+                    true => Icon(Icons.check, size: 16, color: C.ok),
+                    false => Icon(Icons.warning_amber_rounded, size: 16, color: C.warn),
                   },
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(text, style: const TextStyle(fontSize: 12.5, color: C.dim, height: 1.45)),
+                child: Text(text, style: TextStyle(fontSize: 12.5, color: C.dim, height: 1.45)),
               ),
             ],
           ),
@@ -115,7 +115,7 @@ class HostingStatusView extends StatelessWidget {
                       'This computer’s Tailscale address changed from ${old.host}. Phones and computers set up '
                       'with the old one can’t reach it: scan this computer’s code again on each phone (Add a '
                       'phone…), and paste a new link on each other computer (Add a computer…).',
-                      style: const TextStyle(fontSize: 12.5, color: C.warn, height: 1.45),
+                      style: TextStyle(fontSize: 12.5, color: C.warn, height: 1.45),
                     ),
                     smallButton('Got it', server.renameSeen, key: const ValueKey('hosting-renamed-seen')),
                   ],
@@ -150,13 +150,13 @@ Future<void> showAddComputer(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         spacing: 12,
         children: [
-          Text(how, style: const TextStyle(color: C.dim, height: 1.45)),
+          Text(how, style: TextStyle(color: C.dim, height: 1.45)),
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: C.field,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: C.line2),
+              borderRadius: C.round(8),
+              border: Border.all(color: C.line2, width: C.border),
             ),
             child: SelectableText(
               '$link',
@@ -164,7 +164,7 @@ Future<void> showAddComputer(
               style: const TextStyle(fontSize: 12, fontFamily: 'Menlo', height: 1.4),
             ),
           ),
-          const Text(
+          Text(
             'Anyone who has this link can sign a computer in to your server. Send it only to yourself.',
             style: TextStyle(fontSize: 11.5, color: C.dim2, height: 1.4),
           ),

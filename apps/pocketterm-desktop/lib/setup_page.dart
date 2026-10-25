@@ -146,7 +146,7 @@ class _SetupPageState extends State<SetupPage> {
         style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
       ),
       const SizedBox(height: 8),
-      const Text(
+      Text(
         'Your phone reaches this computer through a PocketTerm server. Where should it run?',
         textAlign: TextAlign.center,
         style: TextStyle(color: C.dim, height: 1.45),
@@ -219,7 +219,7 @@ class _SetupPageState extends State<SetupPage> {
       const SizedBox(height: 14),
       Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Text(
               'Already run your own servers? See what the PocketTerm server needs.',
               style: TextStyle(fontSize: 12.5, color: C.dim, height: 1.45),
@@ -248,9 +248,9 @@ class _SetupPageState extends State<SetupPage> {
     builder: (h) => Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: h ? const Color(0xFF23252E) : C.field,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: h ? C.accent : C.line2),
+        color: h ? C.sel : C.field,
+        borderRadius: C.round(12),
+        border: Border.all(color: h ? C.accent : C.line2, width: C.border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -263,12 +263,12 @@ class _SetupPageState extends State<SetupPage> {
               spacing: 4,
               children: [
                 Text(title, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
-                Text(text, style: const TextStyle(fontSize: 12.5, color: C.dim, height: 1.45)),
+                Text(text, style: TextStyle(fontSize: 12.5, color: C.dim, height: 1.45)),
               ],
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.only(top: 4),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
             child: Icon(Icons.chevron_right, size: 20, color: C.dim2),
           ),
         ],
@@ -294,12 +294,12 @@ Widget _header(String title, String text, VoidCallback onBack) => Column(
     const SizedBox(height: 8),
     Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
     const SizedBox(height: 8),
-    Text(text, style: const TextStyle(color: C.dim, height: 1.45)),
+    Text(text, style: TextStyle(color: C.dim, height: 1.45)),
     const SizedBox(height: 18),
   ],
 );
 
-const _errorColor = Color(0xFFFCA5A5);
+Color get _errorColor => C.error;
 
 /// Where one step of a live checklist stands.
 enum CheckState {
@@ -342,9 +342,9 @@ class SetupCheck extends StatelessWidget {
                   padding: EdgeInsets.all(3),
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-                CheckState.done => const Icon(Icons.check_circle, size: 18, color: C.ok),
-                CheckState.now => const Icon(Icons.arrow_forward, size: 18, color: C.warn),
-                CheckState.later => const Icon(Icons.radio_button_unchecked, size: 18, color: C.dim2),
+                CheckState.done => Icon(Icons.check_circle, size: 18, color: C.ok),
+                CheckState.now => Icon(Icons.arrow_forward, size: 18, color: C.warn),
+                CheckState.later => Icon(Icons.radio_button_unchecked, size: 18, color: C.dim2),
               },
             ),
           ),
@@ -365,8 +365,7 @@ class SetupCheck extends StatelessWidget {
                     },
                   ),
                 ),
-                if (now && note != null)
-                  Text(note!, style: const TextStyle(fontSize: 12.5, color: C.dim, height: 1.45)),
+                if (now && note != null) Text(note!, style: TextStyle(fontSize: 12.5, color: C.dim, height: 1.45)),
                 if (now && actions.isNotEmpty) Wrap(spacing: 8, runSpacing: 8, children: actions),
               ],
             ),
@@ -396,7 +395,7 @@ class _ExplainerState extends State<Explainer> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       InkWell(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: C.round(6),
         onTap: () => setState(() => _open = !_open),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
@@ -404,7 +403,7 @@ class _ExplainerState extends State<Explainer> {
             children: [
               Icon(_open ? Icons.expand_more : Icons.chevron_right, size: 18, color: C.accent),
               const SizedBox(width: 6),
-              Text(widget.title, style: const TextStyle(fontSize: 13, color: C.accent)),
+              Text(widget.title, style: TextStyle(fontSize: 13, color: C.accent)),
             ],
           ),
         ),
@@ -413,7 +412,7 @@ class _ExplainerState extends State<Explainer> {
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 4, 0, 10),
           child: DefaultTextStyle.merge(
-            style: const TextStyle(fontSize: 12.5, color: C.dim, height: 1.45),
+            style: TextStyle(fontSize: 12.5, color: C.dim, height: 1.45),
             child: widget.child,
           ),
         ),
@@ -427,8 +426,8 @@ Widget _notice(String text, {IconData icon = Icons.info_outline, Key? key}) => C
   padding: const EdgeInsets.all(12),
   decoration: BoxDecoration(
     color: C.field,
-    borderRadius: BorderRadius.circular(10),
-    border: Border.all(color: C.line2),
+    borderRadius: C.round(10),
+    border: Border.all(color: C.line2, width: C.border),
   ),
   child: Row(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -436,7 +435,7 @@ Widget _notice(String text, {IconData icon = Icons.info_outline, Key? key}) => C
       Icon(icon, size: 16, color: C.accent),
       const SizedBox(width: 10),
       Expanded(
-        child: Text(text, style: const TextStyle(fontSize: 12.5, color: C.dim, height: 1.45)),
+        child: Text(text, style: TextStyle(fontSize: 12.5, color: C.dim, height: 1.45)),
       ),
     ],
   ),
@@ -675,7 +674,7 @@ class _ThisComputerSetupState extends State<ThisComputerSetup> {
             _error!,
             key: const ValueKey('setup-error'),
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, color: _errorColor),
+            style: TextStyle(fontSize: 12, color: _errorColor),
           ),
         ],
       ],
@@ -820,13 +819,13 @@ class _SetupLinkFormState extends State<SetupLinkForm> {
               dimension: 14,
               child: _health!.isEmpty
                   ? const Padding(padding: EdgeInsets.all(2), child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.check, size: 14, color: C.ok),
+                  : Icon(Icons.check, size: 14, color: C.ok),
             ),
             const SizedBox(width: 8),
             Flexible(
               child: Text(
                 _health!.isEmpty ? 'Asking the server…' : _health!,
-                style: const TextStyle(fontSize: 12, color: C.dim),
+                style: TextStyle(fontSize: 12, color: C.dim),
               ),
             ),
           ],
@@ -853,7 +852,7 @@ class _SetupLinkFormState extends State<SetupLinkForm> {
           _error!,
           key: const ValueKey('setup-error'),
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 12, color: _errorColor, height: 1.4),
+          style: TextStyle(fontSize: 12, color: _errorColor, height: 1.4),
         ),
       ],
     ],
@@ -993,7 +992,7 @@ class _NewServerSetupState extends State<NewServerSetup> {
           Text(
             _parsed.error!,
             key: const ValueKey('setup-address-error'),
-            style: const TextStyle(fontSize: 12, color: _errorColor, height: 1.4),
+            style: TextStyle(fontSize: 12, color: _errorColor, height: 1.4),
           ),
         if (domain != null) ...[
           Text.rich(
@@ -1003,7 +1002,7 @@ class _NewServerSetupState extends State<NewServerSetup> {
                 const TextSpan(text: 'Your server’s name: '),
                 TextSpan(
                   text: domain,
-                  style: const TextStyle(color: C.text, fontWeight: FontWeight.w600),
+                  style: TextStyle(color: C.text, fontWeight: FontWeight.w600),
                 ),
                 TextSpan(
                   text: domain.endsWith('.sslip.io')
@@ -1012,7 +1011,7 @@ class _NewServerSetupState extends State<NewServerSetup> {
                 ),
               ],
             ),
-            style: const TextStyle(fontSize: 12, color: C.dim, height: 1.45),
+            style: TextStyle(fontSize: 12, color: C.dim, height: 1.45),
           ),
           const SizedBox(height: 16),
           _notice(
@@ -1024,7 +1023,7 @@ class _NewServerSetupState extends State<NewServerSetup> {
           Text(
             'Run these on the server, not here. To get there, type this in ${Platform.isWindows ? 'PowerShell' : 'Terminal'} '
             '(some providers sign you in as ubuntu or debian instead of root):',
-            style: const TextStyle(fontSize: 12.5, color: C.dim, height: 1.45),
+            style: TextStyle(fontSize: 12.5, color: C.dim, height: 1.45),
           ),
           const SizedBox(height: 6),
           CopyCommand(_parsed.ssh!, key: const ValueKey('setup-ssh')),
@@ -1035,7 +1034,7 @@ class _NewServerSetupState extends State<NewServerSetup> {
             CopyCommand(c.command, key: ValueKey('setup-command-$i')),
             const SizedBox(height: 12),
           ],
-          const Text('Signed in as root? You can leave out sudo.', style: TextStyle(fontSize: 11.5, color: C.dim2)),
+          Text('Signed in as root? You can leave out sudo.', style: TextStyle(fontSize: 11.5, color: C.dim2)),
           const SizedBox(height: 16),
           Text('Checking $domain', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
@@ -1046,7 +1045,7 @@ class _NewServerSetupState extends State<NewServerSetup> {
           ],
           if (_healthy ?? false) ...[
             const SizedBox(height: 14),
-            const Text(
+            Text(
               'Your server is up. Paste the setup link step 4 printed:',
               style: TextStyle(fontSize: 13, color: C.dim, height: 1.45),
             ),

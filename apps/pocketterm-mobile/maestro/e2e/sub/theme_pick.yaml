@@ -1,0 +1,54 @@
+# Account → Theme → PICK, from a relaunched app; then the theme sheet, the
+# session list and SESSION's page are photographed in it (theme-<NAME>-*).
+# iOS confirms the new home screen icon with an alert of its own: OK.
+#   env: PICK (regex: the theme's row), NAME (screenshot name), SESSION (regex)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: home.yaml
+- tapOn: "\n?Account"
+- extendedWaitUntil:
+    visible: "Theme\n.*"
+    timeout: 5000
+- tapOn: "Theme\n.*"
+- extendedWaitUntil:
+    visible: "Auto\nFollows the system"
+    timeout: 5000
+- tapOn: "${PICK}"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: ".*changed the icon.*"
+          timeout: 5000
+          optional: true
+      - runFlow:
+          when:
+            visible: ".*changed the icon.*"
+          commands:
+            # Not tapped again where OK was (Maestro repeats a tap after which it
+            # sees no change): with the alert gone, that would pick another theme.
+            - tapOn:
+                text: "OK"
+                retryTapIfNoChange: false
+- waitForAnimationToEnd
+- takeScreenshot: theme-${NAME}-sheet
+# The theme sheet, then the account sheet under it.
+- tapOn:
+    point: "50%,8%"
+- extendedWaitUntil:
+    notVisible: "Auto\nFollows the system"
+    timeout: 5000
+- tapOn:
+    point: "50%,8%"
+- extendedWaitUntil:
+    notVisible: "Leave this server"
+    timeout: 5000
+- assertVisible: "\n?New session"
+- takeScreenshot: theme-${NAME}-list
+- runFlow:
+    file: open_row.yaml
+    env:
+      ROW: ${SESSION}
+- takeScreenshot: theme-${NAME}-session
+- runFlow: back.yaml

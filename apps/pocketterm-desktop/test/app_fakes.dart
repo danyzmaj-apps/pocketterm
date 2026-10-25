@@ -286,6 +286,9 @@ class FakeDesktopHost implements DesktopHost {
 
   @override
   Future<void> startDrag() async => calls.add('startDrag');
+
+  @override
+  Future<void> setAppIcon(String icon) async => calls.add('setAppIcon($icon)');
 }
 
 /// A `claude` that answers from [list] (its `plugin list --json`) and records
@@ -509,7 +512,7 @@ class FakeCommands {
 /// [child] as main.dart hosts a window: a [MaterialApp] with PocketTerm's theme and
 /// a [Toaster].
 Widget window(Widget child) => MaterialApp(
-  theme: appTheme(),
+  theme: appTheme(C.t),
   home: Material(
     type: MaterialType.transparency,
     child: Toaster(child: child),

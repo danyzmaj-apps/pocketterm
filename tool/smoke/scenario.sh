@@ -11,6 +11,8 @@
 #                enabled only when all is done; Start, then Get this computer ready
 #     getready   Get this computer ready: its rows, then Done opens Settings
 #     settings   Settings: each tab, How your data is protected (Read…), the status bar
+#     theme      Settings → Account → Theme: each theme, kept in the copy's preferences, each tab
+#                photographed in it; Auto last
 #     menubar    the window closed, the menu bar icon opens it again
 #     quit       Settings → Account → Quit PocketTerm: the copy is gone
 #
@@ -268,6 +270,38 @@ settings() {
   hides 'Encrypted from end to end'
 }
 
+# Copies: apps/pocketterm-desktop/lib/main_window.dart, packages/pocketterm_core/lib/theme.dart (labels and
+# the names the choice is kept under).
+theme() {
+  if ! wait_for 5 has 'Open setup checklist'; then
+    fail "Settings isn't open (run getready first)"
+    return
+  fi
+  local label name t
+  for label in 'Catppuccin Mocha:mocha' 'Rosé Pine Dawn:dawn' 'Tokyo Night:tokyoNight' 'Gruvbox Material:gruvbox' \
+    'Auto:auto'; do
+    name=${label#*:}
+    label=${label%%:*}
+    step "$label"
+    tab_press Account
+    shows 'For this computer. Auto follows your system’s light or dark.'
+    press "$label"
+    check "kept as $name" wait_for 5 kept "$name"
+    shot "theme-$name-account"
+    for t in Phone 'Coding agents' Terminals; do
+      tab_press "$t"
+      shot "theme-$name-$(echo "$t" | tr 'A-Z ' 'a-z-')"
+    done
+  done
+  tab_press Account
+}
+
+# Gruvbox writes the tabs' labels in capitals (ThemeShape.caps), and so they read.
+tab_press() { check "press \"$1\"" press_any_case "$1"; }
+press_any_case() { ax press "$1" >/dev/null || ax press "$(echo "$1" | tr a-z A-Z)" >/dev/null; }
+
+kept() { [ "$(/usr/bin/defaults read com.danyzmaj.pocketterm.smoke flutter.theme 2>/dev/null)" = "$1" ]; }
+
 # Copies: apps/pocketterm-desktop/macos/Runner/MainFlutterWindow.swift (the icon's accessibility description).
 menubar() {
   local heading=''
@@ -310,9 +344,9 @@ if [ ${#names[@]} -eq 0 ]; then
 fi
 for name in "${names[@]}"; do
   case "$name" in
-    wizard | getready | settings | menubar | quit) ;;
+    wizard | getready | settings | theme | menubar | quit) ;;
     *)
-      echo "unknown scenario: $name (wizard, getready, settings, menubar, quit)" >&2
+      echo "unknown scenario: $name (wizard, getready, settings, theme, menubar, quit)" >&2
       exit 2
       ;;
   esac

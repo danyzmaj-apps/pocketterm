@@ -98,8 +98,8 @@ Full model: [SECURITY.md](SECURITY.md). What the publisher collects: the [privac
 
    | Device | Get it |
    | --- | --- |
-   | Mac | [PocketTerm-0.1.1.dmg](https://github.com/danyzmaj-apps/pocketterm/releases/download/v0.1.1/PocketTerm-0.1.1.dmg): notarized, updates itself |
-   | Windows | [PocketTerm-0.1.1-setup.exe](https://github.com/danyzmaj-apps/pocketterm/releases/download/v0.1.1/PocketTerm-0.1.1-setup.exe): per-user install. Not code-signed yet: on the SmartScreen warning choose **More info → Run anyway** |
+   | Mac | [PocketTerm-0.1.2.dmg](https://github.com/danyzmaj-apps/pocketterm/releases/download/v0.1.2/PocketTerm-0.1.2.dmg): notarized, updates itself |
+   | Windows | [PocketTerm-0.1.2-setup.exe](https://github.com/danyzmaj-apps/pocketterm/releases/download/v0.1.2/PocketTerm-0.1.2-setup.exe): per-user install. Not code-signed yet: on the SmartScreen warning choose **More info → Run anyway** |
    | iPhone | TestFlight, for invited testers |
    | Android | Google Play internal testing, for invited testers |
 

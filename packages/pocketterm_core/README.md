@@ -16,6 +16,7 @@ Dart and Flutter code shared by the desktop app and the phone app:
 | `ansi.dart`, `chat_images.dart`, `file_types.dart` | Screen lines with ANSI colors; the images and files a prompt takes (up to 10, files up to 20 MB) and their types |
 | `native.dart` | The `pocketterm/native` platform channel |
 | `ui.dart`, `logo.dart` | Shared UI and the logo |
+| `intro.dart`, `app_icon.dart` | The launch intro; the app icon that goes with the theme |
 | `timing.dart` | Debug builds only: connection timings for the end-to-end run's report |
 
 Not published to pub.dev; it is a member of the repo's pub workspace. Test it from this directory:

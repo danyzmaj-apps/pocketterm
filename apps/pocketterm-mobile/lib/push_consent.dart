@@ -39,28 +39,28 @@ class _PushConsentPageState extends State<PushConsentPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Expanded(
+              Expanded(
                 child: SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(24, 24, 24, 12),
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Icon(Icons.notifications_active_outlined, size: 44, color: C.accent),
-                      SizedBox(height: 14),
-                      Text(
+                      const SizedBox(height: 14),
+                      const Text(
                         'Know when a session needs you',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
                       ),
-                      SizedBox(height: 10),
+                      const SizedBox(height: 10),
                       Text(
                         'Your computer tells this phone when a coding session finishes or asks something, even '
                         'while PocketTerm is closed.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: C.dim, height: 1.5),
                       ),
-                      SizedBox(height: 20),
-                      PushExplainer(),
+                      const SizedBox(height: 20),
+                      const PushExplainer(),
                     ],
                   ),
                 ),
@@ -134,8 +134,8 @@ class PushExplainer extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: C.field,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: C.line2),
+        borderRadius: C.round(12),
+        border: Border.all(color: C.line2, width: C.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -151,6 +151,13 @@ class Native {
 
   /// Keeps the screen from dimming and locking while [on].
   static Future<void> setKeepAwake({required bool on}) => _channel.invokeMethod('setKeepAwake', {'on': on});
+
+  /// Phone: switches the home screen icon to [icon] (app_icon.dart's
+  /// appIconFor names). iOS asks the person with an alert of its own; Android
+  /// switches launcher aliases once the app goes to the background, and only
+  /// in release builds (debug and profile keep the default icon, which
+  /// `flutter run` launches).
+  static Future<void> setAppIcon(String icon) => _channel.invokeMethod('setAppIcon', {'icon': icon});
 }
 
 /// iOS shows only so many Live Activities at once, per app and in all: one

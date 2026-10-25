@@ -20,7 +20,7 @@ import 'package:pocketterm_mobile/terminal_view.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 const _mono = TextStyle(fontFamily: 'Menlo', fontFamilyFallback: ['Courier'], fontSize: 12, height: 1.35);
-const _danger = Color(0xFFFCA5A5);
+Color get _danger => C.error;
 
 /// How long a just-launched agent may take to report before the page says so.
 const _startWait = Duration(seconds: 20);
@@ -310,7 +310,7 @@ class _SessionPageState extends State<SessionPage> {
       return Padding(
         key: const ValueKey('commands-need-window'),
         padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
-        child: Text(_noCommands(agent), style: const TextStyle(color: C.dim, fontSize: 12)),
+        child: Text(_noCommands(agent), style: TextStyle(color: C.dim, fontSize: 12)),
       );
     }
     if (matches.isEmpty) return null;
@@ -326,7 +326,7 @@ class _SessionPageState extends State<SessionPage> {
               InkWell(
                 key: ValueKey('command-${c.name}'),
                 canRequestFocus: false,
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: C.round(6),
                 onTap: () => _complete(c),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -335,12 +335,12 @@ class _SessionPageState extends State<SessionPage> {
                       children: [
                         TextSpan(
                           text: '/${c.name}',
-                          style: const TextStyle(color: C.text, fontWeight: FontWeight.w600),
+                          style: TextStyle(color: C.text, fontWeight: FontWeight.w600),
                         ),
                         if (c.description.isNotEmpty)
                           TextSpan(
                             text: '  ${c.description}',
-                            style: const TextStyle(color: C.dim),
+                            style: TextStyle(color: C.dim),
                           ),
                       ],
                     ),
@@ -480,7 +480,7 @@ class _SessionPageState extends State<SessionPage> {
               Text(
                 text,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: C.dim, height: 1.5),
+                style: TextStyle(color: C.dim, height: 1.5),
               ),
               if (window != null && remote.online) ...[
                 const SizedBox(height: 12),
@@ -543,13 +543,13 @@ class _SessionPageState extends State<SessionPage> {
               ]),
             ),
           if (s != null && s.busy && s.ask == null)
-            const SliverToBoxAdapter(
+            SliverToBoxAdapter(
               child: Padding(
-                padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                 child: Row(
                   children: [
-                    SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
-                    SizedBox(width: 10),
+                    const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
+                    const SizedBox(width: 10),
                     Text('Working…', style: TextStyle(fontSize: 13, color: C.dim)),
                   ],
                 ),
@@ -600,7 +600,7 @@ class _SessionPageState extends State<SessionPage> {
       TextSpan(children: parts),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: const TextStyle(fontSize: 12, color: C.dim),
+      style: TextStyle(fontSize: 12, color: C.dim),
     );
   }
 
@@ -612,7 +612,7 @@ class _SessionPageState extends State<SessionPage> {
       child: Row(
         children: [
           Expanded(
-            child: Text(text, style: const TextStyle(fontSize: 14, color: C.dim)),
+            child: Text(text, style: TextStyle(fontSize: 14, color: C.dim)),
           ),
           ...actions,
         ],
@@ -632,9 +632,11 @@ class _SessionPageState extends State<SessionPage> {
     final commands = _commands(matches, noWindow: noWindow, agent: agent);
     return Container(
       key: _composerKey,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: C.bar,
-        border: Border(top: BorderSide(color: C.line)),
+        border: Border(
+          top: BorderSide(color: C.line, width: C.border),
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
       child: SafeArea(
@@ -653,8 +655,8 @@ class _SessionPageState extends State<SessionPage> {
                   child: TextFieldTapRegion(
                     child: ActionChip(
                       key: const ValueKey('continue'),
-                      avatar: const Icon(Icons.play_arrow_rounded, size: 18, color: C.accent),
-                      label: const Text('Continue'),
+                      avatar: Icon(Icons.play_arrow_rounded, size: 18, color: C.accent),
+                      label: Text(C.label('Continue')),
                       tooltip: 'Carry on with what it was doing',
                       onPressed: () => unawaited(_sendContinue()),
                     ),
@@ -685,7 +687,7 @@ class _SessionPageState extends State<SessionPage> {
                           padding: 2,
                           child: FilterChip(
                             key: const ValueKey('follow-up'),
-                            label: const Text('Queue', style: TextStyle(fontSize: 12)),
+                            label: Text(C.label('Queue'), style: const TextStyle(fontSize: 12)),
                             tooltip: 'Off: the prompt steers ${agent.label} now',
                             selected: _followUp,
                             showCheckmark: true,
@@ -697,8 +699,8 @@ class _SessionPageState extends State<SessionPage> {
                       TextButton.icon(
                         key: const ValueKey('stop'),
                         onPressed: _stopping ? null : () => unawaited(_stop()),
-                        icon: const Icon(Icons.stop_circle_outlined, size: 18, color: _danger),
-                        label: const Text('Stop', style: TextStyle(color: _danger)),
+                        icon: Icon(Icons.stop_circle_outlined, size: 18, color: _danger),
+                        label: Text('Stop', style: TextStyle(color: _danger)),
                       ),
                     ],
                   ),
@@ -755,7 +757,7 @@ class _SessionPageState extends State<SessionPage> {
                             hintText: busy
                                 ? (_followUp || !agent.steers ? 'Queue a prompt…' : 'Steer ${agent.label}…')
                                 : 'Prompt ${agent.label}…',
-                            hintStyle: const TextStyle(color: C.dim2),
+                            hintStyle: TextStyle(color: C.dim2),
                             // 48 tall, like the buttons either side, so one line sits on their center.
                             contentPadding: const EdgeInsets.symmetric(vertical: 13),
                           ),
@@ -827,8 +829,8 @@ class _SessionPageState extends State<SessionPage> {
                   },
                   onPressed: () => unawaited(_toggleFollow(activities, s)),
                   icon: activities.following(key)
-                      ? const Icon(Icons.lock_clock, color: C.accent)
-                      : const Icon(Icons.lock_clock_outlined, color: C.dim),
+                      ? Icon(Icons.lock_clock, color: C.accent)
+                      : Icon(Icons.lock_clock_outlined, color: C.dim),
                 ),
               ),
             if (readable)
@@ -840,7 +842,7 @@ class _SessionPageState extends State<SessionPage> {
                   key: const ValueKey('open-screen'),
                   tooltip: 'Screen',
                   onPressed: screen,
-                  icon: const Icon(Icons.terminal, color: C.dim),
+                  icon: Icon(Icons.terminal, color: C.dim),
                 ),
               ),
             if (window != null && online && window.can(TermCap.close))
@@ -848,7 +850,7 @@ class _SessionPageState extends State<SessionPage> {
                 key: const ValueKey('close-window'),
                 tooltip: 'Close window',
                 onPressed: _closeSent ? null : () => setState(() => _closing = true),
-                icon: const Icon(Icons.close, color: C.dim),
+                icon: Icon(Icons.close, color: C.dim),
               ),
           ],
         ),
@@ -996,7 +998,7 @@ class _OutgoingBubble extends StatelessWidget {
   final _Outgoing message;
   final VoidCallback onRetry;
 
-  static const _note = TextStyle(fontSize: 12, color: C.dim);
+  static TextStyle get _note => TextStyle(fontSize: 12, color: C.dim);
 
   @override
   Widget build(BuildContext context) {
@@ -1019,7 +1021,7 @@ class _OutgoingBubble extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
                 decoration: BoxDecoration(
                   color: C.sel,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: C.round(14),
                   border: problem != null ? Border.all(color: _danger.withValues(alpha: .6)) : null,
                 ),
                 child: Column(
@@ -1039,22 +1041,22 @@ class _OutgoingBubble extends StatelessWidget {
             ),
           ),
           if (o.sending)
-            const Padding(
-              key: ValueKey('outgoing-sending'),
-              padding: EdgeInsets.only(top: 4, right: 4),
+            Padding(
+              key: const ValueKey('outgoing-sending'),
+              padding: const EdgeInsets.only(top: 4, right: 4),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5)),
-                  SizedBox(width: 6),
+                  const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5)),
+                  const SizedBox(width: 6),
                   Text('Sending…', style: _note),
                 ],
               ),
             )
           else if (queued)
-            const Padding(
-              key: ValueKey('outgoing-queued'),
-              padding: EdgeInsets.only(top: 4, right: 4),
+            Padding(
+              key: const ValueKey('outgoing-queued'),
+              padding: const EdgeInsets.only(top: 4, right: 4),
               child: Text('Queued: goes when the run ends', style: _note),
             )
           else if (problem != null)
@@ -1066,7 +1068,7 @@ class _OutgoingBubble extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(problem, textAlign: TextAlign.end, maxLines: 3, overflow: TextOverflow.ellipsis, style: _note),
-                  const Text('Not sent. Tap to retry', style: TextStyle(fontSize: 12, color: _danger)),
+                  Text('Not sent. Tap to retry', style: TextStyle(fontSize: 12, color: _danger)),
                 ],
               ),
             ),
@@ -1231,7 +1233,7 @@ class _QueueStripState extends State<_QueueStrip> {
                             child: InkWell(
                               key: const ValueKey('queue-fold'),
                               canRequestFocus: false,
-                              borderRadius: BorderRadius.circular(6),
+                              borderRadius: C.round(6),
                               onTap: () => setState(() => _folded = !_folded),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1261,8 +1263,8 @@ class _QueueStripState extends State<_QueueStrip> {
                       ),
                     ),
                     if (paused && !(s?.busy ?? false))
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(22, 0, 8, 4),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(22, 0, 8, 4),
                         child: Text('Nothing goes until you resume.', style: TextStyle(fontSize: 12, color: C.dim)),
                       ),
                     if (!_folded)
@@ -1292,7 +1294,7 @@ class _QueueStripState extends State<_QueueStrip> {
         color: _danger.withValues(alpha: .15),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 16),
-        child: const Icon(Icons.delete_outline, color: _danger),
+        child: Icon(Icons.delete_outline, color: _danger),
       ),
       onDismissed: (_) => _act('delete', q),
       child: ColoredBox(
@@ -1319,15 +1321,15 @@ class _QueueStripState extends State<_QueueStrip> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: q.text.isEmpty
-                          ? const TextStyle(fontSize: 14, color: C.dim, fontStyle: FontStyle.italic)
-                          : const TextStyle(fontSize: 14, color: C.text, height: 1.3),
+                          ? TextStyle(fontSize: 14, color: C.dim, fontStyle: FontStyle.italic)
+                          : TextStyle(fontSize: 14, color: C.text, height: 1.3),
                     ),
                     if (extras.isNotEmpty)
                       Text(
                         extras.join(' · '),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, color: C.dim),
+                        style: TextStyle(fontSize: 12, color: C.dim),
                       ),
                   ],
                 ),
@@ -1391,7 +1393,7 @@ class _EditQueuedSheetState extends State<_EditQueuedSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('Edit queued prompt', style: sheetTitleStyle),
+              Text('Edit queued prompt', style: sheetTitleStyle),
               const SizedBox(height: 12),
               TextField(
                 key: const ValueKey('queued-edit-field'),
@@ -1411,7 +1413,7 @@ class _EditQueuedSheetState extends State<_EditQueuedSheet> {
                   TextButton(
                     key: const ValueKey('queued-edit-cancel'),
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel', style: TextStyle(color: C.text)),
+                    child: Text('Cancel', style: TextStyle(color: C.text)),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
@@ -1442,7 +1444,7 @@ class _UserBubble extends StatelessWidget {
         constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .82),
         child: Container(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-          decoration: BoxDecoration(color: C.sel, borderRadius: BorderRadius.circular(14)),
+          decoration: BoxDecoration(color: C.sel, borderRadius: C.round(14)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: MainAxisSize.min,
@@ -1451,7 +1453,7 @@ class _UserBubble extends StatelessWidget {
               if (n > 0)
                 Padding(
                   padding: EdgeInsets.only(top: item.text.isEmpty ? 0 : 4),
-                  child: Text('⊕ $n image${n == 1 ? '' : 's'}', style: const TextStyle(fontSize: 12, color: C.dim)),
+                  child: Text('⊕ $n image${n == 1 ? '' : 's'}', style: TextStyle(fontSize: 12, color: C.dim)),
                 ),
             ],
           ),
@@ -1465,7 +1467,7 @@ class _AssistantText extends StatelessWidget {
   const _AssistantText(this.text);
   final String text;
 
-  static const _code = TextStyle(fontFamily: 'Menlo', fontSize: 12.5, color: Color(0xFFD7DAE3));
+  static TextStyle get _code => TextStyle(fontFamily: 'Menlo', fontSize: 12.5, color: C.text);
 
   @override
   Widget build(BuildContext context) => MarkdownBody(
@@ -1477,17 +1479,17 @@ class _AssistantText extends StatelessWidget {
       if (uri != null) unawaited(launchUrl(uri));
     },
     styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-      p: const TextStyle(fontSize: 15, height: 1.5, color: C.text),
-      listBullet: const TextStyle(fontSize: 15, height: 1.5, color: C.dim),
-      a: const TextStyle(color: C.accent),
+      p: TextStyle(fontSize: 15, height: 1.5, color: C.text),
+      listBullet: TextStyle(fontSize: 15, height: 1.5, color: C.dim),
+      a: TextStyle(color: C.accent),
       code: _code.copyWith(backgroundColor: C.field),
       codeblockPadding: const EdgeInsets.all(10),
       codeblockDecoration: BoxDecoration(
         color: C.field,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: C.line),
+        borderRadius: C.round(8),
+        border: Border.all(color: C.line, width: C.border),
       ),
-      blockquoteDecoration: const BoxDecoration(
+      blockquoteDecoration: BoxDecoration(
         border: Border(left: BorderSide(color: C.line2, width: 2)),
       ),
       blockSpacing: 10,
@@ -1504,7 +1506,7 @@ class _Notice extends StatelessWidget {
   final bool open;
   final VoidCallback onTap;
 
-  static const _style = TextStyle(fontSize: 12, color: C.dim2, height: 1.4);
+  static TextStyle get _style => TextStyle(fontSize: 12, color: C.dim2, height: 1.4);
 
   @override
   Widget build(BuildContext context) {
@@ -1514,7 +1516,7 @@ class _Notice extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Container(
         padding: const EdgeInsets.only(left: 10),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           border: Border(left: BorderSide(color: C.line2, width: 2)),
         ),
         child: AnimatedSize(
@@ -1540,14 +1542,17 @@ class _ToolCard extends StatelessWidget {
     final what = i.title.isNotEmpty ? i.title : i.args;
     final status = switch (i.status) {
       ToolStatus.running => const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
-      ToolStatus.ok => const Icon(Icons.check, size: 14, color: C.ok),
-      ToolStatus.error => const Icon(Icons.close, size: 14, color: _danger),
+      ToolStatus.ok => Icon(Icons.check, size: 14, color: C.ok),
+      ToolStatus.error => Icon(Icons.close, size: 14, color: _danger),
     };
     return Container(
       decoration: BoxDecoration(
         color: C.field,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: i.status == ToolStatus.error ? const Color(0xFF5B2A2A) : C.line),
+        borderRadius: C.round(8),
+        border: Border.all(
+          color: i.status == ToolStatus.error ? C.error.withValues(alpha: .5) : C.line,
+          width: C.border,
+        ),
       ),
       child: AnimatedSize(
         duration: Motion.fast,
@@ -1559,7 +1564,7 @@ class _ToolCard extends StatelessWidget {
             SelectionContainer.disabled(
               child: InkWell(
                 onTap: onTap,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: C.round(8),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                   child: Row(
@@ -1586,7 +1591,7 @@ class _ToolCard extends StatelessWidget {
               ),
             ),
             if (open) ...[
-              const Divider(height: 1, color: C.line),
+              Divider(height: 1, color: C.line),
               if (i.title.isNotEmpty && i.args.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
@@ -1598,7 +1603,7 @@ class _ToolCard extends StatelessWidget {
                 child: Text(
                   i.output.isEmpty ? (i.status == ToolStatus.running ? '…' : 'No output.') : i.output,
                   softWrap: false,
-                  style: _mono.copyWith(color: const Color(0xFFD7DAE3)),
+                  style: _mono.copyWith(color: C.text),
                 ),
               ),
             ],
@@ -1703,13 +1708,13 @@ class _AskCardState extends State<_AskCard> {
           Container(
             margin: const EdgeInsets.only(bottom: 6),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(color: C.sel, borderRadius: BorderRadius.circular(6)),
-            child: Text(q.header, style: const TextStyle(fontSize: 11, color: C.accent)),
+            decoration: BoxDecoration(color: C.sel, borderRadius: C.round(6)),
+            child: Text(q.header, style: TextStyle(fontSize: 11, color: C.accent)),
           ),
         Text(q.question, style: const TextStyle(fontSize: 15, height: 1.4)),
         if (q.multi)
-          const Padding(
-            padding: EdgeInsets.only(top: 2),
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
             child: Text('Pick any', style: TextStyle(fontSize: 12, color: C.dim2)),
           ),
         const SizedBox(height: 8),
@@ -1746,11 +1751,11 @@ class _AskCardState extends State<_AskCard> {
           style: const TextStyle(fontSize: 14),
           decoration: InputDecoration(
             hintText: 'Other…',
-            hintStyle: const TextStyle(color: C.dim2),
+            hintStyle: TextStyle(color: C.dim2),
             isDense: true,
             filled: true,
             fillColor: C.field,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+            border: OutlineInputBorder(borderRadius: C.round(8), borderSide: BorderSide.none),
           ),
         ),
       ],
@@ -1787,7 +1792,7 @@ class _AskCardState extends State<_AskCard> {
                     ? 'Answer it on the computer: PocketTerm can’t read this terminal.'
                     : '$agent is waiting on its screen',
                 key: const ValueKey('plan-waiting'),
-                style: const TextStyle(fontSize: 13, color: C.dim),
+                style: TextStyle(fontSize: 13, color: C.dim),
               ),
             ),
           for (final (i, label) in ask.options.indexed)
@@ -1864,9 +1869,9 @@ class _AskCardState extends State<_AskCard> {
       constraints: BoxConstraints(
         maxHeight: (MediaQuery.sizeOf(context).height - MediaQuery.viewInsetsOf(context).bottom) * .45,
       ),
-      decoration: const BoxDecoration(
-        color: Color(0xFF221F17),
-        border: Border(top: BorderSide(color: Color(0xFF4A3F1F))),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(C.warn.withValues(alpha: .1), C.win),
+        border: Border(top: BorderSide(color: C.warn.withValues(alpha: .35))),
       ),
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
@@ -1876,7 +1881,7 @@ class _AskCardState extends State<_AskCard> {
           children: [
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: Text('$agent needs you', style: const TextStyle(fontSize: 12, color: C.warn)),
+              child: Text('$agent needs you', style: TextStyle(fontSize: 12, color: C.warn)),
             ),
             body,
             const SizedBox(height: 10),
@@ -1975,9 +1980,9 @@ class _MenuCardState extends State<_MenuCard> {
     return Material(
       key: ValueKey('menu-$i'),
       color: current ? C.sel : Colors.transparent,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: C.round(8),
       child: InkWell(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: C.round(8),
         onTap: enabled ? () => _pick(i) : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1993,7 +1998,7 @@ class _MenuCardState extends State<_MenuCard> {
                         item.detail,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, color: C.dim, height: 1.3),
+                        style: TextStyle(fontSize: 12, color: C.dim, height: 1.3),
                       ),
                   ],
                 ),
@@ -2023,9 +2028,11 @@ class _MenuCardState extends State<_MenuCard> {
       constraints: BoxConstraints(
         maxHeight: (MediaQuery.sizeOf(context).height - MediaQuery.viewInsetsOf(context).bottom) * .55,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: C.win,
-        border: Border(top: BorderSide(color: C.line)),
+        border: Border(
+          top: BorderSide(color: C.line, width: C.border),
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -2063,8 +2070,8 @@ class _MenuCardState extends State<_MenuCard> {
             ),
           ),
           if (window == null)
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 6),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
               child: Text(
                 'PocketTerm can’t press keys in this terminal. Pick on the computer.',
                 style: TextStyle(fontSize: 13, color: C.dim),
@@ -2083,19 +2090,19 @@ class _MenuCardState extends State<_MenuCard> {
                 style: const TextStyle(fontSize: 14),
                 decoration: InputDecoration(
                   hintText: 'Search…',
-                  hintStyle: const TextStyle(color: C.dim2),
-                  prefixIcon: const Icon(Icons.search, size: 18, color: C.dim2),
+                  hintStyle: TextStyle(color: C.dim2),
+                  prefixIcon: Icon(Icons.search, size: 18, color: C.dim2),
                   isDense: true,
                   filled: true,
                   fillColor: C.field,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                  border: OutlineInputBorder(borderRadius: C.round(8), borderSide: BorderSide.none),
                 ),
               ),
             ),
           Flexible(
             child: ask.items.isEmpty
-                ? const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 4, 16, 12),
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
                     child: Text('Nothing matches.', style: TextStyle(fontSize: 13, color: C.dim)),
                   )
                 : ListView(

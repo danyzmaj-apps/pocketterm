@@ -95,16 +95,16 @@ class TermBadge extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
     decoration: BoxDecoration(
-      color: const Color(0xFF262833),
-      borderRadius: BorderRadius.circular(5),
-      border: Border.all(color: C.line2),
+      color: C.field,
+      borderRadius: C.round(5),
+      border: Border.all(color: C.line2, width: C.border),
     ),
     child: Text(
       text,
       maxLines: 1,
       softWrap: false,
       overflow: TextOverflow.ellipsis,
-      style: const TextStyle(fontSize: 11, color: C.dim, height: 1.3),
+      style: TextStyle(fontSize: 11, color: C.dim, height: 1.3),
     ),
   );
 }
@@ -188,7 +188,7 @@ class CloseConfirm extends StatelessWidget {
       ),
       child: Container(
         key: ValueKey('confirm-close-${window.key}'),
-        color: const Color(0x557F1D1D),
+        color: C.error.withValues(alpha: .2),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -200,7 +200,7 @@ class CloseConfirm extends StatelessWidget {
               detail,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, color: C.dim, height: 1.3),
+              style: TextStyle(fontSize: 13, color: C.dim, height: 1.3),
             ),
             const SizedBox(height: 4),
             Row(
@@ -213,8 +213,8 @@ class CloseConfirm extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 if (closing)
-                  const SizedBox(
-                    key: ValueKey('close-sent'),
+                  SizedBox(
+                    key: const ValueKey('close-sent'),
                     width: 48,
                     height: 40,
                     child: Center(
@@ -256,7 +256,7 @@ String serverUnreachable(Backend server) => server.onTailnet
 /// it isn't live, and a Retry that connects again at once
 /// ([TerminalRemote.reconnect]) when it's stuck. Keyed by its text, so a
 /// [Reveal] cross-fades a change.
-Widget? linkNote(TerminalRemote r, {Color color = C.bar}) {
+Widget? linkNote(TerminalRemote r, {Color? color}) {
   final at = r.stateAt;
   final who = r.desktopName ?? 'the computer';
   final seen = r.desktopSeenAt;
@@ -291,7 +291,7 @@ Widget? linkNote(TerminalRemote r, {Color color = C.bar}) {
   final retry = !busy && r.link != TerminalLink.online && r.clockOff == null;
   return Container(
     key: ValueKey('link-note-$line'),
-    color: color,
+    color: color ?? C.bar,
     padding: EdgeInsets.fromLTRB(16, retry ? 4 : 10, retry ? 4 : 16, retry ? 4 : 10),
     child: Row(
       children: [
@@ -300,7 +300,7 @@ Widget? linkNote(TerminalRemote r, {Color color = C.bar}) {
           const SizedBox(width: 10),
         ],
         Expanded(
-          child: Text(line, style: const TextStyle(fontSize: 13, color: C.dim, height: 1.4)),
+          child: Text(line, style: TextStyle(fontSize: 13, color: C.dim, height: 1.4)),
         ),
         if (retry) TextButton(key: const ValueKey('link-retry'), onPressed: r.reconnect, child: const Text('Retry')),
       ],
@@ -586,7 +586,7 @@ class _TerminalListState extends State<TerminalList> {
                   s.preview,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13, color: C.dim2),
+                  style: TextStyle(fontSize: 13, color: C.dim2),
                 ),
             ],
           ),
@@ -644,18 +644,18 @@ class _TerminalListState extends State<TerminalList> {
             if (asking > 0)
               TextSpan(
                 text: ' · ${asking == 1 ? '1 needs' : '$asking need'} you',
-                style: const TextStyle(color: C.warn),
+                style: TextStyle(color: C.warn),
               ),
             if (working > 0)
               TextSpan(
                 text: ' · $working working',
-                style: const TextStyle(color: C.accent),
+                style: TextStyle(color: C.accent),
               ),
           ],
         ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 15, color: C.dim),
+        style: TextStyle(fontSize: 15, color: C.dim),
       ),
     );
   }
@@ -688,7 +688,7 @@ class _TerminalListState extends State<TerminalList> {
                   shortPath(remote, cwd),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13, color: C.dim),
+                  style: TextStyle(fontSize: 13, color: C.dim),
                 ),
               ),
             // Somewhere unknown has nowhere to start one.
@@ -709,7 +709,7 @@ class _TerminalListState extends State<TerminalList> {
             if (others)
               ListTile(
                 key: const ValueKey('project-menu-fold-others'),
-                leading: const Icon(Icons.vertical_align_center, color: C.dim),
+                leading: Icon(Icons.vertical_align_center, color: C.dim),
                 title: const Text('Fold all others'),
                 onTap: () => run(() {
                   final all = {for (final s in remote.sessions) s.cwd};
@@ -719,7 +719,7 @@ class _TerminalListState extends State<TerminalList> {
             if (others && _folded.isNotEmpty)
               ListTile(
                 key: const ValueKey('project-menu-unfold-all'),
-                leading: const Icon(Icons.unfold_more_double, color: C.dim),
+                leading: Icon(Icons.unfold_more_double, color: C.dim),
                 title: const Text('Unfold all'),
                 onTap: () => run(() => _setFolded({})),
               ),
@@ -746,7 +746,7 @@ class _TerminalListState extends State<TerminalList> {
           tooltip: 'Sort projects',
           initialValue: _sort,
           onSelected: _setSort,
-          borderRadius: BorderRadius.circular(Panel.headingRadius),
+          borderRadius: C.round(Panel.headingRadius),
           itemBuilder: (_) => [for (final s in ProjectSort.values) PopupMenuItem(value: s, child: Text(_sortLabel(s)))],
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 36),
@@ -755,9 +755,9 @@ class _TerminalListState extends State<TerminalList> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(_sortLabel(_sort), style: const TextStyle(fontSize: 13, color: C.dim)),
+                  Text(_sortLabel(_sort), style: TextStyle(fontSize: 13, color: C.dim)),
                   const SizedBox(width: 2),
-                  const Icon(Icons.arrow_drop_down, size: 18, color: C.dim),
+                  Icon(Icons.arrow_drop_down, size: 18, color: C.dim),
                 ],
               ),
             ),
@@ -798,7 +798,7 @@ class _TerminalListState extends State<TerminalList> {
             '${w.program} · ${shortPath(remote, w.cwd)}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 13, color: C.dim),
+            style: TextStyle(fontSize: 13, color: C.dim),
           ),
           // The rows here are the windows no live session claims.
           screenOnly: w.agent != null,
@@ -825,7 +825,7 @@ class _TerminalListState extends State<TerminalList> {
             Text(
               'Nothing runs in ${remote.opensIn ?? 'your terminal'}. Tap + to start ${remote.agent.label}.',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: C.dim, height: 1.5),
+              style: TextStyle(color: C.dim, height: 1.5),
             ),
           if (online)
             for (final (i, t) in unready.indexed)
@@ -835,7 +835,7 @@ class _TerminalListState extends State<TerminalList> {
                 child: Text(
                   '${t.label}: ${t.note.isNotEmpty ? t.note : _stateWord(t.state)}',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 13, color: C.dim2, height: 1.4),
+                  style: TextStyle(fontSize: 13, color: C.dim2, height: 1.4),
                 ),
               ),
         ],
@@ -914,7 +914,7 @@ class _TerminalListState extends State<TerminalList> {
                               ? '1 session shows only its screen. Tap it to switch it to the conversation view.'
                               : '$switchable sessions show only their screen. Tap one to switch it to the '
                                     'conversation view.',
-                          style: const TextStyle(fontSize: 12, color: C.dim2, height: 1.4),
+                          style: TextStyle(fontSize: 12, color: C.dim2, height: 1.4),
                         ),
                       ),
                     // An agent whose PocketTerm integration doesn't report: out of date, or installed after it
@@ -926,7 +926,7 @@ class _TerminalListState extends State<TerminalList> {
                           padding: const EdgeInsets.fromLTRB(32, 0, 24, 8),
                           child: Text(
                             _screensOnly(agent, remote.agents[agent], widget.computer ?? 'the computer'),
-                            style: const TextStyle(fontSize: 12, color: C.dim2, height: 1.4),
+                            style: TextStyle(fontSize: 12, color: C.dim2, height: 1.4),
                           ),
                         ),
                     Panel(key: const ValueKey('windows'), children: [for (final w in windows) _window(w)]),
@@ -1136,10 +1136,10 @@ class _TerminalPageState extends State<TerminalPage> {
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: 3, vertical: isIos ? 5 : 7),
               child: Material(
-                color: const Color(0xFF262833),
+                color: C.field,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(7),
-                  side: const BorderSide(color: C.line2),
+                  borderRadius: C.round(7),
+                  side: BorderSide(color: C.line2, width: C.border),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
@@ -1253,13 +1253,13 @@ class _TerminalPageState extends State<TerminalPage> {
               "${termLabel(w.app)} can't share its screen.",
               key: const ValueKey('screen-unreadable'),
               textAlign: TextAlign.center,
-              style: const TextStyle(color: C.dim, height: 1.5),
+              style: TextStyle(color: C.dim, height: 1.5),
             ),
             const SizedBox(height: 8),
             Text(
               fix,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: C.dim2, height: 1.4),
+              style: TextStyle(fontSize: 13, color: C.dim2, height: 1.4),
             ),
           ],
         ),
@@ -1271,9 +1271,11 @@ class _TerminalPageState extends State<TerminalPage> {
   /// them, and the composer, if it can type.
   Widget _bar({required bool enabled, required bool keys, required bool compose, required bool canSend}) => Container(
     key: _barKey,
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       color: C.bar,
-      border: Border(top: BorderSide(color: C.line)),
+      border: Border(
+        top: BorderSide(color: C.line, width: C.border),
+      ),
     ),
     padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
     child: SafeArea(
@@ -1312,7 +1314,7 @@ class _TerminalPageState extends State<TerminalPage> {
                     style: const TextStyle(fontSize: 16, height: 1.4),
                     decoration: plainInput.copyWith(
                       hintText: 'Type a line…',
-                      hintStyle: const TextStyle(color: C.dim2),
+                      hintStyle: TextStyle(color: C.dim2),
                       // 48 tall, like the send button, so one line sits on its center.
                       contentPadding: const EdgeInsets.symmetric(vertical: 13),
                     ),
@@ -1367,7 +1369,7 @@ class _TerminalPageState extends State<TerminalPage> {
                 key: const ValueKey('close-window'),
                 tooltip: 'Close window',
                 onPressed: _closeSent ? null : () => setState(() => _closing = true),
-                icon: const Icon(Icons.close, color: C.dim),
+                icon: Icon(Icons.close, color: C.dim),
               ),
             if (readable)
               IconButton(
@@ -1387,7 +1389,7 @@ class _TerminalPageState extends State<TerminalPage> {
               SwitchBanner(remote: remote, window: widget.window),
               Expanded(
                 child: gone
-                    ? const Center(
+                    ? Center(
                         child: Text('This window has closed.', style: TextStyle(color: C.dim)),
                       )
                     : !readable
@@ -1396,7 +1398,7 @@ class _TerminalPageState extends State<TerminalPage> {
                     ? Center(
                         child: online
                             ? const CircularProgressIndicator(strokeWidth: 2)
-                            : const Text('No screen yet.', style: TextStyle(color: C.dim)),
+                            : Text('No screen yet.', style: TextStyle(color: C.dim)),
                       )
                     : _screen(screen, palette),
               ),
@@ -1479,7 +1481,7 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
     filled: true,
     fillColor: C.field,
     isDense: true,
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+    border: OutlineInputBorder(borderRadius: C.round(10), borderSide: BorderSide.none),
   );
 
   String? get _typed => typedPath(_query.text, remote.home);
@@ -1540,7 +1542,7 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
           children: [
-            const Text('In', style: TextStyle(fontSize: 12, color: C.dim)),
+            Text('In', style: TextStyle(fontSize: 12, color: C.dim)),
             const SizedBox(height: 6),
             Wrap(
               spacing: 6,
@@ -1601,9 +1603,9 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
       ),
       Reveal(visible: note != null, child: note ?? const SizedBox.shrink()),
       if (noRootsHint)
-        const Padding(
-          key: ValueKey('no-roots'),
-          padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+        Padding(
+          key: const ValueKey('no-roots'),
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
           child: Text(
             'No project folders yet. On your computer, open PocketTerm → Settings → Project folders and add '
             'the folders that hold your projects. You can still type a ~/path above.',
@@ -1621,11 +1623,11 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
                 contentPadding: const EdgeInsets.symmetric(horizontal: 20),
                 enabled: remote.online && roots.isNotEmpty && _launching == null,
                 onTap: () => setState(() => _creating = true),
-                leading: const Icon(Icons.create_new_folder_outlined, size: 18, color: C.dim2),
+                leading: Icon(Icons.create_new_folder_outlined, size: 18, color: C.dim2),
                 title: const Text('New project…', style: TextStyle(fontSize: 14)),
                 // The hint above says it already.
                 subtitle: noRoots && !noRootsHint
-                    ? const Text(
+                    ? Text(
                         'Add a project folder in PocketTerm on your computer: Settings → Project folders',
                         style: TextStyle(fontSize: 12, color: C.dim),
                       )
@@ -1673,7 +1675,7 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
                     Padding(
                       key: const ValueKey('opens-in'),
                       padding: const EdgeInsets.fromLTRB(20, 2, 20, 4),
-                      child: Text('Opens in $opensIn', style: const TextStyle(fontSize: 13, color: C.dim)),
+                      child: Text('Opens in $opensIn', style: TextStyle(fontSize: 13, color: C.dim)),
                     ),
                   SwitchListTile(
                     key: const ValueKey('start-agent'),
@@ -1681,7 +1683,7 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
                     value: _agent,
                     onChanged: (v) => setState(() => _agent = v),
                     title: Text('Start ${remote.agent.label}', style: const TextStyle(fontSize: 15)),
-                    subtitle: const Text('Off: just a shell', style: TextStyle(fontSize: 12, color: C.dim)),
+                    subtitle: Text('Off: just a shell', style: TextStyle(fontSize: 12, color: C.dim)),
                   ),
                   if (_creating) ..._createForm(note) else ..._pickList(note),
                 ],

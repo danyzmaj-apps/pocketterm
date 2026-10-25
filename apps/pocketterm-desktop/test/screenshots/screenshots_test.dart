@@ -49,6 +49,9 @@ void shot(String description, Size size, Future<void> Function(WidgetTester test
         ..physicalSize = size * 2
         ..devicePixelRatio = 2;
       addTearDown(tester.view.reset);
+      // The docs show Auto on a dark Mac: Catppuccin Mocha.
+      tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
       debugDisableShadows = false;
       try {
         await body(tester);
@@ -368,7 +371,7 @@ void main() {
 
   // The first-run setup, made-up values only: a tall view, each picture cropped to its page.
   const setupView = Size(560, 1500);
-  const card = (radius: 12.0, border: C.line2);
+  const cardRadius = 12.0;
 
   shot('setup: the two choices, and how your data is protected', setupView, (tester) async {
     await pumpSetup(tester);
@@ -464,8 +467,8 @@ void main() {
       tester,
       'get-ready.png',
       crop: Rect.fromLTRB(page.left - 24, page.top - 24, page.right + 24, page.bottom + 24),
-      radius: card.radius,
-      border: card.border,
+      radius: cardRadius,
+      border: C.line2,
     );
   });
 }

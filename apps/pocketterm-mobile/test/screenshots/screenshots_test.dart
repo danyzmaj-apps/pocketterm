@@ -73,6 +73,9 @@ void main() {
       ..padding = const FakeViewPadding(top: 118, bottom: 68)
       ..viewPadding = const FakeViewPadding(top: 118, bottom: 68);
     addTearDown(tester.view.reset);
+    // The docs show Auto on a dark phone: Catppuccin Mocha.
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
     // Soft shadows, as on the phone (tests draw them as black outlines).
     debugDisableShadows = false;
   }

@@ -58,7 +58,12 @@ void main() {
     addTearDown(tester.view.reset);
     final desktops = Desktops(client)
       ..apply([
-        {'id': 'mac00001', 'name': 'MacBook Pro', 'platform': 'macos', 'seen_at': DateTime.now().toIso8601String()},
+        {
+          'id': 'mac00001',
+          'name': 'MacBook Pro',
+          'platform': 'macos',
+          'seen_at': DateTime.now().toUtc().toIso8601String(),
+        },
         {
           'id': 'win00001',
           'name': 'Gaming PC',
@@ -296,7 +301,7 @@ void main() {
       tester.view.devicePixelRatio = 3;
       addTearDown(tester.view.reset);
       final session = await FakeSession.create();
-      final now = DateTime.now().toIso8601String();
+      final now = DateTime.now().toUtc().toIso8601String();
       await tester.pumpWidget(
         MobileApp(
           session: session,
@@ -367,7 +372,12 @@ void main() {
           session: session,
           desktops: Desktops(client)
             ..apply([
-              {'id': 'abcd1234', 'name': 'Studio', 'platform': 'macos', 'seen_at': DateTime.now().toIso8601String()},
+              {
+                'id': 'abcd1234',
+                'name': 'Studio',
+                'platform': 'macos',
+                'seen_at': DateTime.now().toUtc().toIso8601String(),
+              },
             ]),
           remoteFor: (id, key) {
             final r = made[id] = TerminalRemote(client, dir, desktopId: id, key: key, from: 'phone', send: (_, _) {});

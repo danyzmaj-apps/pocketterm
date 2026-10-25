@@ -1,7 +1,7 @@
 name: pocketterm_desktop
 description: "PocketTerm: this computer's coding sessions and terminals on your phone, through your own PocketTerm server."
 publish_to: 'none'
-version: 0.1.1+16
+version: 0.1.2+17
 resolution: workspace
 
 environment:
@@ -50,6 +50,34 @@ flutter:
     # The tray item on Windows (lib/windows_host.dart), made from the app icon
     # like windows/runner/resources/app_icon.ico.
     - assets/tray.ico
+    # Each theme's app icon while PocketTerm runs (lib/desktop_host.dart's setAppIcon), made by
+    # tool/make_icon.swift: the Dock's on macOS, the window's and the tray item's on Windows.
+    - path: assets/icon/macos-mocha.png
+      platforms: [macos]
+    - path: assets/icon/macos-dawn.png
+      platforms: [macos]
+    - path: assets/icon/macos-tokyoNight.png
+      platforms: [macos]
+    - path: assets/icon/macos-gruvbox.png
+      platforms: [macos]
+    - path: assets/icon/windows-default.ico
+      platforms: [windows]
+    - path: assets/icon/windows-mocha.ico
+      platforms: [windows]
+    - path: assets/icon/windows-dawn.ico
+      platforms: [windows]
+    - path: assets/icon/windows-tokyoNight.ico
+      platforms: [windows]
+    - path: assets/icon/windows-gruvbox.ico
+      platforms: [windows]
+    - path: assets/icon/tray-mocha.ico
+      platforms: [windows]
+    - path: assets/icon/tray-dawn.ico
+      platforms: [windows]
+    - path: assets/icon/tray-tokyoNight.ico
+      platforms: [windows]
+    - path: assets/icon/tray-gruvbox.ico
+      platforms: [windows]
     # PocketTerm on Supabase: what the setup puts on a project (lib/onboarding/supabase_setup.dart).
     - supabase/migrations/
     - supabase/functions/pocketterm/

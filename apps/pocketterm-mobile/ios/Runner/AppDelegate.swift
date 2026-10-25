@@ -56,6 +56,8 @@ import UserNotifications
     channel.setMethodCallHandler { [notifications, activities, weak self] call, result in
       let args = call.arguments as? [String: Any] ?? [:]
       switch call.method {
+      case "setAppIcon":
+        AppIcons.set(args["icon"] as? String ?? "default", result: result)
       case "setKeepAwake":
         UIApplication.shared.isIdleTimerDisabled = args["on"] as? Bool ?? false
         result(nil)
@@ -137,6 +139,35 @@ import UserNotifications
         result(activities.running())
       default:
         result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+}
+
+/// The home screen icon per theme (packages/pocketterm_core/lib/app_icon.dart): the asset catalog's
+/// alternate icons, AppIcon-<Theme> (Runner's ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES, drawn by
+/// apps/pocketterm-desktop/tool/make_icon.swift), or the app's own for "default". iOS confirms every change
+/// with an alert of its own, so the icon showing already isn't set again, and it only takes the change from
+/// an active app: one asked for before that waits for it.
+enum AppIcons {
+  static func set(_ icon: String, result: @escaping FlutterResult) {
+    let app = UIApplication.shared
+    let name: String? = icon == "default" ? nil : "AppIcon-" + icon.prefix(1).uppercased() + icon.dropFirst()
+    guard app.supportsAlternateIcons, app.alternateIconName != name else { return result(nil) }
+    guard app.applicationState == .active else {
+      var waiter: NSObjectProtocol?
+      waiter = NotificationCenter.default.addObserver(
+        forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+      ) { _ in
+        if let waiter { NotificationCenter.default.removeObserver(waiter) }
+        AppIcons.set(icon, result: result)
+      }
+      return
+    }
+    app.setAlternateIconName(name) { error in
+      DispatchQueue.main.async {
+        guard let error else { return result(nil) }
+        result(FlutterError(code: "app-icon", message: error.localizedDescription, details: nil))
       }
     }
   }

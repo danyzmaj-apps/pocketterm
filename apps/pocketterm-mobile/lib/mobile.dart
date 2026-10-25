@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pocketterm_core/account.dart' show Avatar;
 import 'package:pocketterm_core/desktops.dart';
@@ -466,12 +467,20 @@ class MobileApp extends StatelessWidget {
   final TerminalRemote Function(String desktopId, ChannelKey key)? remoteFor;
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
+  Widget build(BuildContext context) => Themed(builder: _app);
+
+  Widget _app(BuildContext context, PtTheme theme) => MaterialApp(
     title: 'PocketTerm',
     debugShowCheckedModeBanner: false,
-    theme: _theme(appTheme()),
+    theme: _theme(appTheme(theme)),
+    // Every part changes at once: what reads [C] has no theme animation.
+    themeAnimationStyle: AnimationStyle.noAnimation,
     navigatorObservers: [SemanticsRefresh()],
-    builder: (context, child) => Coach(controller: session.tips, child: child!),
+    // The status and navigation bars' icons read on the theme's background.
+    builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+      value: _systemBars(theme),
+      child: Coach(controller: session.tips, child: child!),
+    ),
     // No session, no app: only the computer's code gets a phone in, or the
     // demo shows a made-up computer. Signed in, push waits for a yes.
     home: ListenableBuilder(
@@ -479,7 +488,7 @@ class MobileApp extends StatelessWidget {
       builder: (context, _) {
         final user = session.user;
         // What this phone kept is still being read: setup only once it's known there's none.
-        if (user == null && session.launching) return const Scaffold(backgroundColor: C.win);
+        if (user == null && session.launching) return Scaffold(backgroundColor: C.win);
         if (user == null) {
           if (session.demo case final demo?) {
             return _HomeSwitch(
@@ -522,33 +531,45 @@ class MobileApp extends StatelessWidget {
     ),
   );
 
+  static SystemUiOverlayStyle _systemBars(PtTheme t) => SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    // iOS names the background's brightness, Android the icons'.
+    statusBarBrightness: t.brightness,
+    statusBarIconBrightness: t.dark ? Brightness.light : Brightness.dark,
+    systemNavigationBarColor: t.win,
+    systemNavigationBarDividerColor: t.win,
+    systemNavigationBarIconBrightness: t.dark ? Brightness.light : Brightness.dark,
+  );
+
   static ThemeData _theme(ThemeData base) => base.copyWith(
     scaffoldBackgroundColor: C.win,
     // Rows show they were pressed: on iPhone a soft highlight with no ripple, as iOS's cells do; on Android
     // Material's ink. Either way it's clipped to the card, pill or circle it presses.
     splashFactory: isIos ? NoSplash.splashFactory : InkSparkle.splashFactory,
-    highlightColor: const Color(0x14FFFFFF),
+    highlightColor: C.text.withValues(alpha: .08),
     // No button shows a tooltip on iPhone (iOS has none), so a press held long, or that came in late, still
     // presses: a long press showed the label and the tap went nowhere. The label stays for VoiceOver.
     tooltipTheme: isIos ? base.tooltipTheme.copyWith(triggerMode: TooltipTriggerMode.manual) : null,
     // A sheet's rows line up with its title, 20 in.
     listTileTheme: const ListTileThemeData(contentPadding: EdgeInsets.symmetric(horizontal: 20)),
     appBarTheme: AppBarTheme(
+      systemOverlayStyle: _systemBars(C.t),
       backgroundColor: C.win,
       surfaceTintColor: Colors.transparent,
       scrolledUnderElevation: 0,
       // The theme's own font (a bare style would drop its family).
       titleTextStyle: base.textTheme.titleMedium!.copyWith(fontSize: 17, fontWeight: FontWeight.w600, color: C.text),
-      actionsIconTheme: const IconThemeData(color: C.dim, size: 22),
+      actionsIconTheme: IconThemeData(color: C.dim, size: 22),
     ),
     // A button turning on goes all at once: animated, its fill flips at
     // once while its label takes 200ms to darken, unreadable meanwhile.
-    filledButtonTheme: const FilledButtonThemeData(style: ButtonStyle(animationDuration: Duration.zero)),
-    snackBarTheme: const SnackBarThemeData(
+    filledButtonTheme: FilledButtonThemeData(
+      style: base.filledButtonTheme.style!.copyWith(animationDuration: Duration.zero),
+    ),
+    bottomSheetTheme: sheetTheme(base.bottomSheetTheme),
+    snackBarTheme: base.snackBarTheme.copyWith(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: Color(0xFF1F2A22),
-      contentTextStyle: TextStyle(color: Color(0xFFBBF7D0)),
-      actionTextColor: Colors.white,
+      backgroundColor: Color.alphaBlend(C.ok.withValues(alpha: .14), C.card),
     ),
   );
 }
@@ -976,7 +997,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               ? _noDesktop
                               : _desktopsError ?? 'Looking for your computers…',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(color: C.dim, height: 1.5),
+                          style: TextStyle(color: C.dim, height: 1.5),
                         ),
                         // The list didn't come: asked again now, not at the next 30-second refresh.
                         if (selected == null && _desktops.error != null && widget.desktops == null)
@@ -1042,8 +1063,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, sheetTop, 20, 8),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 8),
                 child: Text('Computers', style: sheetTitleStyle),
               ),
               Flexible(
@@ -1056,7 +1077,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
                         child: Text(
                           _desktops.loaded ? _noDesktop : _desktopsError ?? 'Looking for your computers…',
-                          style: const TextStyle(color: C.dim, height: 1.5),
+                          style: TextStyle(color: C.dim, height: 1.5),
                         ),
                       ),
                     for (final d in _desktops.all)
@@ -1065,12 +1086,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         leading: Icon(d.windows ? Icons.desktop_windows : Icons.laptop_mac, color: C.dim),
                         title: Text(d.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                         subtitle: widget.session.computerKey(d.id) == null
-                            ? const Text('Locked: scan its code', style: TextStyle(color: C.warn))
+                            ? Text('Locked: scan its code', style: TextStyle(color: C.warn))
                             : Text(
                                 d.online ? 'Online' : 'Seen ${ago(d.seenAt)}',
                                 style: TextStyle(color: d.online ? C.accent : C.dim),
                               ),
-                        trailing: d.id == _desktops.selected?.id ? const Icon(Icons.check, color: C.accent) : null,
+                        trailing: d.id == _desktops.selected?.id ? Icon(Icons.check, color: C.accent) : null,
                         onTap: () {
                           Navigator.of(sheet).pop();
                           _desktops.select(d.id);
@@ -1078,7 +1099,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       ),
                     ListTile(
                       key: const ValueKey('scan-computer'),
-                      leading: const Icon(Icons.qr_code_scanner, color: C.dim),
+                      leading: Icon(Icons.qr_code_scanner, color: C.dim),
                       title: const Text('Scan a computer’s code'),
                       onTap: () {
                         Navigator.of(sheet).pop();
@@ -1125,7 +1146,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                       ),
-                      const Text('Signed in with your computer\u2019s code', style: TextStyle(color: C.dim)),
+                      Text('Signed in with your computer\u2019s code', style: TextStyle(color: C.dim)),
                     ],
                   ),
                 ),
@@ -1148,11 +1169,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Notifications'),
                       subtitle: registering
-                          ? const Row(
-                              key: ValueKey('push-registering'),
+                          ? Row(
+                              key: const ValueKey('push-registering'),
                               children: [
-                                SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
-                                SizedBox(width: 8),
+                                const SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(strokeWidth: 1.5),
+                                ),
+                                const SizedBox(width: 8),
                                 Flexible(
                                   child: Text(
                                     'Registering this phone with your server…',
@@ -1194,6 +1219,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 );
               },
             ),
+            ListTile(
+              key: const ValueKey('theme'),
+              contentPadding: EdgeInsets.zero,
+              leading: ThemeSwatch(appearance.choice),
+              title: const Text('Theme'),
+              subtitle: Text(appearance.choice.label, style: TextStyle(color: C.dim)),
+              trailing: Icon(Icons.chevron_right, color: C.dim),
+              onTap: () => unawaited(_pickTheme()),
+            ),
             const SizedBox(height: 18),
             OutlinedButton(
               onPressed: () async {
@@ -1210,12 +1244,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 unawaited(widget.session.signOut());
               },
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFFCA5A5),
-                side: const BorderSide(color: C.line2),
+                foregroundColor: C.error,
+                side: BorderSide(color: C.line2, width: C.border),
               ),
               child: const Text('Leave this server'),
             ),
-            const Divider(height: 20, color: C.line2),
+            Divider(height: 20, color: C.line2),
             TextButton.icon(
               key: const ValueKey('show-tips'),
               onPressed: () {
@@ -1235,6 +1269,34 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             ),
           ],
         ),
+      ),
+    ),
+  );
+
+  /// The themes, each with its swatch; a tap shows one at once and keeps it
+  /// for this phone, and the sheet stays to try another.
+  Future<void> _pickTheme() => showAppSheet<void>(
+    context,
+    builder: (sheet) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 8),
+            child: Text('Theme', style: sheetTitleStyle),
+          ),
+          for (final c in ThemeChoice.values)
+            ListTile(
+              key: ValueKey('theme-${c.name}'),
+              leading: ThemeSwatch(c),
+              title: Text(c.label),
+              subtitle: c == ThemeChoice.auto ? Text('Follows the system', style: TextStyle(color: C.dim)) : null,
+              trailing: appearance.choice == c ? Icon(Icons.check, color: C.accent) : null,
+              onTap: () => unawaited(appearance.choose(c)),
+            ),
+          const SizedBox(height: 8),
+        ],
       ),
     ),
   );
@@ -1291,16 +1353,16 @@ class _DemoBanner extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     decoration: BoxDecoration(
       color: C.accent.withValues(alpha: 0.12),
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: C.accent.withValues(alpha: 0.35)),
+      borderRadius: C.round(10),
+      border: Border.all(color: C.accent.withValues(alpha: 0.35), width: C.border),
     ),
-    child: const Row(
+    child: Row(
       children: [
         Text(
           'DEMO',
           style: TextStyle(color: C.accent, fontWeight: FontWeight.w700, fontSize: 12, letterSpacing: 1),
         ),
-        SizedBox(width: 10),
+        const SizedBox(width: 10),
         Expanded(
           child: Text(
             'Made-up sessions on a pretend computer. Nothing leaves this phone.',
@@ -1326,7 +1388,7 @@ class _Locked extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.lock_outline, color: C.dim, size: 36),
+          Icon(Icons.lock_outline, color: C.dim, size: 36),
           const SizedBox(height: 14),
           const Text(
             'Scan this computer’s code to connect',
@@ -1338,7 +1400,7 @@ class _Locked extends StatelessWidget {
             'Its sessions are end-to-end encrypted with a key only its code holds. '
             'On $computer, open Settings → Phone → Add a phone…',
             textAlign: TextAlign.center,
-            style: const TextStyle(color: C.dim, height: 1.5),
+            style: TextStyle(color: C.dim, height: 1.5),
           ),
           const SizedBox(height: 20),
           FilledButton.icon(

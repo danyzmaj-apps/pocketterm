@@ -75,21 +75,21 @@ class _PairingQrState extends State<PairingQr> {
                   if (link == null) return const Center(child: CircularProgressIndicator(strokeWidth: 2));
                   return Container(
                     padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: C.round(12)),
                     child: QrImageView(data: link.toString(), padding: EdgeInsets.zero),
                   );
                 },
               ),
       ),
       const SizedBox(height: 14),
-      const Text(
+      Text(
         'On your phone: install PocketTerm and tap Scan the code from your computer '
         '(on iPhone the Camera works too). It connects and signs in; nothing to type.',
         textAlign: TextAlign.center,
         style: TextStyle(color: C.dim, height: 1.45),
       ),
       const SizedBox(height: 8),
-      const Text(
+      Text(
         "This code is a secret. Anyone who scans it can read this computer's sessions. "
         'The sign-in works once, for 10 minutes; the key in it works until you reset it in Settings.',
         textAlign: TextAlign.center,
@@ -104,7 +104,7 @@ class _PairingQrState extends State<PairingQr> {
       Text(
         text,
         textAlign: TextAlign.center,
-        style: const TextStyle(color: C.dim),
+        style: TextStyle(color: C.dim),
       ),
       const SizedBox(height: 8),
       TextButton(onPressed: _renew, child: Text(action)),

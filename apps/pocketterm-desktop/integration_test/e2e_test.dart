@@ -254,7 +254,7 @@ class _Run {
         child: MaterialApp(
           title: 'PocketTerm',
           debugShowCheckedModeBanner: false,
-          theme: appTheme(),
+          theme: appTheme(C.t),
           home: Material(
             color: C.win,
             child: Toaster(

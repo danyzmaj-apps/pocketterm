@@ -42,6 +42,11 @@ abstract class DesktopHost {
 
   /// Moves the window with the drag in progress (the transparent title bar).
   Future<void> startDrag();
+
+  /// Shows [icon] (pocketterm_core's appIconFor names) as the app's icon while
+  /// it runs: the Dock's on macOS, the window's, taskbar's and tray's on
+  /// Windows (assets/icon/, drawn by tool/make_icon.swift).
+  Future<void> setAppIcon(String icon);
 }
 
 /// The Mac's side: apps/pocketterm-desktop/macos/Runner/MainFlutterWindow.swift (the main
@@ -115,4 +120,10 @@ class MacHost implements DesktopHost {
 
   @override
   Future<void> startDrag() => _channel.invokeMethod('startDrag');
+
+  @override
+  Future<void> setAppIcon(String icon) async {
+    final png = icon == 'default' ? null : (await rootBundle.load('assets/icon/macos-$icon.png')).buffer.asUint8List();
+    await _channel.invokeMethod('setAppIcon', {'png': png});
+  }
 }

@@ -21,8 +21,8 @@ class ConfirmLink extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: C.field,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: C.warn),
+        borderRadius: C.round(12),
+        border: Border.all(color: C.warn, width: C.border),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -30,7 +30,7 @@ class ConfirmLink extends StatelessWidget {
         children: [
           Text('Connect to $host?', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'A link asks to connect PocketTerm to this server. Only connect if you opened it yourself, from your own '
             'computer or server: your sessions and the images you send go through it.',
             style: TextStyle(color: C.dim, height: 1.4),

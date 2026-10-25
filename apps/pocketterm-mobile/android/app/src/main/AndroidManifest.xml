@@ -37,6 +37,8 @@
             <!-- pocketterm:// links are handled by app_links (lib/mobile.dart); Flutter's own
                  deep linking would also push them as a route, stacking a second home. -->
             <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
+            <!-- The launcher entry in debug and profile builds, which `flutter run` starts; release builds
+                 take it out (src/release/AndroidManifest.xml) for the icon aliases below. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -50,6 +52,76 @@
                 <data android:scheme="pocketterm" />
             </intent-filter>
         </activity>
+
+        <!-- The launcher icons, one per theme (packages/pocketterm_core/lib/app_icon.dart; drawn by
+             apps/pocketterm-desktop/tool/make_icon.swift). Release builds enable IconDefault; AppIcons.kt
+             enables the chosen theme's and disables the rest. Each repeats MainActivity's meta-data, which
+             Flutter reads from the component it was started through. -->
+        <activity-alias
+            android:name=".IconDefault"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher"
+            android:enabled="false"
+            android:exported="true">
+            <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconMocha"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_mocha"
+            android:enabled="false"
+            android:exported="true">
+            <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconDawn"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_dawn"
+            android:enabled="false"
+            android:exported="true">
+            <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconTokyoNight"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_tokyo_night"
+            android:enabled="false"
+            android:exported="true">
+            <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconGruvbox"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_gruvbox"
+            android:enabled="false"
+            android:exported="true">
+            <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
 
         <!-- Followed coding sessions (SessionActivities.kt). -->
         <receiver android:name=".ActivityDismissReceiver" android:exported="false" />

@@ -2,6 +2,16 @@
 
 What each PocketTerm release brings.
 
+## 0.1.2
+
+Servers and the push relay need no update.
+
+### Desktop app and phone app
+
+- **Themes.** Pick one of the four themes kitty uses, each with its own colors and shapes: **Catppuccin Mocha** and **Rosé Pine Dawn** (soft and rounded), **Tokyo Night** (crisp) and **Gruvbox Material** (square, capital labels). **Auto**, the default, shows Mocha when your system is dark and Dawn when it's light, and switches with it. Each computer and each phone keeps its own choice: on the computer in **Settings → Account → Theme**, on the phone in the account sheet under **Theme**.
+- **An intro.** At launch the app icon's phone springs out of its pocket, stands up and the view dives into its screen, which opens onto the app, in your theme's colors (on the computer the first time the window opens). A tap skips it; with reduced motion on it's a short fade.
+- **An app icon per theme.** Picking a theme gives PocketTerm that theme's icon: on the iPhone's home screen (iOS confirms the change), in the Android launcher (once you leave the app), in the Mac's Dock while the window is open, and on the Windows window, taskbar and tray. **Auto** keeps the usual icon.
+
 ## 0.1.1
 
 Update the desktop app and the phone app together: the queue lives on the computer. Servers and the push relay need no update.

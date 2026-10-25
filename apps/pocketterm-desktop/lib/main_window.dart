@@ -118,8 +118,8 @@ class _NoticeState extends State<_Notice> {
         padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
         decoration: BoxDecoration(
           color: C.field,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: C.warn),
+          borderRadius: C.round(12),
+          border: Border.all(color: C.warn, width: C.border),
         ),
         child: Row(
           children: [
@@ -474,8 +474,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// The tabs, a dot on each with something that needs attention.
   Widget _tabs(Set<_Tab> attention) => Container(
-    decoration: const BoxDecoration(
-      border: Border(bottom: BorderSide(color: C.line2)),
+    decoration: BoxDecoration(
+      border: Border(
+        bottom: BorderSide(color: C.line2, width: C.border),
+      ),
     ),
     child: Wrap(
       children: [
@@ -491,14 +493,14 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(t.label, style: TextStyle(fontSize: 13, color: t == _tab || h ? C.text : C.dim)),
+                  Text(C.label(t.label), style: TextStyle(fontSize: 13, color: t == _tab || h ? C.text : C.dim)),
                   if (attention.contains(t)) ...[
                     const SizedBox(width: 6),
                     Container(
                       key: ValueKey('settings-tab-dot-${t.name}'),
                       width: 7,
                       height: 7,
-                      decoration: const BoxDecoration(color: C.warn, shape: BoxShape.circle),
+                      decoration: BoxDecoration(color: C.warn, shape: BoxShape.circle),
                     ),
                   ],
                 ],
@@ -644,7 +646,7 @@ class _SettingsPageState extends State<SettingsPage> {
               TextButton(onPressed: () => Navigator.of(dialog).pop(false), child: const Text('Cancel')),
               TextButton(
                 onPressed: () => Navigator.of(dialog).pop(true),
-                style: TextButton.styleFrom(foregroundColor: const Color(0xFFFCA5A5)),
+                style: TextButton.styleFrom(foregroundColor: C.error),
                 child: const Text('Reset key'),
               ),
             ],
@@ -723,8 +725,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     key: ValueKey('settings-default-${agent.name}'),
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: C.line2),
+                      borderRadius: C.round(14),
+                      border: Border.all(color: C.line2, width: C.border),
                     ),
                     child: const Text('Default', style: TextStyle(fontSize: 12)),
                   ),
@@ -773,7 +775,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _mono(String command) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-    decoration: BoxDecoration(color: C.win, borderRadius: BorderRadius.circular(5)),
+    decoration: BoxDecoration(color: C.win, borderRadius: C.round(5)),
     child: Text(command, style: monoStyle.copyWith(color: C.text)),
   );
 
@@ -808,8 +810,8 @@ class _SettingsPageState extends State<SettingsPage> {
       padding: const EdgeInsets.only(left: 10, right: 4),
       decoration: BoxDecoration(
         color: C.win,
-        borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: C.line2),
+        borderRadius: C.round(7),
+        border: Border.all(color: C.line2, width: C.border),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -818,7 +820,7 @@ class _SettingsPageState extends State<SettingsPage> {
           isDense: true,
           focusColor: Colors.transparent,
           dropdownColor: C.bar,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: C.round(8),
           iconSize: 18,
           // The page's font: a style here replaces the theme's whole.
           style: DefaultTextStyle.of(context).style.copyWith(fontSize: 12.5, color: C.text),
@@ -1001,6 +1003,16 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       _wide(
         _card(
+          key: const ValueKey('settings-theme'),
+          title: 'Theme',
+          sub: 'For this computer. Auto follows your system’s light or dark.',
+          body: [
+            Wrap(spacing: 8, runSpacing: 8, children: [for (final c in ThemeChoice.values) _themeTile(c)]),
+          ],
+        ),
+      ),
+      _wide(
+        _card(
           title: 'How your data is protected',
           sub: 'End-to-end encryption, and what your server, Tailscale and the push relay can see',
           trailing: _button(
@@ -1017,6 +1029,35 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ),
     ];
+  }
+
+  /// A theme to pick, with its swatch; the one picked is outlined in the accent.
+  Widget _themeTile(ThemeChoice c) {
+    final on = appearance.choice == c;
+    return Semantics(
+      button: true,
+      selected: on,
+      child: Hoverable(
+        key: ValueKey('settings-theme-${c.name}'),
+        onTap: () => unawaited(appearance.choose(c)),
+        builder: (h) => Container(
+          padding: const EdgeInsets.fromLTRB(6, 6, 12, 6),
+          decoration: BoxDecoration(
+            color: on ? C.sel : (h ? C.win : Colors.transparent),
+            borderRadius: C.round(9),
+            border: Border.all(color: on ? C.accent : C.line2, width: C.border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 10,
+            children: [
+              ThemeSwatch(c),
+              Text(c.label, style: TextStyle(fontSize: 12.5, color: on ? C.text : C.dim)),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /// A new setup link from the Supabase project; the one before stops
@@ -1249,8 +1290,8 @@ class _SettingsPageState extends State<SettingsPage> {
       padding: const EdgeInsets.fromLTRB(14, 4, 4, 4),
       decoration: BoxDecoration(
         color: n > 0 ? C.warn.withValues(alpha: .07) : C.field,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: n > 0 ? C.warn.withValues(alpha: .5) : C.line2),
+        borderRadius: C.round(10),
+        border: Border.all(color: n > 0 ? C.warn.withValues(alpha: .5) : C.line2, width: C.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1286,7 +1327,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   [for (final i in items) i.short].join(' · '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, color: C.dim),
+                  style: TextStyle(fontSize: 12, color: C.dim),
                 ),
               ),
               if (n > 0)
@@ -1308,7 +1349,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         child: Row(
                           children: [
                             Expanded(
-                              child: Text(item.text, style: const TextStyle(fontSize: 12, color: C.warn, height: 1.35)),
+                              child: Text(item.text, style: TextStyle(fontSize: 12, color: C.warn, height: 1.35)),
                             ),
                             if (item.action case final a?) ...[const SizedBox(width: 10), a],
                           ],
@@ -1329,12 +1370,12 @@ class _SettingsPageState extends State<SettingsPage> {
     padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
     decoration: BoxDecoration(
       color: C.field,
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: C.accent.withValues(alpha: .5)),
+      borderRadius: C.round(10),
+      border: Border.all(color: C.accent.withValues(alpha: .5), width: C.border),
     ),
     child: Row(
       children: [
-        const Icon(Icons.system_update_alt, size: 18, color: C.accent),
+        Icon(Icons.system_update_alt, size: 18, color: C.accent),
         const SizedBox(width: 10),
         Expanded(child: Text('PocketTerm ${u.version} is out', style: const TextStyle(fontSize: 13))),
         _button('Download', () => unawaited(launchUrl(u.url, mode: LaunchMode.externalApplication)), primary: true),
@@ -1344,7 +1385,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   // ---------------------------------------------------------------- pieces
 
-  static const _error = Color(0xFFFCA5A5);
+  static Color get _error => C.error;
 
   static TextStyle _subStyle(Color color) => TextStyle(fontSize: 12, color: color, height: 1.45);
 
@@ -1353,7 +1394,7 @@ class _SettingsPageState extends State<SettingsPage> {
     Key? key,
     String? title,
     String? sub,
-    Color subColor = C.dim,
+    Color? subColor,
     Widget? leading,
     Widget? trailing,
     List<Widget> body = const [],
@@ -1362,8 +1403,8 @@ class _SettingsPageState extends State<SettingsPage> {
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
       color: C.field,
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: C.line2),
+      borderRadius: C.round(10),
+      border: Border.all(color: C.line2, width: C.border),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1377,8 +1418,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 spacing: 3,
                 children: [
-                  if (title != null) Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                  if (sub != null) Text(sub, style: _subStyle(subColor)),
+                  if (title != null)
+                    Text(C.label(title), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  if (sub != null) Text(sub, style: _subStyle(subColor ?? C.dim)),
                 ],
               ),
             ),
@@ -1414,9 +1456,9 @@ class _SettingsPageState extends State<SettingsPage> {
       builder: (h) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: h ? const Color(0xFF2E313D) : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: C.line2),
+          color: h ? C.sel : Colors.transparent,
+          borderRadius: C.round(14),
+          border: Border.all(color: C.line2, width: C.border),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1447,12 +1489,12 @@ class _SettingsPageState extends State<SettingsPage> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
         color: primary
-            ? (h ? const Color(0xFF93AEFF) : C.accent)
+            ? (h ? Color.lerp(C.accent, C.text, .2)! : C.accent)
             : h
-            ? const Color(0xFF2E313D)
-            : const Color(0xFF262833),
-        borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: primary ? C.accent : (active ? C.accent : C.line2)),
+            ? C.sel
+            : C.field,
+        borderRadius: C.round(7),
+        border: Border.all(color: primary ? C.accent : (active ? C.accent : C.line2), width: C.border),
       ),
       child: Text(
         label,
@@ -1460,7 +1502,7 @@ class _SettingsPageState extends State<SettingsPage> {
         style: TextStyle(
           fontSize: 12,
           fontWeight: primary ? FontWeight.w600 : null,
-          color: primary ? const Color(0xFF12141C) : (danger ? _error : (active ? C.accent : C.text)),
+          color: primary ? C.onAccent : (danger ? _error : (active ? C.accent : C.text)),
         ),
       ),
     ),

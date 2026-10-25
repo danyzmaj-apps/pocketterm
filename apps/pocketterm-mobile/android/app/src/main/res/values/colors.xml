@@ -1,7 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- The window behind Flutter and the launch screen: the Auto theme's background (packages/pocketterm_core/
+         lib/theme.dart), Rosé Pine Dawn's here and Catppuccin Mocha's in dark mode (values-night), which the
+         intro (packages/pocketterm_core/lib/intro.dart) starts on. -->
+    <color name="pocketterm_win">#FFFAF4ED</color>
+    <!-- Each theme's background, for its splash (values-v31/styles.xml). -->
+    <color name="pocketterm_mocha">#FF1E1E2E</color>
+    <color name="pocketterm_dawn">#FFFAF4ED</color>
+    <color name="pocketterm_tokyo_night">#FF1A1B26</color>
+    <color name="pocketterm_gruvbox">#FF282828</color>
     <!-- packages/pocketterm_core/lib/ui.dart's C -->
-    <color name="pocketterm_win">#FF17181D</color>
     <color name="pocketterm_dim">#FF8A8F9C</color>
     <color name="pocketterm_accent">#FF7C9CFF</color>
     <color name="pocketterm_ok">#FF4ADE80</color>

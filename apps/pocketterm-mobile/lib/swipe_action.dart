@@ -2,11 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
 
 /// What a [SwipeAction] shows its action on, and its icon and label in.
-const swipeActionColor = Color(0xFF7F1D1D);
-const swipeActionText = Color(0xFFFCA5A5);
+Color get swipeActionColor => C.error;
+Color get swipeActionText => C.win;
 
 /// A list row that slides left under the finger, showing one red action
 /// behind its right end: a close icon over [label]. Let go past 40% of the action's
@@ -186,11 +187,11 @@ class _SwipeActionState extends State<SwipeAction> with SingleTickerProviderStat
                   SizedBox.square(
                     dimension: 22,
                     child: widget.busy
-                        ? const Padding(
-                            padding: EdgeInsets.all(3),
+                        ? Padding(
+                            padding: const EdgeInsets.all(3),
                             child: CircularProgressIndicator(strokeWidth: 2, color: swipeActionText),
                           )
-                        : const Icon(Icons.close, size: 22, color: swipeActionText),
+                        : Icon(Icons.close, size: 22, color: swipeActionText),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -198,7 +199,7 @@ class _SwipeActionState extends State<SwipeAction> with SingleTickerProviderStat
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: swipeActionText),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: swipeActionText),
                   ),
                 ],
               ),

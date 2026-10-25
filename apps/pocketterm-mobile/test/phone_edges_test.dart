@@ -108,7 +108,12 @@ void main() {
     final list =
         desktops ??
         (Desktops(offlineServer())..apply([
-          {'id': 'mac00001', 'name': 'MacBook Pro', 'platform': 'macos', 'seen_at': DateTime.now().toIso8601String()},
+          {
+            'id': 'mac00001',
+            'name': 'MacBook Pro',
+            'platform': 'macos',
+            'seen_at': DateTime.now().toUtc().toIso8601String(),
+          },
         ]));
     await tester.pumpWidget(MobileApp(session: session, desktops: list, remoteFor: (_, _) => remote));
     await tester.pump();

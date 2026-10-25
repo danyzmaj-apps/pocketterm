@@ -10,11 +10,11 @@ import 'package:pocketterm_mobile/coach.dart';
 /// Android Material 3 (tonal surfaces, a rounded-square + button).
 bool get isIos => defaultTargetPlatform == TargetPlatform.iOS;
 
-/// The raised surfaces, in the app's dark palette on both platforms (not
-/// iOS's pure black): Material 3's surface containers.
+/// The raised surfaces, in the theme's colors on both platforms (not iOS's
+/// pure black or white): Material 3's surface containers.
 abstract final class M {
-  static const container = Color(0xFF1C1E25);
-  static const containerHigh = Color(0xFF23262F);
+  static Color get container => C.card;
+  static Color get containerHigh => Color.lerp(C.card, C.field, .5)!;
 }
 
 /// The app's motion: things appearing, going or changing size ease out
@@ -69,8 +69,7 @@ Future<T?> showAppSheet<T>(
   isDismissible: dismissible,
   enableDrag: dismissible,
   useSafeArea: true,
-  backgroundColor: isIos ? M.container : M.containerHigh,
-  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(sheetRadius))),
+  // Its surface and corners come from the theme ([sheetTheme]), so an open sheet follows a change of theme.
   builder: (context) => PopScope(
     canPop: dismissible,
     child: Column(
@@ -80,10 +79,10 @@ Future<T?> showAppSheet<T>(
         SizedBox(
           height: 20,
           child: dismissible
-              ? const Center(
+              ? Center(
                   child: DecoratedBox(
-                    decoration: BoxDecoration(color: C.line2, borderRadius: BorderRadius.all(Radius.circular(2))),
-                    child: SizedBox(width: 36, height: 4),
+                    decoration: BoxDecoration(color: C.line2, borderRadius: BorderRadius.all(Radius.circular(C.r(2)))),
+                    child: const SizedBox(width: 36, height: 4),
                   ),
                 )
               : null,
@@ -118,11 +117,17 @@ class SemanticsRefresh extends NavigatorObserver {
 /// A sheet's top corners.
 const sheetRadius = 28.0;
 
+/// The sheets' surface and corners in the active theme.
+BottomSheetThemeData sheetTheme(BottomSheetThemeData base) => base.copyWith(
+  backgroundColor: isIos ? M.container : M.containerHigh,
+  shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(C.r(sheetRadius)))),
+);
+
 /// Room between a sheet's handle and its title.
 const sheetTop = 6.0;
 
 /// A sheet's title.
-const sheetTitleStyle = TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: C.text);
+TextStyle get sheetTitleStyle => TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: C.text);
 
 /// A floating toast's margin that keeps it clear of [above] (a page's
 /// composer, which is part of the body, so the toast would cover it).
@@ -170,7 +175,7 @@ class PageTitle extends StatelessWidget {
                       button: true,
                       child: InkWell(
                         onTap: onTap,
-                        borderRadius: BorderRadius.circular(Panel.headingRadius),
+                        borderRadius: C.round(Panel.headingRadius),
                         // At least 48 tall: a tap target both platforms' guidelines accept.
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(minHeight: 48),
@@ -181,7 +186,7 @@ class PageTitle extends StatelessWidget {
                               children: [
                                 Flexible(child: text),
                                 const SizedBox(width: 4),
-                                const Icon(Icons.keyboard_arrow_down_rounded, color: C.dim, size: 28),
+                                Icon(Icons.keyboard_arrow_down_rounded, color: C.dim, size: 28),
                               ],
                             ),
                           ),
@@ -221,11 +226,11 @@ class Panel extends StatelessWidget {
   final Tip? titleTip;
 
   /// The card's corners.
-  static double get radius => isIos ? 22 : 24;
+  static double get radius => C.r(isIos ? 22 : 24);
 
   /// A heading's press, and the other small pills over the list (the sort
   /// button, the page title).
-  static const headingRadius = 12.0;
+  static double get headingRadius => C.r(12);
 
   /// Where a row's text starts in the card, which its separator lines up with.
   static const textInset = 56.0;
@@ -244,7 +249,7 @@ class Panel extends StatelessWidget {
       heading = InkWell(
         onTap: onTitleTap,
         onLongPress: onTitleLongPress,
-        borderRadius: BorderRadius.circular(headingRadius),
+        borderRadius: C.round(headingRadius),
         // As tall as the platform's smallest tap target; the room above it shrinks to match.
         child: ConstrainedBox(
           constraints: BoxConstraints(minHeight: isIos ? 44 : 48),
@@ -255,7 +260,7 @@ class Panel extends StatelessWidget {
                 // A long title (a project folder's name) gives way to what
                 // trails it.
                 Expanded(
-                  child: Text(title!, maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
+                  child: Text(C.label(title!), maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
                 ),
                 ?titleTrailing,
               ],
@@ -280,7 +285,11 @@ class Panel extends StatelessWidget {
             child: Material(
               color: M.container,
               clipBehavior: Clip.antiAlias,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
+              // A hairline keeps a card clear of the page in a light theme; boxy frames it heavily.
+              shape: RoundedRectangleBorder(
+                borderRadius: C.round(radius),
+                side: BorderSide(color: C.divider, width: C.t.shape == ThemeShape.soft ? .5 : C.border),
+              ),
               child: AnimatedSize(
                 duration: Motion.fast,
                 curve: Motion.ease,
@@ -289,7 +298,13 @@ class Panel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     for (final (i, row) in children.indexed) ...[
-                      if (i > 0) const Divider(height: 1, thickness: 0.5, indent: textInset, color: C.line),
+                      if (i > 0)
+                        Divider(
+                          height: 1,
+                          thickness: C.t.shape == ThemeShape.boxy ? 1 : .5,
+                          indent: textInset,
+                          color: C.divider,
+                        ),
                       row,
                     ],
                   ],
@@ -318,7 +333,7 @@ class AddButton extends StatefulWidget {
 }
 
 class _AddButtonState extends State<AddButton> {
-  static final Color _pressed = Color.lerp(C.accent, Colors.black, .22)!;
+  static Color get _pressed => Color.lerp(C.accent, C.onAccent, .22)!;
   bool _down = false;
 
   void _set(bool down) {
@@ -332,8 +347,11 @@ class _AddButtonState extends State<AddButton> {
       tooltip: widget.tooltip,
       onPressed: widget.onPressed,
       backgroundColor: isIos && _down ? _pressed : C.accent,
-      foregroundColor: const Color(0xFF0E0F12),
-      shape: isIos ? const CircleBorder() : null,
+      foregroundColor: C.onAccent,
+      // Round on a soft theme, as the theme shapes it otherwise.
+      shape: C.t.shape == ThemeShape.soft
+          ? (isIos ? const CircleBorder() : null)
+          : RoundedRectangleBorder(borderRadius: C.round(16)),
       elevation: isIos ? 2 : null,
       // On iPhone the shadow stays put; the darker fill says it's pressed.
       highlightElevation: isIos ? 2 : null,

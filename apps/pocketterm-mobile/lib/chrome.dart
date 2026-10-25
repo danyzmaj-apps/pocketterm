@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/coach.dart';
+import 'package:pocketterm_mobile/motion.dart';
 
 /// The phone app's chrome in each platform's own idiom, all drawn by
 /// Flutter: on an iPhone iOS's look (inset grouped lists, a round +), on
@@ -15,43 +16,6 @@ bool get isIos => defaultTargetPlatform == TargetPlatform.iOS;
 abstract final class M {
   static Color get container => C.card;
   static Color get containerHigh => Color.lerp(C.card, C.field, .5)!;
-}
-
-/// The app's motion: things appearing, going or changing size ease out
-/// over [fast]; a section folding open or shut eases in and out ([fold]).
-abstract final class Motion {
-  static const fast = Duration(milliseconds: 200);
-  static const Curve ease = Curves.easeOutCubic;
-  static const Curve fold = Curves.easeInOut;
-}
-
-/// [child] while [visible], else nothing; it grows in and fades in, and
-/// shrinks away and fades out, instead of shoving what's around it in one
-/// frame.
-class Reveal extends StatelessWidget {
-  const Reveal({required this.visible, required this.child, this.curve = Motion.ease, super.key});
-  final bool visible;
-  final Widget child;
-  final Curve curve;
-
-  @override
-  Widget build(BuildContext context) => AnimatedSwitcher(
-    duration: Motion.fast,
-    switchInCurve: curve,
-    switchOutCurve: curve,
-    // Each one grows or shrinks from its top edge as it fades, so what's
-    // below slides along with it.
-    transitionBuilder: (child, animation) => FadeTransition(
-      opacity: animation,
-      child: SizeTransition(sizeFactor: animation, alignment: Alignment.topCenter, child: child),
-    ),
-    layoutBuilder: (current, previous) => Stack(alignment: Alignment.topCenter, children: [...previous, ?current]),
-    // Keyed: the switcher tells the one going from the one coming by key,
-    // and unkeyed it drops the one going at once.
-    child: visible
-        ? KeyedSubtree(key: ValueKey((true, child.key)), child: child)
-        : const SizedBox(key: ValueKey(false), width: double.infinity),
-  );
 }
 
 /// A sheet in the app's one style: radius 28 on top, the raised surface,
@@ -378,7 +342,7 @@ class Panel extends StatelessWidget {
                 side: BorderSide(color: C.divider, width: C.t.shape == ThemeShape.soft ? .5 : C.border),
               ),
               child: AnimatedSize(
-                duration: Motion.fast,
+                duration: Motion.resize(context),
                 curve: Motion.ease,
                 alignment: Alignment.topCenter,
                 child: Column(

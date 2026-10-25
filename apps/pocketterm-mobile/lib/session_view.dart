@@ -15,6 +15,7 @@ import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/coach.dart';
+import 'package:pocketterm_mobile/motion.dart';
 import 'package:pocketterm_mobile/queue_screen.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
 import 'package:pocketterm_mobile/voice.dart';
@@ -99,6 +100,12 @@ class _SessionPageState extends State<SessionPage> {
   /// rebuilds only the items that changed.
   final _built = <String, (Object, Widget)>{};
 
+  /// Items that arrived since the page opened (below the anchor), as seen so far.
+  final _arrived = <String>{};
+
+  /// Of those, the ones not yet built: they come in as they first show.
+  final _fresh = <String>{};
+
   /// Prompts sent from here that haven't come back in the transcript yet, oldest first.
   final _outgoing = <_Outgoing>[];
 
@@ -170,6 +177,7 @@ class _SessionPageState extends State<SessionPage> {
       return termToast(context, _noCommands(_agent(remote.session(key))), above: _composerKey);
     }
     final queue = busy && (_followUp || !_agent(remote.session(key)).steers);
+    Haptics.done();
     if (!command) return await _prompt(text, attached, followUp: queue);
     setState(() => _sending = true);
     try {
@@ -423,10 +431,13 @@ class _SessionPageState extends State<SessionPage> {
   // ---------------------------------------------------------------- items
 
   Widget _item(LiveItem i) {
+    // Come in once, the first time it's built after arriving: a rebuild (an answer streaming in) or a scroll bringing
+    // it back keeps it where it is.
+    final arriving = _fresh.remove(i.id);
     final open = _expanded.contains(i.id);
     final made = (i.kind, i.text, i.images, i.tool, i.title, i.args, i.output, i.status, open);
     final hit = _built[i.id];
-    if (hit != null && hit.$1 == made) return hit.$2;
+    if (hit != null && hit.$1 == made) return Entrance(key: ValueKey(i.id), animate: arriving, child: hit.$2);
     final w = KeyedSubtree(
       key: ValueKey(i.id),
       child: Padding(
@@ -448,13 +459,14 @@ class _SessionPageState extends State<SessionPage> {
       ),
     );
     _built[i.id] = (made, w);
-    return w;
+    return Entrance(key: ValueKey(i.id), animate: arriving, child: w);
   }
 
   Widget _transcript(LiveView? v, LiveSummary? s, {required bool ended}) {
     final items = v?.items ?? const <LiveItem>[];
     // Those whose item has come in show as it, in their place.
-    if (v != null && _outgoing.isNotEmpty) _outgoing.removeWhere(_cameBack(_outgoing, v).contains);
+    final back = v != null && _outgoing.isNotEmpty ? _cameBack(_outgoing, v) : const <_Outgoing>{};
+    _outgoing.removeWhere(back.contains);
     // Queued ones show in the queue strip once it lists them; one that left it at rest went to the agent.
     if (s != null && _outgoing.isNotEmpty) {
       final waiting = {for (final q in s.queue) q.id};
@@ -466,6 +478,8 @@ class _SessionPageState extends State<SessionPage> {
       _anchorEpoch = v.epoch;
       _atBottom = true;
       _built.clear();
+      _arrived.clear();
+      _fresh.clear();
     } else if (_built.length > 2 * items.length + 64) {
       // Items the view no longer holds (dropped, a fresh catch-up): their widgets go too.
       final ids = {for (final i in items) i.id};
@@ -525,6 +539,12 @@ class _SessionPageState extends State<SessionPage> {
       }
     }
     final above = lo;
+    // What arrived since the page opened sits below the anchor: each comes in once. The person's own prompt coming
+    // back in place of the bubble shown for it doesn't: it was already there.
+    for (var k = above; k < items.length; k++) {
+      final i = items[k];
+      if (_arrived.add(i.id) && !(i.kind == ItemKind.user && back.isNotEmpty)) _fresh.add(i.id);
+    }
     final earlier = v?.older ?? false;
     const center = ValueKey('center');
     _followBottom();
@@ -553,23 +573,29 @@ class _SessionPageState extends State<SessionPage> {
             SliverList(
               delegate: SliverChildListDelegate([
                 for (final o in _outgoing)
-                  Padding(
+                  Entrance(
                     key: ObjectKey(o),
-                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-                    child: _OutgoingBubble(o, key: const ValueKey('outgoing'), onRetry: () => unawaited(_deliver(o))),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                      child: _OutgoingBubble(o, key: const ValueKey('outgoing'), onRetry: () => unawaited(_deliver(o))),
+                    ),
                   ),
               ]),
             ),
           if (s != null && s.busy && s.ask == null)
             SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                child: Row(
-                  children: [
-                    const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
-                    const SizedBox(width: 10),
-                    Text('Working…', style: TextStyle(fontSize: 13, color: C.dim)),
-                  ],
+              child: Entrance(
+                key: const ValueKey('working'),
+                rise: 6,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
+                      const SizedBox(width: 10),
+                      Text('Working…', style: TextStyle(fontSize: 13, color: C.dim)),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -787,33 +813,65 @@ class _SessionPageState extends State<SessionPage> {
                     ),
                   ),
                 ),
-                // A command's name isn't spoken; otherwise a smaller microphone beside Send adds to what's typed.
-                if (!talk && !_sending && online && !slash)
-                  VoiceMic(
-                    key: const ValueKey('session-mic-small'),
-                    small: true,
-                    enabled: online,
-                    existing: () => _field.text,
-                    onResult: _voiced,
+                // A command's name isn't spoken; otherwise a smaller microphone beside Send adds to what's typed. It
+                // slides in as the first letter is typed, making room instead of shoving the field over.
+                AnimatedSwitcher(
+                  duration: Motion.of(context),
+                  switchInCurve: Motion.ease,
+                  switchOutCurve: Motion.exit,
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: SizeTransition(
+                      axis: Axis.horizontal,
+                      sizeFactor: animation,
+                      child: ScaleTransition(scale: Tween<double>(begin: .7, end: 1).animate(animation), child: child),
+                    ),
                   ),
-                // Part of the field for tap-outside: sending keeps the
-                // keyboard up.
-                TextFieldTapRegion(
-                  child: talk
+                  child: !talk && !_sending && online && !slash
                       ? VoiceMic(
-                          key: const ValueKey('session-mic'),
+                          key: const ValueKey('session-mic-small'),
+                          small: true,
                           enabled: online,
                           existing: () => _field.text,
                           onResult: _voiced,
                         )
-                      : IconButton(
-                          key: const ValueKey('session-send'),
-                          tooltip: 'Send',
-                          onPressed: canSend ? () => unawaited(_send(busy: busy)) : null,
-                          icon: _sending
-                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                              : Icon(Icons.arrow_upward, color: canSend ? C.accent : C.dim2),
-                        ),
+                      : const SizedBox(key: ValueKey('no-small-mic'), height: 48),
+                ),
+                // Part of the field for tap-outside: sending keeps the
+                // keyboard up. The microphone turns into Send as something is typed, and back once it's cleared.
+                TextFieldTapRegion(
+                  child: FadeSwap(
+                    scale: .7,
+                    turns: .125,
+                    child: talk
+                        ? VoiceMic(
+                            key: const ValueKey('session-mic'),
+                            enabled: online,
+                            existing: () => _field.text,
+                            onResult: _voiced,
+                          )
+                        : IconButton(
+                            key: const ValueKey('session-send'),
+                            tooltip: 'Send',
+                            onPressed: canSend ? () => unawaited(_send(busy: busy)) : null,
+                            icon: FadeSwap(
+                              duration: Motion.quick,
+                              child: _sending
+                                  ? const SizedBox(
+                                      key: ValueKey('sending'),
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : TweenAnimationBuilder<Color?>(
+                                      key: const ValueKey('send'),
+                                      tween: ColorTween(end: canSend ? C.accent : C.dim2),
+                                      duration: Motion.of(context, Motion.quick),
+                                      builder: (_, color, _) => Icon(Icons.arrow_upward, color: color),
+                                    ),
+                            ),
+                          ),
+                  ),
                 ),
               ],
             ),
@@ -1051,7 +1109,7 @@ class _OutgoingBubble extends StatelessWidget {
         children: [
           AnimatedOpacity(
             opacity: o.sending || queued ? .6 : 1,
-            duration: const Duration(milliseconds: 200),
+            duration: Motion.of(context),
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .82),
               child: Container(
@@ -1144,6 +1202,18 @@ class _QueueStripState extends State<_QueueStrip> {
   bool _folded = false;
   bool _pausing = false;
 
+  /// The ids shown last time, so a prompt queued since comes in; null before the strip first showed.
+  Set<String>? _seen;
+
+  /// The next build only notes where rows are: a dragged row was dropped, or a swiped one folded away, and they
+  /// already moved there.
+  bool _inPlace = false;
+
+  void _settledInPlace() {
+    _inPlace = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _inPlace = false);
+  }
+
   final _view = QueueView();
 
   /// About one row's height: the list shows three and a half, and scrolls for more.
@@ -1216,6 +1286,8 @@ class _QueueStripState extends State<_QueueStrip> {
     final (all, shown) = _view.items(s?.queue ?? const []);
     final paused = s?.paused ?? false;
     final online = widget.online;
+    final seen = _seen;
+    _seen = shown.isEmpty ? null : {for (final q in shown) q.id};
     return Reveal(
       visible: shown.isNotEmpty,
       child: shown.isEmpty
@@ -1290,8 +1362,17 @@ class _QueueStripState extends State<_QueueStrip> {
                           shrinkWrap: true,
                           buildDefaultDragHandles: false,
                           padding: EdgeInsets.zero,
+                          // The list moves the rows itself while one is dragged, so they don't glide.
+                          onReorderStart: (_) {
+                            Haptics.picked();
+                            setState(() => _inPlace = true);
+                          },
+                          onReorderEnd: (_) {
+                            Haptics.picked();
+                            _settledInPlace();
+                          },
                           onReorderItem: (from, to) => unawaited(_move(all, shown, from, to)),
-                          children: [for (final (i, q) in shown.indexed) _rowFor(q, i, online: online)],
+                          children: [for (final (i, q) in shown.indexed) _rowFor(q, i, online: online, seen: seen)],
                         ),
                       ),
                   ],
@@ -1301,69 +1382,80 @@ class _QueueStripState extends State<_QueueStrip> {
     );
   }
 
-  Widget _rowFor(LiveQueued q, int index, {required bool online}) {
+  Widget _rowFor(LiveQueued q, int index, {required bool online, required Set<String>? seen}) {
     final extras = [if (q.images > 0) '⊕ ${q.images} image${q.images == 1 ? '' : 's'}', ...q.files];
-    return Dismissible(
-      key: ValueKey('queued-${q.id}'),
-      direction: online ? DismissDirection.endToStart : DismissDirection.none,
-      background: Container(
-        color: _danger.withValues(alpha: .15),
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 16),
-        child: Icon(Icons.delete_outline, color: _danger),
-      ),
-      onDismissed: (_) => _act('delete', q),
-      child: ColoredBox(
-        color: C.bar,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: _row - 8),
-          child: Row(
-            children: [
-              ReorderableDragStartListener(
-                index: index,
-                enabled: online,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(0, 8, 8, 8),
-                  child: Icon(Icons.drag_handle, size: 20, color: online ? C.dim : C.dim2),
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      q.text.isEmpty ? '(no text)' : q.text,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: q.text.isEmpty
-                          ? TextStyle(fontSize: 14, color: C.dim, fontStyle: FontStyle.italic)
-                          : TextStyle(fontSize: 14, color: C.text, height: 1.3),
+    // Rows glide to a new place (a move, a gap closing); one queued since the strip showed comes in.
+    return Glide(
+      key: ValueKey('queued-glide-${q.id}'),
+      glide: !_inPlace,
+      child: Entrance(
+        animate: seen != null && !seen.contains(q.id),
+        child: Dismissible(
+          key: ValueKey('queued-${q.id}'),
+          direction: online ? DismissDirection.endToStart : DismissDirection.none,
+          background: Container(
+            color: _danger.withValues(alpha: .15),
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.only(right: 16),
+            child: Icon(Icons.delete_outline, color: _danger),
+          ),
+          onDismissed: (_) {
+            _settledInPlace();
+            _act('delete', q);
+          },
+          child: ColoredBox(
+            color: C.bar,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: _row - 8),
+              child: Row(
+                children: [
+                  ReorderableDragStartListener(
+                    index: index,
+                    enabled: online,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(0, 8, 8, 8),
+                      child: Icon(Icons.drag_handle, size: 20, color: online ? C.dim : C.dim2),
                     ),
-                    if (extras.isNotEmpty)
-                      Text(
-                        extras.join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, color: C.dim),
-                      ),
-                  ],
-                ),
-              ),
-              PopupMenuButton<String>(
-                key: ValueKey('queued-menu-${q.id}'),
-                tooltip: 'More',
-                enabled: online,
-                icon: Icon(Icons.more_vert, size: 20, color: online ? C.dim : C.dim2),
-                color: C.bar,
-                onSelected: (what) => _act(what, q),
-                itemBuilder: (_) => [
-                  if (!q.cut) const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                  if (widget.steers) const PopupMenuItem(value: 'send', child: Text('Send now')),
-                  const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          q.text.isEmpty ? '(no text)' : q.text,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: q.text.isEmpty
+                              ? TextStyle(fontSize: 14, color: C.dim, fontStyle: FontStyle.italic)
+                              : TextStyle(fontSize: 14, color: C.text, height: 1.3),
+                        ),
+                        if (extras.isNotEmpty)
+                          Text(
+                            extras.join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: C.dim),
+                          ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuButton<String>(
+                    key: ValueKey('queued-menu-${q.id}'),
+                    tooltip: 'More',
+                    enabled: online,
+                    icon: Icon(Icons.more_vert, size: 20, color: online ? C.dim : C.dim2),
+                    color: C.bar,
+                    onSelected: (what) => _act(what, q),
+                    itemBuilder: (_) => [
+                      if (!q.cut) const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                      if (widget.steers) const PopupMenuItem(value: 'send', child: Text('Send now')),
+                      const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                    ],
+                  ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1536,7 +1628,7 @@ class _Notice extends StatelessWidget {
           border: Border(left: BorderSide(color: C.line2, width: 2)),
         ),
         child: AnimatedSize(
-          duration: Motion.fast,
+          duration: Motion.resize(context),
           curve: Motion.fold,
           alignment: Alignment.topCenter,
           child: Text(text, maxLines: open ? null : 3, overflow: open ? null : TextOverflow.ellipsis, style: _style),
@@ -1557,9 +1649,14 @@ class _ToolCard extends StatelessWidget {
     final i = item;
     final what = i.title.isNotEmpty ? i.title : i.args;
     final status = switch (i.status) {
-      ToolStatus.running => const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
-      ToolStatus.ok => Icon(Icons.check, size: 14, color: C.ok),
-      ToolStatus.error => Icon(Icons.close, size: 14, color: _danger),
+      ToolStatus.running => const SizedBox(
+        key: ValueKey('running'),
+        width: 12,
+        height: 12,
+        child: CircularProgressIndicator(strokeWidth: 1.5),
+      ),
+      ToolStatus.ok => Icon(Icons.check, key: const ValueKey('ok'), size: 14, color: C.ok),
+      ToolStatus.error => Icon(Icons.close, key: const ValueKey('error'), size: 14, color: _danger),
     };
     return Container(
       decoration: BoxDecoration(
@@ -1571,7 +1668,7 @@ class _ToolCard extends StatelessWidget {
         ),
       ),
       child: AnimatedSize(
-        duration: Motion.fast,
+        duration: Motion.resize(context),
         curve: Motion.fold,
         alignment: Alignment.topCenter,
         child: Column(
@@ -1585,7 +1682,11 @@ class _ToolCard extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                   child: Row(
                     children: [
-                      SizedBox(width: 16, child: Center(child: status)),
+                      // The spinner becomes the check (or the cross) as the tool finishes.
+                      SizedBox(
+                        width: 16,
+                        child: Center(child: FadeSwap(scale: .6, child: status)),
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         i.tool,
@@ -1600,29 +1701,42 @@ class _ToolCard extends StatelessWidget {
                           style: _mono.copyWith(color: C.dim),
                         ),
                       ),
-                      Icon(open ? Icons.expand_less : Icons.expand_more, size: 16, color: C.dim2),
+                      AnimatedRotation(
+                        turns: open ? .5 : 0,
+                        duration: Motion.of(context),
+                        curve: Motion.fold,
+                        child: Icon(Icons.expand_more, size: 16, color: C.dim2),
+                      ),
                     ],
                   ),
                 ),
               ),
             ),
-            if (open) ...[
-              Divider(height: 1, color: C.line),
-              if (i.title.isNotEmpty && i.args.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
-                  child: Text(i.args, style: _mono.copyWith(color: C.dim)),
-                ),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-                child: Text(
-                  i.output.isEmpty ? (i.status == ToolStatus.running ? '…' : 'No output.') : i.output,
-                  softWrap: false,
-                  style: _mono.copyWith(color: C.text),
+            // The output fades in as the card opens around it.
+            if (open)
+              Entrance(
+                rise: 0,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Divider(height: 1, color: C.line),
+                    if (i.title.isNotEmpty && i.args.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+                        child: Text(i.args, style: _mono.copyWith(color: C.dim)),
+                      ),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                      child: Text(
+                        i.output.isEmpty ? (i.status == ToolStatus.running ? '…' : 'No output.') : i.output,
+                        softWrap: false,
+                        style: _mono.copyWith(color: C.text),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
           ],
         ),
       ),
@@ -1709,6 +1823,7 @@ class _AskCardState extends State<_AskCard> {
         ],
       );
       _sent = true;
+      Haptics.done();
     } on Object catch (e) {
       if (mounted) termToast(context, e, above: widget.toastAbove);
     }
@@ -1747,6 +1862,7 @@ class _AskCardState extends State<_AskCard> {
                 onSelected: busy
                     ? null
                     : (on) => setState(() {
+                        Haptics.picked();
                         if (!q.multi) {
                           _picks[i].clear();
                           _other[i].clear();
@@ -1785,7 +1901,12 @@ class _AskCardState extends State<_AskCard> {
     final busy = _sending || _sent;
     final online = widget.remote.online;
     final spinner = _sending
-        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+        ? const SizedBox(
+            key: ValueKey('spinner'),
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
         : null;
     final Widget body;
     final List<Widget> buttons;
@@ -1862,7 +1983,10 @@ class _AskCardState extends State<_AskCard> {
         FilledButton(
           key: const ValueKey('approve'),
           onPressed: busy || !online ? null : () => unawaited(_answer(approve: true)),
-          child: spinner ?? const Text('Approve'),
+          child: FadeSwap(
+            duration: Motion.quick,
+            child: spinner ?? const Text('Approve', key: ValueKey('label')),
+          ),
         ),
       ];
     } else {
@@ -1876,7 +2000,10 @@ class _AskCardState extends State<_AskCard> {
         FilledButton(
           key: const ValueKey('answer'),
           onPressed: busy || !online || !_complete ? null : () => unawaited(_answer()),
-          child: spinner ?? Text(_sent ? 'Answered' : 'Answer'),
+          child: FadeSwap(
+            duration: Motion.quick,
+            child: spinner ?? Text(_sent ? 'Answered' : 'Answer', key: ValueKey(_sent)),
+          ),
         ),
       ];
     }

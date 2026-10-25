@@ -8,6 +8,7 @@ import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/coach.dart';
+import 'package:pocketterm_mobile/motion.dart';
 import 'package:pocketterm_mobile/session_view.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
 

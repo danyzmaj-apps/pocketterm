@@ -7,6 +7,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/e2e_hooks.dart';
+import 'package:pocketterm_mobile/motion.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// The first-use tips, in the order they show: the switch tour first, then the list's, then the conversation page's.
@@ -450,7 +451,7 @@ class _Spotlight extends StatelessWidget {
     final padding = MediaQuery.paddingOf(context);
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
-      duration: Motion.fast,
+      duration: Motion.of(context),
       curve: Motion.ease,
       builder: (context, t, child) => Opacity(opacity: t, child: child),
       child: LayoutBuilder(

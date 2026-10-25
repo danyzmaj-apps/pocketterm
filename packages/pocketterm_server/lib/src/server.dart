@@ -12,7 +12,7 @@ import 'package:pocketterm_server/src/store.dart';
 const protocolVersion = 1;
 
 /// The server's own version.
-const serverVersion = '0.1.3';
+const serverVersion = '0.1.4';
 
 /// The largest JSON request body (64 KiB).
 const int maxJsonBytes = 64 * 1024;

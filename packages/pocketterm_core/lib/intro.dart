@@ -16,7 +16,7 @@ import 'package:pocketterm_core/theme.dart';
 /// it (a quick zoom to [child]); with animations turned off
 /// (MediaQuery.disableAnimations) it's a short fade.
 class PocketTermIntro extends StatefulWidget {
-  const PocketTermIntro({required this.child, this.play = true, this.theme, super.key});
+  const PocketTermIntro({required this.child, this.play = true, this.theme, this.fromSplash = false, super.key});
   final Widget child;
 
   /// Plays the first time this is true (the desktop's window, hidden at
@@ -26,8 +26,18 @@ class PocketTermIntro extends StatefulWidget {
   /// Played in this theme rather than the active one.
   final PtTheme? theme;
 
+  /// The native launch screen already shows the icon where and as large as the intro's first frame does
+  /// ([paintLaunchIcon]; the phone's): it starts there, without the icon's fade-in, and holds it while the launch
+  /// screen fades away over it, so the hand-over can't be seen.
+  final bool fromSplash;
+
   /// How long it takes when nobody taps.
   static const duration = Duration(milliseconds: 1750);
+
+  /// The icon fading in, which [fromSplash] leaves out, and how long it holds the icon instead: as long as Flutter's
+  /// iOS splash takes to fade out (SplashScreenManager's 0.2 s).
+  static const _fadeIn = 150;
+  static const _hold = 200;
 
   /// With animations turned off: the icon, then a fade.
   static const reducedDuration = Duration(milliseconds: 350);
@@ -62,7 +72,10 @@ class _PocketTermIntroState extends State<PocketTermIntro> with TickerProviderSt
     _run =
         AnimationController(
             vsync: this,
-            duration: _reduced ? PocketTermIntro.reducedDuration : PocketTermIntro.duration,
+            duration: _reduced
+                ? PocketTermIntro.reducedDuration
+                : PocketTermIntro.duration +
+                      Duration(milliseconds: widget.fromSplash ? PocketTermIntro._hold - PocketTermIntro._fadeIn : 0),
           )
           ..addListener(_tick)
           ..addStatusListener(_ended)
@@ -93,7 +106,10 @@ class _PocketTermIntroState extends State<PocketTermIntro> with TickerProviderSt
   _Frame? get _frame {
     final run = _run;
     if (run == null || _done) return null;
-    final ms = run.value * run.duration!.inMilliseconds;
+    final raw = run.value * run.duration!.inMilliseconds;
+    final ms = widget.fromSplash && !_reduced
+        ? math.max(PocketTermIntro._fadeIn, raw - PocketTermIntro._hold + PocketTermIntro._fadeIn).toDouble()
+        : raw;
     final skip = Curves.easeOut.transform(_skip.value);
     return _reduced ? _Frame.reduced(ms, skip) : _Frame.at(ms).skipped(skip);
   }
@@ -120,7 +136,8 @@ class _PocketTermIntroState extends State<PocketTermIntro> with TickerProviderSt
 ///
 /// | ms        | what                                                              |
 /// |-----------|-------------------------------------------------------------------|
-/// | 0–150     | the icon (42% of the display's short side) fades and grows in     |
+/// | 0–150     | the icon (42% of the display's short side, at most 360) fades and |
+/// |           | grows in; from the launch screen (fromSplash) it's already there  |
 /// | 150–300   | the phone ducks into the pocket, which squashes                   |
 /// | 300–820   | it springs up out of it, nearly whole (overshoots, settles); the  |
 /// |           | pocket bounces back                                               |
@@ -455,20 +472,9 @@ class _Scene {
         ..translate(-display.dx, -display.dy)
         ..saveLayer(tile.inflate(side), Paint()..color = Color.fromRGBO(0, 0, 0, frame.icon));
     }
-    final r = style.tileRadius * side;
     // The tile fades away as the phone takes over the display.
     final tileFade = 1 - (frame.zoom * 2).clamp(0.0, 1.0);
-    if (tileFade > 0) {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(tile, Radius.circular(r)),
-        Paint()
-          ..shader = LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color.lerp(style.tileBottom, style.tileTop, tileFade)!, style.tileBottom],
-          ).createShader(tile),
-      );
-    }
+    if (tileFade > 0) _paintTile(canvas, style, tile, fade: tileFade);
     paintLogo(
       canvas,
       style,
@@ -491,4 +497,24 @@ class _Scene {
     }
     canvas.restore();
   }
+}
+
+/// The icon's tile: [tile]'s rounded square, [LogoStyle.tileTop] at its top left (lerped to its bottom colour as
+/// [fade] goes to 0) to [LogoStyle.tileBottom].
+void _paintTile(Canvas canvas, LogoStyle style, Rect tile, {double fade = 1}) => canvas.drawRRect(
+  RRect.fromRectAndRadius(tile, Radius.circular(style.tileRadius * tile.width)),
+  Paint()
+    ..shader = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [Color.lerp(style.tileBottom, style.tileTop, fade)!, style.tileBottom],
+    ).createShader(tile),
+);
+
+/// The intro's first frame without its background: the icon's tile and mark, [side] across, at the canvas' origin.
+/// What the iPhone's launch screen shows (apps/pocketterm-mobile's LaunchImage), so the intro takes over from it
+/// pixel for pixel ([PocketTermIntro.fromSplash]).
+void paintLaunchIcon(Canvas canvas, LogoStyle style, double side) {
+  _paintTile(canvas, style, Offset.zero & Size.square(side));
+  paintLogo(canvas, style, p: (x, y) => Offset(x * side, (1 - y) * side), u: side);
 }

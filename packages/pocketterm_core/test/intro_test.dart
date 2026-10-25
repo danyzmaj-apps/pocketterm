@@ -1,7 +1,21 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/intro.dart';
+import 'package:pocketterm_core/logo.dart';
+import 'package:pocketterm_core/theme.dart';
+
+/// The intro and the app under it, as drawn.
+final GlobalKey _shot = GlobalKey();
+
+/// [image]'s RGBA bytes.
+Future<List<int>> _pixels(ui.Image image) async {
+  final bytes = await image.toByteData();
+  image.dispose();
+  return bytes!.buffer.asUint8List();
+}
 
 void main() {
   const display = Size(390, 844);
@@ -13,6 +27,7 @@ void main() {
     WidgetTester tester, {
     bool play = true,
     bool reduced = false,
+    bool fromSplash = false,
     Size size = display,
   }) async {
     final taps = ValueNotifier(0);
@@ -24,7 +39,10 @@ void main() {
     await tester.pumpWidget(
       MediaQuery(
         data: MediaQueryData(size: size, disableAnimations: reduced),
-        child: PocketTermIntro(play: play, child: _App(taps)),
+        child: RepaintBoundary(
+          key: _shot,
+          child: PocketTermIntro(play: play, fromSplash: fromSplash, child: _App(taps)),
+        ),
       ),
     );
     // The intro's clock starts at the first frame after.
@@ -125,6 +143,37 @@ void main() {
     await tester.pump(PocketTermIntro.duration - const Duration(milliseconds: 50));
     expect(reachesApp(tester), isFalse);
     await tester.pump(const Duration(milliseconds: 51));
+    expect(reachesApp(tester), isTrue);
+  });
+
+  testWidgets('from the launch screen: its icon, pixel for pixel, held while the launch screen fades, then it plays', (
+    tester,
+  ) async {
+    await pumpIntro(tester, fromSplash: true);
+    // The launch screen: the theme's background, the launch icon centred, 42% of the short side across.
+    final launch = await tester.runAsync(() async {
+      final side = display.shortestSide * .42;
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder)
+        ..drawRect(Offset.zero & display, Paint()..color = PtTheme.mocha.win)
+        ..translate((display.width - side) / 2, (display.height - side) / 2);
+      paintLaunchIcon(canvas, LogoStyle.of(PtTheme.mocha), side);
+      return await _pixels(await recorder.endRecording().toImage(display.width.round(), display.height.round()));
+    });
+    Future<List<int>> intro() async => (await tester.runAsync(() async {
+      final boundary = tester.renderObject<RenderRepaintBoundary>(find.byKey(_shot));
+      return await _pixels(await boundary.toImage());
+    }))!;
+    // Antialiasing aside (a handful of channels a few steps off), the same picture.
+    bool same(List<int> a, List<int> b) =>
+        Iterable<int>.generate(a.length).where((i) => (a[i] - b[i]).abs() > 2).length < a.length / 10000;
+
+    expect(same(await intro(), launch!), isTrue, reason: 'the first frame');
+    await tester.pump(const Duration(milliseconds: 190));
+    expect(same(await intro(), launch), isTrue, reason: 'still, while the launch screen fades over it');
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(same(await intro(), launch), isFalse, reason: 'the phone ducks');
+    await tester.pumpAndSettle();
     expect(reachesApp(tester), isTrue);
   });
 

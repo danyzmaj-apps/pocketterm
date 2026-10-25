@@ -53,7 +53,7 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // After the system's splash, until Flutter's first frame: the chosen theme's background, which the
-        // intro starts on (before Android 13 the splash itself can only follow the system's light or dark).
+        // intro starts on (before Android 13 the splash itself always shows Catppuccin Mocha's, the default).
         window.setBackgroundDrawable(ColorDrawable(AppIcons.themeBackground(this)))
         // A recreated activity has already handled its intent.
         if (savedInstanceState == null) tapped(intent)

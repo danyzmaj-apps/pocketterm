@@ -1,15 +1,17 @@
-// Draws the app icons: a phone showing a terminal prompt, leaning out of a jeans pocket. The default icon on the
-// app's dark blue gradient, and one per theme in its colors and corners (packages/pocketterm_core/lib/logo.dart's
-// LogoStyle draws the same; lib/app_icon.dart names them), which the apps switch to with the theme.
+// Draws the app icons: a phone showing a terminal prompt, leaning out of a jeans pocket, in a theme's colors and
+// corners (packages/pocketterm_core/lib/logo.dart's LogoStyle draws the same; lib/app_icon.dart names them). The
+// app's own icon is Catppuccin Mocha's, the default theme; the other themes' are alternates the apps switch to.
 //   swift tool/make_icon.swift   (in apps/pocketterm-desktop; needs ImageMagick's `magick`)
-//     The default icon:
+//     The app's own icon (Catppuccin Mocha):
 //     → ../pocketterm-mobile/assets/icon/ios.png (square, opaque)
 //       ../pocketterm-mobile/assets/icon/android-background.png, android-foreground.png
 //         (Android's adaptive icon: the gradient, and the pocket alone inside the safe zone)
 //       assets/icon/macos.png (rounded, padded)
 //       windows/runner/resources/app_icon.ico, assets/tray.ico (rounded, full bleed), assets/icon/windows-default.ico
-//     Then in each app: fvm dart run flutter_launcher_icons
-//     Each theme's (mocha, dawn, tokyoNight, gruvbox), used as they are:
+//     Then in each app: fvm dart run flutter_launcher_icons (in the phone's it also points every launcher alias
+//       in AndroidManifest.xml at ic_launcher and sets Runner's ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES to
+//       AppIcon: put both back with git)
+//     Each other theme's (dawn, tokyoNight, gruvbox), used as they are:
 //     → ../pocketterm-mobile/ios/Runner/Assets.xcassets/AppIcon-<Theme>.appiconset (iOS alternate icons)
 //       ../pocketterm-mobile/android/app/src/main/res/drawable-*dpi/ic_launcher_<theme>_{background,foreground}.png,
 //         mipmap-anydpi-v26/ic_launcher_<theme>.xml (the launcher aliases' adaptive icons)
@@ -40,16 +42,6 @@ func rgb(_ hex: UInt32) -> NSColor {
 
 func mix(_ a: NSColor, _ b: NSColor, _ t: CGFloat) -> NSColor { a.blended(withFraction: t, of: b)! }
 
-let classic = Look(
-  tileTop: NSColor(red: 0.20, green: 0.24, blue: 0.40, alpha: 1),
-  tileBottom: NSColor(red: 0.07, green: 0.08, blue: 0.11, alpha: 1),
-  pocketTop: NSColor(red: 0.55, green: 0.62, blue: 1.0, alpha: 1),
-  pocketBottom: NSColor(red: 0.36, green: 0.42, blue: 0.86, alpha: 1),
-  screen: NSColor(red: 0.055, green: 0.063, blue: 0.094, alpha: 1),
-  frame: NSColor(red: 0.91, green: 0.914, blue: 0.933, alpha: 1),
-  prompt: NSColor(red: 1, green: 0.82, blue: 0.36, alpha: 1),
-  phoneRadius: 0.056, square: false)
-
 /// A theme's look, as LogoStyle.of makes it: the frame its text, the screen its background, the prompt its
 /// warning color, the pocket its accent; [radius] and [square] from its shape (soft, crisp, boxy).
 func themed(bg: UInt32, accent: UInt32, warn: UInt32, text: UInt32, radius: CGFloat, square: Bool = false) -> Look {
@@ -59,9 +51,11 @@ func themed(bg: UInt32, accent: UInt32, warn: UInt32, text: UInt32, radius: CGFl
     phoneRadius: radius, square: square)
 }
 
-/// By lib/app_icon.dart's names; [res]: Android's resource name.
+/// The app's own icon: Catppuccin Mocha's.
+let mocha = themed(bg: 0x1E1E2E, accent: 0xCBA6F7, warn: 0xFAB387, text: 0xCDD6F4, radius: 0.056)
+
+/// The alternates, by lib/app_icon.dart's names; [res]: Android's resource name.
 let themes: [(name: String, res: String, look: Look)] = [
-  ("mocha", "mocha", themed(bg: 0x1E1E2E, accent: 0xCBA6F7, warn: 0xFAB387, text: 0xCDD6F4, radius: 0.056)),
   ("dawn", "dawn", themed(bg: 0xFAF4ED, accent: 0x286983, warn: 0x9E6210, text: 0x534E73, radius: 0.056)),
   ("tokyoNight", "tokyo_night", themed(bg: 0x1A1B26, accent: 0x7AA2F7, warn: 0xFF9E64, text: 0xC0CAF5, radius: 0.03)),
   (
@@ -207,22 +201,22 @@ let windowSizes = [256, 128, 64, 48, 32, 24, 16]
 let runtimeSizes = [64, 48, 40, 32, 24, 20, 16]
 let traySizes = [48, 32, 24, 20, 16]
 
-// The default icon.
-render(classic, size: 1024, inset: 0, radius: 0, to: "\(mobile)/assets/icon/ios.png")
+// The app's own icon: Catppuccin Mocha's.
+render(mocha, size: 1024, inset: 0, radius: 0, to: "\(mobile)/assets/icon/ios.png")
 // Android: a 108 dp layer of which a 72 dp middle shows (less on round masks); the pocket
 // at 0.72 stays clear of every mask.
-render(classic, size: 1024, inset: 0, radius: 0, art: false, to: "\(mobile)/assets/icon/android-background.png")
+render(mocha, size: 1024, inset: 0, radius: 0, art: false, to: "\(mobile)/assets/icon/android-background.png")
 render(
-  classic, size: 1024, inset: 0, radius: 0, gradient: false, scale: 0.72,
+  mocha, size: 1024, inset: 0, radius: 0, gradient: false, scale: 0.72,
   to: "\(mobile)/assets/icon/android-foreground.png")
 // macOS: Big Sur grid, 824 pt body inside the 1024 canvas.
-render(classic, size: 1024, inset: 100, radius: 185, to: "assets/icon/macos.png")
-ico(classic, windowSizes, to: "windows/runner/resources/app_icon.ico")
-ico(classic, traySizes, to: "assets/tray.ico")
-// What the window goes back to from a theme's (lib/windows_host.dart).
-ico(classic, runtimeSizes, to: "assets/icon/windows-default.ico")
+render(mocha, size: 1024, inset: 100, radius: 185, to: "assets/icon/macos.png")
+ico(mocha, windowSizes, to: "windows/runner/resources/app_icon.ico")
+ico(mocha, traySizes, to: "assets/tray.ico")
+// What the window goes back to from another theme's (lib/windows_host.dart).
+ico(mocha, runtimeSizes, to: "assets/icon/windows-default.ico")
 
-// Each theme's.
+// Each other theme's.
 for (name, resName, look) in themes {
   let title = name.prefix(1).uppercased() + name.dropFirst()
   // iOS: an alternate app icon set (Runner's ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES lists it), one opaque

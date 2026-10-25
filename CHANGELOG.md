@@ -2,6 +2,17 @@
 
 What each PocketTerm release brings.
 
+## 0.1.3
+
+Servers and the push relay need no update.
+
+### Desktop app and phone app
+
+- **Catppuccin Mocha is the default theme; Auto is gone.** The apps no longer switch with your system's light or dark: a new install starts in Mocha, and if you were on Auto you're now on Mocha. Pick another of the four themes any time, as before.
+- **A new app icon.** Mocha's icon, the phone in its pocket in Mocha's colors, is now PocketTerm's own icon everywhere: on the iPhone and Android home screens, the Mac's Dock and Finder, and Windows. The other themes still bring their own icon when you pick them.
+- **You can see what you picked.** When a coding agent asks a question, the answers you pick on the phone now fill with the theme's accent color, in every theme; so do the folder you create a project in, the **Queue** switch and the highlighted row in a picker the agent opens.
+- **The intro opens onto the app itself.** Once the phone has sprung out of its pocket, its screen shows PocketTerm's real first screen, live, and the view dives in until that screen fills yours: no fade at the end. The app starts while the intro plays and takes your taps as soon as it ends; a tap still skips the intro, and with reduced motion it's still a short fade.
+
 ## 0.1.2
 
 Servers and the push relay need no update.

@@ -15,6 +15,14 @@ ThemeData appTheme(PtTheme t) {
       ? const StadiumBorder()
       : RoundedRectangleBorder(borderRadius: BorderRadius.circular(shape.maxRadius));
   final side = BorderSide(color: t.line, width: shape.border);
+  final side2 = BorderSide(color: t.line2, width: shape.border);
+  final chipLabel = WidgetStateColor.resolveWith(
+    (s) => s.contains(WidgetState.selected)
+        ? t.onAccent
+        : s.contains(WidgetState.disabled)
+        ? t.dim
+        : t.text,
+  );
   final base = ThemeData(brightness: t.brightness, useMaterial3: true, visualDensity: shape.density);
   final text = base.textTheme.apply(bodyColor: t.text, displayColor: t.text);
   return base.copyWith(
@@ -69,14 +77,19 @@ ThemeData appTheme(PtTheme t) {
       style: ElevatedButton.styleFrom(backgroundColor: t.field, foregroundColor: t.text, shape: pill),
     ),
     iconButtonTheme: IconButtonThemeData(style: IconButton.styleFrom(foregroundColor: t.dim)),
+    // Chips to pick from (answers, folders, Queue): an outlined field until picked, then filled with the accent
+    // (with its check where the chip shows one), so the pick reads at a glance in every theme, sent ones too.
     chipTheme: ChipThemeData(
       backgroundColor: t.field,
-      selectedColor: t.sel,
-      side: side,
+      disabledColor: t.field,
+      selectedColor: t.accent,
+      side: WidgetStateBorderSide.resolveWith(
+        (s) => s.contains(WidgetState.selected) ? BorderSide(color: t.accent, width: shape.border) : side2,
+      ),
       shape: pill,
-      labelStyle: TextStyle(color: t.text, fontSize: 13),
-      secondaryLabelStyle: TextStyle(color: t.text, fontSize: 13),
-      checkmarkColor: t.accent,
+      labelStyle: TextStyle(color: chipLabel, fontSize: 13),
+      secondaryLabelStyle: TextStyle(color: chipLabel, fontSize: 13),
+      checkmarkColor: t.onAccent,
     ),
     inputDecorationTheme: InputDecorationTheme(
       hintStyle: TextStyle(color: t.dim2),
@@ -267,8 +280,7 @@ class _HoverableState extends State<Hoverable> {
 }
 
 /// A theme in small, for the theme pickers: its background with its accent
-/// and its ok, attention and error colors. Auto shows its dark and its light
-/// theme side by side.
+/// and its ok, attention and error colors.
 class ThemeSwatch extends StatelessWidget {
   const ThemeSwatch(this.choice, {super.key});
   final ThemeChoice choice;
@@ -283,17 +295,10 @@ class ThemeSwatch extends StatelessWidget {
       border: Border.all(color: C.line2, width: C.border),
     ),
     decoration: BoxDecoration(borderRadius: C.round(6)),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final t
-            in choice == ThemeChoice.auto ? const [PtTheme.mocha, PtTheme.dawn] : [choice.resolve(Brightness.dark)])
-          Expanded(child: _half(t)),
-      ],
-    ),
+    child: _mini(choice.theme),
   );
 
-  static Widget _half(PtTheme t) => ColoredBox(
+  static Widget _mini(PtTheme t) => ColoredBox(
     color: t.win,
     child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),

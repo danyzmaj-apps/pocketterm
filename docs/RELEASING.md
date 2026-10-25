@@ -21,7 +21,9 @@ PocketTerm on Supabase needs no release step of its own: its migrations and func
 
 ## Before a release: end to end
 
-CI runs the unit tests ([CONTRIBUTING.md](../CONTRIBUTING.md#pull-requests)). The end-to-end runs and the smoke run on the maintainer's Mac, on a quiet Mac (they open throwaway terminal windows); what each covers is in [TESTING.md](TESTING.md). `--from-head` runs what's committed, in a worktree of HEAD.
+CI runs the unit tests ([CONTRIBUTING.md](../CONTRIBUTING.md#pull-requests)). Before a release, run end to end only what covers the release's changes and the features around them (pick them as [TESTING.md](TESTING.md#what-to-run-for-a-change) says, from the release's `CHANGELOG.md` section and `git log v<previous>..HEAD`), with `--from-head`, which runs what's committed, in a worktree of HEAD. They run on the maintainer's Mac, on a quiet Mac (they open throwaway terminal windows).
+
+The full matrix below (every terminal, every server, both phone platforms) is for releases with big cross-cutting changes (the protocol, encryption, session routing, the server) or when a targeted run turns up something it can't explain:
 
 ```sh
 # at the repo root

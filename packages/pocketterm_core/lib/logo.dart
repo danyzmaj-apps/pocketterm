@@ -98,7 +98,9 @@ const double logoTilt = 10 * math.pi / 180;
 /// phone out of the pocket (icon units), [tilt] leans it clockwise from
 /// upright; [squash] squashes the pocket from its top edge (1: 10% shorter,
 /// 6% wider; below 0 stretches it); [cursor] shows the prompt's cursor,
-/// [prompt] fades the whole prompt (0 to 1).
+/// [prompt] fades the whole prompt (0 to 1); [phone] reshapes the phone's
+/// body (around its pivot, as [logoPhone]) and [frameLine] its frame's line
+/// (icon units).
 void paintLogo(
   Canvas canvas,
   LogoStyle style, {
@@ -109,6 +111,8 @@ void paintLogo(
   double squash = 0,
   bool cursor = true,
   double prompt = 1,
+  RRect? phone,
+  double frameLine = logoFrameLine,
 }) {
   final cap = style.square ? StrokeCap.square : StrokeCap.round;
   final join = style.square ? StrokeJoin.miter : StrokeJoin.round;
@@ -118,16 +122,18 @@ void paintLogo(
     ..save()
     ..translate(pivot.dx, pivot.dy)
     ..rotate(tilt);
-  final phone = logoPhone(u, style);
-  canvas
-    ..drawRRect(phone, Paint()..color = style.screen)
-    ..drawRRect(
+  phone ??= logoPhone(u, style);
+  canvas.drawRRect(phone, Paint()..color = style.screen);
+  // (A width of 0 would draw a hairline.)
+  if (frameLine > 0) {
+    canvas.drawRRect(
       phone,
       Paint()
         ..color = style.frame
         ..style = PaintingStyle.stroke
-        ..strokeWidth = .018 * u,
+        ..strokeWidth = frameLine * u,
     );
+  }
   if (prompt > 0) {
     final color = style.prompt.withValues(alpha: style.prompt.a * prompt);
     canvas.drawPath(
@@ -198,6 +204,10 @@ RRect logoPhone(double u, LogoStyle style) => RRect.fromRectAndRadius(
   Rect.fromLTWH(-.15 * u, -.24 * u, .30 * u, .50 * u),
   Radius.circular(style.phoneRadius * u),
 );
+
+/// The phone frame's line width, in icon units, centred on [logoPhone]'s
+/// edge: the screen is that inset by half of it.
+const double logoFrameLine = .018;
 
 void _dash(Canvas canvas, Offset a, Offset b, double on, double off, Paint paint) {
   final d = b - a;

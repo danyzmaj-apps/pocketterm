@@ -49,9 +49,6 @@ void shot(String description, Size size, Future<void> Function(WidgetTester test
         ..physicalSize = size * 2
         ..devicePixelRatio = 2;
       addTearDown(tester.view.reset);
-      // The docs show Auto on a dark Mac: Catppuccin Mocha.
-      tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
-      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
       debugDisableShadows = false;
       try {
         await body(tester);

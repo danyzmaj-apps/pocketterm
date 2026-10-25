@@ -3,14 +3,11 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:pocketterm_core/theme.dart';
 
-/// The app icon that goes with [choice]: `mocha`, `dawn`, `tokyoNight`,
-/// `gruvbox`, or `default` (the bundle's own icon) for [ThemeChoice.auto].
-/// Auto keeps the default rather than following the system's light or dark:
-/// iOS asks the person about every icon change, and Android's launcher
-/// drops pinned shortcuts with it, which a change at every sunset would make
-/// a nuisance. The native sides know the icons by these names
-/// (apps/pocketterm-desktop/tool/make_icon.swift draws them).
-String appIconFor(ThemeChoice choice) => choice == ThemeChoice.auto ? 'default' : choice.name;
+/// The app icon that goes with [choice]: `default` (the bundle's own icon,
+/// Catppuccin Mocha's) for [ThemeChoice.mocha], else `dawn`, `tokyoNight` or
+/// `gruvbox`, the alternates the native sides know by these names
+/// (apps/pocketterm-desktop/tool/make_icon.swift draws them all).
+String appIconFor(ThemeChoice choice) => choice == ThemeChoice.mocha ? 'default' : choice.name;
 
 /// Keeps the app icon on [appearance]'s choice: [apply] gets [appIconFor]'s
 /// name now and after each change of choice. Returns what stops it.

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Android 12+ draws its own splash on this colour; no icon on it (the intro shows the icon), so the splash
-         is the plain background the intro starts on. This one is Auto's; a chosen theme's follows. -->
+         is the plain background the intro starts on. This one is Catppuccin Mocha's, the default; a chosen
+         theme's follows. -->
     <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">@color/pocketterm_win</item>
         <item name="android:windowSplashScreenBackground">@color/pocketterm_win</item>

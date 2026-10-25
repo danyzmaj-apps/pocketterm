@@ -9,6 +9,20 @@ Every user-facing feature, and what tests it. Four layers:
 
 Run the e2e suite on a quiet Mac: it opens throwaway terminal windows and refuses to start Ghostty while another Ghostty runs.
 
+## What to run for a change
+
+Don't run the whole e2e suite for every change: test what you changed and what it touches, so you know nothing near it broke.
+
+1. **Unit and widget tests** of every package and app you touched (CI runs them all anyway).
+2. **Find the rows** in the tables below for the features you changed *and* the features that share their code or screens (a sheet you made taller, a shared widget, a native file, a setting both apps read). Their *How it's tested* column names the e2e step, phone flow, smoke scenario or test file.
+3. **Run only those**, on the cheapest target that covers them:
+   - phone flows: `tool/e2e/run.sh --terminal kitty --phone-only <flow>,… [--phone-from-tree]` (add `fresh,pair-accept` first when the flow needs a paired phone), on the platform the change affects (`--platform android --avd <avd>` for Android code);
+   - desktop only: `tool/e2e/run.sh --terminal kitty --no-phone`, or a smoke scenario (`tool/smoke/scenario.sh <scenario>`);
+   - another terminal or server only when the change is about that terminal or server.
+4. **New behaviour gets a test** in the same change (a flow, step, scenario or unit test) and a row here, so the next change can find it.
+
+Full matrix runs (every terminal, server and phone platform, below and in [RELEASING.md](RELEASING.md#before-a-release-end-to-end)) are for big cross-cutting changes (protocol, encryption, session routing) or when a targeted run finds something it can't explain.
+
 ## Desktop
 
 | Feature | How it's tested | Gap |
@@ -47,7 +61,7 @@ Run the e2e suite on a quiet Mac: it opens throwaway terminal windows and refuse
 | Account tab: Erase… | step "account: Erase" (built-in server); `settings_account_test.dart`; server `edge_test.dart` | none |
 | Account tab: Sign out | step "account: sign out"; `settings_account_test.dart` | none |
 | Account tab: How your data is protected | step "settings: data protection"; smoke `settings` | none |
-| Account tab: Theme (Auto, Catppuccin Mocha, Rosé Pine Dawn, Tokyo Night, Gruvbox Material), kept in the preferences; every tab repainted | smoke `theme` (each kept as `flutter.theme`; Account, Phone, Coding agents and Terminals photographed in each; Auto last); core `theme_test.dart`, `app_icon_test.dart` | the Dock icon per theme (the app's own for Auto), the intro at the window's first showing and the colour under its first frame: manual; Windows' window and tray icons: manual (Windows hardware) |
+| Account tab: Theme (Catppuccin Mocha, the default, Rosé Pine Dawn, Tokyo Night, Gruvbox Material), kept in the preferences; every tab repainted | smoke `theme` (each kept as `flutter.theme`; Account, Phone, Coding agents and Terminals photographed in each; Mocha last); core `theme_test.dart`, `app_icon_test.dart` | the Dock icon per theme (the app's own for Mocha), the intro at the window's first showing and the colour under its first frame: manual; Windows' window and tray icons: manual (Windows hardware) |
 | Account tab: Quit PocketTerm | smoke `quit` | none |
 | Hosting states (no Tailscale, off, signed out, HTTPS off, failed, taken, renamed) | `hosting_test.dart`; smoke `wizard` (stand-in CLI) | none |
 | Menu bar icon: click opens the window | smoke `menubar` | none |
@@ -72,7 +86,7 @@ Run the e2e suite on a quiet Mac: it opens throwaway terminal windows and refuse
 | Notifications switch in the account sheet; why turning on failed (off in Settings, no address from Apple or Google) | flow `push_toggle`; `push_consent_test.dart` | no address from Apple or Google: unit only |
 | Tailscale Awaiting Approval help | `phone_edges_test.dart` | a tailnet with device approval: manual |
 | Account sheet rows, Leave this server (Cancel and Leave) | flows `account_sheet`, `signout`; `home_page_test.dart` | none |
-| Theme (account sheet → Theme: Catppuccin Mocha, Rosé Pine Dawn, Tokyo Night, Gruvbox Material, Auto), kept after a restart; iOS's icon-change alert | flow `theme` (the theme sheet, the session list and a session photographed in each); core `theme_test.dart`, `app_icon_test.dart` | the Android launcher icon (switched in release builds only, once the app leaves the screen), the launch intro and the colour before Flutter's first frame: manual |
+| Theme (account sheet → Theme: Catppuccin Mocha, the default, Rosé Pine Dawn, Tokyo Night, Gruvbox Material), kept after a restart; iOS's icon-change alert | flow `theme` (the theme sheet, the session list and a session photographed in each; Mocha last); core `theme_test.dart`, `app_icon_test.dart` | the Android launcher icon (switched in release builds only, once the app leaves the screen), the launch intro and the colour before Flutter's first frame: manual |
 | Computer picker, locked computer | flow `computers`; `home_page_test.dart`, `phone_edges_test.dart` | scanning a locked computer's code: manual (camera) |
 | Project list: sort, fold, long-press menu | flow `project_list`; `terminal_list_test.dart` | none |
 | Swipe left: End session | flow `end_session` | none |
@@ -87,7 +101,7 @@ Run the e2e suite on a quiet Mac: it opens throwaway terminal windows and refuse
 | Slash commands: / list, /new | flows `slash_new`, `real_omp`; step "phone: /new starts a fresh session in place" | none |
 | Slash command pickers: /model, /resume (search, Cancel) | flows `menu_model`, `menu_resume`; steps "phone: /model picker answered", "phone: /resume picker searched and answered"; `live_test.dart` (parseMenu) | none |
 | Approval (Approve) | flow `approval`; step "phone: approval answered" (Ghostty: left to the computer) | Deny: `live_test.dart`, demo; e2e answers Approve only |
-| Questions (choice, Other…) | flow `question`; step "phone: the agent’s question answered"; `live_test.dart` (answerKeys) | typed Other and multiple choice: unit only |
+| Questions (choice, Other…); a picked answer filled with the theme's accent | flow `question`; step "phone: the agent’s question answered"; `live_test.dart` (answerKeys); core `ui_test.dart` (picked and unpicked chips in each theme) | typed Other and multiple choice: unit only |
 | Plan review | flow `plan`; step "phone: the plan review answered"; `live_test.dart` (parsePlanReview) | none |
 | Screen page: key bar (Esc, Tab, arrows, Enter, ^C), typing, wrap | flows `screen`, `screen_keys`; steps "phone: keys reach the window", "phone: screen keys Tab, Enter, Ctrl+C reach the window" | none |
 | Screen from a conversation | flow `session_screen` | none |

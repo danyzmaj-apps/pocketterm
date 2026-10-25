@@ -1291,7 +1291,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               key: ValueKey('theme-${c.name}'),
               leading: ThemeSwatch(c),
               title: Text(c.label),
-              subtitle: c == ThemeChoice.auto ? Text('Follows the system', style: TextStyle(color: C.dim)) : null,
               trailing: appearance.choice == c ? Icon(Icons.check, color: C.accent) : null,
               onTap: () => unawaited(appearance.choose(c)),
             ),

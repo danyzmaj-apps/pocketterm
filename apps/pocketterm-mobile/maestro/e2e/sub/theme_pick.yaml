@@ -1,6 +1,7 @@
 # Account → Theme → PICK, from a relaunched app; then the theme sheet, the
 # session list and SESSION's page are photographed in it (theme-<NAME>-*).
-# iOS confirms the new home screen icon with an alert of its own: OK.
+# iOS confirms the new home screen icon with an alert of its own: OK. The sheet
+# shows when its Rosé Pine Dawn row does (the account sheet's reads Theme\n<theme>).
 #   env: PICK (regex: the theme's row), NAME (screenshot name), SESSION (regex)
 appId: com.danyzmaj.pocketterm
 ---
@@ -11,7 +12,7 @@ appId: com.danyzmaj.pocketterm
     timeout: 5000
 - tapOn: "Theme\n.*"
 - extendedWaitUntil:
-    visible: "Auto\nFollows the system"
+    visible: "Rosé Pine Dawn"
     timeout: 5000
 - tapOn: "${PICK}"
 - runFlow:
@@ -37,7 +38,7 @@ appId: com.danyzmaj.pocketterm
 - tapOn:
     point: "50%,8%"
 - extendedWaitUntil:
-    notVisible: "Auto\nFollows the system"
+    notVisible: "Rosé Pine Dawn"
     timeout: 5000
 - tapOn:
     point: "50%,8%"

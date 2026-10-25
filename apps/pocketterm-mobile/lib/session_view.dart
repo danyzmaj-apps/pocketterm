@@ -1976,11 +1976,15 @@ class _MenuCardState extends State<_MenuCard> {
   }
 
   Widget _item(int i, MenuItem item, {required bool enabled}) {
+    // The row the picker's cursor is on: tinted and outlined in the accent, so it reads in every theme.
     final current = i == widget.ask.selected;
     return Material(
       key: ValueKey('menu-$i'),
-      color: current ? C.sel : Colors.transparent,
-      borderRadius: C.round(8),
+      color: current ? C.accent.withValues(alpha: .16) : Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: C.round(8),
+        side: current ? BorderSide(color: C.accent, width: C.border) : BorderSide.none,
+      ),
       child: InkWell(
         borderRadius: C.round(8),
         onTap: enabled ? () => _pick(i) : null,

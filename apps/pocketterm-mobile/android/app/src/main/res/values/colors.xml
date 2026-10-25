@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The window behind Flutter and the launch screen: the Auto theme's background (packages/pocketterm_core/
-         lib/theme.dart), Rosé Pine Dawn's here and Catppuccin Mocha's in dark mode (values-night), which the
-         intro (packages/pocketterm_core/lib/intro.dart) starts on. -->
-    <color name="pocketterm_win">#FFFAF4ED</color>
+    <!-- The window behind Flutter and the launch screen: the default theme's background, Catppuccin Mocha's
+         (packages/pocketterm_core/lib/theme.dart), which the intro (packages/pocketterm_core/lib/intro.dart)
+         starts on. -->
+    <color name="pocketterm_win">#FF1E1E2E</color>
     <!-- Each theme's background, for its splash (values-v31/styles.xml). -->
     <color name="pocketterm_mocha">#FF1E1E2E</color>
     <color name="pocketterm_dawn">#FFFAF4ED</color>

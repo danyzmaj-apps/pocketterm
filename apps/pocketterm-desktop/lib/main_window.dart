@@ -1005,7 +1005,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _card(
           key: const ValueKey('settings-theme'),
           title: 'Theme',
-          sub: 'For this computer. Auto follows your system’s light or dark.',
+          sub: 'For this computer.',
           body: [
             Wrap(spacing: 8, runSpacing: 8, children: [for (final c in ThemeChoice.values) _themeTile(c)]),
           ],
@@ -1031,7 +1031,7 @@ class _SettingsPageState extends State<SettingsPage> {
     ];
   }
 
-  /// A theme to pick, with its swatch; the one picked is outlined in the accent.
+  /// A theme to pick, with its swatch; the one picked is tinted and outlined in the accent.
   Widget _themeTile(ThemeChoice c) {
     final on = appearance.choice == c;
     return Semantics(
@@ -1043,7 +1043,7 @@ class _SettingsPageState extends State<SettingsPage> {
         builder: (h) => Container(
           padding: const EdgeInsets.fromLTRB(6, 6, 12, 6),
           decoration: BoxDecoration(
-            color: on ? C.sel : (h ? C.win : Colors.transparent),
+            color: on ? Color.alphaBlend(C.accent.withValues(alpha: .18), C.card) : (h ? C.win : Colors.transparent),
             borderRadius: C.round(9),
             border: Border.all(color: on ? C.accent : C.line2, width: C.border),
           ),
@@ -1052,7 +1052,10 @@ class _SettingsPageState extends State<SettingsPage> {
             spacing: 10,
             children: [
               ThemeSwatch(c),
-              Text(c.label, style: TextStyle(fontSize: 12.5, color: on ? C.text : C.dim)),
+              Text(
+                c.label,
+                style: TextStyle(fontSize: 12.5, color: on ? C.text : C.dim, fontWeight: on ? FontWeight.w600 : null),
+              ),
             ],
           ),
         ),

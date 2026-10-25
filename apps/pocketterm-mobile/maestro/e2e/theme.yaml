@@ -1,15 +1,10 @@
 # Account → Theme: each theme in turn (sub/theme_pick.yaml photographs the
 # theme sheet, the session list and a session in it), the choice still there
-# after the app is stopped and started again, and Auto last, which the phone
-# started on.
+# after the app is stopped and started again, and Catppuccin Mocha last, the
+# default the phone started on (picked first, it would change nothing).
 #   env: SESSION (regex)
 appId: com.danyzmaj.pocketterm
 ---
-- runFlow:
-    file: sub/theme_pick.yaml
-    env:
-      PICK: "Catppuccin Mocha"
-      NAME: mocha
 - runFlow:
     file: sub/theme_pick.yaml
     env:
@@ -36,13 +31,13 @@ appId: com.danyzmaj.pocketterm
 - runFlow:
     file: sub/theme_pick.yaml
     env:
-      PICK: "Auto\nFollows the system"
-      NAME: auto
+      PICK: "Catppuccin Mocha"
+      NAME: mocha
 - stopApp
 - runFlow: sub/home.yaml
 - tapOn: "\n?Account"
 - extendedWaitUntil:
-    visible: "Theme\nAuto"
+    visible: "Theme\nCatppuccin Mocha"
     timeout: 5000
 - tapOn:
     point: "50%,8%"

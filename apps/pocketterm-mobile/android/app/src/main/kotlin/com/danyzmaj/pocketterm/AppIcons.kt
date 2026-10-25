@@ -4,13 +4,11 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.res.Configuration
-import android.content.res.Resources
 
 /**
  * The launcher icon per theme (packages/pocketterm_core/lib/app_icon.dart): one activity-alias of
- * MainActivity per icon (AndroidManifest.xml), IconDefault, IconMocha, IconDawn, IconTokyoNight and
- * IconGruvbox, the chosen one enabled and the rest disabled.
+ * MainActivity per icon (AndroidManifest.xml), IconDefault (the app's own, Catppuccin Mocha's), IconDawn,
+ * IconTokyoNight and IconGruvbox, the chosen one enabled and the rest disabled, 0.1.2's IconMocha among them.
  *
  * The switch waits for the app to leave the screen ([applyPending] from MainActivity.onStop): a
  * launcher drops the entry of a disabled alias at once, and some close the task started through it.
@@ -18,7 +16,10 @@ import android.content.res.Resources
  * (`flutter run` starts it), and an enabled alias would show a second icon.
  */
 object AppIcons {
-    private val icons = listOf("default", "mocha", "dawn", "tokyoNight", "gruvbox")
+    private val icons = listOf("default", "dawn", "tokyoNight", "gruvbox")
+
+    /** Aliases no icon asks for any more, disabled with the rest: IconMocha, 0.1.2's Mocha icon. */
+    private val retired = listOf("mocha")
 
     /** The icon asked for, until the app leaves the screen. */
     @Volatile
@@ -30,12 +31,10 @@ object AppIcons {
 
     /**
      * The system splash's theme for [icon] (values-v31/styles.xml), for SplashScreen.setSplashScreenTheme:
-     * the chosen theme's background, or the manifest's LaunchTheme (the system's light or dark) for Auto's
-     * default icon. Null for an unknown icon.
+     * the chosen theme's background, Catppuccin Mocha's for the default icon. Null for an unknown icon.
      */
     fun splashTheme(icon: String): Int? = when (icon) {
-        "default" -> Resources.ID_NULL
-        "mocha" -> R.style.LaunchTheme_Mocha
+        "default" -> R.style.LaunchTheme_Mocha
         "dawn" -> R.style.LaunchTheme_Dawn
         "tokyoNight" -> R.style.LaunchTheme_TokyoNight
         "gruvbox" -> R.style.LaunchTheme_Gruvbox
@@ -44,19 +43,16 @@ object AppIcons {
 
     /**
      * The background of the theme the person chose (packages/pocketterm_core/lib/theme.dart, kept by
-     * shared_preferences as `flutter.theme`); Auto's, by the system's light or dark, when none is.
+     * shared_preferences as `flutter.theme`); Catppuccin Mocha's when none is (or 0.1.2's `auto`).
      */
     fun themeBackground(context: Context): Int {
         val theme = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             .getString("flutter.theme", null)
-        val dark = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
-            Configuration.UI_MODE_NIGHT_YES
         return when (theme) {
-            "mocha" -> 0xFF1E1E2E
             "dawn" -> 0xFFFAF4ED
             "tokyoNight" -> 0xFF1A1B26
             "gruvbox" -> 0xFF282828
-            else -> if (dark) 0xFF1E1E2E else 0xFFFAF4ED
+            else -> 0xFF1E1E2E
         }.toInt()
     }
 
@@ -66,7 +62,7 @@ object AppIcons {
         if (!switchable(context)) return
         val pm = context.packageManager
         // The new one first, so the launcher always has one.
-        val order = listOf(icon) + icons.filter { it != icon }
+        val order = listOf(icon) + (icons + retired).filter { it != icon }
         for (name in order) {
             val alias = alias(context, name)
             val on = name == icon

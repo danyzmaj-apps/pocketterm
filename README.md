@@ -98,8 +98,8 @@ Full model: [SECURITY.md](SECURITY.md). What the publisher collects: the [privac
 
    | Device | Get it |
    | --- | --- |
-   | Mac | [PocketTerm-0.1.2.dmg](https://github.com/danyzmaj-apps/pocketterm/releases/download/v0.1.2/PocketTerm-0.1.2.dmg): notarized, updates itself |
-   | Windows | [PocketTerm-0.1.2-setup.exe](https://github.com/danyzmaj-apps/pocketterm/releases/download/v0.1.2/PocketTerm-0.1.2-setup.exe): per-user install. Not code-signed yet: on the SmartScreen warning choose **More info → Run anyway** |
+   | Mac | [PocketTerm-0.1.3.dmg](https://github.com/danyzmaj-apps/pocketterm/releases/download/v0.1.3/PocketTerm-0.1.3.dmg): notarized, updates itself |
+   | Windows | [PocketTerm-0.1.3-setup.exe](https://github.com/danyzmaj-apps/pocketterm/releases/download/v0.1.3/PocketTerm-0.1.3-setup.exe): per-user install. Not code-signed yet: on the SmartScreen warning choose **More info → Run anyway** |
    | iPhone | TestFlight, for invited testers |
    | Android | Google Play internal testing, for invited testers |
 
@@ -149,10 +149,10 @@ fvm dart format -l 120 lib test && fvm dart analyze --fatal-infos && fvm dart te
 deno fmt --check && deno check main.ts tests/*.ts && deno task test
 ```
 
-End to end on a Mac (a server, the desktop app, kitty, Ghostty and WezTerm, the phone in the iOS Simulator or an Android emulator; results in `build/e2e/`). `--server` picks a local server (the default), the built-in one over Tailscale, Supabase (local or a new project on supabase.com) or a server elsewhere; what each covers: [docs/TESTING.md](docs/TESTING.md).
+End to end on a Mac (a server, the desktop app, kitty, Ghostty and WezTerm, the phone in the iOS Simulator or an Android emulator; results in `build/e2e/`). `--server` picks a local server (the default), the built-in one over Tailscale, Supabase (local or a new project on supabase.com) or a server elsewhere. Run only what covers your change and the features around it; how to pick and what each covers: [docs/TESTING.md](docs/TESTING.md#what-to-run-for-a-change).
 
 ```sh
-tool/e2e/run.sh --terminal all
+tool/e2e/run.sh --terminal kitty --phone-only fresh,pair-accept,theme   # e.g. a change to the phone's theme picker
 ```
 
 Contributions: [CONTRIBUTING.md](CONTRIBUTING.md). Changes per version: [CHANGELOG.md](CHANGELOG.md).

@@ -278,13 +278,13 @@ theme() {
     return
   fi
   local label name t
-  for label in 'Catppuccin Mocha:mocha' 'Rosé Pine Dawn:dawn' 'Tokyo Night:tokyoNight' 'Gruvbox Material:gruvbox' \
-    'Auto:auto'; do
+  # Catppuccin Mocha, the default, last: picked first it would already be the choice, and nothing kept.
+  for label in 'Rosé Pine Dawn:dawn' 'Tokyo Night:tokyoNight' 'Gruvbox Material:gruvbox' 'Catppuccin Mocha:mocha'; do
     name=${label#*:}
     label=${label%%:*}
     step "$label"
     tab_press Account
-    shows 'For this computer. Auto follows your system’s light or dark.'
+    shows 'For this computer.'
     press "$label"
     check "kept as $name" wait_for 5 kept "$name"
     shot "theme-$name-account"

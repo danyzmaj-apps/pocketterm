@@ -24,15 +24,14 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     engine.run(withEntrypoint: nil)
     let controller = FlutterViewController(engine: engine, nibName: nil, bundle: nil)
     // The chosen theme's background (packages/pocketterm_core/lib/theme.dart, kept by shared_preferences as
-    // `flutter.theme`; Auto's by the system's light or dark), under the intro's first frame.
-    controller.backgroundColor = NSColor(name: nil) { appearance in
+    // `flutter.theme`; Catppuccin Mocha's when none is, or 0.1.2's `auto`), under the intro's first frame.
+    controller.backgroundColor = NSColor(name: nil) { _ in
       let rgb: UInt32 =
         switch UserDefaults.standard.string(forKey: "flutter.theme") {
-        case "mocha": 0x1E1E2E
         case "dawn": 0xFAF4ED
         case "tokyoNight": 0x1A1B26
         case "gruvbox": 0x282828
-        default: appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? 0x1E1E2E : 0xFAF4ED
+        default: 0x1E1E2E
         }
       return NSColor(
         srgbRed: CGFloat(rgb >> 16 & 0xFF) / 255, green: CGFloat(rgb >> 8 & 0xFF) / 255,

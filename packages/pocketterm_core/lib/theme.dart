@@ -185,10 +185,8 @@ class PtTheme {
   );
 }
 
-/// What the person picked: a theme, or [auto], which follows the system's
-/// light or dark.
+/// The theme the person picked; [mocha] until they pick one.
 enum ThemeChoice {
-  auto('Auto'),
   mocha('Catppuccin Mocha'),
   dawn('Rosé Pine Dawn'),
   tokyoNight('Tokyo Night'),
@@ -197,9 +195,8 @@ enum ThemeChoice {
   const ThemeChoice(this.label);
   final String label;
 
-  /// The theme this choice shows when the system is [system].
-  PtTheme resolve(Brightness system) => switch (this) {
-    auto => system == Brightness.dark ? PtTheme.mocha : PtTheme.dawn,
+  /// The theme this choice shows.
+  PtTheme get theme => switch (this) {
     mocha => PtTheme.mocha,
     dawn => PtTheme.dawn,
     tokyoNight => PtTheme.tokyoNight,
@@ -208,10 +205,8 @@ enum ThemeChoice {
 }
 
 /// The active theme and the choice behind it, kept per device; notifies
-/// when either changes, the system's light or dark included (for
-/// [ThemeChoice.auto]).
-/// The app reads it through [appearance].
-class Appearance extends ChangeNotifier with WidgetsBindingObserver {
+/// when the choice changes. The app reads it through [appearance].
+class Appearance extends ChangeNotifier {
   @visibleForTesting
   Appearance();
 
@@ -219,23 +214,19 @@ class Appearance extends ChangeNotifier with WidgetsBindingObserver {
   static const prefsKey = 'theme';
 
   SharedPreferences? _prefs;
-  ThemeChoice _choice = ThemeChoice.auto;
-  bool _observing = false;
+  ThemeChoice _choice = ThemeChoice.mocha;
 
   ThemeChoice get choice => _choice;
 
   /// The theme showing now.
-  PtTheme get theme => _choice.resolve(WidgetsBinding.instance.platformDispatcher.platformBrightness);
+  PtTheme get theme => _choice.theme;
 
-  /// Reads the kept choice and follows the system's light or dark from now on.
+  /// Reads the kept choice: Catppuccin Mocha when there's none or it's one
+  /// this version doesn't know (0.1.2's `auto` among them).
   void load(SharedPreferences prefs) {
     _prefs = prefs;
     final kept = prefs.getString(prefsKey);
-    _choice = ThemeChoice.values.firstWhere((c) => c.name == kept, orElse: () => ThemeChoice.auto);
-    if (!_observing) {
-      _observing = true;
-      WidgetsBinding.instance.addObserver(this);
-    }
+    _choice = ThemeChoice.values.firstWhere((c) => c.name == kept, orElse: () => ThemeChoice.mocha);
     notifyListeners();
   }
 
@@ -245,17 +236,6 @@ class Appearance extends ChangeNotifier with WidgetsBindingObserver {
     _choice = choice;
     notifyListeners();
     await _prefs?.setString(prefsKey, choice.name);
-  }
-
-  @override
-  void didChangePlatformBrightness() {
-    if (_choice == ThemeChoice.auto) notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    if (_observing) WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
   }
 }
 

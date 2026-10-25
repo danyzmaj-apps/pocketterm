@@ -53,10 +53,11 @@
             </intent-filter>
         </activity>
 
-        <!-- The launcher icons, one per theme (packages/pocketterm_core/lib/app_icon.dart; drawn by
-             apps/pocketterm-desktop/tool/make_icon.swift). Release builds enable IconDefault; AppIcons.kt
-             enables the chosen theme's and disables the rest. Each repeats MainActivity's meta-data, which
-             Flutter reads from the component it was started through. -->
+        <!-- The launcher icons (packages/pocketterm_core/lib/app_icon.dart; drawn by
+             apps/pocketterm-desktop/tool/make_icon.swift): IconDefault, the app's own (Catppuccin Mocha's), and one
+             per other theme. Release builds enable IconDefault; AppIcons.kt enables the chosen theme's and disables
+             the rest. Each repeats MainActivity's meta-data, which Flutter reads from the component it was started
+             through. -->
         <activity-alias
             android:name=".IconDefault"
             android:targetActivity=".MainActivity"
@@ -70,10 +71,13 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity-alias>
+        <!-- Retired: 0.1.2's Mocha icon, now IconDefault's. A phone that had picked it starts the app through this
+             one until AppIcons.kt moves it to IconDefault (it never enables it again); without it, that phone's
+             launcher would have no entry after the update. -->
         <activity-alias
             android:name=".IconMocha"
             android:targetActivity=".MainActivity"
-            android:icon="@mipmap/ic_launcher_mocha"
+            android:icon="@mipmap/ic_launcher"
             android:enabled="false"
             android:exported="true">
             <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />

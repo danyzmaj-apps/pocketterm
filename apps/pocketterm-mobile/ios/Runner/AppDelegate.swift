@@ -146,14 +146,19 @@ import UserNotifications
 
 /// The home screen icon per theme (packages/pocketterm_core/lib/app_icon.dart): the asset catalog's
 /// alternate icons, AppIcon-<Theme> (Runner's ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES, drawn by
-/// apps/pocketterm-desktop/tool/make_icon.swift), or the app's own for "default". iOS confirms every change
-/// with an alert of its own, so the icon showing already isn't set again, and it only takes the change from
-/// an active app: one asked for before that waits for it.
+/// apps/pocketterm-desktop/tool/make_icon.swift), or the app's own, Catppuccin Mocha's, for "default". iOS
+/// confirms every change with an alert of its own, so the icon showing already isn't set again, and it only
+/// takes the change from an active app: one asked for before that waits for it.
 enum AppIcons {
+  /// 0.1.2's Mocha alternate, now the app's own icon: still set on a phone that had picked it, and the same
+  /// picture, so it counts as the app's own rather than costing an alert to clear.
+  private static let retired: Set<String> = ["AppIcon-Mocha"]
+
   static func set(_ icon: String, result: @escaping FlutterResult) {
     let app = UIApplication.shared
     let name: String? = icon == "default" ? nil : "AppIcon-" + icon.prefix(1).uppercased() + icon.dropFirst()
-    guard app.supportsAlternateIcons, app.alternateIconName != name else { return result(nil) }
+    let showing = app.alternateIconName.flatMap { retired.contains($0) ? nil : $0 }
+    guard app.supportsAlternateIcons, showing != name else { return result(nil) }
     guard app.applicationState == .active else {
       var waiter: NSObjectProtocol?
       waiter = NotificationCenter.default.addObserver(

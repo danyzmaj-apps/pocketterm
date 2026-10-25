@@ -1,6 +1,6 @@
 # Releasing
 
-PocketTerm is a personal project. Maintainer notes for shipping its four builds: the Mac app (notarized DMG on GitHub Releases, updated through Sparkle), the Windows app (unsigned installer on the same GitHub release), the iPhone app (TestFlight only) and the Android app (Google Play internal testing only). The phone apps are not published on the App Store or Google Play. Plus the push relay the phones depend on.
+PocketTerm is a personal project. Maintainer notes for shipping its four builds: the Mac app (notarized DMG on GitHub Releases, updated through Sparkle), the Windows app (unsigned installer on the same GitHub release), the iPhone app (TestFlight) and the Android app (Google Play open testing). The phone apps are not published on the App Store or in Google Play's production track. Plus the push relay the phones depend on.
 
 Every app's version is the `version:` line of its own `pubspec.yaml` (`apps/pocketterm-desktop/pubspec.yaml`, `apps/pocketterm-mobile/pubspec.yaml`), as `<name>+<build>`. The build number must grow with every upload to any store; keep both apps on the same version name. The Mac and Windows apps are one Flutter app, so they always share a version. Baker numbers phone builds itself ([below](#each-release-1)), so TestFlight and Play build numbers don't match the pubspec's.
 
@@ -123,9 +123,9 @@ Nothing to do by hand: publishing the GitHub release (which `release.sh` does) s
 
 To build the installer locally, see [BUILDING.md](BUILDING.md#windows).
 
-## Phones: TestFlight and Play internal testing
+## Phones: TestFlight and Play open testing
 
-Both phone builds are built and uploaded by **Baker** (`baker.danyzmaj.com`, or its `baker_…` MCP tools), which runs the build on this Mac with the keys in the maintainer's keys folder. Nothing is submitted for App Store or Play review.
+Both phone builds are built and uploaded by **Baker** (`baker.danyzmaj.com`, or its `baker_…` MCP tools), which runs the build on this Mac with the keys in the maintainer's keys folder. Each build goes to external testers: on iPhone the TestFlight group **External testers** (public link `https://testflight.apple.com/join/UAHRArPQ`; each new build waits for Beta App Review, usually under a day), on Android the Play **open testing** track (API track `beta`; each release goes through Play's review). The TestFlight group **Internal** gets every build at once, without review.
 
 ### One-time setup
 
@@ -141,7 +141,7 @@ Android:
 3. `apps/pocketterm-mobile/android/app/google-services.json` (git-ignored) from the Firebase project `pocketterm-cf6de8`, whose service account the relay holds. A release build stops without it (it would have no push).
 4. A Play service account (`shipyard-play-uploader@holdup-signup.iam.gserviceaccount.com`), its JSON in the keys folder, set as the project's Play JSON in Baker. Invite it in Play Console → **Users and permissions** with release access to the app; until then uploads fail with a permission error.
 
-Baker: add `apps/pocketterm-mobile` as a project, set its App Store Connect key preset and Play JSON, and use a workflow with the Play track `internal`.
+Baker: add `apps/pocketterm-mobile` as a project, set its App Store Connect key preset and Play JSON, and use a workflow with the Play track `beta` (open testing), status `completed`, and the TestFlight group `External testers`.
 
 ### Each release
 

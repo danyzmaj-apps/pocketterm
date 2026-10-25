@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' show min;
 
 import 'package:file_selector/file_selector.dart';
-import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -16,7 +15,9 @@ import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/coach.dart';
+import 'package:pocketterm_mobile/queue_screen.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
+import 'package:pocketterm_mobile/voice.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 const _mono = TextStyle(fontFamily: 'Menlo', fontFamilyFallback: ['Courier'], fontSize: 12, height: 1.35);
@@ -57,6 +58,7 @@ class SessionPage extends StatefulWidget {
 class _SessionPageState extends State<SessionPage> {
   final _scroll = ScrollController();
   final _field = TextEditingController();
+  final _fieldFocus = FocusNode();
   final _attachments = ChatAttachments();
   late final VoidCallback _unwatch;
   final _openedAt = DateTime.now();
@@ -128,6 +130,7 @@ class _SessionPageState extends State<SessionPage> {
     remote.removeListener(_continueWhenReady);
     _scroll.dispose();
     _field.dispose();
+    _fieldFocus.dispose();
     _attachments.dispose();
     super.dispose();
   }
@@ -185,6 +188,21 @@ class _SessionPageState extends State<SessionPage> {
       if (mounted) termToast(context, e, above: _composerKey);
     }
     if (mounted) setState(() => _sending = false);
+  }
+
+  /// What was said goes after what's typed; Send then sends it all as Send would now (steering, queued or not,
+  /// with the attachments), and what can't go yet stays in the field. Insert leaves it there to go on typing.
+  void _voiced(VoiceResult r) {
+    final text = appendSpoken(_field.text, r.text);
+    _field.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    if (r.send) {
+      unawaited(_send(busy: remote.session(key)?.busy ?? false));
+    } else {
+      _fieldFocus.requestFocus();
+    }
   }
 
   /// Sends [text] and [attached] as the person's message, which shows at once at the bottom of the transcript
@@ -625,6 +643,8 @@ class _SessionPageState extends State<SessionPage> {
     final agent = _agent(s);
     // One at a time, in order: the next waits until the computer has the one sending.
     final canSend = online && !_sending && !_delivering && (_field.text.trim().isNotEmpty || !_attachments.isEmpty);
+    // Nothing to send: the button there is the microphone.
+    final talk = !_sending && _field.text.trim().isEmpty && _attachments.isEmpty;
     final slash = _field.text.startsWith('/');
     final commanding = online && s != null && slash;
     final noWindow = commanding && !_can(_windowKey(s), TermCap.line);
@@ -745,6 +765,7 @@ class _SessionPageState extends State<SessionPage> {
                           key: const ValueKey('session-input'),
                           onTapOutside: dismissKeyboard,
                           controller: _field,
+                          focusNode: _fieldFocus,
                           minLines: 1,
                           maxLines: 6,
                           enabled: online,
@@ -766,17 +787,33 @@ class _SessionPageState extends State<SessionPage> {
                     ),
                   ),
                 ),
+                // A command's name isn't spoken; otherwise a smaller microphone beside Send adds to what's typed.
+                if (!talk && !_sending && online && !slash)
+                  VoiceMic(
+                    key: const ValueKey('session-mic-small'),
+                    small: true,
+                    enabled: online,
+                    existing: () => _field.text,
+                    onResult: _voiced,
+                  ),
                 // Part of the field for tap-outside: sending keeps the
                 // keyboard up.
                 TextFieldTapRegion(
-                  child: IconButton(
-                    key: const ValueKey('session-send'),
-                    tooltip: 'Send',
-                    onPressed: canSend ? () => unawaited(_send(busy: busy)) : null,
-                    icon: _sending
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                        : Icon(Icons.arrow_upward, color: canSend ? C.accent : C.dim2),
-                  ),
+                  child: talk
+                      ? VoiceMic(
+                          key: const ValueKey('session-mic'),
+                          enabled: online,
+                          existing: () => _field.text,
+                          onResult: _voiced,
+                        )
+                      : IconButton(
+                          key: const ValueKey('session-send'),
+                          tooltip: 'Send',
+                          onPressed: canSend ? () => unawaited(_send(busy: busy)) : null,
+                          icon: _sending
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                              : Icon(Icons.arrow_upward, color: canSend ? C.accent : C.dim2),
+                        ),
                 ),
               ],
             ),
@@ -1107,72 +1144,37 @@ class _QueueStripState extends State<_QueueStrip> {
   bool _folded = false;
   bool _pausing = false;
 
-  /// The order set here (ids), until the computer's queue has it.
-  List<String>? _order;
-
-  /// Deleted or sent from here, until the computer's queue no longer has them.
-  final _gone = <String>{};
+  final _view = QueueView();
 
   /// About one row's height: the list shows three and a half, and scrolls for more.
   static const _row = 56.0;
 
   TerminalRemote get remote => widget.remote;
-
-  /// The computer's [queue] in the order set here, and of those the ones that show.
-  (List<LiveQueued>, List<LiveQueued>) _items(List<LiveQueued> queue) {
-    final ids = [for (final q in queue) q.id];
-    _gone.removeWhere((id) => !ids.contains(id));
-    final order = _order;
-    if (order != null && listEquals(ids.where(order.contains).toList(), order.where(ids.contains).toList())) {
-      _order = null;
-    }
-    final byId = {for (final q in queue) q.id: q};
-    final all = _order == null
-        ? queue
-        : [
-            for (final id in _order!) ?byId[id],
-            for (final q in queue)
-              if (!_order!.contains(q.id)) q,
-          ];
-    return (
-      all,
-      [
-        for (final q in all)
-          if (!_gone.contains(q.id)) q,
-      ],
-    );
-  }
-
   void _toast(Object e) => termToast(context, e, above: widget.toastAbove);
 
   /// Moves the one shown at [from] to [to] (its place once moved).
   Future<void> _move(List<LiveQueued> all, List<LiveQueued> shown, int from, int to) async {
     if (to == from) return;
     final id = shown[from].id;
-    final seen = [for (final q in shown) q.id]
-      ..removeAt(from)
-      ..insert(to, id);
-    // Where it goes among all of them, those going too: before the one it now sits above, else after the one below.
-    final order = [for (final q in all) q.id]..remove(id);
-    order.insert(to + 1 < seen.length ? order.indexOf(seen[to + 1]) : order.indexOf(seen[to - 1]) + 1, id);
-    setState(() => _order = order);
+    final at = _view.drop(all, shown, from, to);
+    setState(() {});
     try {
-      await remote.moveQueued(widget.session, id, order.indexOf(id));
+      await remote.moveQueued(widget.session, id, at);
     } on Object catch (e) {
       if (!mounted) return;
-      setState(() => _order = null);
+      setState(_view.forgetOrder);
       _toast(e);
     }
   }
 
   /// Takes [id] out of the list at once, back if [request] fails.
   Future<void> _drop(String id, Future<void> Function() request) async {
-    setState(() => _gone.add(id));
+    setState(() => _view.gone.add(id));
     try {
       await request();
     } on Object catch (e) {
       if (!mounted) return;
-      setState(() => _gone.remove(id));
+      setState(() => _view.gone.remove(id));
       _toast(e);
     }
   }
@@ -1211,7 +1213,7 @@ class _QueueStripState extends State<_QueueStrip> {
   @override
   Widget build(BuildContext context) {
     final s = widget.summary;
-    final (all, shown) = _items(s?.queue ?? const []);
+    final (all, shown) = _view.items(s?.queue ?? const []);
     final paused = s?.paused ?? false;
     final online = widget.online;
     return Reveal(
@@ -1229,25 +1231,39 @@ class _QueueStripState extends State<_QueueStrip> {
                       identifier: 'queue-strip',
                       child: Row(
                         children: [
+                          IconButton(
+                            key: const ValueKey('queue-fold'),
+                            tooltip: _folded ? 'Show the queue' : 'Fold the queue',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => setState(() => _folded = !_folded),
+                            icon: Icon(_folded ? Icons.chevron_right : Icons.expand_more, size: 18, color: C.dim),
+                          ),
                           Expanded(
                             child: InkWell(
-                              key: const ValueKey('queue-fold'),
+                              key: const ValueKey('queue-open-header'),
                               canRequestFocus: false,
                               borderRadius: C.round(6),
-                              onTap: () => setState(() => _folded = !_folded),
+                              onTap: () => unawaited(openQueue(context, remote, widget.session)),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 8),
                                 child: Row(
                                   children: [
-                                    Icon(_folded ? Icons.chevron_right : Icons.expand_more, size: 18, color: C.dim),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '${paused ? 'Queue paused' : 'Queued'} · ${shown.length}',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: paused ? C.warn : C.dim,
+                                    Flexible(
+                                      child: Text(
+                                        '${paused ? 'Queue paused' : 'Queued'} · ${shown.length}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: paused ? C.warn : C.dim,
+                                        ),
                                       ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Semantics(
+                                      identifier: 'queue-open',
+                                      child: Icon(Icons.open_in_full, size: 14, color: C.dim),
                                     ),
                                   ],
                                 ),

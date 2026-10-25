@@ -1,0 +1,126 @@
+# The demo's session at work ("Rate-limit the plant search") has prompts in its
+# queue: its strip opens the whole queue over the screen, where a long prompt
+# shows whole, one moves to the top, one is edited in place, one is added at
+# the end, one is deleted and comes back with Undo, one is sent now and shows
+# as Sent, and the queue pauses and resumes; then it closes. Needs the app
+# signed out, as after a fresh install. Photographs each step
+# (queue-<THEME>-*), so it can run once per theme.
+#   maestro test -e THEME=mocha queue.yaml
+appId: com.danyzmaj.pocketterm
+---
+- launchApp
+# Started in another theme (written to its preferences before launch), iOS says it changed the app's icon.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: ".*changed the icon.*"
+          timeout: 3000
+          optional: true
+      - runFlow:
+          when:
+            visible: ".*changed the icon.*"
+          commands:
+            - tapOn:
+                text: "OK"
+                retryTapIfNoChange: false
+- scrollUntilVisible:
+    element: "Try the demo"
+- tapOn: "Try the demo"
+# A fresh install may ask first whether to have the first-use tips.
+- extendedWaitUntil:
+    visible: "No thanks"
+    timeout: 2500
+    optional: true
+- tapOn:
+    text: "No thanks"
+    optional: true
+- extendedWaitUntil:
+    visible: ".*DEMO.*"
+    timeout: 5000
+- runFlow: tips.yaml
+- tapOn: ".*Rate-limit the plant search.*"
+- runFlow: tips.yaml
+- extendedWaitUntil:
+    visible: "Queued · 4"
+    timeout: 5000
+- takeScreenshot: queue-${THEME}-strip
+- tapOn: "Queued · 4"
+- extendedWaitUntil:
+    visible: "(?i)queued · 4"
+    timeout: 5000
+- assertVisible: "(?i)working"
+- assertVisible: "Show more"
+- takeScreenshot: queue-${THEME}-open
+- tapOn: "Show more"
+- assertVisible: "Show less"
+- takeScreenshot: queue-${THEME}-long
+- tapOn: "Show less"
+# The third, with its image, to the top.
+- tapOn:
+    id: "queue-menu-dq3"
+- tapOn: "Move to top"
+- waitForAnimationToEnd
+- takeScreenshot: queue-${THEME}-moved
+# Edited in place.
+- tapOn: ".*Update the limits section of the docs.*"
+- inputText: " And the changelog."
+- takeScreenshot: queue-${THEME}-editing
+- tapOn: "Save"
+- extendedWaitUntil:
+    visible: ".*Update the limits section of the docs. And the changelog.*"
+    timeout: 5000
+# Added at the end.
+- tapOn: "Add to the queue"
+- inputText: "Then open a pull request."
+- tapOn:
+    id: "queue-add"
+- extendedWaitUntil:
+    visible: ".*Then open a pull request.*"
+    timeout: 5000
+- hideKeyboard
+- assertVisible: "(?i)queued · 5"
+- takeScreenshot: queue-${THEME}-added
+# Deleted, then back with Undo.
+- tapOn:
+    id: "queue-menu-dq1"
+- tapOn: "Delete"
+- extendedWaitUntil:
+    visible: "Undo"
+    timeout: 5000
+- assertNotVisible: ".*Add a test for the 429 answer.*"
+- takeScreenshot: queue-${THEME}-deleted
+- tapOn: "Undo"
+- extendedWaitUntil:
+    visible: ".*Add a test for the 429 answer.*"
+    timeout: 5000
+# Sent now: shows as Sent a moment.
+- tapOn:
+    id: "queue-menu-dq3"
+- tapOn: "Send now"
+- extendedWaitUntil:
+    visible: "(?i)sent"
+    timeout: 3000
+- takeScreenshot: queue-${THEME}-sent
+- extendedWaitUntil:
+    notVisible: "(?i)sent"
+    timeout: 5000
+# Paused and resumed.
+- tapOn: "(?i)pause"
+- extendedWaitUntil:
+    visible: "(?i)paused"
+    timeout: 5000
+- takeScreenshot: queue-${THEME}-paused
+- tapOn: "(?i)resume"
+- extendedWaitUntil:
+    visible: "(?i)working"
+    timeout: 5000
+- tapOn: "Close"
+- extendedWaitUntil:
+    notVisible: "Add to the queue"
+    timeout: 5000
+- assertVisible: "Queued · 4"
+- tapOn: "Back"
+- tapOn: "Exit demo"
+- assertVisible: "Scan the code from your computer"

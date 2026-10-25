@@ -1,0 +1,107 @@
+# Voice prompts in the demo, photographed as voice-<NAME>-*. Needs an E2E build
+# (--dart-define=POCKETTERM_E2E=true): the Simulator has no microphone, so lib/voice.dart's scripted speaker says
+# "Add a dark mode toggle to the settings page and write a test for it." where the phone would hear the person.
+# Signed out (the demo), in the theme already chosen: the demo has no account sheet to pick one, so set it in the
+# app's preferences with the app stopped (THEME: mocha, dawn, tokyoNight, gruvbox):
+#   C=$(xcrun simctl get_app_container booted com.danyzmaj.pocketterm data)
+#   xcrun simctl spawn booted defaults write $C/Library/Preferences/com.danyzmaj.pocketterm flutter.theme -string THEME
+#   maestro test -e NAME=<name> voice.yaml
+appId: com.danyzmaj.pocketterm
+---
+- launchApp
+# A theme other than Mocha brings its icon, which iOS confirms with an alert of its own.
+- extendedWaitUntil:
+    visible: ".*changed the icon.*"
+    timeout: 3000
+    optional: true
+- tapOn:
+    text: "OK"
+    optional: true
+    retryTapIfNoChange: false
+- scrollUntilVisible:
+    element: "Try the demo"
+- tapOn: "Try the demo"
+- extendedWaitUntil:
+    visible: ".*DEMO.*"
+    timeout: 8000
+- tapOn: ".*Add a soil moisture endpoint.*"
+# Nothing typed: the composer's button is the microphone. A tap listens until Stop.
+- assertVisible:
+    id: "session-mic"
+- assertNotVisible:
+    id: "session-mic-small"
+- takeScreenshot: voice-${NAME}-composer
+- tapOn:
+    id: "session-mic"
+- extendedWaitUntil:
+    visible: ".*dark mode toggle.*"
+    timeout: 5000
+- takeScreenshot: voice-${NAME}-listening
+- extendedWaitUntil:
+    visible: ".*test for it\\..*"
+    timeout: 8000
+- tapOn:
+    id: "voice-stop"
+- extendedWaitUntil:
+    visible:
+      id: "voice-send"
+    timeout: 5000
+- takeScreenshot: voice-${NAME}-review
+# Edited in place, then into the composer with Insert.
+- tapOn:
+    id: "voice-edit"
+- inputText: " Please"
+- assertVisible: ".*Please.*"
+# A tap outside the text puts the keyboard away.
+- tapOn: "Voice prompt"
+- takeScreenshot: voice-${NAME}-edited
+- tapOn:
+    id: "voice-insert"
+- extendedWaitUntil:
+    notVisible:
+      id: "voice-insert"
+    timeout: 5000
+- assertVisible: ".*dark mode toggle.*Please.*"
+# Text in the field: Send is the button, a smaller microphone beside it adds to what's there.
+- assertNotVisible:
+    id: "session-mic"
+# The title, as a tap outside the field.
+- tapOn: ".*Add a soil moisture endpoint.*"
+- takeScreenshot: voice-${NAME}-inserted
+- tapOn:
+    id: "session-mic-small"
+- extendedWaitUntil:
+    visible: ".*test for it\\..*"
+    timeout: 10000
+- takeScreenshot: voice-${NAME}-append
+- tapOn:
+    id: "voice-stop"
+- extendedWaitUntil:
+    visible:
+      id: "voice-send"
+    timeout: 5000
+- tapOn:
+    id: "voice-send"
+# Sent as one prompt, what was typed first; the demo answers that nothing ran.
+- extendedWaitUntil:
+    visible: ".*nothing ran.*"
+    timeout: 8000
+- assertVisible:
+    id: "session-mic"
+- takeScreenshot: voice-${NAME}-sent
+# Held: listening while the finger is down; lifting stops and leaves it to check.
+- longPressOn:
+    id: "session-mic"
+- extendedWaitUntil:
+    visible:
+      id: "voice-send"
+    timeout: 8000
+- takeScreenshot: voice-${NAME}-hold-review
+- tapOn:
+    id: "voice-cancel"
+- extendedWaitUntil:
+    notVisible:
+      id: "voice-cancel"
+    timeout: 5000
+- assertVisible:
+    id: "session-mic"

@@ -16,6 +16,7 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
@@ -50,6 +51,9 @@ class MainActivity : FlutterActivity() {
     /** Waiting for the notification permission's answer. */
     private val permissionWaiters = mutableListOf<(Boolean) -> Unit>()
 
+    /** The composer's microphone. */
+    private val dictation = Dictation(this)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // After the system's splash, until Flutter's first frame: the chosen theme's background, which the
@@ -77,9 +81,11 @@ class MainActivity : FlutterActivity() {
         ch.setMethodCallHandler(::handle)
         channel = ch
         NativeEvents.channel = ch
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "pocketterm/speech").setStreamHandler(dictation)
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        dictation.onCancel(null)
         if (NativeEvents.channel === channel) NativeEvents.channel = null
         channel = null
         super.cleanUpFlutterEngine(flutterEngine)
@@ -178,6 +184,9 @@ class MainActivity : FlutterActivity() {
                 result.success(null)
             }
             "liveActivities" -> result.success(SessionActivities.running(this))
+            "speechCheck" -> dictation.check(result)
+            "speechStop" -> dictation.stop(result)
+            "speechFix" -> dictation.fix(args["fix"] as? String, result)
             else -> result.notImplemented()
         }
     }
@@ -216,6 +225,9 @@ class MainActivity : FlutterActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == Dictation.MIC_REQUEST) {
+            return dictation.micAnswered(grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
+        }
         if (requestCode != NOTIFICATIONS_REQUEST) return
         val allowed = Notifications.allowed(this)
         val waiters = permissionWaiters.toList()

@@ -230,7 +230,29 @@ class DemoComputer {
   final Directory _cache;
   Timer? _timer;
   final Map<String, List<LiveItem>> _transcripts = demoTranscripts();
-  final _overrides = <String, Map<String, dynamic>>{};
+  final _overrides = <String, Map<String, dynamic>>{
+    // Prompts waiting for the run at work to end, to look at, change and move in the queue.
+    'tmux-%4': {
+      'queue': [
+        {'id': 'dq1', 't': 'Add a test for the 429 answer and its Retry-After header.'},
+        {
+          'id': 'dq2',
+          't':
+              'Then make the limit configurable per API key, 60 requests a minute by default. Read it from '
+              'config/limits.yaml, fall back to the default when a key has no entry, and log once at startup '
+              'which keys have a limit of their own. Keep the middleware small: the lookup goes in a function of '
+              'its own, so it can be tested without a server running.',
+        },
+        {'id': 'dq3', 't': 'This trace is from production: is it the same bug?', 'im': 1},
+        {
+          'id': 'dq4',
+          't': 'Update the limits section of the docs.',
+          'f': ['limits.md'],
+        },
+      ],
+    },
+  };
+  int _queued = 4;
 
   /// Never asked anything: the list and the remote are fed here.
   static final _nowhere = PocketTermServerClient(
@@ -308,6 +330,15 @@ class DemoComputer {
   Map<String, dynamic> _run(Map<String, dynamic> p) {
     final session = p['session'] as String?;
     switch (p['op']) {
+      case 'prompt' when session != null && p['deliver'] == 'followUp' && _busy(session):
+        final id = 'dq${++_queued}';
+        _setQueue(session, [
+          ..._queue(session),
+          {'id': id, 't': p['text'] as String? ?? ''},
+        ]);
+        return {'queued': id};
+      case 'queue' when session != null:
+        return _changeQueue(session, p);
       case 'prompt' when session != null:
         _add(
           session,
@@ -344,6 +375,50 @@ class DemoComputer {
       default:
         return {'error': demoNoComputer};
     }
+  }
+
+  bool _busy(String session) =>
+      _sessions(DateTime.now(), _overrides).any((s) => s['key'] == session && s['busy'] == true);
+
+  List<Map<String, dynamic>> _queue(String session) => [
+    for (final q in _overrides[session]?['queue'] as List? ?? const [])
+      Map<String, dynamic>.of(q as Map<String, dynamic>),
+  ];
+
+  void _setQueue(String session, List<Map<String, dynamic>> queue, {bool? paused}) {
+    _overrides[session] = {
+      ...?_overrides[session],
+      'queue': queue,
+      'paused': queue.isNotEmpty && (paused ?? _overrides[session]?['paused'] == true),
+    };
+    _sendState();
+  }
+
+  /// The phone's change to [session]'s queue, as the computer makes it (LiveHub in apps/pocketterm-desktop).
+  Map<String, dynamic> _changeQueue(String session, Map<String, dynamic> p) {
+    final queue = _queue(session);
+    final at = queue.indexWhere((q) => q['id'] == p['item']);
+    final what = p['do'];
+    if (at < 0 && what != 'pause' && what != 'resume') return {'error': 'That prompt has gone to the agent already.'};
+    switch (what) {
+      case 'edit':
+        queue[at]['t'] = p['text'] as String? ?? '';
+      case 'remove':
+        queue.removeAt(at);
+      case 'move':
+        final q = queue.removeAt(at);
+        queue.insert(((p['to'] as num?)?.toInt() ?? 0).clamp(0, queue.length), q);
+      case 'send':
+        final q = queue.removeAt(at);
+        _setQueue(session, queue);
+        _add(session, [(ItemKind.user, q['t'] as String? ?? '')], {});
+        return {};
+      case 'pause' || 'resume':
+        _setQueue(session, queue, paused: what == 'pause');
+        return {};
+    }
+    _setQueue(session, queue);
+    return {};
   }
 
   void dispose() {

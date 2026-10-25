@@ -88,7 +88,7 @@ class _GetReadyPageState extends State<GetReadyPage> {
   @override
   void initState() {
     super.initState();
-    unawaited(_setUpAgents());
+    unawaited(app.checkAgents());
     unawaited(_look());
     _timer = Timer.periodic(widget.poll, (_) => unawaited(_look()));
     _live = app.live.changes.listen((_) => unawaited(_lookAtWindows()));
@@ -119,16 +119,6 @@ class _GetReadyPageState extends State<GetReadyPage> {
 
   void _hidden() {
     if (app.mainHidden.value) _lookUntil ??= DateTime.now().add(widget.lookHidden);
-  }
-
-  /// PocketTerm into every agent found that lacks it or has an old copy.
-  Future<void> _setUpAgents() async {
-    await app.checkAgents();
-    for (final MapEntry(key: agent, value: check) in {...?app.agents}.entries) {
-      if (!mounted) return;
-      final s = check.state;
-      if (s.problem == null && !(s.installed && s.current)) await _install(agent);
-    }
   }
 
   Future<void> _install(Agent agent) async {

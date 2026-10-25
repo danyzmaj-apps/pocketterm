@@ -106,7 +106,7 @@ Full model: [SECURITY.md](SECURITY.md). What the publisher collects: the [privac
    Without an invitation, [build the phone app from source](docs/BUILDING.md).
 
 2. **Set up the server.** Open PocketTerm on the computer. The wizard asks where the server runs and walks you through it: installing and signing in to Tailscale, the four commands for a VPS, or a Supabase access token for a project it sets up itself. It shows every command before it runs anything.
-3. **Get the computer ready.** The checklist installs PocketTerm into omp and Claude Code, fixes up your terminals and offers your project folders.
+3. **Get the computer ready.** The checklist offers to install PocketTerm into omp and Claude Code (one click each), fixes up your terminals and offers your project folders.
 4. **Scan the code.** In the phone app, tap **Scan the code from your computer** and scan the QR code the checklist shows (later: **Settings → Phone → Add a phone…**). The code is single-use for sign-in, expires in 10 minutes and carries the computer's key: show it only to your own phone. With several computers, scan each one's code once.
 
 <p align="center">

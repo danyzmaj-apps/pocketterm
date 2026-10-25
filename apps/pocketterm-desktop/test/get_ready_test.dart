@@ -77,18 +77,26 @@ void main() {
 
   bool shows(String text) => find.textContaining(text).evaluate().isNotEmpty;
 
-  testWidgets('PocketTerm goes into every agent found, and a failure says why and offers Retry', (tester) async {
+  testWidgets('opening it installs nothing; Install puts PocketTerm in, and a failure says why and offers Retry', (
+    tester,
+  ) async {
     // omp has run here; Claude Code is installed, and installing its plugin fails.
     Directory('$home/.omp').createSync();
     final claude = FakeClaude('$home/bin/claude')..fail = 'plugin install pocketterm@pocketterm --json';
     File(claude.path).createSync(recursive: true);
     await pump(tester, (app) => GetReadyPage(app: app), claude: claude);
 
-    await settle(tester, () => shows('PocketTerm is installed in omp') && shows("Couldn't install PocketTerm in"));
-    expect(File('$home/.omp/agent/extensions/pocketterm-live.ts').existsSync(), isTrue);
-    expect(claude.calls, contains('plugin install pocketterm@pocketterm --json'));
+    await settle(tester, () => shows('PocketTerm isn\u2019t installed in omp'));
+    expect(File('$home/.omp/agent/extensions/pocketterm-live.ts').existsSync(), isFalse);
+    expect(claude.calls, isNot(contains('plugin install pocketterm@pocketterm --json')));
     expect(find.textContaining('Claude Code not found'), findsNothing, reason: 'both agents are here');
 
+    await tester.tap(find.text('Install').first);
+    await settle(tester, () => shows('PocketTerm is installed in omp'));
+    expect(File('$home/.omp/agent/extensions/pocketterm-live.ts').existsSync(), isTrue);
+    await tester.tap(find.text('Install'));
+    await settle(tester, () => shows("Couldn't install PocketTerm in"));
+    expect(claude.calls, contains('plugin install pocketterm@pocketterm --json'));
     // Fixed meanwhile: Retry installs it, and Claude Code lists it from then on.
     claude
       ..fail = null
@@ -107,7 +115,7 @@ void main() {
   testWidgets('an agent that isn’t here is left for later; none at all needs one installed', (tester) async {
     Directory('$home/.omp').createSync();
     await pump(tester, (app) => GetReadyPage(app: app));
-    await settle(tester, () => shows('PocketTerm is installed in omp'));
+    await settle(tester, () => shows('PocketTerm isn\u2019t installed in omp'));
     expect(find.textContaining('Claude Code not found'), findsOneWidget);
 
     Directory('$home/.omp').deleteSync(recursive: true);
@@ -124,7 +132,7 @@ void main() {
       TermWindow(key: 'kitty-1/5', title: 'zsh', tab: '', cwd: home, program: 'zsh'),
       TermWindow(key: 'kitty-1/6', title: 'claude', tab: '', cwd: '$home/Dev/shop', program: 'claude'),
     ];
-    await settle(tester, () => shows('PocketTerm is installed in omp'));
+    await settle(tester, () => shows('PocketTerm isn\u2019t installed in omp'));
     await tester.pump(const Duration(milliseconds: 150));
     await tester.pump();
     expect(find.text('Sessions that were already open'), findsOneWidget);

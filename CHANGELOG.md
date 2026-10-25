@@ -2,6 +2,12 @@
 
 What each PocketTerm release brings.
 
+## Unreleased
+
+### Desktop app
+
+- **Get this computer ready installs nothing by itself.** Opening it only checks your coding agents; PocketTerm goes into omp or Claude Code when you click its **Install** (or **Update**).
+
 ## 0.1.4
 
 Servers and the push relay need no update.

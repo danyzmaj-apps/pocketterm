@@ -2,6 +2,12 @@
 
 What each PocketTerm release brings.
 
+## Unreleased
+
+### Phone app
+
+- **Your words keep up with you.** On iOS 26 the transcript updates after every word instead of at each pause, and a word the phone corrects changes in place instead of fading in again.
+
 ## 0.1.4
 
 Servers and the push relay need no update.

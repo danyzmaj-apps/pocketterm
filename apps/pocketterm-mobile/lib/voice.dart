@@ -701,9 +701,10 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
   }
 }
 
-/// What's being said, large: each word fades in as the recognizer adds it. A recognizer revises as it goes, so a
-/// word it changed fades in again, and the words it kept stay as they are. One string (no widgets between the words),
-/// so it wraps, reads to VoiceOver and is found as the text it is. Until something's heard, "Speak now…".
+/// What's being said, large: each new word fades in as the recognizer adds it. A recognizer revises as it goes (after
+/// every word on iOS 26): a word it changes swaps in place, so the text keeps up with the voice instead of blinking.
+/// One string (no widgets between the words), so it wraps, reads to VoiceOver and is found as the text it is. Until
+/// something's heard, "Speak now…".
 class _LiveWords extends StatefulWidget {
   const _LiveWords(this.text, {required this.style, super.key});
   final String text;
@@ -739,14 +740,12 @@ class _LiveWordsState extends State<_LiveWords> with SingleTickerProviderStateMi
     super.didUpdateWidget(old);
     if (old.text == widget.text) return;
     final words = _split(widget.text);
-    var kept = 0;
-    while (kept < words.length && kept < _words.length && words[kept].trim() == _words[kept].trim()) {
-      kept++;
-    }
     final now = _clock.elapsed;
-    _born = [..._born.take(kept), for (var i = kept; i < words.length; i++) now];
+    // A place that had a word keeps its fade (done or under way); only places past the old end fade in.
+    _born = [..._born.take(words.length), for (var i = _born.length; i < words.length; i++) now];
+    final grew = words.length > _words.length;
     _words = words;
-    if (kept < words.length && !_ticker.isActive && !Motion.reduced(context)) _ticker.start();
+    if (grew && !_ticker.isActive && !Motion.reduced(context)) _ticker.start();
   }
 
   @override

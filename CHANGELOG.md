@@ -11,7 +11,7 @@ What each PocketTerm release brings.
 ### Phone app
 
 - **Your words keep up with you.** On iOS 26 the transcript updates after every word instead of at each pause, and a word the phone corrects changes in place instead of fading in again.
-- **A glowing orb shows it's listening.** The big microphone and the **Stop** button are gone: a softly glowing orb in your theme's colour breathes at the bottom of the voice screen and swells as you talk, red while a held press is slid away to cancel. Tap it to stop; it bursts into specks that gather into the buttons for what's next.
+- **A living sphere shows it's listening.** The big microphone and the **Stop** button are gone: a glowing wireframe sphere in your theme's colours ripples, folds and slowly turns at the bottom of the voice screen, with a haze of specks around it. It swells and stirs as you talk, and turns red while a held press is slid away to cancel. Tap it to stop; it breaks into specks that fly into the buttons for what's next.
 - **Keep talking.** After you stop, **Keep talking** sits on its own row above **Cancel**, **Insert** and **Send**, which now fit side by side; it listens again and adds the new words after what's there, edits included.
 - **Opens straight into its intro.** On iPhone the app icon you tap stays on screen while the app starts, where and as large as the intro begins, in your theme's colours; the phone then ducks into the pocket without a blank screen or a jump in between.
 

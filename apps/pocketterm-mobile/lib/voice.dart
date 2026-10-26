@@ -345,6 +345,9 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
   /// The motes in flight, null when none are.
   _Flock? _flock;
 
+  /// The orb's state while listening, and what it breaks into on Stop.
+  final _orbLink = _OrbLink();
+
   /// Where the orb and the buttons are on screen now, found by [_Spot].
   final _spots = <_Mark, BuildContext>{};
   final GlobalKey _stack = GlobalKey();
@@ -415,6 +418,7 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
   }
 
   Future<void> _start() async {
+    _orbLink.reset();
     _go(_Phase.checking);
     SpeechCheck check;
     try {
@@ -503,6 +507,9 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
       _fly.value = 1;
       return;
     }
+    // The orb's mesh fades as its specks, where they are now, set off.
+    final starts = [for (final (at, color) in _orbLink.sample(_Flock.count)) (at + orb.topLeft, color)];
+    _orbLink.gone = true;
     _fly.value = 0;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _phase != _Phase.review) return;
@@ -511,7 +518,7 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
         _fly.value = 1;
         return;
       }
-      setState(() => _flock = _Flock(orb, targets.cast<Rect>(), C.t.shape));
+      setState(() => _flock = _Flock(orb, starts, targets.cast<Rect>(), C.t.shape));
       _fly
         ..duration = Motion.themed(const Duration(milliseconds: 650))
         ..forward(from: 0);
@@ -721,7 +728,7 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
         final orb = _Spot(
           _Mark.orb,
           _spots,
-          child: _Orb(level: _level, away: away, busy: !listening, stop: !_held),
+          child: _Orb(level: _level, away: away, busy: !listening, link: _orbLink),
         );
         return Padding(
           padding: pad,
@@ -973,33 +980,115 @@ class _SpotState extends State<_Spot> {
   Widget build(BuildContext context) => widget.child;
 }
 
-/// How loud the voice is, as a glowing orb in the accent colour: it breathes in silence and swells and ripples as you
-/// talk. Rounder or squarer with the theme's shape. Red while a held press is slid away to cancel; dim and still while
-/// it isn't listening yet or is stopping. [stop]: tapping it stops, shown by a square in its middle.
+/// How loud the voice is, as a glowing wireframe sphere in the theme's colours: a fine mesh whose surface ripples and
+/// folds like a living thing, slowly tumbling, with a haze of specks drifting around it. It keeps moving in silence,
+/// and as you talk it swells, ripples harder and faster, and the specks spread out and brighten. Red while a held
+/// press is slid away to cancel; dim and slow while it isn't listening yet or is stopping. With reduced motion it holds
+/// still and only swells.
 class _Orb extends StatefulWidget {
-  const _Orb({required this.level, required this.away, required this.busy, required this.stop});
+  const _Orb({required this.level, required this.away, required this.busy, required this.link});
   final ValueListenable<double> level;
   final bool away;
   final bool busy;
-  final bool stop;
+  final _OrbLink link;
 
   @override
   State<_Orb> createState() => _OrbState();
 }
 
-class _OrbState extends State<_Orb> with SingleTickerProviderStateMixin {
-  late final Ticker _ticker = createTicker(_tick);
-  Duration _now = Duration.zero;
-  double _smooth = 0;
+/// The orb's state, kept by the sheet: a cross-fade builds the orb going anew, and it carries on from here rather than
+/// starting over. Once [gone], it holds still and fades its mesh while its specks fly off.
+class _OrbLink {
+  final sphere = _Sphere();
 
-  void _tick(Duration now) {
-    final dt = (now - _now).inMicroseconds / 1e6;
+  /// How loud, eased: 0 to 1.
+  double level = 0;
+
+  /// Its clocks: [t] runs faster as the voice is louder, what the ripples evolve with; [spin] turns it; [clock] is
+  /// plain seconds, what it breathes with.
+  double t = 0;
+  double spin = 0;
+  double clock = 0;
+
+  /// Eased toward 1 while busy or away, so it dims or reddens rather than switching.
+  double busy = 0;
+  double away = 0;
+
+  /// The mesh: 1 while it shows, fading to 0 once [gone].
+  double shown = 1;
+  bool gone = false;
+
+  /// Shows it whole again, to listen.
+  void reset() {
+    gone = false;
+    shown = 1;
+  }
+
+  /// Moves it on by [dt] seconds, hearing [heard] (0 to 1, as the recognizer says). [still]: reduced motion, so it
+  /// only swells.
+  void step(double dt, {required double heard, required bool busy, required bool away, required bool still}) {
+    if (gone) {
+      shown = math.max(0, shown - dt / .25);
+      return;
+    }
+    double ease(double from, double to, double rate) => from + (to - from) * (1 - math.exp(-rate * dt));
     // A curve that lifts quiet speech, so normal talking swells it well, not just shouting. It rises quickly with the
     // voice and settles more slowly, so words read as pulses rather than flicker, at any frame rate.
-    final target = widget.busy ? 0.0 : math.min(1, math.pow(widget.level.value, .5) * 1.25).toDouble();
-    final rate = target > _smooth ? 30.0 : 6.0;
-    _smooth += (target - _smooth) * (1 - math.exp(-rate * dt));
-    setState(() => _now = now);
+    final target = busy ? 0.0 : math.min(1, math.pow(heard, .5) * 1.25).toDouble();
+    level = ease(level, target, target > level ? 30 : 6);
+    this.busy = ease(this.busy, busy ? 1 : 0, 10);
+    this.away = ease(this.away, away ? 1 : 0, 14);
+    if (still) return;
+    final slow = 1 - .65 * this.busy;
+    t += dt * slow * (1 + 1.6 * level);
+    spin += dt * .3 * slow;
+    clock += dt;
+  }
+
+  /// The orb's colours now: from the theme's accent to its warm prompt colour, the app icon's family, reddening while
+  /// away and dimming while busy.
+  _Palette palette() {
+    final dark = C.t.dark;
+    Color tint(Color c) {
+      final shown = Color.lerp(Color.lerp(c, C.error, .85 * away), dark ? C.dim2 : C.dim, .65 * busy)!;
+      // On a light background the lines read best a little darker than the accent.
+      return dark ? shown : Color.lerp(shown, C.text, .15)!;
+    }
+
+    return _Palette(
+      tint(Color.lerp(C.accent, dark ? C.text : C.accent, .35)!),
+      tint(C.accent),
+      tint(Color.lerp(C.accent, C.warn, .8)!),
+    );
+  }
+
+  /// [count] specks of the orb as last drawn (in its own box), with their colours: mostly the mesh's visible points,
+  /// some of the haze.
+  List<(Offset, Color)> sample(int count) {
+    final colors = palette();
+    return [
+      for (final (at, depth) in sphere.sample(count, math.Random(5)))
+        (at, colors.at(sphere.along(at)).withValues(alpha: .55 + .45 * depth)),
+    ];
+  }
+}
+
+class _OrbState extends State<_Orb> with SingleTickerProviderStateMixin {
+  late final Ticker _ticker = createTicker(_tick);
+  Duration _last = Duration.zero;
+
+  void _tick(Duration now) {
+    final dt = math.min((now - _last).inMicroseconds / 1e6, .05);
+    _last = now;
+    setState(
+      () => widget.link.step(
+        dt,
+        heard: widget.level.value,
+        busy: widget.busy,
+        away: widget.away,
+        still: Motion.reduced(context),
+      ),
+    );
   }
 
   @override
@@ -1016,162 +1105,359 @@ class _OrbState extends State<_Orb> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final link = widget.link;
     final reduced = Motion.reduced(context);
-    final color = widget.away ? C.error : (widget.busy ? C.dim2 : C.accent);
     return Semantics(
       label: 'Listening',
       child: TweenAnimationBuilder<double>(
-        // It grows into place as it comes, and when Keep talking brings it back.
-        tween: Tween(begin: reduced ? 1 : .6, end: 1),
+        // It grows into place as it comes, and when Keep talking brings it back; not when a cross-fade builds it anew.
+        tween: Tween(begin: reduced || link.gone ? 1 : .6, end: 1),
         duration: Motion.themed(Motion.slow),
         curve: Motion.ease,
         builder: (context, grow, child) => Transform.scale(scale: grow, child: child),
-        child: TweenAnimationBuilder<Color?>(
-          tween: ColorTween(end: color),
-          duration: Motion.of(context),
-          builder: (context, color, _) => SizedBox(
-            key: const ValueKey('voice-level'),
-            height: 168,
-            width: double.infinity,
-            child: CustomPaint(
-              painter: _OrbPainter(
-                time: _now.inMicroseconds / 1e6,
-                level: _smooth,
-                color: color!,
-                glow: widget.busy ? .35 : 1,
-                wobble: reduced ? 0 : (widget.busy ? .4 : 1),
-                shape: C.t.shape,
-                stop: widget.stop ? C.onAccent : null,
+        child: LayoutBuilder(
+          builder: (context, box) {
+            final d = math.min(box.maxWidth * .68, 260).toDouble();
+            return SizedBox(
+              key: const ValueKey('voice-level'),
+              width: d * 1.3,
+              height: d * 1.3,
+              child: CustomPaint(
+                painter: _OrbPainter(
+                  sphere: link.sphere,
+                  palette: link.palette(),
+                  diameter: d,
+                  breathe: math.sin(link.clock * 2 * math.pi / 3.4),
+                  t: link.t,
+                  spin: link.spin,
+                  level: link.level,
+                  amp: reduced ? .06 : (.08 + .14 * link.level) * (1 - .5 * link.busy),
+                  glow: (C.t.dark ? 1 : .4) * (1 - .7 * link.busy),
+                  dark: C.t.dark,
+                  shown: link.shown,
+                ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );
   }
 }
 
+/// The orb's gradient, from the top left ([from]) through [mid] to the bottom right ([to]).
+@immutable
+class _Palette {
+  const _Palette(this.from, this.mid, this.to);
+  final Color from;
+  final Color mid;
+  final Color to;
+
+  /// The colour at [t] along it, 0 to 1.
+  Color at(double t) => t < .5 ? Color.lerp(from, mid, t * 2)! : Color.lerp(mid, to, t * 2 - 1)!;
+
+  @override
+  bool operator ==(Object other) => other is _Palette && other.from == from && other.mid == mid && other.to == to;
+
+  @override
+  int get hashCode => Object.hash(from, mid, to);
+}
+
+/// The orb's mesh (lines of latitude and longitude on a sphere) and the haze of specks around it: where each point
+/// sits on a unit sphere, fixed, and where it was last drawn, in buffers kept from frame to frame.
+class _Sphere {
+  _Sphere() {
+    var k = 0;
+    for (var i = 0; i < rings; i++) {
+      final polar = math.pi * (i + 1) / (rings + 1);
+      for (var j = 0; j < meridians; j++) {
+        final azimuth = 2 * math.pi * j / meridians;
+        _ux[k] = math.sin(polar) * math.cos(azimuth);
+        _uy[k] = math.cos(polar);
+        _uz[k] = math.sin(polar) * math.sin(azimuth);
+        k++;
+      }
+    }
+    _uy[k] = 1;
+    _uy[k + 1] = -1;
+    final rnd = math.Random(11);
+    for (var h = 0; h < specks; h++) {
+      final y = rnd.nextDouble() * 2 - 1;
+      final a = rnd.nextDouble() * 2 * math.pi;
+      final s = math.sqrt(1 - y * y);
+      _hx[h] = s * math.cos(a);
+      _hy[h] = y;
+      _hz[h] = s * math.sin(a);
+      // Most hug the surface; a few stray further out.
+      _hr[h] = .04 + .36 * math.pow(rnd.nextDouble(), 2.2);
+      _hp[h] = rnd.nextDouble() * 2 * math.pi;
+      _hs[h] = (.12 + .3 * rnd.nextDouble()) * (rnd.nextBool() ? 1 : -1);
+    }
+  }
+
+  static const rings = 44;
+  static const meridians = 52;
+  static const int points = rings * meridians + 2;
+  static const int segments = rings * meridians + (rings - 1) * meridians + 2 * meridians;
+  static const specks = 280;
+
+  final _ux = Float32List(points);
+  final _uy = Float32List(points);
+  final _uz = Float32List(points);
+  final _hx = Float32List(specks);
+  final _hy = Float32List(specks);
+  final _hz = Float32List(specks);
+
+  /// How far out each speck floats past the surface, as a fraction of the radius; [_hp] its phase, [_hs] its drift.
+  final _hr = Float32List(specks);
+  final _hp = Float32List(specks);
+  final _hs = Float32List(specks);
+
+  /// Where each point and speck was last drawn, and how near (-1 the back, 1 the front).
+  final _px = Float32List(points);
+  final _py = Float32List(points);
+  final _pz = Float32List(points);
+  final _sx = Float32List(specks);
+  final _sy = Float32List(specks);
+  final _sz = Float32List(specks);
+
+  /// The mesh's line ends and points, and the specks, split by depth: back, middle and front.
+  final List<Float32List> lines = [for (var i = 0; i < 3; i++) Float32List(segments * 4)];
+  final List<int> lineEnds = [0, 0, 0];
+  final List<Float32List> dots = [for (var i = 0; i < 2; i++) Float32List(points * 2)];
+  final List<int> dotEnds = [0, 0];
+  final List<Float32List> haze = [for (var i = 0; i < 2; i++) Float32List(specks * 2)];
+  final List<int> hazeEnds = [0, 0];
+
+  /// The gradient's box last drawn, to find a point's colour along it.
+  Rect _box = Rect.zero;
+  late ui.Shader _shader;
+  (Rect, _Palette)? _shaderFor;
+
+  /// The gradient across [box] in [palette], made again only when either changes.
+  ui.Shader shader(Rect box, _Palette palette) {
+    _box = box;
+    if (_shaderFor != (box, palette)) {
+      _shaderFor = (box, palette);
+      _shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [palette.from, palette.mid, palette.to],
+      ).createShader(box);
+    }
+    return _shader;
+  }
+
+  /// How far along the gradient [at] is, 0 at its top left to 1 at its bottom right.
+  double along(Offset at) {
+    if (_box.isEmpty) return .5;
+    final p = at - _box.topLeft;
+    return ((p.dx / _box.width + p.dy / _box.height) / 2).clamp(0.0, 1.0);
+  }
+
+  /// How far the surface is pushed out at unit point (x, y, z) at time [t]: a few slow waves across the sphere, each
+  /// bent by another, so it folds into lumps that drift and change instead of rolling round.
+  static double _noise(double x, double y, double z, double t) {
+    final warp = math.sin(1.9 * x + 1.4 * z + .6 * t);
+    return .28 * math.sin(2.3 * (.8 * x + .6 * y) + t + 1.3 * warp) +
+        .26 * math.sin(3.6 * (-.5 * y + .86 * z) - .9 * t + warp) +
+        .3 * math.sin(4.9 * (.6 * x - .64 * y + .48 * z) + 1.4 * t + 2 + .8 * warp) +
+        .26 * math.sin(6.1 * (.36 * x + .48 * y - .8 * z) - 1.2 * t + 4) +
+        .16 * math.sin(8.2 * (.7 * x + .1 * y + .7 * z) + 1.7 * t + 1);
+  }
+
+  /// Works out where everything is drawn: centred on [c], [radius] across, rippled by [amp] at time [t], turned by
+  /// [spin], the specks spread out by [spread].
+  void place(Offset c, double radius, double t, double spin, double amp, double spread) {
+    // Turning about its axis, which leans aside and tips toward the viewer and back: a slow tumble.
+    final pitch = .3 + .25 * math.sin(spin * .37);
+    final roll = .45 + .2 * math.sin(spin * .23);
+    final (sa, ca, sb, cb) = (math.sin(spin), math.cos(spin), math.sin(pitch), math.cos(pitch));
+    final (sr, cr) = (math.sin(roll), math.cos(roll));
+    final (m10, m12, m20, m22) = (sb * sa, -sb * ca, -cb * sa, cb * ca);
+    const eye = 3.4;
+    for (var k = 0; k < points; k++) {
+      final (x, y, z) = (_ux[k], _uy[k], _uz[k]);
+      final r = 1 + amp * _noise(x, y, z, t);
+      final (rx, ry, rz) = (x * r, y * r, z * r);
+      final depth = m20 * rx + sb * ry + m22 * rz;
+      final s = radius * eye / (eye - depth);
+      final (sx, sy) = (ca * rx + sa * rz, m10 * rx + cb * ry + m12 * rz);
+      _px[k] = c.dx + (cr * sx - sr * sy) * s;
+      _py[k] = c.dy - (sr * sx + cr * sy) * s;
+      _pz[k] = depth;
+    }
+    lineEnds.fillRange(0, 3, 0);
+    void line(int a, int b) {
+      final z = (_pz[a] + _pz[b]) / 2;
+      final i = z < -.2 ? 0 : (z < .35 ? 1 : 2);
+      final buffer = lines[i];
+      var n = lineEnds[i];
+      buffer[n++] = _px[a];
+      buffer[n++] = _py[a];
+      buffer[n++] = _px[b];
+      buffer[n++] = _py[b];
+      lineEnds[i] = n;
+    }
+
+    const m = meridians;
+    for (var i = 0; i < rings; i++) {
+      for (var j = 0; j < m; j++) {
+        line(i * m + j, i * m + (j + 1) % m);
+        if (i < rings - 1) line(i * m + j, (i + 1) * m + j);
+      }
+    }
+    for (var j = 0; j < m; j++) {
+      line(points - 2, j);
+      line(points - 1, (rings - 1) * m + j);
+    }
+    dotEnds.fillRange(0, 2, 0);
+    for (var k = 0; k < points; k++) {
+      if (_pz[k] < -.15) continue;
+      final i = _pz[k] < .4 ? 0 : 1;
+      dots[i][dotEnds[i]++] = _px[k];
+      dots[i][dotEnds[i]++] = _py[k];
+    }
+    hazeEnds.fillRange(0, 2, 0);
+    for (var h = 0; h < specks; h++) {
+      // Each drifts round the vertical at its own pace and bobs in and out.
+      final a = t * _hs[h] + _hp[h];
+      final (x0, z0) = (_hx[h] * math.cos(a) - _hz[h] * math.sin(a), _hx[h] * math.sin(a) + _hz[h] * math.cos(a));
+      final r = 1 + amp * .5 + _hr[h] * (1 + .25 * math.sin(1.3 * t + _hp[h])) * spread;
+      final (x, y, z) = (x0 * r, _hy[h] * r, z0 * r);
+      final depth = m20 * x + sb * y + m22 * z;
+      final s = radius * eye / (eye - depth);
+      final (sx, sy) = (ca * x + sa * z, m10 * x + cb * y + m12 * z);
+      _sx[h] = c.dx + (cr * sx - sr * sy) * s;
+      _sy[h] = c.dy - (sr * sx + cr * sy) * s;
+      _sz[h] = depth / r;
+      final i = depth < 0 ? 0 : 1;
+      haze[i][hazeEnds[i]++] = _sx[h];
+      haze[i][hazeEnds[i]++] = _sy[h];
+    }
+  }
+
+  /// [count] points as last drawn, with how near each is (0 the back, 1 the front): about three in four from the
+  /// mesh's visible side, the rest from the haze.
+  List<(Offset, double)> sample(int count, math.Random rnd) {
+    final out = <(Offset, double)>[];
+    while (out.length < count) {
+      if (out.length % 4 == 3) {
+        final h = rnd.nextInt(specks);
+        out.add((Offset(_sx[h], _sy[h]), (_sz[h] + 1) / 2));
+        continue;
+      }
+      final k = rnd.nextInt(points);
+      if (_pz[k] > -.1) out.add((Offset(_px[k], _py[k]), (_pz[k] + 1) / 2));
+    }
+    return out;
+  }
+}
+
 class _OrbPainter extends CustomPainter {
   _OrbPainter({
-    required this.time,
+    required this.sphere,
+    required this.palette,
+    required this.diameter,
+    required this.breathe,
+    required this.t,
+    required this.spin,
     required this.level,
-    required this.color,
+    required this.amp,
     required this.glow,
-    required this.wobble,
-    required this.shape,
-    required this.stop,
+    required this.dark,
+    required this.shown,
   });
+  final _Sphere sphere;
+  final _Palette palette;
 
-  /// Seconds since it started: what the ripples turn with.
-  final double time;
+  /// Across, at rest.
+  final double diameter;
+
+  /// Where its slow breath is, -1 to 1.
+  final double breathe;
+  final double t;
+  final double spin;
   final double level;
-  final Color color;
+  final double amp;
   final double glow;
-  final double wobble;
-  final ThemeShape shape;
+  final bool dark;
+  final double shown;
 
-  /// The stop square's colour; null: none.
-  final Color? stop;
-
-  /// How far from the middle its edge is at angle [a], as a fraction of its radius: a circle on a soft theme, a
-  /// squircle on a crisp one, nearly a square on a boxy one; rippling by [amp], each [phase] its own way.
-  double _edge(double a, double amp, double phase) {
-    final n = switch (shape) {
-      ThemeShape.soft => 2.0,
-      ThemeShape.crisp => 3.2,
-      ThemeShape.boxy => 7.0,
-    };
-    final square = n == 2
-        ? 1.0
-        : .9 / math.pow(math.pow(math.cos(a).abs(), n) + math.pow(math.sin(a).abs(), n), 1 / n).toDouble();
-    final t = time + phase;
-    final ripple =
-        math.sin(3 * a + 1.3 * t) * .5 + math.sin(5 * a - 1.9 * t + 1) * .3 + math.sin(2 * a + .7 * t + 2) * .4;
-    return square * (1 + amp * ripple / 1.2);
-  }
-
-  Path _blob(Offset c, double r, double amp, double phase) {
-    const n = 72;
-    final points = [
-      for (var i = 0; i < n; i++)
-        Offset.fromDirection(i * 2 * math.pi / n, r * _edge(i * 2 * math.pi / n, amp, phase)) + c,
-    ];
-    // Through the midpoints, each point bending the line: a smooth edge with no corners.
-    final path = Path()..moveTo((points[0].dx + points[1].dx) / 2, (points[0].dy + points[1].dy) / 2);
-    for (var i = 1; i <= n; i++) {
-      final p = points[i % n];
-      final q = points[(i + 1) % n];
-      path.quadraticBezierTo(p.dx, p.dy, (p.dx + q.dx) / 2, (p.dy + q.dy) / 2);
-    }
-    return path..close();
-  }
+  static final _paint = Paint()..strokeCap = StrokeCap.round;
 
   @override
   void paint(Canvas canvas, Size size) {
     final c = size.center(Offset.zero);
-    final breathe = 1 + .03 * wobble * math.sin(time * 2 * math.pi / 3.2);
-    final r = size.shortestSide * .25 * (breathe + .34 * level);
-    final amp = wobble * (.025 + .07 * level);
+    final radius = diameter / 2 * .8 * (1 + .025 * breathe + .14 * level);
+    sphere.place(c, radius, t, spin, amp, 1 + 1.2 * level);
+    final shader = sphere.shader(Rect.fromCircle(center: c, radius: diameter * .42), palette);
 
-    // The glow around it, brighter as the voice is louder.
-    final halo = r * (1.4 + .1 * level);
-    canvas
-      ..drawCircle(
-        c,
-        halo,
+    // The bloom behind: the accent in the middle, each end of the gradient toward its side.
+    for (final (at, color, reach, strength) in [
+      (c, palette.mid, 1.9, .3),
+      (c + Offset(radius * .35, radius * .4), palette.to, 1.3, .22),
+      (c - Offset(radius * .35, radius * .4), palette.from, 1.2, .14),
+    ]) {
+      final r = radius * reach * (1 + .1 * level);
+      canvas.drawCircle(
+        at,
+        r,
         Paint()
           ..shader = RadialGradient(
             colors: [
-              color.withValues(alpha: glow * (.35 + .3 * level)),
-              color.withValues(alpha: glow * (.12 + .1 * level)),
+              color.withValues(alpha: glow * strength * (1 + .6 * level) * (.3 + .7 * shown)),
               color.withValues(alpha: 0),
             ],
-            stops: [r / halo * .8, (r / halo + 1) / 2, 1],
-          ).createShader(Rect.fromCircle(center: c, radius: halo)),
-      )
-      // A fainter, larger blob rippling out of step behind it, so the edge looks soft and alive.
-      ..drawPath(
-        _blob(c, r * 1.06, amp * 1.3, 2.7),
-        Paint()..color = color.withValues(alpha: color.a * .22 * (.5 + .5 * glow)),
-      )
-      // The orb, lit from the top left.
-      ..drawPath(
-        _blob(c, r, amp, 0),
-        Paint()
-          ..shader = RadialGradient(
-            center: const Alignment(-.35, -.4),
-            radius: .95,
-            colors: [
-              Color.lerp(color, const Color(0xFFFFFFFF), .4)!,
-              color,
-              Color.lerp(color, const Color(0xFF000000), .22)!,
-            ],
-            stops: const [0, .5, 1],
-          ).createShader(Rect.fromCircle(center: c, radius: r * 1.15)),
-      );
-
-    if (stop case final stop?) {
-      final side = r * .38;
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromCenter(center: c, width: side, height: side),
-          Radius.circular(math.min(side * .22, shape.maxRadius)),
-        ),
-        Paint()..color = stop.withValues(alpha: .9),
+          ).createShader(Rect.fromCircle(center: at, radius: r)),
       );
     }
+
+    void draw(ui.PointMode mode, Float32List buffer, int end, double width, double alpha) {
+      if (end == 0 || alpha <= 0) return;
+      canvas.drawRawPoints(
+        mode,
+        Float32List.sublistView(buffer, 0, end),
+        _paint
+          ..shader = shader
+          ..color = Color.fromRGBO(0, 0, 0, alpha.clamp(0.0, 1.0))
+          ..strokeWidth = width,
+      );
+    }
+
+    final lit = .55 + .45 * level;
+    draw(ui.PointMode.points, sphere.haze[0], sphere.hazeEnds[0], 1.4, .35 * lit);
+    if (shown > 0) {
+      draw(ui.PointMode.lines, sphere.lines[0], sphere.lineEnds[0], .5, (dark ? .14 : .1) * shown);
+      // The near side glows: a blurred copy under its crisp lines.
+      if (glow > 0) {
+        canvas.saveLayer(
+          Offset.zero & size,
+          Paint()..imageFilter = ui.ImageFilter.blur(sigmaX: 4, sigmaY: 4, tileMode: TileMode.decal),
+        );
+        draw(ui.PointMode.lines, sphere.lines[2], sphere.lineEnds[2], 2.4, .5 * glow * shown);
+        canvas.restore();
+      }
+      draw(ui.PointMode.lines, sphere.lines[1], sphere.lineEnds[1], .6, (dark ? .38 : .28) * shown);
+      draw(ui.PointMode.lines, sphere.lines[2], sphere.lineEnds[2], .8, (dark ? .75 : .55) * shown);
+      draw(ui.PointMode.points, sphere.dots[0], sphere.dotEnds[0], 1.3, .5 * shown);
+      draw(ui.PointMode.points, sphere.dots[1], sphere.dotEnds[1], 1.9, (dark ? 1 : .8) * shown);
+    }
+    draw(ui.PointMode.points, sphere.haze[1], sphere.hazeEnds[1], 1.8, .8 * lit);
   }
 
   @override
   bool shouldRepaint(_OrbPainter old) => true;
 }
 
-/// One speck of the orb: where it leaves from, which button it lands on ([to], in [_Mark.buttons]'s order) and where
-/// on it ([at], a fraction of its width and height, so it lands right as the button grows into place). It bursts out
-/// toward [burst] first, then comes down onto its place from [approach] (relative to it).
+/// One speck of the orb: where it leaves from and in what [color], which button it lands on ([to], in
+/// [_Mark.buttons]'s order) and where on it ([at], a fraction of its width and height, so it lands right as the button
+/// grows into place). It bursts out toward [burst] first, then comes down onto its place from [approach] (relative to
+/// it).
 class _Mote {
-  const _Mote(this.from, this.burst, this.to, this.at, this.approach, this.delay, this.size);
+  const _Mote(this.from, this.color, this.burst, this.to, this.at, this.approach, this.delay, this.size);
   final Offset from;
+  final Color color;
   final Offset burst;
   final int to;
   final Offset at;
@@ -1182,12 +1468,11 @@ class _Mote {
   final double size;
 }
 
-/// The motes the orb breaks into on Stop: Send and Keep talking fill with them, Insert's outline traces, and a few
-/// gather where Cancel's label is.
+/// The specks the orb breaks into on Stop (the starts, where each was drawn, in its colour): Send and Keep talking fill
+/// with them, Insert's outline traces, and a few gather where Cancel's label is.
 class _Flock {
-  factory _Flock(Rect orb, List<Rect> buttons, ThemeShape shape) {
+  factory _Flock(Rect orb, List<(Offset, Color)> starts, List<Rect> buttons, ThemeShape shape) {
     final rnd = math.Random(7);
-    const counts = [110, 26, 70, 110];
     final ends = <(int, Offset, double)>[];
     for (final (i, rect) in buttons.indexed) {
       final round = RRect.fromRectAndRadius(
@@ -1214,33 +1499,37 @@ class _Flock {
       }
     }
     // Left of the orb goes left: paired by where they are across, the motes stream rather than cross in a tangle.
-    final radius = orb.shortestSide * .27;
-    final starts = [
-      for (var k = 0; k < ends.length; k++)
-        Offset.fromDirection(rnd.nextDouble() * 2 * math.pi, radius * math.sqrt(rnd.nextDouble())) + orb.center,
-    ];
-    final across = {for (final s in starts) s: s.dx + (rnd.nextDouble() - .5) * radius};
-    starts.sort((a, b) => across[a]!.compareTo(across[b]!));
+    final center = orb.center;
+    final radius = orb.shortestSide * .3;
+    final reach = [for (final (at, _) in starts) (at - center).distance].fold<double>(1, math.max);
+    final across = [for (final (at, _) in starts) at.dx + (rnd.nextDouble() - .5) * radius * .5];
+    final order = [for (var k = 0; k < starts.length; k++) k]..sort((a, b) => across[a].compareTo(across[b]));
     ends.sort((a, b) => a.$3.compareTo(b.$3));
     return _Flock._(orb, [
       for (final (k, (to, at, _)) in ends.indexed)
-        if (starts[k] - orb.center case final out)
-          _Mote(
-            starts[k],
-            starts[k] +
-                (out.distance < 1 ? Offset.fromDirection(rnd.nextDouble() * 2 * math.pi) : out / out.distance) *
-                    (radius * (.8 + 1.2 * rnd.nextDouble())) -
-                Offset(0, radius * .5 * rnd.nextDouble()),
-            to,
-            at,
-            Offset((rnd.nextDouble() - .5) * 60, -(20 + 50 * rnd.nextDouble())),
-            lag * (1 - out.distance / radius) + rnd.nextDouble() * .05,
-            2 + rnd.nextDouble() * 1.6,
-          ),
+        if (starts[order[k * starts.length ~/ ends.length]] case (final from, final color))
+          if (from - center case final out)
+            _Mote(
+              from,
+              color,
+              from +
+                  (out.distance < 1 ? Offset.fromDirection(rnd.nextDouble() * 2 * math.pi) : out / out.distance) *
+                      (radius * (.3 + .7 * rnd.nextDouble())) -
+                  Offset(0, radius * .3 * rnd.nextDouble()),
+              to,
+              at,
+              Offset((rnd.nextDouble() - .5) * 60, -(20 + 50 * rnd.nextDouble())),
+              lag * (1 - out.distance / reach) + rnd.nextDouble() * .05,
+              1.6 + rnd.nextDouble() * 1.4,
+            ),
     ]);
   }
 
   _Flock._(this.orb, this.motes);
+
+  /// How many motes it makes: what each button gets, in [_Mark.buttons]' order.
+  static const counts = [130, 30, 80, 130];
+  static final int count = counts.fold(0, (a, b) => a + b);
 
   /// The longest a mote waits to set off, as a fraction of the flight.
   static const lag = .3;
@@ -1276,7 +1565,7 @@ class _FlockPainter extends CustomPainter {
         Paint()
           ..shader = RadialGradient(
             colors: [
-              C.accent.withValues(alpha: .45 * flash),
+              C.accent.withValues(alpha: .25 * flash),
               C.accent.withValues(alpha: 0),
             ],
           ).createShader(Rect.fromCircle(center: c, radius: r)),
@@ -1301,7 +1590,7 @@ class _FlockPainter extends CustomPainter {
       final local = ((p - m.delay) / (.95 - _Flock.lag)).clamp(0.0, 1.0);
       final e = curve.transform(local);
       final head = along(e);
-      final color = colors[m.to];
+      final color = Color.lerp(m.color, colors[m.to], Curves.easeIn.transform(e))!;
       final size = m.size * (1 - .3 * e);
       if (local > 0 && local < 1) {
         canvas.drawLine(

@@ -312,7 +312,7 @@ class VoiceSheet extends StatefulWidget {
   State<VoiceSheet> createState() => _VoiceSheetState();
 }
 
-class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
+class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   _Phase _phase = _Phase.checking;
   late SpeechCheck _problem;
   StreamSubscription<SpeechEvent>? _sub;
@@ -329,6 +329,25 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
 
   /// Still held to talk: lifting stops. False after a lift, or for a tap.
   bool _held = false;
+
+  /// The orb breaking into motes on Stop that gather into the buttons: 0 as it starts, 1 when the buttons are in.
+  late final AnimationController _fly = AnimationController(vsync: this, value: 1)
+    ..addStatusListener((s) {
+      if (s == AnimationStatus.completed && _flock != null) setState(() => _flock = null);
+    });
+
+  /// The buttons fade in as the motes land.
+  late final Animation<double> _reveal = CurvedAnimation(
+    parent: _fly,
+    curve: const Interval(.7, 1, curve: Motion.ease),
+  );
+
+  /// The motes in flight, null when none are.
+  _Flock? _flock;
+
+  /// Where the orb and the buttons are on screen now, found by [_Spot].
+  final _spots = <_Mark, BuildContext>{};
+  final GlobalKey _stack = GlobalKey();
 
   VoiceHold? get _hold => widget.hold;
 
@@ -349,6 +368,7 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
     _stopWait?.cancel();
     // Closed or dragged away while listening: what was heard goes, and the microphone stops at once.
     unawaited(_sub?.cancel());
+    _fly.dispose();
     _level.dispose();
     _edit.dispose();
     super.dispose();
@@ -453,6 +473,7 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
     unawaited(_sub?.cancel());
     _sub = null;
     _level.value = 0;
+    _scatter();
     unawaited(HapticFeedback.lightImpact());
     _held = false;
     _note = switch (why) {
@@ -464,11 +485,46 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
     _go(_Phase.review);
   }
 
+  /// [mark]'s place in the sheet, as drawn now (mid-fade it may be a little smaller). Null when it isn't shown.
+  Rect? _rectOf(_Mark mark) {
+    final box = _spots[mark]?.findRenderObject();
+    final stack = _stack.currentContext?.findRenderObject();
+    if (box is! RenderBox || stack is! RenderBox || !box.attached || !box.hasSize) return null;
+    return MatrixUtils.transformRect(box.getTransformTo(stack), Offset.zero & box.size);
+  }
+
+  /// Breaks the orb into motes that fly to the buttons coming in its place, once they're laid out. With reduced
+  /// motion the buttons only cross-fade in.
+  void _scatter() {
+    _fly.stop();
+    final orb = _rectOf(_Mark.orb);
+    if (orb == null || Motion.reduced(context)) {
+      _flock = null;
+      _fly.value = 1;
+      return;
+    }
+    _fly.value = 0;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _phase != _Phase.review) return;
+      final targets = [for (final m in _Mark.buttons) _rectOf(m)];
+      if (targets.contains(null)) {
+        _fly.value = 1;
+        return;
+      }
+      setState(() => _flock = _Flock(orb, targets.cast<Rect>(), C.t.shape));
+      _fly
+        ..duration = Motion.themed(const Duration(milliseconds: 650))
+        ..forward(from: 0);
+    });
+  }
+
   /// Listens again, the new words after what's in the editor now.
   void _keepTalking() {
     _before = _edit.text.trim();
     _heard = _before;
     _note = null;
+    _fly.value = 1;
+    _flock = null;
     unawaited(_start());
   }
 
@@ -516,37 +572,55 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final existing = widget.existing.trim();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final flock = _flock;
+    // The motes fly over the whole sheet, from the orb to the buttons.
+    return Stack(
+      key: _stack,
+      fit: StackFit.expand,
       children: [
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, box) => SingleChildScrollView(
-              // The newest words stay in view as they come; while they fit, they read from the top.
-              reverse: true,
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: box.maxHeight - 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (existing.isNotEmpty && _phase != _Phase.problem)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Text(
-                          existing,
-                          key: const ValueKey('voice-existing'),
-                          style: TextStyle(fontSize: 20, height: 1.35, color: C.dim2),
-                        ),
-                      ),
-                    ..._body(),
-                  ],
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, box) => SingleChildScrollView(
+                  // The newest words stay in view as they come; while they fit, they read from the top.
+                  reverse: true,
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: box.maxHeight - 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (existing.isNotEmpty && _phase != _Phase.problem)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              existing,
+                              key: const ValueKey('voice-existing'),
+                              style: TextStyle(fontSize: 20, height: 1.35, color: C.dim2),
+                            ),
+                          ),
+                        ..._body(),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            _bottom(),
+          ],
+        ),
+        if (flock != null)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _FlockPainter(flock, _fly, () => [for (final m in _Mark.buttons) _rectOf(m)]),
                 ),
               ),
             ),
           ),
-        ),
-        _bottom(),
       ],
     );
   }
@@ -594,8 +668,8 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
     ],
   };
 
-  /// The controls under what's said: Stop becomes Cancel, Insert and Send (and a problem's buttons come and go) by a
-  /// cross-fade, the room they take changing with it.
+  /// The controls under what's said: the orb becomes Keep talking, Cancel, Insert and Send by motes flying from one to
+  /// the other (and a problem's buttons come and go) by a cross-fade, the room they take changing with it.
   Widget _bottom() => FadeSwap(
     scale: .95,
     alignment: Alignment.bottomCenter,
@@ -643,80 +717,133 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver {
         );
       case _Phase.checking || _Phase.listening || _Phase.stopping:
         final away = _held && _hold!.away;
+        final listening = _phase == _Phase.listening;
+        final orb = _Spot(
+          _Mark.orb,
+          _spots,
+          child: _Orb(level: _level, away: away, busy: !listening, stop: !_held),
+        );
         return Padding(
           padding: pad,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _Waveform(level: _level, away: away, busy: _phase != _Phase.listening),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 48,
-                child: Center(
-                  child: _held
-                      ? Text(
-                          away ? 'Release to cancel' : 'Release to stop · Slide away to cancel',
-                          key: const ValueKey('voice-hold-hint'),
-                          style: TextStyle(fontSize: 14, color: away ? C.error : C.dim),
-                        )
-                      : Semantics(
-                          identifier: 'voice-stop',
-                          child: FilledButton.icon(
-                            key: const ValueKey('voice-stop'),
-                            onPressed: _phase == _Phase.listening ? () => unawaited(_stop()) : null,
-                            icon: const Icon(Icons.stop_rounded),
-                            label: Text(C.label('Stop')),
-                          ),
-                        ),
+              if (_held)
+                orb
+              else
+                Semantics(
+                  identifier: 'voice-stop',
+                  button: true,
+                  enabled: listening,
+                  label: 'Stop',
+                  child: GestureDetector(
+                    key: const ValueKey('voice-stop'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: listening ? () => unawaited(_stop()) : null,
+                    child: orb,
+                  ),
                 ),
+              Text(
+                _held ? (away ? 'Release to cancel' : 'Release to stop · Slide away to cancel') : 'Tap to stop',
+                key: _held ? const ValueKey('voice-hold-hint') : null,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, height: 1.4, color: away ? C.error : C.dim),
               ),
             ],
           ),
         );
       case _Phase.review:
         final can = _edit.text.trim().isNotEmpty;
-        return Padding(
-          padding: pad,
-          // Large text: the buttons stack rather than run off the screen.
-          child: OverflowBar(
-            alignment: MainAxisAlignment.end,
-            overflowAlignment: OverflowBarAlignment.end,
-            spacing: 8,
-            children: [
-              Semantics(
-                identifier: 'voice-more',
-                child: TextButton.icon(
-                  key: const ValueKey('voice-more'),
-                  onPressed: _keepTalking,
-                  icon: const Icon(Icons.mic_rounded, size: 18),
-                  label: Text(C.label('Keep talking')),
-                ),
+        const tall = Size(0, 48);
+        const tight = EdgeInsets.symmetric(horizontal: 12);
+        final row = [
+          _Spot(
+            _Mark.cancel,
+            _spots,
+            child: Semantics(
+              identifier: 'voice-cancel',
+              child: TextButton(
+                key: const ValueKey('voice-cancel'),
+                style: TextButton.styleFrom(foregroundColor: C.dim, minimumSize: tall, padding: tight),
+                onPressed: () => Navigator.of(context).maybePop(),
+                child: Text(C.label('Cancel')),
               ),
-              Semantics(
-                identifier: 'voice-cancel',
-                child: TextButton(
-                  key: const ValueKey('voice-cancel'),
-                  onPressed: () => Navigator.of(context).maybePop(),
-                  child: Text(C.label('Cancel')),
-                ),
+            ),
+          ),
+          _Spot(
+            _Mark.insert,
+            _spots,
+            child: Semantics(
+              identifier: 'voice-insert',
+              child: OutlinedButton(
+                key: const ValueKey('voice-insert'),
+                style: OutlinedButton.styleFrom(minimumSize: tall, padding: tight),
+                onPressed: can ? () => _finish(send: false) : null,
+                child: Text(C.label('Insert')),
               ),
-              Semantics(
-                identifier: 'voice-insert',
-                child: OutlinedButton(
-                  key: const ValueKey('voice-insert'),
-                  onPressed: can ? () => _finish(send: false) : null,
-                  child: Text(C.label('Insert')),
-                ),
+            ),
+          ),
+          _Spot(
+            _Mark.send,
+            _spots,
+            child: Semantics(
+              identifier: 'voice-send',
+              child: FilledButton(
+                key: const ValueKey('voice-send'),
+                style: FilledButton.styleFrom(minimumSize: tall, padding: tight),
+                onPressed: can ? () => _finish(send: true) : null,
+                child: Text(C.label('Send')),
               ),
-              Semantics(
-                identifier: 'voice-send',
-                child: FilledButton(
-                  key: const ValueKey('voice-send'),
-                  onPressed: can ? () => _finish(send: true) : null,
-                  child: Text(C.label('Send')),
-                ),
-              ),
-            ],
+            ),
+          ),
+        ];
+        return FadeTransition(
+          opacity: _reveal,
+          child: Padding(
+            padding: pad,
+            child: LayoutBuilder(
+              builder: (context, box) {
+                // Side by side while the longest label fits a third of the width; very large text stacks them.
+                final style = Theme.of(context).textTheme.labelLarge;
+                final scaler = MediaQuery.textScalerOf(context);
+                var widest = 0.0;
+                for (final text in ['Cancel', 'Insert', 'Send']) {
+                  final label = TextPainter(
+                    text: TextSpan(text: C.label(text), style: style),
+                    textDirection: TextDirection.ltr,
+                    textScaler: scaler,
+                  )..layout();
+                  widest = math.max(widest, label.width);
+                  label.dispose();
+                }
+                final fits = 3 * (widest + tight.horizontal) + 16 <= box.maxWidth;
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  spacing: 8,
+                  children: [
+                    _Spot(
+                      _Mark.more,
+                      _spots,
+                      child: Semantics(
+                        identifier: 'voice-more',
+                        child: TextButton.icon(
+                          key: const ValueKey('voice-more'),
+                          style: TextButton.styleFrom(
+                            backgroundColor: C.accent.withValues(alpha: .12),
+                            minimumSize: tall,
+                          ),
+                          onPressed: _keepTalking,
+                          icon: const Icon(Icons.mic_rounded, size: 18),
+                          label: Text(C.label('Keep talking')),
+                        ),
+                      ),
+                    ),
+                    if (fits) Row(spacing: 8, children: [for (final b in row) Expanded(child: b)]) else ...row,
+                  ],
+                );
+              },
+            ),
           ),
         );
     }
@@ -806,41 +933,73 @@ class _LiveWordsState extends State<_LiveWords> with SingleTickerProviderStateMi
   }
 }
 
-/// How loud the voice is, as thin bars scrolling left, the newest on the right: tall while you talk, a flat dotted
-/// line in silence. Red while a held press is slid away to cancel; dim while it isn't listening yet or is stopping.
-class _Waveform extends StatefulWidget {
-  const _Waveform({required this.level, required this.away, required this.busy});
+/// What the motes leave from ([orb]) and land on ([buttons], in [_Flock]'s order).
+enum _Mark {
+  orb,
+  more,
+  cancel,
+  insert,
+  send;
+
+  static const List<_Mark> buttons = [more, cancel, insert, send];
+}
+
+/// [child], found in [spots] under [mark] while it's shown. Unlike a GlobalKey, the one going in a cross-fade and the
+/// one coming may both be there: the newest is found.
+class _Spot extends StatefulWidget {
+  const _Spot(this.mark, this.spots, {required this.child});
+  final _Mark mark;
+  final Map<_Mark, BuildContext> spots;
+  final Widget child;
+
+  @override
+  State<_Spot> createState() => _SpotState();
+}
+
+class _SpotState extends State<_Spot> {
+  @override
+  void initState() {
+    super.initState();
+    widget.spots[widget.mark] = context;
+  }
+
+  @override
+  void dispose() {
+    if (identical(widget.spots[widget.mark], context)) widget.spots.remove(widget.mark);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+/// How loud the voice is, as a glowing orb in the accent colour: it breathes in silence and swells and ripples as you
+/// talk. Rounder or squarer with the theme's shape. Red while a held press is slid away to cancel; dim and still while
+/// it isn't listening yet or is stopping. [stop]: tapping it stops, shown by a square in its middle.
+class _Orb extends StatefulWidget {
+  const _Orb({required this.level, required this.away, required this.busy, required this.stop});
   final ValueListenable<double> level;
   final bool away;
   final bool busy;
+  final bool stop;
 
   @override
-  State<_Waveform> createState() => _WaveformState();
+  State<_Orb> createState() => _OrbState();
 }
 
-class _WaveformState extends State<_Waveform> with SingleTickerProviderStateMixin {
-  /// A new bar this often; the bars between glide so the row scrolls smoothly.
-  static const _every = Duration(milliseconds: 70);
-  static const _bars = 64;
-
-  final _levels = List<double>.filled(_bars, 0, growable: true);
+class _OrbState extends State<_Orb> with SingleTickerProviderStateMixin {
   late final Ticker _ticker = createTicker(_tick);
-  Duration _last = Duration.zero;
-  double _shift = 0;
+  Duration _now = Duration.zero;
   double _smooth = 0;
 
   void _tick(Duration now) {
-    // Rises at once with the voice, falls back a little slower, so words read as bumps rather than flicker. A curve
-    // that lifts quiet speech: normal talking fills most of the height, not just shouting.
+    final dt = (now - _now).inMicroseconds / 1e6;
+    // A curve that lifts quiet speech, so normal talking swells it well, not just shouting. It rises quickly with the
+    // voice and settles more slowly, so words read as pulses rather than flicker, at any frame rate.
     final target = widget.busy ? 0.0 : math.min(1, math.pow(widget.level.value, .5) * 1.25).toDouble();
-    _smooth = target > _smooth ? target : _smooth * .85 + target * .15;
-    while (now - _last >= _every) {
-      _last += _every;
-      _levels
-        ..removeAt(0)
-        ..add(_smooth);
-    }
-    setState(() => _shift = (now - _last).inMicroseconds / _every.inMicroseconds);
+    final rate = target > _smooth ? 30.0 : 6.0;
+    _smooth += (target - _smooth) * (1 - math.exp(-rate * dt));
+    setState(() => _now = now);
   }
 
   @override
@@ -857,19 +1016,34 @@ class _WaveformState extends State<_Waveform> with SingleTickerProviderStateMixi
 
   @override
   Widget build(BuildContext context) {
+    final reduced = Motion.reduced(context);
     final color = widget.away ? C.error : (widget.busy ? C.dim2 : C.accent);
     return Semantics(
       label: 'Listening',
-      child: SizedBox(
-        key: const ValueKey('voice-level'),
-        height: 96,
-        width: double.infinity,
-        child: CustomPaint(
-          painter: _WavePainter(
-            _levels,
-            Motion.reduced(context) ? 0 : _shift,
-            color,
-            square: C.t.shape == ThemeShape.boxy,
+      child: TweenAnimationBuilder<double>(
+        // It grows into place as it comes, and when Keep talking brings it back.
+        tween: Tween(begin: reduced ? 1 : .6, end: 1),
+        duration: Motion.themed(Motion.slow),
+        curve: Motion.ease,
+        builder: (context, grow, child) => Transform.scale(scale: grow, child: child),
+        child: TweenAnimationBuilder<Color?>(
+          tween: ColorTween(end: color),
+          duration: Motion.of(context),
+          builder: (context, color, _) => SizedBox(
+            key: const ValueKey('voice-level'),
+            height: 168,
+            width: double.infinity,
+            child: CustomPaint(
+              painter: _OrbPainter(
+                time: _now.inMicroseconds / 1e6,
+                level: _smooth,
+                color: color!,
+                glow: widget.busy ? .35 : 1,
+                wobble: reduced ? 0 : (widget.busy ? .4 : 1),
+                shape: C.t.shape,
+                stop: widget.stop ? C.onAccent : null,
+              ),
+            ),
           ),
         ),
       ),
@@ -877,32 +1051,273 @@ class _WaveformState extends State<_Waveform> with SingleTickerProviderStateMixi
   }
 }
 
-class _WavePainter extends CustomPainter {
-  _WavePainter(List<double> levels, this.shift, this.color, {required this.square}) : levels = List.of(levels);
-  final List<double> levels;
-  final double shift;
+class _OrbPainter extends CustomPainter {
+  _OrbPainter({
+    required this.time,
+    required this.level,
+    required this.color,
+    required this.glow,
+    required this.wobble,
+    required this.shape,
+    required this.stop,
+  });
+
+  /// Seconds since it started: what the ripples turn with.
+  final double time;
+  final double level;
   final Color color;
-  final bool square;
+  final double glow;
+  final double wobble;
+  final ThemeShape shape;
+
+  /// The stop square's colour; null: none.
+  final Color? stop;
+
+  /// How far from the middle its edge is at angle [a], as a fraction of its radius: a circle on a soft theme, a
+  /// squircle on a crisp one, nearly a square on a boxy one; rippling by [amp], each [phase] its own way.
+  double _edge(double a, double amp, double phase) {
+    final n = switch (shape) {
+      ThemeShape.soft => 2.0,
+      ThemeShape.crisp => 3.2,
+      ThemeShape.boxy => 7.0,
+    };
+    final square = n == 2
+        ? 1.0
+        : .9 / math.pow(math.pow(math.cos(a).abs(), n) + math.pow(math.sin(a).abs(), n), 1 / n).toDouble();
+    final t = time + phase;
+    final ripple =
+        math.sin(3 * a + 1.3 * t) * .5 + math.sin(5 * a - 1.9 * t + 1) * .3 + math.sin(2 * a + .7 * t + 2) * .4;
+    return square * (1 + amp * ripple / 1.2);
+  }
+
+  Path _blob(Offset c, double r, double amp, double phase) {
+    const n = 72;
+    final points = [
+      for (var i = 0; i < n; i++)
+        Offset.fromDirection(i * 2 * math.pi / n, r * _edge(i * 2 * math.pi / n, amp, phase)) + c,
+    ];
+    // Through the midpoints, each point bending the line: a smooth edge with no corners.
+    final path = Path()..moveTo((points[0].dx + points[1].dx) / 2, (points[0].dy + points[1].dy) / 2);
+    for (var i = 1; i <= n; i++) {
+      final p = points[i % n];
+      final q = points[(i + 1) % n];
+      path.quadraticBezierTo(p.dx, p.dy, (p.dx + q.dx) / 2, (p.dy + q.dy) / 2);
+    }
+    return path..close();
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
-    final step = size.width / (levels.length - 1);
-    final double bar = math.max(2, step * .45);
-    final mid = size.height / 2;
-    final paint = Paint()..color = color;
-    for (final (i, l) in levels.indexed) {
-      final x = (i - shift) * step;
-      if (x < -bar || x > size.width + bar) continue;
-      // Older bars fade toward the left edge.
-      paint.color = color.withValues(alpha: color.a * (.25 + .75 * i / (levels.length - 1)));
-      final h = math.max(bar, l * size.height);
-      final r = Rect.fromCenter(center: Offset(x, mid), width: bar, height: h);
-      canvas.drawRRect(RRect.fromRectAndRadius(r, Radius.circular(square ? 0 : bar / 2)), paint);
+    final c = size.center(Offset.zero);
+    final breathe = 1 + .03 * wobble * math.sin(time * 2 * math.pi / 3.2);
+    final r = size.shortestSide * .25 * (breathe + .34 * level);
+    final amp = wobble * (.025 + .07 * level);
+
+    // The glow around it, brighter as the voice is louder.
+    final halo = r * (1.4 + .1 * level);
+    canvas
+      ..drawCircle(
+        c,
+        halo,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [
+              color.withValues(alpha: glow * (.35 + .3 * level)),
+              color.withValues(alpha: glow * (.12 + .1 * level)),
+              color.withValues(alpha: 0),
+            ],
+            stops: [r / halo * .8, (r / halo + 1) / 2, 1],
+          ).createShader(Rect.fromCircle(center: c, radius: halo)),
+      )
+      // A fainter, larger blob rippling out of step behind it, so the edge looks soft and alive.
+      ..drawPath(
+        _blob(c, r * 1.06, amp * 1.3, 2.7),
+        Paint()..color = color.withValues(alpha: color.a * .22 * (.5 + .5 * glow)),
+      )
+      // The orb, lit from the top left.
+      ..drawPath(
+        _blob(c, r, amp, 0),
+        Paint()
+          ..shader = RadialGradient(
+            center: const Alignment(-.35, -.4),
+            radius: .95,
+            colors: [
+              Color.lerp(color, const Color(0xFFFFFFFF), .4)!,
+              color,
+              Color.lerp(color, const Color(0xFF000000), .22)!,
+            ],
+            stops: const [0, .5, 1],
+          ).createShader(Rect.fromCircle(center: c, radius: r * 1.15)),
+      );
+
+    if (stop case final stop?) {
+      final side = r * .38;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(center: c, width: side, height: side),
+          Radius.circular(math.min(side * .22, shape.maxRadius)),
+        ),
+        Paint()..color = stop.withValues(alpha: .9),
+      );
     }
   }
 
   @override
-  bool shouldRepaint(_WavePainter old) => true;
+  bool shouldRepaint(_OrbPainter old) => true;
+}
+
+/// One speck of the orb: where it leaves from, which button it lands on ([to], in [_Mark.buttons]'s order) and where
+/// on it ([at], a fraction of its width and height, so it lands right as the button grows into place). It bursts out
+/// toward [burst] first, then comes down onto its place from [approach] (relative to it).
+class _Mote {
+  const _Mote(this.from, this.burst, this.to, this.at, this.approach, this.delay, this.size);
+  final Offset from;
+  final Offset burst;
+  final int to;
+  final Offset at;
+  final Offset approach;
+
+  /// How far into the flight it sets off: the orb's edge goes first.
+  final double delay;
+  final double size;
+}
+
+/// The motes the orb breaks into on Stop: Send and Keep talking fill with them, Insert's outline traces, and a few
+/// gather where Cancel's label is.
+class _Flock {
+  factory _Flock(Rect orb, List<Rect> buttons, ThemeShape shape) {
+    final rnd = math.Random(7);
+    const counts = [110, 26, 70, 110];
+    final ends = <(int, Offset, double)>[];
+    for (final (i, rect) in buttons.indexed) {
+      final round = RRect.fromRectAndRadius(
+        rect,
+        Radius.circular(shape == ThemeShape.soft ? rect.height / 2 : math.min(shape.maxRadius, rect.height / 2)),
+      );
+      Offset land(Offset p) => Offset((p.dx - rect.left) / rect.width, (p.dy - rect.top) / rect.height);
+      if (i == 2) {
+        final edge = (Path()..addRRect(round.deflate(1))).computeMetrics().first;
+        for (var k = 0; k < counts[i]; k++) {
+          final p = edge.getTangentForOffset(edge.length * (k + rnd.nextDouble() * .5) / counts[i])!.position;
+          ends.add((i, land(p), p.dx));
+        }
+        continue;
+      }
+      final area = i == 1
+          ? Rect.fromCenter(center: rect.center, width: rect.width * .4, height: rect.height * .3)
+          : rect;
+      for (var k = 0; k < counts[i];) {
+        final p = Offset(area.left + rnd.nextDouble() * area.width, area.top + rnd.nextDouble() * area.height);
+        if (!round.contains(p)) continue;
+        ends.add((i, land(p), p.dx));
+        k++;
+      }
+    }
+    // Left of the orb goes left: paired by where they are across, the motes stream rather than cross in a tangle.
+    final radius = orb.shortestSide * .27;
+    final starts = [
+      for (var k = 0; k < ends.length; k++)
+        Offset.fromDirection(rnd.nextDouble() * 2 * math.pi, radius * math.sqrt(rnd.nextDouble())) + orb.center,
+    ];
+    final across = {for (final s in starts) s: s.dx + (rnd.nextDouble() - .5) * radius};
+    starts.sort((a, b) => across[a]!.compareTo(across[b]!));
+    ends.sort((a, b) => a.$3.compareTo(b.$3));
+    return _Flock._(orb, [
+      for (final (k, (to, at, _)) in ends.indexed)
+        if (starts[k] - orb.center case final out)
+          _Mote(
+            starts[k],
+            starts[k] +
+                (out.distance < 1 ? Offset.fromDirection(rnd.nextDouble() * 2 * math.pi) : out / out.distance) *
+                    (radius * (.8 + 1.2 * rnd.nextDouble())) -
+                Offset(0, radius * .5 * rnd.nextDouble()),
+            to,
+            at,
+            Offset((rnd.nextDouble() - .5) * 60, -(20 + 50 * rnd.nextDouble())),
+            lag * (1 - out.distance / radius) + rnd.nextDouble() * .05,
+            2 + rnd.nextDouble() * 1.6,
+          ),
+    ]);
+  }
+
+  _Flock._(this.orb, this.motes);
+
+  /// The longest a mote waits to set off, as a fraction of the flight.
+  static const lag = .3;
+
+  final Rect orb;
+  final List<_Mote> motes;
+}
+
+/// [flock] in flight at [t]: a flash where the orb was, then each mote along a curve to its button, a short trail
+/// behind it, all fading as the buttons fade in. [buttons]: where they are now.
+class _FlockPainter extends CustomPainter {
+  _FlockPainter(this.flock, this.t, this.buttons) : super(repaint: t);
+  final _Flock flock;
+  final Animation<double> t;
+  final List<Rect?> Function() buttons;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = t.value;
+    if (p >= 1) return;
+    final rects = buttons();
+    if (rects.contains(null)) return;
+    final colors = [C.accent, C.dim, C.text, C.accent];
+    final fade = 1 - const Interval(.8, 1).transform(p);
+
+    final flash = 1 - (p / .3).clamp(0.0, 1.0);
+    if (flash > 0) {
+      final c = flock.orb.center;
+      final r = flock.orb.shortestSide * .4 * (1 + .5 * (1 - flash));
+      canvas.drawCircle(
+        c,
+        r,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [
+              C.accent.withValues(alpha: .45 * flash),
+              C.accent.withValues(alpha: 0),
+            ],
+          ).createShader(Rect.fromCircle(center: c, radius: r)),
+      );
+    }
+
+    final trail = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    final dot = Paint();
+    const curve = Curves.easeInOutCubic;
+    for (final m in flock.motes) {
+      final rect = rects[m.to]!;
+      final to = rect.topLeft + Offset(m.at.dx * rect.width, m.at.dy * rect.height);
+      final bend = to + m.approach;
+      Offset along(double e) {
+        final u = 1 - e;
+        return m.from * (u * u * u) + m.burst * (3 * u * u * e) + bend * (3 * u * e * e) + to * (e * e * e);
+      }
+
+      // Each sets off after its delay and lands a little before the buttons are fully in.
+      final local = ((p - m.delay) / (.95 - _Flock.lag)).clamp(0.0, 1.0);
+      final e = curve.transform(local);
+      final head = along(e);
+      final color = colors[m.to];
+      final size = m.size * (1 - .3 * e);
+      if (local > 0 && local < 1) {
+        canvas.drawLine(
+          along(curve.transform(math.max(0, local - .05))),
+          head,
+          trail
+            ..color = color.withValues(alpha: .3 * fade)
+            ..strokeWidth = size * .7,
+        );
+      }
+      canvas.drawCircle(head, size / 2, dot..color = color.withValues(alpha: fade));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_FlockPainter old) => old.flock != flock;
 }
 
 /// An E2E build's speaker (no microphone in the Simulator): says [words] one by one, a loudness swinging with

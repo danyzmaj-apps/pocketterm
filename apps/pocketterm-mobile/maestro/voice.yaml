@@ -25,7 +25,7 @@ appId: com.danyzmaj.pocketterm
     visible: ".*DEMO.*"
     timeout: 8000
 - tapOn: ".*Add a soil moisture endpoint.*"
-# Nothing typed: the composer's button is the microphone. A tap listens until Stop.
+# Nothing typed: the composer's button is the microphone. A tap listens until the orb is tapped (voice-stop).
 - assertVisible:
     id: "session-mic"
 - assertNotVisible:

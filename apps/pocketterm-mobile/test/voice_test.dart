@@ -299,6 +299,32 @@ void main() {
     expect(tester.widget<TextField>(edit).controller!.text, 'fix the flaky tests and push');
   });
 
+  testWidgets('tapping the orb stops; Keep talking sits above Cancel, Insert and Send side by side', (tester) async {
+    await open(tester);
+    await tapOpen(tester, mic);
+    speech
+      ..say('fix the tests')
+      ..level(.6);
+    await heard(tester);
+    expect(find.text('Tap to stop'), findsOneWidget);
+    await stop(tester);
+    expect(speech.stops, 1);
+    expect(find.byKey(const ValueKey('voice-stop')), findsNothing);
+
+    Rect at(String key) => tester.getRect(find.byKey(ValueKey(key)));
+    final more = at('voice-more');
+    final cancel = at('voice-cancel');
+    final insert = at('voice-insert');
+    final send = at('voice-send');
+    for (final b in [cancel, insert, send]) {
+      expect(more.bottom, lessThanOrEqualTo(b.top), reason: 'Keep talking is on its own row above');
+      expect(b.center.dy, moreOrLessEquals(send.center.dy, epsilon: 1), reason: 'one row');
+      expect(b.right, lessThanOrEqualTo(393));
+    }
+    expect(cancel.right, lessThanOrEqualTo(insert.left));
+    expect(insert.right, lessThanOrEqualTo(send.left));
+  });
+
   testWidgets('Insert puts it in the field with the keyboard up; Cancel and dragging the sheet down drop it', (
     tester,
   ) async {

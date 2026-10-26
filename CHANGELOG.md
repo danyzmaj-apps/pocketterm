@@ -2,9 +2,13 @@
 
 What each PocketTerm release brings.
 
-## Unreleased
+## 0.1.6
 
-To see what a session has cost on the phone, click **Update** for omp and Claude Code in PocketTerm on the computer.
+Servers and the push relay need no update. To see what a session has cost on the phone, click **Update** for omp and Claude Code in PocketTerm on the computer.
+
+### Desktop app
+
+- **Nothing installs without asking.** **Install** or **Update** for omp or Claude Code, in the checklist or in Settings, and **Install WezTerm** on Windows first explain why it's needed, what it changes and how to take it out, and install only once you confirm.
 
 ### Phone app
 

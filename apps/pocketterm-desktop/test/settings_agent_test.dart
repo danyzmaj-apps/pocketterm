@@ -73,6 +73,10 @@ void main() {
     expect(inCard(Agent.claude, find.text('Make default')), findsNothing, reason: 'not on this computer');
 
     await tester.tap(inCard(Agent.omp, find.text('Install')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('confirm-install-go')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
     await settle(tester, 'restart');
     expect(find.text('Installed · restart your omp sessions to load it (${Agent.omp.resume})'), findsOneWidget);
     expect(File('$home/.omp/agent/extensions/pocketterm-live.ts').existsSync(), isTrue);
@@ -114,6 +118,9 @@ void main() {
 
     // Updating can't turn mods on.
     await tester.tap(inCard(Agent.claude, find.text('Update')));
+    await tester.pumpAndSettle();
+    expect(find.text('Update PocketTerm in Claude Code?'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('confirm-install-go')));
     await settle(tester, 'Installed ·');
     const hint = 'run claude /login, start claude once, then type /reload-plugins in your Claude Code sessions';
     expect(find.text('Installed · Claude Code has mods turned off for now: $hint'), findsOneWidget);

@@ -77,40 +77,62 @@ void main() {
 
   bool shows(String text) => find.textContaining(text).evaluate().isNotEmpty;
 
-  testWidgets('opening it installs nothing; Install puts PocketTerm in, and a failure says why and offers Retry', (
-    tester,
-  ) async {
-    // omp has run here; Claude Code is installed, and installing its plugin fails.
-    Directory('$home/.omp').createSync();
-    final claude = FakeClaude('$home/bin/claude')..fail = 'plugin install pocketterm@pocketterm --json';
-    File(claude.path).createSync(recursive: true);
-    await pump(tester, (app) => GetReadyPage(app: app), claude: claude);
+  /// Presses the confirm popup's Install (or Update) once it shows.
+  Future<void> confirm(WidgetTester tester) async {
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('confirm-install-go')));
+    // Past the popup's closing (the spinner that follows never settles).
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+  }
 
-    await settle(tester, () => shows('PocketTerm isn\u2019t installed in omp'));
-    expect(File('$home/.omp/agent/extensions/pocketterm-live.ts').existsSync(), isFalse);
-    expect(claude.calls, isNot(contains('plugin install pocketterm@pocketterm --json')));
-    expect(find.textContaining('Claude Code not found'), findsNothing, reason: 'both agents are here');
+  testWidgets(
+    'opening it installs nothing; Install asks why first, then puts PocketTerm in, and a failure offers Retry',
+    (tester) async {
+      // omp has run here; Claude Code is installed, and installing its plugin fails.
+      Directory('$home/.omp').createSync();
+      final claude = FakeClaude('$home/bin/claude')..fail = 'plugin install pocketterm@pocketterm --json';
+      File(claude.path).createSync(recursive: true);
+      await pump(tester, (app) => GetReadyPage(app: app), claude: claude);
 
-    await tester.tap(find.text('Install').first);
-    await settle(tester, () => shows('PocketTerm is installed in omp'));
-    expect(File('$home/.omp/agent/extensions/pocketterm-live.ts').existsSync(), isTrue);
-    await tester.tap(find.text('Install'));
-    await settle(tester, () => shows("Couldn't install PocketTerm in"));
-    expect(claude.calls, contains('plugin install pocketterm@pocketterm --json'));
-    // Fixed meanwhile: Retry installs it, and Claude Code lists it from then on.
-    claude
-      ..fail = null
-      ..list = [
-        {
-          'id': 'pocketterm@pocketterm',
-          'enabled': true,
-          'readFromFolder': '$home/.config/pocketterm/claude-plugin/plugins/pocketterm',
-        },
-      ];
-    await tester.tap(find.text('Retry'));
-    await settle(tester, () => shows('PocketTerm is installed in Claude Code'));
-    expect(find.textContaining("Couldn't install PocketTerm in"), findsNothing);
-  });
+      await settle(tester, () => shows('PocketTerm isn\u2019t installed in omp'));
+      expect(File('$home/.omp/agent/extensions/pocketterm-live.ts').existsSync(), isFalse);
+      expect(claude.calls, isNot(contains('plugin install pocketterm@pocketterm --json')));
+      expect(find.textContaining('Claude Code not found'), findsNothing, reason: 'both agents are here');
+
+      // Install explains first; Not now leaves it out.
+      await tester.tap(find.text('Install').first);
+      await tester.pumpAndSettle();
+      expect(find.text('Install PocketTerm in omp?'), findsOneWidget);
+      expect(find.textContaining('So your phone sees your omp sessions as conversations'), findsOneWidget);
+      await tester.tap(find.text('Not now'));
+      await tester.pumpAndSettle();
+      expect(File('$home/.omp/agent/extensions/pocketterm-live.ts').existsSync(), isFalse);
+
+      await tester.tap(find.text('Install').first);
+      await confirm(tester);
+      await settle(tester, () => shows('PocketTerm is installed in omp'));
+      expect(File('$home/.omp/agent/extensions/pocketterm-live.ts').existsSync(), isTrue);
+      await tester.tap(find.text('Install'));
+      await confirm(tester);
+      await settle(tester, () => shows("Couldn't install PocketTerm in"));
+      expect(claude.calls, contains('plugin install pocketterm@pocketterm --json'));
+      // Fixed meanwhile: Retry installs it, and Claude Code lists it from then on.
+      claude
+        ..fail = null
+        ..list = [
+          {
+            'id': 'pocketterm@pocketterm',
+            'enabled': true,
+            'readFromFolder': '$home/.config/pocketterm/claude-plugin/plugins/pocketterm',
+          },
+        ];
+      await tester.tap(find.text('Retry'));
+      await confirm(tester);
+      await settle(tester, () => shows('PocketTerm is installed in Claude Code'));
+      expect(find.textContaining("Couldn't install PocketTerm in"), findsNothing);
+    },
+  );
 
   testWidgets('an agent that isn’t here is left for later; none at all needs one installed', (tester) async {
     Directory('$home/.omp').createSync();
@@ -271,6 +293,7 @@ void main() {
     expect(find.text('2 things need attention'), findsOneWidget);
 
     await tester.tap(inStatus('Install'));
+    await confirm(tester);
     await settle(tester, () => shows('1 thing needs attention'));
     expect(File('$home/.omp/agent/extensions/pocketterm-live.ts').existsSync(), isTrue);
   });

@@ -12,6 +12,7 @@ import 'package:pocketterm_desktop/controller.dart';
 import 'package:pocketterm_desktop/hosting/built_in_server.dart';
 import 'package:pocketterm_desktop/hosting/hosting_view.dart';
 import 'package:pocketterm_desktop/integrations.dart';
+import 'package:pocketterm_desktop/onboarding/confirm_install.dart';
 import 'package:pocketterm_desktop/onboarding/pair.dart';
 import 'package:pocketterm_desktop/onboarding/terminals_card.dart';
 import 'package:pocketterm_desktop/terminal_fixes.dart';
@@ -22,9 +23,11 @@ import 'package:pocketterm_desktop/wezterm_setup.dart';
 /// signed-in window until it's finished ([AppController.getReadyDone]);
 /// Settings' status bar opens it again.
 ///
-/// 1. Coding agents: PocketTerm goes into every agent found (omp, Claude
-///    Code) as soon as this shows; agent sessions opened before it are
-///    listed with what picks it up there, until they report.
+/// 1. Coding agents: each agent found (omp, Claude Code) with whether
+///    PocketTerm is in it; Install puts it there once the person read why
+///    and confirmed ([confirmAgentInstall]), never on its own. Agent
+///    sessions opened before it are listed with what picks it up there,
+///    until they report.
 /// 2. Terminals: the Mac's, each with its fix; WezTerm on Windows.
 /// 3. Project folders (optional): the usual ones found in the home folder.
 /// 4. Your phone: the pairing QR, until a phone has signed in.
@@ -122,6 +125,10 @@ class _GetReadyPageState extends State<GetReadyPage> {
   }
 
   Future<void> _install(Agent agent) async {
+    final check = app.agents?[agent];
+    final update = check != null && integrationOf(check) == AgentIntegration.outdated;
+    if (!await confirmAgentInstall(context, agent, app.integrations, home: app.terminals.home, update: update)) return;
+    if (!mounted) return;
     setState(() {
       _installing.add(agent);
       _failed.remove(agent);

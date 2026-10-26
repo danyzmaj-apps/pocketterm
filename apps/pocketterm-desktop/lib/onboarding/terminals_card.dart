@@ -8,6 +8,7 @@ import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_desktop/commands.dart';
 import 'package:pocketterm_desktop/hosting/hosting_view.dart';
 import 'package:pocketterm_desktop/onboarding/commands_view.dart';
+import 'package:pocketterm_desktop/onboarding/confirm_install.dart';
 import 'package:pocketterm_desktop/terminal_fixes.dart';
 import 'package:pocketterm_desktop/wezterm_setup.dart';
 
@@ -268,6 +269,22 @@ class WezTermCard extends StatelessWidget {
   const WezTermCard({required this.setup, super.key});
   final WezTermSetup setup;
 
+  /// Downloads and opens WezTerm's installer once the person confirmed it.
+  Future<void> _install(BuildContext context) async {
+    final go = await confirmInstall(
+      context,
+      title: 'Install WezTerm?',
+      why:
+          'On Windows, PocketTerm works through WezTerm: sessions you start from your phone open in it, and its '
+          'windows show on your phone.',
+      what:
+          'PocketTerm downloads WezTerm\u2019s own installer from its GitHub release, checks it against WezTerm\u2019s '
+          'published checksum and opens it; you click through the installer yourself.',
+      undo: 'To take it out later, uninstall WezTerm from Windows Settings, Apps.',
+    );
+    if (go) await setup.install();
+  }
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: setup,
@@ -292,7 +309,7 @@ class WezTermCard extends StatelessWidget {
               const SizedBox(height: 12),
               FilledButton.tonal(
                 key: const ValueKey('wezterm-install'),
-                onPressed: setup.state == WezTermSetupState.missing ? () => unawaited(setup.install()) : null,
+                onPressed: setup.state == WezTermSetupState.missing ? () => unawaited(_install(context)) : null,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text(switch (setup.state) {

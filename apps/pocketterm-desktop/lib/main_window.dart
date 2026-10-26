@@ -16,6 +16,7 @@ import 'package:pocketterm_desktop/controller.dart';
 import 'package:pocketterm_desktop/hosting/built_in_server.dart';
 import 'package:pocketterm_desktop/hosting/hosting_view.dart';
 import 'package:pocketterm_desktop/integrations.dart';
+import 'package:pocketterm_desktop/onboarding/confirm_install.dart';
 import 'package:pocketterm_desktop/onboarding/data_protection.dart';
 import 'package:pocketterm_desktop/onboarding/get_ready.dart';
 import 'package:pocketterm_desktop/onboarding/pair.dart';
@@ -386,8 +387,13 @@ class _SettingsPageState extends State<SettingsPage> {
     return p.startsWith('$home/') ? '~${p.substring(home.length)}' : p;
   }
 
-  /// Installs (or updates) PocketTerm in [agent], from its card or the status bar; its card says how it went.
+  /// Installs (or updates) PocketTerm in [agent] once the person confirmed it ([confirmAgentInstall]), from its
+  /// card or the status bar; its card says how it went.
   Future<void> _install(Agent agent) async {
+    final check = app.agents?[agent];
+    final update = check != null && integrationOf(check) == AgentIntegration.outdated;
+    if (!await confirmAgentInstall(context, agent, app.integrations, home: app.terminals.home, update: update)) return;
+    if (!mounted) return;
     setState(() {
       _installing.add(agent);
       _installNotes.remove(agent);

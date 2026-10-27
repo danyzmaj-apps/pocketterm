@@ -1,7 +1,7 @@
 name: pocketterm_desktop
 description: "PocketTerm: this computer's coding sessions and terminals on your phone, through your own PocketTerm server."
 publish_to: 'none'
-version: 0.1.5+20
+version: 0.1.6+21
 resolution: workspace
 
 environment:

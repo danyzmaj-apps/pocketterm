@@ -25,6 +25,7 @@ import 'package:pocketterm_mobile/motion.dart';
 import 'package:pocketterm_mobile/onboarding/scan.dart';
 import 'package:pocketterm_mobile/push_consent.dart';
 import 'package:pocketterm_mobile/setup_page.dart';
+import 'package:pocketterm_mobile/state_border.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -203,6 +204,41 @@ class MobileSession extends Session {
       ProjectSort.values.where((s) => s.name == _prefs.getString(_sortKey)).firstOrNull ?? ProjectSort.name;
 
   Future<void> setProjectSort(ProjectSort sort) => _prefs.setString(_sortKey, sort.name);
+
+  static const _looksKey = 'pocketterm_tile_looks';
+
+  /// The names and colours the person gave rows in the Terminal list, by computer and row key. A row keeps them
+  /// while its window lives; a window that closes leaves only a stale entry, which costs nothing.
+  Map<String, TileLook> tileLooks(String desktop) {
+    final all = _looks();
+    return {
+      for (final MapEntry(:key, :value) in all.entries)
+        if (key.startsWith('$desktop|')) key.substring(desktop.length + 1): value,
+    };
+  }
+
+  Future<void> setTileLooks(String desktop, Map<String, TileLook> looks) {
+    final all = {
+      for (final e in _looks().entries)
+        if (!e.key.startsWith('$desktop|')) e.key: e.value,
+      for (final e in looks.entries)
+        if (e.value.name != null || e.value.color != null) '$desktop|${e.key}': e.value,
+    };
+    return _prefs.setString(_looksKey, jsonEncode({for (final e in all.entries) e.key: e.value.toJson()}));
+  }
+
+  Map<String, TileLook> _looks() {
+    try {
+      final json = jsonDecode(_prefs.getString(_looksKey) ?? '{}');
+      if (json is! Map) return {};
+      return {
+        for (final MapEntry(:key, :value) in json.entries)
+          if (key is String && value is Map) key: TileLook.fromJson(value.cast()),
+      };
+    } on FormatException {
+      return {};
+    }
+  }
 
   /// The first-use tips this phone has shown; kept across sign-outs, they're the phone's.
   late final CoachController tips = CoachController(_prefs);
@@ -979,6 +1015,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   onFolded: (f) => unawaited(widget.session.setCollapsedProjects(f)),
                   sort: widget.session.projectSort,
                   onSort: (s) => unawaited(widget.session.setProjectSort(s)),
+                  looks: widget.session.tileLooks(t.desktopId),
+                  onLooks: (l) => unawaited(widget.session.setTileLooks(t.desktopId, l)),
                   computer: selected?.name,
                 ),
                 null when selected != null && widget.session.computerKey(selected.id) == null => _Locked(

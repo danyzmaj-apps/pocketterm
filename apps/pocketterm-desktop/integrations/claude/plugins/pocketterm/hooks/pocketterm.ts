@@ -549,9 +549,16 @@ export function register(on: On): void {
 			try {
 				await sendMeta($);
 			} catch {}
-			// A phone prompt waits: the run goes on.
+			// A phone prompt waits: the run goes on. Claude Code gives "error" only to a run it didn't stop, whose last
+			// answer was an API error (a retry that got through doesn't end in one).
 			if (queued === 0)
-				send($, { t: "busy", busy: false, summary: summary(e.answer) || undefined, stopped: e.isAborted || undefined });
+				send($, {
+					t: "busy",
+					busy: false,
+					summary: summary(e.answer) || undefined,
+					stopped: e.isAborted || undefined,
+					failed: e.reason === "error" || undefined,
+				});
 		}
 		return next(e);
 	});

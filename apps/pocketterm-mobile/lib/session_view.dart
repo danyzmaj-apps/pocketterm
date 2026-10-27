@@ -1,7 +1,8 @@
 import 'dart:async';
-import 'dart:math' show min;
+import 'dart:math' show max, min;
 
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart' show clampDouble;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -1849,28 +1850,32 @@ class _AskCardState extends State<_AskCard> {
             child: Text('Pick any', style: TextStyle(fontSize: 12, color: C.dim2)),
           ),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final (o, label) in q.options.indexed)
-              ChoiceChip(
-                key: ValueKey('ask-$i-$o'),
-                label: Text(q.recommended == o ? '$label ★' : label),
-                selected: _picks[i].contains(o),
-                showCheckmark: q.multi,
-                onSelected: busy
-                    ? null
-                    : (on) => setState(() {
-                        Haptics.picked();
-                        if (!q.multi) {
-                          _picks[i].clear();
-                          _other[i].clear();
-                        }
-                        on ? _picks[i].add(o) : _picks[i].remove(o);
-                      }),
-              ),
-          ],
+        // The row's width, which a long answer wraps within.
+        LayoutBuilder(
+          builder: (context, row) => Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final (o, label) in q.options.indexed)
+                _Choice(
+                  key: ValueKey('ask-$i-$o'),
+                  label: q.recommended == o ? '$label ★' : label,
+                  width: row.maxWidth,
+                  check: q.multi,
+                  selected: _picks[i].contains(o),
+                  onSelected: busy
+                      ? null
+                      : (on) => setState(() {
+                          Haptics.picked();
+                          if (!q.multi) {
+                            _picks[i].clear();
+                            _other[i].clear();
+                          }
+                          on ? _picks[i].add(o) : _picks[i].remove(o);
+                        }),
+                ),
+            ],
+          ),
         ),
         const SizedBox(height: 6),
         TextField(
@@ -2035,6 +2040,116 @@ class _AskCardState extends State<_AskCard> {
       ),
     );
   }
+}
+
+/// An answer to pick: a [ChoiceChip] that shows all of its [label]. A chip
+/// keeps its label to one line and fades out what doesn't fit, which cut long
+/// answers off; here one wraps onto as many lines as it needs within [width]
+/// and the chip grows to hold them. A short one is the plain chip.
+class _Choice extends StatelessWidget {
+  const _Choice({
+    required this.label,
+    required this.width,
+    required this.check,
+    required this.selected,
+    required this.onSelected,
+    super.key,
+  });
+  final String label;
+
+  /// The row's, which the chip doesn't grow past.
+  final double width;
+
+  /// Picked, it shows a check (a question that takes several answers).
+  final bool check;
+  final bool selected;
+  final ValueChanged<bool>? onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final chip = ChipTheme.of(context);
+    final dir = Directionality.of(context);
+    final scaler = MediaQuery.textScalerOf(context);
+    // The chip's own measures (RawChip's, for this theme), to tell the room its label has and whether it wraps.
+    final style = chip.labelStyle ?? theme.textTheme.labelLarge!;
+    final padding = (chip.padding ?? const EdgeInsets.all(8)).resolve(dir);
+    final labelPadding =
+        (chip.labelPadding ??
+                EdgeInsets.lerp(
+                  const EdgeInsets.symmetric(horizontal: 8),
+                  const EdgeInsets.symmetric(horizontal: 4),
+                  clampDouble(scaler.scale(style.fontSize ?? 14) / 14 - 1, 0, 1),
+                )!)
+            .resolve(dir);
+    // Its outline, which its fill insets the rest by (an unpicked one's alone by default).
+    final side = WidgetStateProperty.resolveAs<BorderSide?>(chip.side, {
+      if (selected) WidgetState.selected,
+      if (onSelected == null) WidgetState.disabled,
+    });
+    final outline = max<double>(0, side?.strokeInset ?? (selected ? 0 : 1)) * 2;
+    final text = TextPainter(
+      text: TextSpan(text: label, style: style),
+      textDirection: dir,
+      textScaler: scaler,
+    );
+    // A one-line chip's content height, which is also the square its check takes.
+    final box = max(32 - padding.vertical + labelPadding.vertical, text.preferredLineHeight + labelPadding.vertical);
+    final room = max<double>(0, width - outline - padding.horizontal - labelPadding.horizontal - (check ? box : 0));
+    text.layout(maxWidth: room);
+    final wraps = text.computeLineMetrics().length > 1;
+    text.dispose();
+    final oneLine = box + theme.visualDensity.baseSizeAdjustment.dy / 2 + padding.vertical + outline;
+    return ChoiceChip(
+      // Capped at the room the chip leaves it, so the chip measures the label at the width it lays it out at.
+      label: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: room),
+        // Without the chip's one line.
+        child: Builder(
+          builder: (context) => DefaultTextStyle(style: DefaultTextStyle.of(context).style, child: Text(label)),
+        ),
+      ),
+      selected: selected,
+      // A wrapped label's check would be a square as tall as all its lines; it takes a one-line chip's instead.
+      showCheckmark: check && !wraps,
+      avatar: check && wraps && selected
+          ? CustomPaint(painter: _Check(chip.checkmarkColor ?? theme.colorScheme.onSecondaryContainer))
+          : null,
+      avatarBoxConstraints: check && wraps ? BoxConstraints.tight(Size.square(box)) : null,
+      // A pill several lines tall is a blob: it keeps a one-line pill's corners.
+      shape: wraps && chip.shape is StadiumBorder
+          ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(oneLine / 2))
+          : null,
+      onSelected: onSelected,
+    );
+  }
+}
+
+/// The check a picked chip draws, as RawChip draws it in a square of the
+/// painted size.
+class _Check extends CustomPainter {
+  const _Check(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.height;
+    final at = s * .125;
+    final c = s * .75;
+    canvas.drawPath(
+      Path()
+        ..moveTo(at + c * .15, at + c * .45)
+        ..lineTo(at + c * .4, at + c * .7)
+        ..lineTo(at + c * .85, at + c * .25),
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2 * s / 24,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_Check old) => old.color != color;
 }
 
 /// A picker a slash command opened in the agent's terminal UI (/resume, /model,

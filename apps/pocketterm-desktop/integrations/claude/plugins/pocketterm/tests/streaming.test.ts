@@ -66,7 +66,7 @@ test("an answer of several text blocks is one bubble on the phone, however Claud
 	expect([...shown.values()]).toEqual(["First part.", "Second part."]);
 });
 
-test("a run the person stopped ends with stopped on the phone; one that finished doesn't", async ($, on) => {
+test("a stopped run ends with stopped on the phone, one that broke off with failed, one that finished with neither", async ($, on) => {
 	const clock = mock.clock(on);
 	mock.env(on, { HOME: "/Users/me" });
 	on("fs.read", ($, e) => ({ value: e.path === "/Users/me/.config/pocketterm/cli.json" ? '{"port":4321,"token":"t0k"}' : "" }));
@@ -91,15 +91,24 @@ test("a run the person stopped ends with stopped on the phone; one that finished
 	await $.session.start({ cwd: "/work/repo", isInteractive: true, surface: "terminal" } as never);
 	await clock.settle();
 
-	async function run(id: string, isAborted: boolean): Promise<Record<string, unknown>> {
+	async function run(id: string, reason: "aborted" | "answer" | "error"): Promise<Record<string, unknown>> {
 		busy.length = 0;
 		await $.turn.start({ turnId: id } as never);
-		await $.turn.complete({ turnId: id, isAborted, reason: isAborted ? "aborted" : "completed", answer: "Done.", text: "Done." } as never);
+		const isAborted = reason === "aborted";
+		await $.turn.complete({ turnId: id, isAborted, reason, answer: "Done.", text: "Done." } as never);
 		await clock.settle();
 		expect(busy.length).toBe(1);
 		return busy[0];
 	}
 
-	expect((await run("t1", true)).stopped).toBe(true);
-	expect("stopped" in (await run("t2", false))).toBe(false);
+	const stopped = await run("t1", "aborted");
+	expect(stopped.stopped).toBe(true);
+	expect("failed" in stopped).toBe(false);
+	const finished = await run("t2", "answer");
+	expect("stopped" in finished).toBe(false);
+	expect("failed" in finished).toBe(false);
+	// Claude Code ends a run it didn't stop whose last answer was an API error with reason "error".
+	const failed = await run("t3", "error");
+	expect(failed.failed).toBe(true);
+	expect("stopped" in failed).toBe(false);
 });

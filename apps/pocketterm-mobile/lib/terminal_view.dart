@@ -16,6 +16,7 @@ import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/coach.dart';
 import 'package:pocketterm_mobile/motion.dart';
 import 'package:pocketterm_mobile/session_view.dart';
+import 'package:pocketterm_mobile/state_border.dart';
 import 'package:pocketterm_mobile/swipe_action.dart';
 import 'package:pocketterm_mobile/switch_view.dart';
 
@@ -398,14 +399,48 @@ List<SessionGroup> groupedSessions(List<LiveSummary> sessions, ProjectSort sort,
   return [for (final cwd in order) (cwd: cwd, sessions: byCwd[cwd]!)];
 }
 
-/// "Needs you", "Working…" or how long it has been idle.
+/// "Needs you", "Working…", a stop it needs to hear about, or how long it has been idle.
 String sessionState(LiveSummary s) => s.ask != null
     ? 'Needs you'
     : s.busy
     ? 'Working…'
+    : s.failed
+    ? 'Stopped on an error'
+    : s.paused && s.queue.isNotEmpty
+    ? 'Queue paused'
     : (s.at == null ? 'Idle' : ago(s.at!));
 
 Color sessionColor(LiveSummary s) => s.ask != null ? C.warn : (s.busy ? C.accent : C.dim2);
+
+/// Sessions seen working in this run of the app, and those of them that have finished since the person last opened
+/// them: what a row's Done border shows. Kept for the app's life, so it survives the list being rebuilt or left.
+final _wasBusy = <String>{};
+final _finished = <String>{};
+
+/// Notes which of [sessions] finished a run since last looked at.
+void _noteFinished(Iterable<LiveSummary> sessions) {
+  for (final s in sessions) {
+    if (s.busy) {
+      _wasBusy.add(s.key);
+      _finished.remove(s.key);
+    } else if (_wasBusy.remove(s.key) && s.ask == null && !s.failed) {
+      _finished.add(s.key);
+    }
+  }
+}
+
+/// [s] as its row's border shows it.
+TileState tileState(LiveSummary s) => s.ask != null
+    ? TileState.needsYou
+    : s.busy
+    ? TileState.working
+    : s.failed
+    ? TileState.failed
+    : s.paused && s.queue.isNotEmpty
+    ? TileState.paused
+    : _finished.contains(s.key)
+    ? TileState.done
+    : TileState.idle;
 
 /// The home page's body: the computer's coding sessions by project, in a
 /// steady order, and its other terminal windows. Tapping a project's heading
@@ -417,6 +452,8 @@ class TerminalList extends StatefulWidget {
     required this.onFolded,
     required this.sort,
     required this.onSort,
+    this.looks = const {},
+    this.onLooks,
     this.computer,
     super.key,
   });
@@ -431,6 +468,10 @@ class TerminalList extends StatefulWidget {
   final ProjectSort sort;
   final ValueChanged<ProjectSort> onSort;
 
+  /// The names and colours the person gave rows, by row key, as kept; [onLooks] keeps them when they change.
+  final Map<String, TileLook> looks;
+  final ValueChanged<Map<String, TileLook>>? onLooks;
+
   /// The computer's name, for advice about it; null says "the computer".
   final String? computer;
 
@@ -443,6 +484,7 @@ class _TerminalListState extends State<TerminalList> {
 
   late final Set<String> _folded = {...widget.folded};
   late ProjectSort _sort = widget.sort;
+  late final Map<String, TileLook> _looks = {...widget.looks};
 
   /// By activity: the projects' order as last shown, kept until the list
   /// is pulled to refresh or the sort changes.
@@ -529,41 +571,203 @@ class _TerminalListState extends State<TerminalList> {
     if (_open != null && _open != window) setState(() => _open = null);
   }
 
-  Future<void> _close(TermWindow w) async {
+  Future<void> _close(String row, TermWindow w) async {
     _openTimer?.cancel();
     setState(() => _closing.add(w.key));
     await closeWindow(context, remote, w);
     if (!mounted) return;
     setState(() {
       _closing.remove(w.key);
-      if (_open == w.key) _open = null;
+      if (_open == row) _open = null;
     });
   }
 
-  /// [child], showing End session (Close window, for no agent) when swiped
-  /// left; tapped, [w] closes at once.
-  Widget _swipe(String key, TermWindow? w, Widget child) {
-    if (w == null || !w.can(TermCap.close)) return child;
-    final online = remote.online;
-    final busy = _closing.contains(w.key);
+  TileLook _look(String row) => _looks[row] ?? const TileLook();
+
+  void _setLook(String row, TileLook look) {
+    setState(() {
+      if (look.name == null && look.color == null) {
+        _looks.remove(row);
+      } else {
+        _looks[row] = look;
+      }
+      if (_open == row) _open = null;
+    });
+    widget.onLooks?.call({..._looks});
+  }
+
+  /// The row's background in the person's colour: it stands in for any background the row would have.
+  Color? _tint(String row) {
+    final c = _look(row).color;
+    return c == null ? null : Color(c).withValues(alpha: C.t.dark ? .22 : .2);
+  }
+
+  /// [row]'s tint, easing to a new colour (or away) as a theme change does: a change shown, not cut to.
+  Widget _tinted(String row, Widget Function(Color? tint) build) {
+    final tint = _tint(row);
+    return TweenAnimationBuilder<Color?>(
+      tween: ColorTween(end: tint ?? (C.t.dark ? Colors.transparent : C.win.withValues(alpha: 0))),
+      duration: Motion.of(context),
+      curve: Motion.ease,
+      builder: (_, color, _) => build(color == null || color.a == 0 ? null : color),
+    );
+  }
+
+  /// [title], cross-fading when the person renames the row, like a state's words do.
+  static Widget _titleText(String title) => FadeSwap(
+    scale: 1,
+    alignment: Alignment.centerLeft,
+    child: Text(
+      title,
+      key: ValueKey(title),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(fontSize: 15),
+    ),
+  );
+
+  /// Asks for the row's own name; empty, or Reset, goes back to the one the computer gives it.
+  Future<void> _rename(String row, String shown) async {
+    final look = _look(row);
+    final name = await showAppSheet<String>(
+      context,
+      isScrollControlled: true,
+      builder: (_) => _RenameSheet(initial: look.name ?? shown, canReset: look.name != null),
+    );
+    if (name == null || !mounted) return;
+    _setLook(row, look.withName(name.trim() == shown ? null : name));
+  }
+
+  /// Asks for the row's colour, or none.
+  Future<void> _recolor(String row) async {
+    final look = _look(row);
+    final picked = await showAppSheet<int>(
+      context,
+      builder: (sheet) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 16,
+          children: [
+            Text('Color', style: sheetTitleStyle),
+            Wrap(
+              spacing: 14,
+              runSpacing: 14,
+              children: [
+                for (final (i, c) in tileColors.indexed)
+                  TileSwatch(
+                    key: ValueKey('tile-color-${c.toARGB32().toRadixString(16)}'),
+                    color: c,
+                    name: tileColorNames[i],
+                    picked: look.color == c.toARGB32(),
+                    onTap: () => Navigator.of(sheet).pop(c.toARGB32()),
+                  ),
+              ],
+            ),
+            if (look.color != null)
+              TextButton.icon(
+                key: const ValueKey('tile-color-none'),
+                onPressed: () => Navigator.of(sheet).pop(0),
+                icon: const Icon(Icons.format_color_reset_outlined, size: 18),
+                label: Text(C.label('No color')),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    _setLook(row, look.withColor(picked == 0 ? null : picked));
+  }
+
+  /// A long press on a row: what its swipe offers, as a sheet.
+  Future<void> _rowMenu(String row, String shown, TermWindow? w) => showAppSheet<void>(
+    context,
+    builder: (sheet) {
+      final closable = w != null && w.can(TermCap.close) && remote.online && !_closing.contains(w.key);
+      final color = _look(row).color;
+      void then(Future<void> Function() action) {
+        Navigator.of(sheet).pop();
+        unawaited(action());
+      }
+
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              key: const ValueKey('row-menu-rename'),
+              leading: Icon(Icons.edit_outlined, color: C.dim),
+              title: const Text('Rename'),
+              onTap: () => then(() => _rename(row, shown)),
+            ),
+            ListTile(
+              key: const ValueKey('row-menu-color'),
+              leading: Icon(Icons.palette_outlined, color: color == null ? C.dim : Color(color)),
+              title: const Text('Color'),
+              onTap: () => then(() => _recolor(row)),
+            ),
+            if (closable)
+              ListTile(
+                key: const ValueKey('row-menu-close'),
+                leading: Icon(Icons.close, color: C.error),
+                title: Text(w.agent != null ? 'End session' : 'Close window', style: TextStyle(color: C.error)),
+                onTap: () => then(() => _close(row, w)),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      );
+    },
+  );
+
+  /// [child], showing Rename, Color and End session (Close window, for no agent; only a window that can close, while
+  /// online) when swiped left. [shown]: the row's title as it reads now, for Rename.
+  Widget _swipe(String key, TermWindow? w, String shown, Widget child) {
+    final closable = w != null && w.can(TermCap.close) && remote.online;
+    final busy = w != null && _closing.contains(w.key);
     final row = SwipeAction(
       key: ValueKey('swipe-$key'),
-      actionKey: ValueKey('swipe-action-$key'),
-      open: busy || (online && _open == w.key),
-      enabled: online,
-      busy: busy,
-      label: w.agent != null ? 'End session' : 'Close window',
-      onSwipe: () => _swiping(w.key),
-      onOpen: (open) => _setOpen(w.key, open),
-      onAction: () => unawaited(_close(w)),
+      open: busy || _open == key,
+      onSwipe: () => _swiping(key),
+      onOpen: (open) => _setOpen(key, open),
+      actions: [
+        SwipeItem(
+          key: ValueKey('swipe-rename-$key'),
+          icon: Icons.edit_outlined,
+          label: C.label('Rename'),
+          color: C.dim,
+          onTap: () => unawaited(_rename(key, shown)),
+        ),
+        SwipeItem(
+          key: ValueKey('swipe-color-$key'),
+          icon: Icons.palette_outlined,
+          label: C.label('Color'),
+          color: _look(key).color == null ? C.accent : Color(_look(key).color!),
+          onTap: () => unawaited(_recolor(key)),
+        ),
+        if (closable || busy)
+          SwipeItem(
+            key: ValueKey('swipe-action-$key'),
+            icon: Icons.close,
+            label: C.label(w.agent != null ? 'End session' : 'Close window'),
+            busy: busy,
+            onTap: () => unawaited(_close(key, w)),
+          ),
+      ],
       child: child,
     );
     return key == _swipeTipRow ? _tipped(Tip.swipeRow, row) : row;
   }
 
+  /// A session row's corners: inside the card's, by the row's inset.
+  static double get _rowRadius => max(Panel.radius - 6, 0).toDouble();
+
   /// A session's row; its project is the heading above it.
   Widget _session(LiveSummary s) {
-    final title = s.title.isNotEmpty ? s.title : s.agent.label;
+    final own = s.title.isNotEmpty ? s.title : s.agent.label;
+    final title = _look(s.key).name ?? own;
+    final tint = _tint(s.key);
     final w = s.window == null ? null : remote.window(s.window!);
     // A session that started since the list showed comes in; its state changing (working, needs you, done) shows
     // in place: the icon's color turns, the words cross-fade, and needing you lights the row up once.
@@ -573,45 +777,67 @@ class _TerminalListState extends State<TerminalList> {
       child: _swipe(
         s.key,
         w,
+        title,
         _tipped(
           s.window != null && s.window == Coach.maybeOf(context)?.switchedWindow ? Tip.switchDone : null,
           _Pulse(
-            on: s.ask != null,
-            child: ListTile(
-              key: ValueKey('session-${s.key}'),
-              contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-              onTap: () => openSession(context, remote, s.key),
-              leading: TweenAnimationBuilder<Color?>(
-                tween: ColorTween(end: sessionColor(s)),
-                duration: Motion.of(context),
-                builder: (_, color, _) => Icon(Icons.auto_awesome, size: 18, color: color),
-              ),
-              title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15)),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _badged(
-                    w,
-                    FadeSwap(
-                      scale: 1,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        sessionState(s),
-                        key: ValueKey(sessionState(s)),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 13, color: s.ask != null || s.busy ? sessionColor(s) : C.dim),
-                      ),
+            // A colour the person chose stands in for the row's own backgrounds, the flash for needing you too.
+            on: s.ask != null && tint == null,
+            // The border says how it stands, like a terminal tab's colour; the words under the title stay quiet.
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              child: StateBorder(
+                state: tileState(s),
+                radius: _rowRadius,
+                child: _tinted(
+                  s.key,
+                  (tint) => ListTile(
+                    key: ValueKey('session-${s.key}'),
+                    contentPadding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_rowRadius)),
+                    tileColor: tint,
+                    onTap: () {
+                      _finished.remove(s.key);
+                      openSession(context, remote, s.key);
+                    },
+                    onLongPress: () {
+                      unawaited(HapticFeedback.selectionClick());
+                      unawaited(_rowMenu(s.key, title, w));
+                    },
+                    leading: TweenAnimationBuilder<Color?>(
+                      tween: ColorTween(end: tileState(s).color ?? C.dim2),
+                      duration: Motion.of(context),
+                      builder: (_, color, _) => Icon(Icons.auto_awesome, size: 18, color: color),
+                    ),
+                    title: _titleText(title),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _badged(
+                          w,
+                          FadeSwap(
+                            scale: 1,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              sessionState(s),
+                              key: ValueKey(sessionState(s)),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 13, color: C.dim),
+                            ),
+                          ),
+                        ),
+                        if (s.preview.isNotEmpty)
+                          Text(
+                            s.preview,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 13, color: C.dim2),
+                          ),
+                      ],
                     ),
                   ),
-                  if (s.preview.isNotEmpty)
-                    Text(
-                      s.preview,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 13, color: C.dim2),
-                    ),
-                ],
+                ),
               ),
             ),
           ),
@@ -755,9 +981,8 @@ class _TerminalListState extends State<TerminalList> {
     },
   );
 
-  /// Above the projects: how they're ordered, one tap to change it. Its
-  /// press shows as a rounded pill around it, ending where the headings'
-  /// trailing edge does.
+  /// Above the projects: how they're ordered. A tap switches to the other order (there are only two), no menu. Its
+  /// press shows as a rounded pill around it, ending where the headings' trailing edge does.
   Widget _sortControl() => Align(
     alignment: Alignment.centerRight,
     child: Padding(
@@ -766,23 +991,34 @@ class _TerminalListState extends State<TerminalList> {
       // row (the list item's node), and a tap at that row's middle misses it.
       child: Semantics(
         container: true,
-        child: PopupMenuButton<ProjectSort>(
+        identifier: 'project-sort',
+        button: true,
+        label: _sortLabel(_sort),
+        tooltip: 'Sort projects',
+        hint: 'Switches to ${_sortLabel(_sort == ProjectSort.name ? ProjectSort.activity : ProjectSort.name)}',
+        excludeSemantics: true,
+        child: InkWell(
           key: const ValueKey('project-sort'),
-          tooltip: 'Sort projects',
-          initialValue: _sort,
-          onSelected: _setSort,
           borderRadius: C.round(Panel.headingRadius),
-          itemBuilder: (_) => [for (final s in ProjectSort.values) PopupMenuItem(value: s, child: Text(_sortLabel(s)))],
+          onTap: () => _setSort(_sort == ProjectSort.name ? ProjectSort.activity : ProjectSort.name),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 36),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
+              padding: const EdgeInsets.fromLTRB(12, 0, 10, 0),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(_sortLabel(_sort), style: TextStyle(fontSize: 13, color: C.dim)),
-                  const SizedBox(width: 2),
-                  Icon(Icons.arrow_drop_down, size: 18, color: C.dim),
+                  Icon(Icons.swap_vert, size: 16, color: C.dim),
+                  const SizedBox(width: 4),
+                  // The new label cross-fades in, so the switch reads as one.
+                  AnimatedSwitcher(
+                    duration: Motion.of(context),
+                    child: Text(
+                      _sortLabel(_sort),
+                      key: ValueKey(_sort),
+                      style: TextStyle(fontSize: 13, color: C.dim),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -798,44 +1034,51 @@ class _TerminalListState extends State<TerminalList> {
   };
 
   /// A window's row; one that opened since the list showed comes in.
-  Widget _window(TermWindow w) => Entrance(
-    key: ValueKey('in-${w.key}'),
-    animate: _entering.contains(w.key),
-    child: _swipe(
-      w.key,
-      w,
-      _tipped(
-        w.key == _switchTipRow ? Tip.switchOpen : null,
-        ListTile(
-          key: ValueKey('term-${w.key}'),
-          contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          onTap: () => openWindow(context, remote, w.key),
-          leading: Icon(
-            w.agent != null ? Icons.auto_awesome : Icons.terminal,
-            size: 18,
-            color: w.focused ? C.accent : C.dim2,
-          ),
-          title: Text(
-            w.title.isEmpty ? w.program : w.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 15),
-          ),
-          subtitle: _badged(
-            w,
-            Text(
-              '${w.program} · ${shortPath(remote, w.cwd)}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 13, color: C.dim),
+  Widget _window(TermWindow w) {
+    final title = _look(w.key).name ?? (w.title.isEmpty ? w.program : w.title);
+    return Entrance(
+      key: ValueKey('in-${w.key}'),
+      animate: _entering.contains(w.key),
+      child: _swipe(
+        w.key,
+        w,
+        title,
+        _tipped(
+          w.key == _switchTipRow ? Tip.switchOpen : null,
+          _tinted(
+            w.key,
+            (tint) => ListTile(
+              key: ValueKey('term-${w.key}'),
+              contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+              tileColor: tint,
+              onTap: () => openWindow(context, remote, w.key),
+              onLongPress: () {
+                unawaited(HapticFeedback.selectionClick());
+                unawaited(_rowMenu(w.key, title, w));
+              },
+              leading: Icon(
+                w.agent != null ? Icons.auto_awesome : Icons.terminal,
+                size: 18,
+                color: w.focused ? C.accent : C.dim2,
+              ),
+              title: _titleText(title),
+              subtitle: _badged(
+                w,
+                Text(
+                  '${w.program} · ${shortPath(remote, w.cwd)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13, color: C.dim),
+                ),
+                // The rows here are the windows no live session claims.
+                screenOnly: w.agent != null,
+              ),
             ),
-            // The rows here are the windows no live session claims.
-            screenOnly: w.agent != null,
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   /// Nothing runs: where a new session opens, and what each terminal that
   /// isn't ready needs (tmux: when it isn't installed).
@@ -889,6 +1132,7 @@ class _TerminalListState extends State<TerminalList> {
     builder: (context, _) {
       final note = linkNote(remote, color: Colors.transparent);
       final groups = groupedSessions(remote.sessions, _sort, ranked: _ranked);
+      _noteFinished(remote.sessions);
       // What's shown is what stays: a project's activity reorders it only
       // on the next refresh.
       if (_sort == ProjectSort.activity) _ranked = [for (final g in groups) g.cwd];
@@ -1769,5 +2013,63 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
         ),
       );
     },
+  );
+}
+
+/// The sheet asking for a row's name; it pops what was typed, or '' for Reset. It owns its field, which lives until
+/// the sheet has slid away.
+class _RenameSheet extends StatefulWidget {
+  const _RenameSheet({required this.initial, required this.canReset});
+  final String initial;
+  final bool canReset;
+
+  @override
+  State<_RenameSheet> createState() => _RenameSheetState();
+}
+
+class _RenameSheetState extends State<_RenameSheet> {
+  late final _edit = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _edit.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.fromLTRB(20, 4, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 12,
+      children: [
+        Text('Rename', style: sheetTitleStyle),
+        TextField(
+          key: const ValueKey('tile-rename-field'),
+          controller: _edit,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (v) => Navigator.of(context).pop(v),
+        ),
+        OverflowBar(
+          alignment: MainAxisAlignment.end,
+          spacing: 8,
+          children: [
+            if (widget.canReset)
+              TextButton(
+                key: const ValueKey('tile-rename-reset'),
+                onPressed: () => Navigator.of(context).pop(''),
+                child: Text(C.label('Reset')),
+              ),
+            FilledButton(
+              key: const ValueKey('tile-rename-save'),
+              onPressed: () => Navigator.of(context).pop(_edit.text),
+              child: Text(C.label('Save')),
+            ),
+          ],
+        ),
+      ],
+    ),
   );
 }

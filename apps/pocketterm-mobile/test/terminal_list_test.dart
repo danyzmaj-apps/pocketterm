@@ -1,13 +1,16 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
+import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/mobile.dart';
 import 'package:pocketterm_mobile/session_view.dart';
+import 'package:pocketterm_mobile/state_border.dart';
 import 'package:pocketterm_mobile/swipe_action.dart';
 import 'package:pocketterm_mobile/switch_view.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
@@ -115,7 +118,7 @@ void main() {
     });
   }
 
-  Future<void> pumpList(WidgetTester tester, {Key? key, String? computer}) async {
+  Future<void> pumpList(WidgetTester tester, {Key? key, String? computer, ThemeData? theme}) async {
     // An iPhone's screen, so the whole list is laid out.
     tester.view
       ..physicalSize = const Size(1179, 2556)
@@ -127,6 +130,7 @@ void main() {
     );
     await tester.pumpWidget(
       MaterialApp(
+        theme: theme,
         home: Scaffold(
           body: TerminalList(
             key: key,
@@ -135,6 +139,8 @@ void main() {
             onFolded: _Phone(prefs).setCollapsedProjects,
             sort: _Phone(prefs).projectSort,
             onSort: _Phone(prefs).setProjectSort,
+            looks: _Phone(prefs).tileLooks('mac00001'),
+            onLooks: (l) => _Phone(prefs).setTileLooks('mac00001', l),
             computer: computer,
           ),
         ),
@@ -183,9 +189,15 @@ void main() {
     expect(find.text('OTHER WINDOWS'), findsOneWidget);
     expect(find.byKey(const ValueKey('term-kitty-1/4')), findsOneWidget);
     expect(
-      find.ancestor(of: session('pid:9'), matching: find.byType(SwipeAction)),
-      findsNothing,
-      reason: 'a session without a window has nothing to close',
+      [
+        for (final a
+            in tester
+                .widget<SwipeAction>(find.ancestor(of: session('pid:9'), matching: find.byType(SwipeAction)))
+                .actions)
+          a.label,
+      ],
+      ['Rename', 'Color'],
+      reason: 'a session without a window has nothing to close, but can still be renamed and coloured',
     );
 
     // Somewhere unknown has nowhere to start a session.
@@ -200,10 +212,11 @@ void main() {
   ) async {
     macState();
     await pumpList(tester);
+    // One tap switches the order, no menu.
     await tester.tap(find.byKey(const ValueKey('project-sort')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Recent activity').last);
-    await tester.pumpAndSettle();
+    expect(find.byType(PopupMenuItem<ProjectSort>), findsNothing);
+    expect(find.text('Recent activity'), findsOneWidget);
     expect(prefs.getString('pocketterm_terminal_sort'), 'activity');
 
     expect(top(tester, _b), lessThan(top(tester, _z)));
@@ -444,7 +457,8 @@ void main() {
       expect(action('kitty-1/3'), findsNothing);
 
       await swipe(tester, 'kitty-1/3');
-      await tester.tap(session('kitty-1/3'), warnIfMissed: false);
+      // Its visible start: the rest of it is slid under the actions.
+      await tester.tapAt(Offset(40, tester.getCenter(session('kitty-1/3')).dy));
       await slide(tester);
       expect(action('kitty-1/3'), findsNothing);
       expect(find.byType(SessionPage), findsNothing, reason: 'the tap shuts it, not opens the session');
@@ -464,6 +478,8 @@ void main() {
       expect(action('kitty-1/3'), findsOneWidget);
 
       // A plain window closes; it ends no session.
+      await tester.ensureVisible(find.byKey(const ValueKey('term-kitty-1/4')));
+      await slide(tester);
       await tester.drag(find.byKey(const ValueKey('term-kitty-1/4')), const Offset(-300, 0));
       await slide(tester);
       expect(find.descendant(of: action('kitty-1/4'), matching: find.text('Close window')), findsOneWidget);
@@ -471,6 +487,63 @@ void main() {
       remote.flush();
     },
   );
+
+  testWidgets('a row is renamed and coloured from its swipe or a long press, kept, and put back', (tester) async {
+    macState();
+    await pumpList(tester);
+    Finder title(String text) => find.descendant(of: session('kitty-1/3'), matching: find.text(text));
+    Color? tint() => tester.widget<ListTile>(session('kitty-1/3')).tileColor;
+
+    // The swipe shows Rename and Color before End session.
+    await swipe(tester, 'kitty-1/3');
+    expect(
+      [for (final a in tester.widget<SwipeAction>(find.byKey(const ValueKey('swipe-kitty-1/3'))).actions) a.label],
+      ['Rename', 'Color', 'End session'],
+    );
+    await tester.tap(find.byKey(const ValueKey('swipe-rename-kitty-1/3')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('tile-rename-field')), 'Moisture API');
+    await tester.tap(find.byKey(const ValueKey('tile-rename-save')));
+    await tester.pumpAndSettle();
+    expect(title('Moisture API'), findsOneWidget);
+    expect(action('kitty-1/3'), findsNothing, reason: 'done, the row slides shut');
+
+    // A long press offers the same three.
+    await tester.longPress(session('kitty-1/3'));
+    await tester.pumpAndSettle();
+    for (final k in ['row-menu-rename', 'row-menu-color', 'row-menu-close']) {
+      expect(find.byKey(ValueKey(k)), findsOneWidget);
+    }
+    await tester.tap(find.byKey(const ValueKey('row-menu-color')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey('tile-color-${tileColors[3].toARGB32().toRadixString(16)}')));
+    await tester.pumpAndSettle();
+    expect(tint()!.toARGB32() & 0xFFFFFF, tileColors[3].toARGB32() & 0xFFFFFF);
+
+    // Kept: a new list (another visit) shows both.
+    await pumpList(tester, key: const ValueKey('again'));
+    await tester.pumpAndSettle();
+    expect(title('Moisture API'), findsOneWidget);
+    expect(tint(), isNotNull);
+
+    // Put back: Reset brings the computer's name, No color the plain row.
+    await tester.longPress(session('kitty-1/3'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('row-menu-rename')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('tile-rename-reset')));
+    await tester.pumpAndSettle();
+    await tester.longPress(session('kitty-1/3'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('row-menu-color')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('tile-color-none')));
+    await tester.pumpAndSettle();
+    expect(title('Moisture API'), findsNothing);
+    expect(tint(), isNull);
+    expect(prefs.getString('pocketterm_tile_looks'), '{}');
+    remote.flush();
+  });
 
   testWidgets("with the computer out of reach, neither a new session nor a row's End session can be used", (
     tester,
@@ -538,6 +611,8 @@ void main() {
   testWidgets("a window's screen asks the same before closing, then goes back", (tester) async {
     macState();
     await pumpList(tester);
+    await tester.ensureVisible(find.byKey(const ValueKey('term-kitty-1/4')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('term-kitty-1/4')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
@@ -591,51 +666,133 @@ void main() {
     remote.flush();
   });
 
-  group("an ask PocketTerm can't answer from the phone", () {
-    /// The idle session a's window can only be [caps]; its session asks [ask].
-    Future<void> asking(WidgetTester tester, Map<String, dynamic> ask, {String? window, List<String>? caps}) async {
-      remote.handle('state', {
-        'windows': [
-          if (window != null)
-            {'key': window, 'title': 'omp', 'cwd': _a, 'program': 'omp', 'app': 'kitty', 'caps': ?caps},
-        ],
-        'sessions': [
-          {'key': window ?? 'pid:9', 'id': 's2', 'agent': 'omp', 'window': ?window, 'title': 'Asking', 'cwd': _a},
-        ],
-        'projects': [_a],
-        'home': '/Users/me',
-        'agent': 'omp',
-        'opensIn': 'kitty',
-      });
-      await pumpList(tester);
-      await tester.tap(session(window ?? 'pid:9'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      remote.handle('state', {
-        'windows': [
-          if (window != null)
-            {'key': window, 'title': 'omp', 'cwd': _a, 'program': 'omp', 'app': 'kitty', 'caps': ?caps},
-        ],
-        'sessions': [
-          {
-            'key': window ?? 'pid:9',
-            'id': 's2',
-            'agent': 'omp',
-            'window': ?window,
-            'title': 'Asking',
-            'cwd': _a,
-            'ask': ask,
-          },
-        ],
-        'projects': [_a],
-        'home': '/Users/me',
-        'agent': 'omp',
-        'opensIn': 'kitty',
-      });
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-    }
+  /// The idle session a's window can only be [caps]; its session asks [ask].
+  Future<void> asking(
+    WidgetTester tester,
+    Map<String, dynamic> ask, {
+    String? window,
+    List<String>? caps,
+    ThemeData? theme,
+  }) async {
+    remote.handle('state', {
+      'windows': [
+        if (window != null) {'key': window, 'title': 'omp', 'cwd': _a, 'program': 'omp', 'app': 'kitty', 'caps': ?caps},
+      ],
+      'sessions': [
+        {'key': window ?? 'pid:9', 'id': 's2', 'agent': 'omp', 'window': ?window, 'title': 'Asking', 'cwd': _a},
+      ],
+      'projects': [_a],
+      'home': '/Users/me',
+      'agent': 'omp',
+      'opensIn': 'kitty',
+    });
+    await pumpList(tester, theme: theme);
+    await tester.tap(session(window ?? 'pid:9'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    remote.handle('state', {
+      'windows': [
+        if (window != null) {'key': window, 'title': 'omp', 'cwd': _a, 'program': 'omp', 'app': 'kitty', 'caps': ?caps},
+      ],
+      'sessions': [
+        {
+          'key': window ?? 'pid:9',
+          'id': 's2',
+          'agent': 'omp',
+          'window': ?window,
+          'title': 'Asking',
+          'cwd': _a,
+          'ask': ask,
+        },
+      ],
+      'projects': [_a],
+      'home': '/Users/me',
+      'agent': 'omp',
+      'opensIn': 'kitty',
+    });
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+  }
 
+  group("a question's answers", () {
+    const long =
+        'Merge Corona to main, new worktree feat/session-tile-borders for the borders, and keep the old '
+        'branch around until the release ships';
+
+    /// Answer [o] of the question.
+    Finder answer(int o) => find.byKey(ValueKey('ask-0-$o'));
+
+    /// Its chip as drawn (inside its tap target).
+    Finder chip(int o) => find.descendant(of: answer(o), matching: find.byType(Material)).first;
+
+    /// The pill the chip draws.
+    OutlinedBorder pill(WidgetTester tester, int o) => tester.widget<Material>(chip(o)).shape! as OutlinedBorder;
+
+    for (final multi in [false, true]) {
+      testWidgets('show a long one whole on more lines, in a pill that picks (${multi ? 'several' : 'one'})', (
+        tester,
+      ) async {
+        await asking(
+          tester,
+          {
+            'kind': 'questions',
+            'id': 'q1',
+            'questions': [
+              {
+                'id': 'next',
+                'question': 'What next?',
+                'options': ['Ship it', long],
+                'multi': multi,
+              },
+            ],
+          },
+          window: 'kitty-1/2',
+          theme: appTheme(C.t),
+        );
+
+        final text = find.descendant(of: answer(1), matching: find.text(long));
+        final paragraph = tester.renderObject<RenderParagraph>(text);
+        expect(paragraph.maxLines, isNull, reason: 'no line limit');
+        expect(paragraph.softWrap, isTrue);
+        expect(paragraph.getMaxIntrinsicWidth(double.infinity), greaterThan(paragraph.size.width), reason: 'wrapped');
+        expect(
+          paragraph.size.height,
+          paragraph.getMinIntrinsicHeight(paragraph.size.width),
+          reason: 'laid out as tall as all its lines',
+        );
+        final short = tester.getRect(chip(0));
+        final tall = tester.getRect(chip(1));
+        expect(tall.height, greaterThan(short.height + 2 * paragraph.text.style!.fontSize!), reason: 'more lines');
+        expect(tall.expandToInclude(tester.getRect(text)), tall, reason: 'all inside the chip');
+        // Soft themes' pills: a short answer's stadium; the long one keeps those corners rather than a blob's.
+        expect(pill(tester, 0), isA<StadiumBorder>());
+        final corners = pill(tester, 1) as RoundedRectangleBorder;
+        expect((corners.borderRadius as BorderRadius).topLeft.x, moreOrLessEquals(short.height / 2, epsilon: .01));
+
+        await tester.tap(text);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(
+          tester.widget<ChoiceChip>(find.descendant(of: answer(1), matching: find.byType(ChoiceChip))).selected,
+          isTrue,
+        );
+        expect(tester.getRect(chip(1)).height, tall.height, reason: 'picking it reflows nothing');
+        await tester.ensureVisible(find.byKey(const ValueKey('answer')));
+        await tester.tap(find.byKey(const ValueKey('answer')));
+        await tester.pump(Duration.zero);
+        expect(runs('answer').single['answers'], [
+          {
+            'picks': [1],
+          },
+        ]);
+        remote.handle('ran', {'id': runs('answer').single['id']});
+        await tester.pump();
+        remote.flush();
+      });
+    }
+  });
+
+  group("an ask PocketTerm can't answer from the phone", () {
     const menu = {
       'kind': 'menu',
       'id': 'm1',

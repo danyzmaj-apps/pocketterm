@@ -25,7 +25,8 @@ import 'package:pocketterm_core/agent.dart';
 //                        session: the live session it shows, window: the screen it shows
 //   Mac → phone   state  {windows, sessions, projects, roots, home, agent, agents?, error?}   on every hello and on changes;
 //                        sessions: LiveSummary.toJson, its slash commands as `cmds` [[name, description?]], the
-//                        prompts waiting in its queue as `queue` [LiveQueued.toJson] and `paused` while it's held;
+//                        prompts waiting in its queue as `queue` [LiveQueued.toJson] and `paused` while it's held,
+//                        `failed` when its last run ended in an error;
 //                        agent: what a new session starts (Agent.name, the Mac's setting);
 //                        agents: {agent: installed | outdated | missing | off} for the coding agents found on the
 //                        computer; missing from an older computer
@@ -65,8 +66,9 @@ import 'package:pocketterm_core/agent.dart';
 //   ext → Mac  meta   {title?, model?, ctx?, commands?}
 //   ext → Mac  item   {item}   a new or changed item (whole)
 //   ext → Mac  append {id, text}   streamed text added to an assistant item
-//   ext → Mac  busy   {busy, summary?, stopped?}   summary: the last answer, when a run has really ended;
-//                     stopped: the run was interrupted (Stop from the phone, Esc at the computer)
+//   ext → Mac  busy   {busy, summary?, stopped?, failed?}   summary: the last answer, when a run has really ended;
+//                     stopped: the run was interrupted (Stop from the phone, Esc at the computer); failed: it ended
+//                     in an error no retry got past (not a stop)
 //   ext → Mac  ask    {ask?}   the agent waits for an answer (null: not anymore): LiveAsk.toJson; a plan
 //                     review comes without options, which the Mac reads off the agent's screen
 //   ext → Mac  reply  {req, error?, items?, older?}
@@ -1178,6 +1180,7 @@ class LiveSummary {
     this.commands = const [],
     this.queue = const [],
     this.paused = false,
+    this.failed = false,
   });
 
   factory LiveSummary.fromJson(Map<String, dynamic> j) => LiveSummary(
@@ -1206,6 +1209,7 @@ class LiveSummary {
         if (q is Map && q['id'] is String) LiveQueued.fromJson(q.cast()),
     ],
     paused: j['paused'] == true,
+    failed: j['failed'] == true,
   );
 
   /// Stable for the agent's process: its terminal window's key (`kitty-<pid>/<id>`,
@@ -1244,6 +1248,10 @@ class LiveSummary {
   final List<LiveQueued> queue;
   final bool paused;
 
+  /// The last run ended in an error (the answer broke off with one; not a stop, and no retry got past it). The next
+  /// run clears it.
+  final bool failed;
+
   Map<String, dynamic> toJson() => {
     'key': key,
     'id': id,
@@ -1266,6 +1274,7 @@ class LiveSummary {
       ],
     if (queue.isNotEmpty) 'queue': [for (final q in queue) q.toJson()],
     if (paused) 'paused': true,
+    if (failed) 'failed': true,
   };
 }
 

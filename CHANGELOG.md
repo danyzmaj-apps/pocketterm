@@ -7,6 +7,7 @@ What each PocketTerm release brings.
 ### Desktop app
 
 - **Get this computer ready installs nothing by itself.** Opening it only checks your coding agents; PocketTerm goes into omp or Claude Code when you click its **Install** (or **Update**).
+- **The phone hears when a run broke off on an error.** omp and Claude Code now say so when an answer ends in an error no retry got past (not when you stop it), so the phone can show it. The PocketTerm integration in omp and Claude Code needs its **Update** for this; older ones simply never report it.
 
 ### Phone app
 
@@ -14,6 +15,10 @@ What each PocketTerm release brings.
 - **A star shows it's listening.** The big microphone and the **Stop** button are gone: at the bottom of the voice screen a star of a few thousand specks in your theme's colours gathers itself out of the dark as the screen opens, then breathes and slowly turns, with a faint ring of dust. As you talk your voice rises from its equator toward the poles in spikes, and flares stream off them in the theme's warm colour. It glows on the dark themes, is drawn in ink on Rosé Pine Dawn, and its specks are soft on Mocha, crisp on Tokyo Night and square pixels on Gruvbox. It turns red while a held press is slid away to cancel. Tap it to stop; it bursts into specks that fly into the buttons for what's next, and **Keep talking** flies them back out of the buttons into the star.
 - **Keep talking.** After you stop, **Keep talking** sits on its own row above **Insert** and **Send**, side by side; **Cancel** is gone, the close button and dragging the sheet down do that; it listens again and adds the new words after what's there, edits included.
 - **Opens straight into its intro.** On iPhone the app icon you tap stays on screen while the app starts, where and as large as the intro begins, in your theme's colours; the phone then ducks into the pocket without a blank screen or a jump in between.
+- **Sessions show how they stand by their border.** Like a terminal tab's colour, each session in the list is framed: a light runs round a working one like a snake chasing its tail, one that needs you is outlined in the theme's warning colour, one whose last run broke off on an error in its error colour (it reads **Stopped on an error**), one with its queue paused in grey, and one that finished a run you haven't opened since in green. The small coloured words under the title are quiet now; the border says it. With reduced motion the working border holds still.
+- **Rename and colour your rows.** Swipe a session or window left and **Rename** and **Color** sit beside **End session**; a long press offers the same three. A name you give replaces the agent's title in the list, and a colour tints the row (instead of the flash a question brings); **Reset** and **No color** put them back. They stay on this phone, per computer.
+- **Sorting is one tap.** The order above the projects switches between **Name** and **Recent activity** when tapped, instead of opening a menu.
+- **A question's long answers show whole.** When an agent asks you to choose, an answer too long for one line wraps inside its button instead of being cut off.
 
 ## 0.1.4
 

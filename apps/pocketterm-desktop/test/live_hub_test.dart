@@ -498,6 +498,24 @@ void main() {
       expect(queued(), ['after that']);
     });
 
+    test('a run that ended in an error shows failed until the next run starts', () async {
+      final ext = await working();
+      ext.send({'t': 'busy', 'busy': false, 'failed': true});
+      await until(() => !hub[key]!.busy);
+      expect(hub[key]!.summary.failed, isTrue);
+      expect(LiveSummary.fromJson(hub[key]!.summary.toJson()).failed, isTrue, reason: 'it reaches the phone');
+
+      ext.send({'t': 'busy', 'busy': true});
+      await until(() => hub[key]!.busy);
+      expect(hub[key]!.summary.failed, isFalse);
+
+      // Stopped is not failed: the phone hears nothing of it.
+      ext.send({'t': 'busy', 'busy': false, 'stopped': true});
+      await until(() => !hub[key]!.busy);
+      expect(hub[key]!.summary.failed, isFalse);
+      expect(hub[key]!.summary.toJson().containsKey('failed'), isFalse);
+    });
+
     test('edits, moves and removals change what goes; an emptied queue is no longer paused', () async {
       final ext = await working();
       final a = (await hub.prompt(key, 'a', followUp: true))!;

@@ -835,13 +835,15 @@ export default function liveExtension(pi: ExtensionAPI) {
 	pi.on("agent_end", (event, c) =>
 		live(c, () => {
 			if (event.willContinue) return;
+			// The error held until now: no retry got past it, so the run failed.
+			const failedRun = failed !== undefined || undefined;
 			if (failed) sendItem(failed);
 			failed = undefined;
 			tools.clear();
 			toolArgs.clear();
 			const summary = lastAnswer(event.messages);
 			const stopped = runStopped(event.messages) || undefined;
-			send({ t: "busy", busy: false, summary: summary || undefined, stopped });
+			send({ t: "busy", busy: false, summary: summary || undefined, stopped, failed: failedRun });
 		}),
 	);
 	pi.on("turn_end", (_event, c) =>

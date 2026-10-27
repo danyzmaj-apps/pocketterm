@@ -65,6 +65,9 @@ class LiveSession {
   String cwd = '';
   String model = '';
   bool busy = false;
+
+  /// Its last run ended in an error ([LiveSummary.failed]); a new run clears it.
+  bool failed = false;
   LiveAsk? ask;
   int? ctx;
   String preview = '';
@@ -101,6 +104,7 @@ class LiveSession {
     commands: commands,
     queue: [for (final q in _queue) q.summary],
     paused: paused,
+    failed: failed,
   );
 
   Future<Map<String, dynamic>> _request(String type, Map<String, dynamic> payload, Duration timeout) async {
@@ -340,6 +344,7 @@ class LiveHub {
       ..cwd = cwd
       ..model = s['model'] as String? ?? ''
       ..busy = m['busy'] == true
+      ..failed = false
       .._handing = false
       ..ctx = (m['ctx'] as num?)?.round()
       ..ask = null
@@ -438,6 +443,7 @@ class LiveHub {
           .._handing = false
           .._handoff?.cancel()
           ..busy = busy
+          ..failed = !busy && m['failed'] == true
           ..at = DateTime.now();
         // Stopped (Stop from the phone, Esc at the computer): what waits stays until Resume.
         if (!busy && m['stopped'] == true && s._queue.isNotEmpty) s.paused = true;
@@ -574,6 +580,7 @@ class LiveHub {
     s
       .._handing = true
       ..busy = true
+      ..failed = false
       ..at = DateTime.now();
     if (s._queue.isEmpty) s.paused = false;
     _changes.add(null);

@@ -1,6 +1,6 @@
 # Production compose file for PocketTerm's push relay on danyzmaj-server
 # (contract: danyzmaj-server/docs/connect-an-app.md). Deployed by
-# .github/workflows/relay-deploy.yml as compose project `pocketterm-relay`.
+# Baker's Relay workflow (project pocketterm-mobile) as compose project `pocketterm-relay`.
 # Public at https://push.danyzmaj.com: the tunnel passes /v1/ and /health only.
 #
 # Stores nothing: no volumes, no database.

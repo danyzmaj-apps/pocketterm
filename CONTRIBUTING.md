@@ -11,13 +11,13 @@ The repo is a pub workspace: `apps/pocketterm-desktop` (the desktop app for macO
 ## Pull requests
 
 - Keep each PR to one change, and describe what a user will notice.
-- Run the checks; CI runs them too:
+- Run the checks; CI runs them too, on every push to `main` and every pull request: [Baker](https://baker.danyzmaj.com) on the maintainer's Mac runs all of them except Windows, each reported as a GitHub check named like its job (`dart (apps/pocketterm-mobile)`, `server (packages/pocketterm_server)`, `omp-extension`, `claude-plugin`, `relay`, …); GitHub Actions runs only the Windows job (`.github/workflows/ci.yml`). Baker doesn't run pull requests from forks.
   ```sh
   # in each of packages/pocketterm_core, apps/pocketterm-desktop, apps/pocketterm-mobile
   fvm dart format -l 120 --set-exit-if-changed lib test
   fvm flutter analyze
   fvm flutter test
-  # on Windows, in packages/pocketterm_core and apps/pocketterm-desktop (CI's dart-windows job)
+  # on Windows, in packages/pocketterm_core and apps/pocketterm-desktop (the dart-windows job on GitHub Actions)
   fvm flutter test --exclude-tags posix
   fvm flutter build windows --debug
   # in packages/pocketterm_server and apps/pocketterm-server

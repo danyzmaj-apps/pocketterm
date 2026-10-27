@@ -1,5 +1,5 @@
 # Compose file for PocketTerm's test server on danyzmaj-server (contract: danyzmaj-server/docs/connect-an-app.md),
-# the server the E2E runs reach over the internet. Deployed by .github/workflows/test-server-deploy.yml as compose
+# the server the E2E runs reach over the internet. Deployed by Baker's Test server workflow (manual) as compose
 # project `pocketterm-test`. Public at https://pocketterm-test.danyzmaj.com: the Cloudflare tunnel passes /v1/ only
 # (WebSockets included) and sets X-Forwarded-For, hence POCKETTERM_TRUST_PROXY.
 #

@@ -88,9 +88,9 @@ deno task test
 
 It runs on danyzmaj-server as app `pocketterm-relay`
 ([connect-an-app](https://github.com/danyzmaj-apps/danyzmaj-server/blob/master/docs/connect-an-app.md)): `Dockerfile`
-(Deno, non-root, read-only filesystem, no capabilities), `deploy/compose.yaml`, and
-`.github/workflows/relay-deploy.yml`, which tests it and calls the server's shared deploy workflow on every push to
-`main` that touches this folder (or _Run workflow_).
+(Deno, non-root, read-only filesystem, no capabilities) and `deploy/compose.yaml`. [Baker](https://baker.danyzmaj.com)'s
+_Relay_ workflow (project `pocketterm-mobile`) deploys it on every push to `main` that touches this folder, once the
+commit's checks (the `relay` check runs these tests) pass, or on _Deploy_ in Baker.
 
 Settings and secrets live on the server only, in `/etc/danyzmaj/pocketterm-relay/` (folder `750 root:runner`):
 
@@ -108,7 +108,7 @@ The originals are in the publisher's `~/Dev/keys/` (`pocketterm-relay-x25519.key
 ssh deploy@server.danyzmaj.com 'sudo install -m 644 -o root -g runner /dev/stdin /etc/danyzmaj/pocketterm-relay/apns.p8' < ~/Dev/keys/AuthKey_<id>.p8
 ```
 
-then redeploy (Actions → relay-deploy → _Run workflow_).
+then redeploy (Baker → _Relay_ → _Deploy_).
 
 ### Rotating the relay key
 

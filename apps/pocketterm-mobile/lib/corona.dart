@@ -431,7 +431,8 @@ class _Cloud {
     }
 
     final cx = size.width / 2;
-    final cy = size.height / 2;
+    // Below the box's middle: nothing sits under it now, and its flares get the room above.
+    final cy = size.height * .62;
     final radius = size.shortestSide * .25 * (1 + .08 * level + .06 * beat);
     // A slow tumble: turning about the vertical, its axis tipped toward the viewer and rocking.
     final spin = t * .04 + link.clock * .06;

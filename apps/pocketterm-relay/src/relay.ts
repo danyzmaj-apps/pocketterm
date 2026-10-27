@@ -307,8 +307,13 @@ export function relay(config: Config): Push {
     if (callerKey && (limits.bad.full(callerKey) || !limits.caller.take(callerKey))) {
       return { res: tooMany(), outcome: { platform: "none", status: 429 } };
     }
-    const sealed = await req.text().catch(() => "");
-    const plain = sealed.length <= maxSealed ? await unseal(config.keys, sealed) : null;
+    const sealed = await capped(req, maxSealed);
+    if (sealed === null) {
+      const res = json(413, { error: `the body must be at most ${maxSealed} bytes` });
+      if (callerKey) limits.bad.take(callerKey);
+      return { res, outcome: { platform: "none", status: 413 } };
+    }
+    const plain = await unseal(config.keys, sealed);
     let body: unknown = null;
     if (plain) {
       try {
@@ -337,6 +342,40 @@ export function relay(config: Config): Push {
     if (callerKey && (res.status === 400 || res.status === 410)) limits.bad.take(callerKey);
     return { res, outcome: { platform, status: res.status } };
   };
+}
+
+/**
+ * [req]'s body as text, read no further than [max] bytes: null when its Content-Length or the bytes themselves go past
+ * it (the rest is never read), "" when it can't be read at all.
+ */
+export async function capped(req: Request, max: number): Promise<string | null> {
+  const length = req.headers.get("content-length");
+  if (length !== null && !(/^\d+$/.test(length) && Number(length) <= max)) return null;
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > max) {
+        reader.cancel().catch(() => {});
+        return null;
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return "";
+  }
+  const all = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    all.set(c, at);
+    at += c.length;
+  }
+  return new TextDecoder().decode(all);
 }
 
 /** A sealed push's enc and t, the tag of the computer whose key opens it; a string says what's wrong. */

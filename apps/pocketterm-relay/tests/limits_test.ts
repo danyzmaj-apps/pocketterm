@@ -29,6 +29,15 @@ Deno.test("the caller is who Cloudflare says, never what the client says", () =>
   assertEquals(callerOf(req({})), null);
 });
 
+Deno.test("an IPv6 caller counts by its /64, an IPv4-mapped one as its IPv4 address", () => {
+  const req = (ip: string) => new Request("http://x/", { headers: { "cf-connecting-ip": ip } });
+  assertEquals(callerOf(req("2001:db8:1:2::1")), "2001:db8:1:2::/64");
+  assertEquals(callerOf(req("2001:DB8:1:2:ffff:eeee:dddd:cccc")), "2001:db8:1:2::/64");
+  assertEquals(callerOf(req("2001:db8::1")), "2001:db8:0:0::/64");
+  assertNotEquals(callerOf(req("2001:db8:1:3::1")), callerOf(req("2001:db8:1:2::1")));
+  assertEquals(callerOf(req("::ffff:192.0.2.7")), "192.0.2.7");
+});
+
 Deno.test("counter keys are HMACs that change with the day's salt, never the value itself", async () => {
   const keyer = new Keyer();
   const today = await keyer.key("192.0.2.1", 0);

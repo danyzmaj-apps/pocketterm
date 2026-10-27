@@ -223,9 +223,10 @@ Deno.test("malformed pushes are refused before anything reaches Apple or Google"
       body: JSON.stringify({ token: hex(7), kind: "terminal", enc: "x" }),
     }),
     await sealedPost(await testKey(), { token: hex(7), kind: "terminal", enc: "x" }), // sealed to another relay
-    new Request("http://relay.test/v1/push", { method: "POST", body: "x".repeat(20_000) }),
   ];
   for (const req of unsealed) assertEquals((await push(req)).res.status, 400);
+  const tooLong = new Request("http://relay.test/v1/push", { method: "POST", body: "x".repeat(20_000) });
+  assertEquals((await push(tooLong)).res.status, 413);
   assertEquals(sent.length, 0);
 });
 
@@ -355,4 +356,30 @@ Deno.test("a caller guessing tokens is turned away; others are not", async () =>
     (await relay(post(alert(hex(201)), { "x-forwarded-for": "203.0.113.9" }))).status,
     200,
   );
+});
+
+Deno.test("a body over 16 KiB is refused with 413 without reading it in full", async () => {
+  network();
+  // Declared too long: nothing is read.
+  let pulled = 0;
+  const endless = () =>
+    new ReadableStream<Uint8Array>({
+      pull(c) {
+        pulled++;
+        c.enqueue(new Uint8Array(1024));
+      },
+    });
+  const declared = new Request("http://x/v1/push", {
+    method: "POST",
+    body: endless(),
+    headers: { "content-length": String(100 * 1024 * 1024) },
+  });
+  assertEquals((await push(declared)).res.status, 413);
+  assert(pulled <= 1, `read ${pulled} chunks`);
+  // Undeclared: the read stops just past the cap.
+  pulled = 0;
+  const res = (await push(new Request("http://x/v1/push", { method: "POST", body: endless() }))).res;
+  assertEquals(res.status, 413);
+  assert(pulled <= 20, `read ${pulled} chunks`);
+  assertEquals(sent.length, 0);
 });

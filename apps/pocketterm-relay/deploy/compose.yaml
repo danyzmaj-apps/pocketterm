@@ -9,6 +9,7 @@ services:
   app:
     build: .. # apps/pocketterm-relay
     restart: unless-stopped
+    mem_limit: 256m # ~64 MiB idle (Deno/V8); bodies are capped at 16 KiB, so the headroom is for V8's heap
     env_file: # APNS_KEY_ID, APNS_TEAM_ID, APNS_TOPIC
       - path: /etc/danyzmaj/pocketterm-relay/app.env
         required: true

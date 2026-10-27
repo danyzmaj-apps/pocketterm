@@ -52,8 +52,9 @@ Nothing. No database, no volume, no files written; the container's filesystem is
 - **Logs**: one line per push with the platform, the status code and how long it took, plus Apple's or Google's error
   reason on a 5xx. Never a token, an address or a body.
 - **Metrics**: counts by method, status code and platform.
-- **Rate limits**: counters in memory, keyed by HMAC-SHA256 of the caller's address or the device token under a random
-  salt that lives only in memory and is replaced every day. Gone on restart; one day's keys can't be linked to the next.
+- **Rate limits**: counters in memory, keyed by HMAC-SHA256 of the caller's address (an IPv6 caller's /64) or the device
+  token under a random salt that lives only in memory and is replaced every day. Gone on restart; one day's keys can't
+  be linked to the next.
 
 The relay's private key, the APNs key and the Firebase service account sit on the server in
 `/etc/danyzmaj/pocketterm-relay/` (root and the deploy runner only), outside git and the image.

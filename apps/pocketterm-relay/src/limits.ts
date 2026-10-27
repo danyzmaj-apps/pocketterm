@@ -64,8 +64,36 @@ export function relayLimits() {
   };
 }
 
-/** The caller's address as Cloudflare (the tunnel in front of the relay) gives it; null when nothing trustworthy does. */
-export const callerOf = (req: Request): string | null => req.headers.get("cf-connecting-ip")?.trim() || null;
+/**
+ * The caller as Cloudflare (the tunnel in front of the relay) gives its address, counted as pocketterm-server's redeem
+ * throttle counts one: an IPv4 address as itself, an IPv4-mapped IPv6 one as its IPv4 address, any other IPv6 address
+ * as its /64 (`2001:db8:1:2::/64`): one machine or home gets a whole /64, so its addresses would otherwise be fresh
+ * counters. Null when nothing trustworthy names it.
+ */
+export function callerOf(req: Request): string | null {
+  const address = req.headers.get("cf-connecting-ip")?.trim();
+  if (!address) return null;
+  return address.includes(":") ? ipv6Network(address) ?? address : address;
+}
+
+/** [address]'s /64, or its IPv4 address when it is IPv4-mapped; null when it isn't IPv6. */
+function ipv6Network(address: string): string | null {
+  let host: string;
+  try {
+    // The URL parser checks the address and writes it canonically (lowercase, hex only, "::" for the longest zeros).
+    host = new URL(`http://[${address}]/`).hostname.slice(1, -1);
+  } catch {
+    return null;
+  }
+  const [head, tail] = host.includes("::") ? host.split("::") : [host, null];
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups = [...left, ...Array(8 - left.length - right.length).fill("0"), ...right].map((g) => parseInt(g, 16));
+  if (groups.slice(0, 5).every((g) => g === 0) && groups[5] === 0xffff) {
+    return [groups[6] >> 8, groups[6] & 255, groups[7] >> 8, groups[7] & 255].join(".");
+  }
+  return `${groups.slice(0, 4).map((g) => g.toString(16)).join(":")}::/64`;
+}
 
 const day = 24 * 60 * 60_000;
 

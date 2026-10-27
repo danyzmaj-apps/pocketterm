@@ -16,10 +16,10 @@ It stores nothing. It can't read your notifications. What it and everyone around
 | `GET /metrics`  | Prometheus metrics; not public (the tunnel answers 404) |
 
 Answers to a push: `200` sent, `410` the phone is gone (the server forgets it), `429` over a rate limit (`Retry-After`),
-`400` malformed or not sealed to this relay, `501` FCM not configured, `502` Apple or Google said no. The body of an
-answer never repeats the request. A Live Activity's `since` from a server whose clock is off is held to the last week
-(never the future) rather than refused. Servers retry `429` and `5xx` on their own (after `Retry-After`, or 2, 4, 8 …
-seconds), and never `501`.
+`400` malformed or not sealed to this relay, `413` a body over 16 KiB (refused unread), `501` FCM not configured, `502`
+Apple or Google said no. The body of an answer never repeats the request. A Live Activity's `since` from a server whose
+clock is off is held to the last week (never the future) rather than refused. Servers retry `429` and `5xx` on their own
+(after `Retry-After`, or 2, 4, 8 … seconds), and never `501`.
 
 What's inside the seal (the server builds it; see
 [packages/pocketterm_server/PROTOCOL.md](../../packages/pocketterm_server/PROTOCOL.md)):

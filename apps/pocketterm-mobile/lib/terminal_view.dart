@@ -468,10 +468,15 @@ class ContextBar extends StatelessWidget {
 final _wasBusy = <String>{};
 final _finished = <String>{};
 
-/// Notes which of [sessions] finished a run since last looked at.
-void _noteFinished(Iterable<LiveSummary> sessions) {
+/// Notes which of [sessions] finished a run since last looked at. A run that ends while its conversation is open
+/// ([watched]) was seen as it ended, so its row doesn't ask for attention afterwards.
+void _noteFinished(Iterable<LiveSummary> sessions, {String? watched}) {
   for (final s in sessions) {
-    if (s.busy) {
+    if (s.key == watched) {
+      _wasBusy.remove(s.key);
+      _finished.remove(s.key);
+      if (s.busy) _wasBusy.add(s.key);
+    } else if (s.busy) {
       _wasBusy.add(s.key);
       _finished.remove(s.key);
     } else if (_wasBusy.remove(s.key) && s.ask == null && !s.failed) {
@@ -815,7 +820,8 @@ class _TerminalListState extends State<TerminalList> {
   static double get _rowRadius => max(Panel.radius - 6, 0).toDouble();
 
   /// A session's row; its project is the heading above it.
-  Widget _session(LiveSummary s) {
+  /// [first] and [last]: its place in the card, whose edges get as much room around the row as its sides do.
+  Widget _session(LiveSummary s, {bool first = false, bool last = false}) {
     final own = s.title.isNotEmpty ? s.title : s.agent.label;
     final title = _look(s.key).name ?? own;
     final tint = _tint(s.key);
@@ -836,7 +842,7 @@ class _TerminalListState extends State<TerminalList> {
             on: s.ask != null && tint == null,
             // The border says how it stands, like a terminal tab's colour; the words under the title stay quiet.
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              padding: EdgeInsets.fromLTRB(6, first ? 6 : 3, 6, last ? 6 : 3),
               child: StateBorder(
                 state: tileState(s),
                 radius: _rowRadius,
@@ -930,7 +936,9 @@ class _TerminalListState extends State<TerminalList> {
               child: const CircularProgressIndicator(strokeWidth: 2),
             )
           : null,
-      children: folded ? [_summary(g)] : [for (final s in g.sessions) _session(s)],
+      children: folded
+          ? [_summary(g)]
+          : [for (final (i, s) in g.sessions.indexed) _session(s, first: i == 0, last: i == g.sessions.length - 1)],
     );
   }
 
@@ -1192,7 +1200,7 @@ class _TerminalListState extends State<TerminalList> {
     builder: (context, _) {
       final note = linkNote(remote, color: Colors.transparent);
       final groups = groupedSessions(remote.sessions, _sort, ranked: _ranked);
-      _noteFinished(remote.sessions);
+      _noteFinished(remote.sessions, watched: remote.watchedSession);
       // What's shown is what stays: a project's activity reorders it only
       // on the next refresh.
       if (_sort == ProjectSort.activity) _ranked = [for (final g in groups) g.cwd];

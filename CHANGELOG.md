@@ -9,6 +9,8 @@ To see what a session has cost on the phone, click **Update** for omp and Claude
 ### Phone app
 
 - **A session's row reads like your agent's status bar.** Under the title, next to how it stands (**Working…**, **Needs you**, **7 h ago**), are its model, how full its context is and what it has cost so far, as omp and Claude Code count it (`Opus 4.5 · 49% · $43.34`); under them a thin bar fills with the context, turning amber past 70% and red past 90%. The first line of the last answer no longer shows there.
+- **Done only when you haven't seen it.** A session whose run ends while you're reading its conversation no longer lights its row as done when you go back to the list.
+- **Even room around a highlighted row.** A project with one session leaves as much room above and below its row's border as at its sides.
 
 ## 0.1.5
 

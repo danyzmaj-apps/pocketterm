@@ -265,6 +265,39 @@ void main() {
     remote.flush();
   });
 
+  testWidgets('a run that ends unseen lights its row as done; one that ends while its conversation is open does not', (
+    tester,
+  ) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    Map<String, dynamic> state({required bool busy}) => {
+      'windows': const <Object>[],
+      'sessions': [
+        for (final key in ['pid:41', 'pid:42'])
+          {'key': key, 'id': key, 'agent': 'omp', 'title': key, 'cwd': _a, 'busy': busy, 'at': now},
+      ],
+      'home': '/Users/me',
+      'agent': 'omp',
+    };
+    TileState border(String key) => tester
+        .widget<StateBorder>(find.descendant(of: find.byKey(ValueKey('in-$key')), matching: find.byType(StateBorder)))
+        .state;
+
+    remote.handle('state', state(busy: true));
+    await pumpList(tester);
+    await tester.pump(const Duration(seconds: 1));
+    // pid:42's conversation is open (over the list) as its run ends.
+    final unwatch = remote.watchSession('pid:42');
+    remote.handle('state', state(busy: false));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    unwatch();
+    remote.handle('state', state(busy: false));
+    await tester.pump();
+    expect(border('pid:41'), TileState.done);
+    expect(border('pid:42'), TileState.idle, reason: 'its answer was on screen as it came');
+    remote.flush();
+  });
+
   test("cost reads like omp's status line; a long model id is cut to fit", () {
     expect([money(43.344), money(0.01), money(0.004)], [r'$43.34', r'$0.01', r'<$0.01']);
     expect(shortModel('claude-opus-4-5-20251101'), 'opus-4-5');

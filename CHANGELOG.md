@@ -2,7 +2,9 @@
 
 What each PocketTerm release brings.
 
-## Unreleased
+## 0.1.5
+
+Servers and the push relay need no update. To see a session's error border on the phone, click **Update** for omp and Claude Code in PocketTerm on the computer.
 
 ### Desktop app
 

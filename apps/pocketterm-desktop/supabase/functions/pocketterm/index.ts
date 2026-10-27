@@ -9,7 +9,7 @@
 //
 // Deployed without JWT verification: callers present PocketTerm device tokens, checked here. No dependencies.
 
-const VERSION = "0.1.4";
+const VERSION = "0.1.5";
 const PROTOCOL = 1;
 const MAX_JSON = 64 * 1024;
 const MAX_BLOB = 20 * 1024 * 1024;

@@ -48,6 +48,12 @@ export function summary(answer: string): string {
 	return oneLine(answer, SUMMARY_CHARS);
 }
 
+/** A session's spend in US dollars, rounded to cents; null when unknown or nothing yet. */
+export function cents(usd: unknown): number | null {
+	if (typeof usd !== "number" || !Number.isFinite(usd) || usd <= 0) return null;
+	return Math.round(usd * 100) / 100;
+}
+
 /** The end of a tool's output: its last lines, at most a few thousand characters. */
 export function tail(text: string): string {
 	let lines = text.replace(/\s+$/, "").split("\n");

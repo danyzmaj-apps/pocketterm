@@ -5,6 +5,7 @@ import {
 	type Item,
 	applyResult,
 	askOf,
+	cents,
 	commandsOf,
 	historyItems,
 	pingProof,
@@ -240,6 +241,7 @@ async function helloFrame($: EngineInterface): Promise<Frame> {
 		pid: instance,
 		busy: turnId !== undefined,
 		ctx: m.ctx,
+		cost: m.cost,
 		items: items.slice(start),
 		older: start > 0,
 		commands: list,
@@ -291,17 +293,23 @@ function inFlight(): Frame[] {
 	return frames;
 }
 
-async function metaOf($: EngineInterface): Promise<{ title: string; model: string; ctx: number | null }> {
+async function metaOf(
+	$: EngineInterface,
+): Promise<{ title: string; model: string; ctx: number | null; cost: number | null }> {
 	let ctx: number | null = null;
+	let cost: number | null = null;
 	try {
-		const percent = (await $.session.usage()).context.percent;
+		const usage = await $.session.usage();
+		const percent = usage.context.percent;
 		if (typeof percent === "number" && Number.isFinite(percent)) ctx = Math.round(percent);
+		// What /cost shows: Claude Code's own estimate of the session's spend.
+		cost = cents(usage.cost?.usd);
 	} catch {}
 	let model = "";
 	try {
 		model = await $.session.model();
 	} catch {}
-	return { title: "", model, ctx };
+	return { title: "", model, ctx, cost };
 }
 
 async function commandList($: EngineInterface): Promise<{ name: string; description?: string }[]> {

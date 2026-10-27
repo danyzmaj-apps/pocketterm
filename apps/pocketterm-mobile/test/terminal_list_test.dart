@@ -207,6 +207,71 @@ void main() {
     remote.flush();
   });
 
+  testWidgets("a row reads like the agent's status bar: state, model, context and cost, a bar filled to the context", (
+    tester,
+  ) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    Map<String, dynamic> state({int ctx = 49}) => {
+      'windows': [
+        {'key': 'kitty-1/3', 'title': 'omp', 'cwd': _b, 'program': 'omp', 'app': 'kitty'},
+      ],
+      'sessions': [
+        {
+          'key': 'kitty-1/3',
+          'id': 's3',
+          'agent': 'omp',
+          'window': 'kitty-1/3',
+          'title': 'Working one',
+          'cwd': _b,
+          'busy': true,
+          'model': 'Opus 5.5',
+          'ctx': ctx,
+          'cost': 43.34,
+          'preview': 'The last answer, no longer shown',
+          'at': now,
+        },
+        {'key': 'pid:9', 'id': 's9', 'agent': 'omp', 'title': 'Nothing known', 'cwd': _a, 'at': now - 600000},
+      ],
+      'projects': [_a, _b],
+      'home': '/Users/me',
+      'agent': 'omp',
+      'opensIn': 'kitty',
+    };
+    remote.handle('state', state());
+    await pumpList(tester);
+    await tester.pump(const Duration(seconds: 1));
+
+    final row = session('kitty-1/3');
+    expect(find.descendant(of: row, matching: find.text(r'Working… · Opus 5.5 · 49% · $43.34')), findsOneWidget);
+    expect(find.textContaining('no longer shown'), findsNothing);
+    FractionallySizedBox fill() => tester.widget(
+      find.descendant(of: find.byKey(const ValueKey('ctx-kitty-1/3')), matching: find.byType(FractionallySizedBox)),
+    );
+    ColoredBox bar() =>
+        tester.widget(find.descendant(of: find.byType(FractionallySizedBox), matching: find.byType(ColoredBox)));
+    expect(fill().widthFactor, closeTo(.49, .001));
+    expect(bar().color, C.accent);
+    // Nothing known: just how long ago, and no bar.
+    expect(find.descendant(of: session('pid:9'), matching: find.text('10 min ago')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ctx-pid:9')), findsNothing);
+
+    // A fuller context fills the bar further and turns it red.
+    remote.handle('state', state(ctx: 95));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.descendant(of: row, matching: find.text(r'Working… · Opus 5.5 · 95% · $43.34')), findsOneWidget);
+    expect(fill().widthFactor, closeTo(.95, .001));
+    expect(bar().color, C.error);
+    remote.flush();
+  });
+
+  test("cost reads like omp's status line; a long model id is cut to fit", () {
+    expect([money(43.344), money(0.01), money(0.004)], [r'$43.34', r'$0.01', r'<$0.01']);
+    expect(shortModel('claude-opus-4-5-20251101'), 'opus-4-5');
+    expect(shortModel('Claude Opus 4.5'), 'Opus 4.5');
+    expect(shortModel('accounts/fireworks/models/qwen3-coder-480b'), 'accounts/fireworks/mo…');
+  });
+
   testWidgets('by recent activity, projects keep their place until the list is refreshed, and the choice is kept', (
     tester,
   ) async {

@@ -70,6 +70,9 @@ class LiveSession {
   bool failed = false;
   LiveAsk? ask;
   int? ctx;
+
+  /// What the session has cost so far, in US dollars ([LiveSummary.cost]).
+  double? cost;
   String preview = '';
   List<LiveCommand> commands = const [];
   DateTime at = DateTime.now();
@@ -96,6 +99,7 @@ class LiveSession {
     busy: busy,
     ask: ask,
     ctx: ctx,
+    cost: cost,
     preview: preview,
     at: at,
     epoch: log.epoch,
@@ -347,6 +351,7 @@ class LiveHub {
       ..failed = false
       .._handing = false
       ..ctx = (m['ctx'] as num?)?.round()
+      ..cost = (m['cost'] as num?)?.toDouble()
       ..ask = null
       ..commands = liveCommands(m['commands'])
       ..preview = _preview(log.items.lastWhere((i) => i.kind == ItemKind.assistant, orElse: () => _none).text)
@@ -465,6 +470,7 @@ class LiveHub {
         }
         if (m['model'] is String) s.model = m['model'] as String;
         if (m.containsKey('ctx')) s.ctx = (m['ctx'] as num?)?.round();
+        if (m.containsKey('cost')) s.cost = (m['cost'] as num?)?.toDouble();
         if (m['commands'] is List) s.commands = liveCommands(m['commands']);
         _changes.add(null);
       case 'reply':

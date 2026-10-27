@@ -412,6 +412,57 @@ String sessionState(LiveSummary s) => s.ask != null
 
 Color sessionColor(LiveSummary s) => s.ask != null ? C.warn : (s.busy ? C.accent : C.dim2);
 
+/// What the agent's status bar shows of [s], each part only when known: "Opus 4.5 · 49% · $43.34".
+String sessionFacts(LiveSummary s) => [
+  if (s.model.isNotEmpty) shortModel(s.model),
+  if (s.ctx != null) '${s.ctx}%',
+  if (s.cost != null) money(s.cost!),
+].join(' · ');
+
+/// [model] short enough for a row: no "Claude " before it, no release date after it, at most 22 characters.
+String shortModel(String model) {
+  final m = model.replaceFirst(RegExp('^claude[ -]', caseSensitive: false), '').replaceFirst(RegExp(r'[-@]\d{8}$'), '');
+  return m.length > 22 ? '${m.substring(0, 21)}…' : m;
+}
+
+/// [usd] as omp's status line writes it: "$43.34"; under a cent "<$0.01".
+String money(double usd) => usd < 0.01 ? r'<$0.01' : '\$${usd.toStringAsFixed(2)}';
+
+/// A thin bar filled as far as the context window is: the accent, then warn above 70%, error above 90%.
+class ContextBar extends StatelessWidget {
+  const ContextBar({required this.percent, super.key});
+  final int percent;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = percent > 90 ? C.error : (percent > 70 ? C.warn : C.accent);
+    return ClipRRect(
+      borderRadius: C.round(2),
+      child: SizedBox(
+        width: double.infinity,
+        height: 3,
+        child: ColoredBox(
+          color: C.line2,
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(end: percent.clamp(0, 100) / 100),
+            duration: Motion.of(context),
+            curve: Motion.ease,
+            builder: (_, fill, _) => FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: fill,
+              child: TweenAnimationBuilder<Color?>(
+                tween: ColorTween(end: color),
+                duration: Motion.of(context),
+                builder: (_, c, _) => ColoredBox(color: c ?? color),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Sessions seen working in this run of the app, and those of them that have finished since the person last opened
 /// them: what a row's Done border shows. Kept for the app's life, so it survives the list being rebuilt or left.
 final _wasBusy = <String>{};
@@ -810,6 +861,7 @@ class _TerminalListState extends State<TerminalList> {
                       builder: (_, color, _) => Icon(Icons.auto_awesome, size: 18, color: color),
                     ),
                     title: _titleText(title),
+                    // How it stands, then the agent's status bar: model, context used, spend; and the context bar.
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -818,8 +870,18 @@ class _TerminalListState extends State<TerminalList> {
                           FadeSwap(
                             scale: 1,
                             alignment: Alignment.centerLeft,
-                            child: Text(
-                              sessionState(s),
+                            child: Text.rich(
+                              TextSpan(
+                                text: sessionState(s),
+                                children: [
+                                  if (sessionFacts(s).isNotEmpty)
+                                    TextSpan(
+                                      text: ' · ${sessionFacts(s)}',
+                                      style: TextStyle(color: C.dim2),
+                                    ),
+                                ],
+                              ),
+                              // The words cross-fade when the state changes; the facts change in place.
                               key: ValueKey(sessionState(s)),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -827,12 +889,10 @@ class _TerminalListState extends State<TerminalList> {
                             ),
                           ),
                         ),
-                        if (s.preview.isNotEmpty)
-                          Text(
-                            s.preview,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 13, color: C.dim2),
+                        if (s.ctx != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 5, bottom: 2),
+                            child: ContextBar(percent: s.ctx!, key: ValueKey('ctx-${s.key}')),
                           ),
                       ],
                     ),

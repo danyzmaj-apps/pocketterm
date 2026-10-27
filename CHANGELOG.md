@@ -2,6 +2,14 @@
 
 What each PocketTerm release brings.
 
+## Unreleased
+
+To see what a session has cost on the phone, click **Update** for omp and Claude Code in PocketTerm on the computer.
+
+### Phone app
+
+- **A session's row reads like your agent's status bar.** Under the title, next to how it stands (**Working…**, **Needs you**, **7 h ago**), are its model, how full its context is and what it has cost so far, as omp and Claude Code count it (`Opus 4.5 · 49% · $43.34`); under them a thin bar fills with the context, turning amber past 70% and red past 90%. The first line of the last answer no longer shows there.
+
 ## 0.1.5
 
 Servers and the push relay need no update. To see a session's error border on the phone, click **Update** for omp and Claude Code in PocketTerm on the computer.

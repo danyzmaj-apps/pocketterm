@@ -59,11 +59,13 @@ import 'package:pocketterm_core/agent.dart';
 //   some when `wait`. An unknown conn answers 404: the extension says hello
 //   again. A connection nobody asks on for 60 s is gone.
 //
-//   ext → Mac  hello  {v, agent?, session: {id, title, cwd, model}, window?, pid, busy, ctx?, items, older,
+//   ext → Mac  hello  {v, agent?, session: {id, title, cwd, model}, window?, pid, busy, ctx?, cost?, items, older,
 //                     commands}   agent: Agent.name (omp when left out); the session's newest items, oldest
 //                     first; again after /new, /resume, /clear.
 //                     commands: [{name, description?}] the agent's own slash commands, then the session's
-//   ext → Mac  meta   {title?, model?, ctx?, commands?}
+//                     cost: what the session has spent so far, in US dollars (the agent's own tally, rounded to
+//                     cents); left out or null when unknown
+//   ext → Mac  meta   {title?, model?, ctx?, cost?, commands?}
 //   ext → Mac  item   {item}   a new or changed item (whole)
 //   ext → Mac  append {id, text}   streamed text added to an assistant item
 //   ext → Mac  busy   {busy, summary?, stopped?, failed?}   summary: the last answer, when a run has really ended;
@@ -1174,6 +1176,7 @@ class LiveSummary {
     this.busy = false,
     this.ask,
     this.ctx,
+    this.cost,
     this.preview = '',
     this.at,
     this.older = false,
@@ -1194,6 +1197,7 @@ class LiveSummary {
     busy: j['busy'] == true,
     ask: j['ask'] is Map ? LiveAsk.fromJson((j['ask'] as Map).cast()) : null,
     ctx: (j['ctx'] as num?)?.toInt(),
+    cost: (j['cost'] as num?)?.toDouble(),
     preview: j['preview'] as String? ?? '',
     at: j['at'] is int ? DateTime.fromMillisecondsSinceEpoch(j['at'] as int) : null,
     epoch: j['epoch'] as String? ?? '',
@@ -1232,6 +1236,9 @@ class LiveSummary {
   /// How full the context window is, in percent.
   final int? ctx;
 
+  /// What the session has spent so far, in US dollars, as its agent tallies it.
+  final double? cost;
+
   /// The last answer's first line.
   final String preview;
 
@@ -1263,6 +1270,7 @@ class LiveSummary {
     if (busy) 'busy': true,
     'ask': ?ask?.toJson(),
     'ctx': ?ctx,
+    'cost': ?cost,
     if (preview.isNotEmpty) 'preview': preview,
     'at': ?at?.millisecondsSinceEpoch,
     'epoch': epoch,

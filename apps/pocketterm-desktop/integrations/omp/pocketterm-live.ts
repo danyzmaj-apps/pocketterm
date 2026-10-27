@@ -393,7 +393,19 @@ function termOf(): Record<string, string> {
 	return term;
 }
 
-function metaOf(ctx: ExtensionContext): { title: string; model: string; ctx: number | null } {
+/** The session's recorded spend in US dollars, rounded to cents; null when nothing has a cost. omp's own tally
+ * (sessionManager.getUsageStatistics().cost): every message's `usage.cost.total`, the subagents' spend carried by
+ * task results included, which the status line's `cost` segment shows split as `$own (+subagents)`. */
+function costOf(ctx: ExtensionContext): number | null {
+	let usd = 0;
+	try {
+		usd = ctx.sessionManager.getUsageStatistics().cost;
+	} catch {}
+	if (!Number.isFinite(usd) || usd <= 0) return null;
+	return Math.round(usd * 100) / 100;
+}
+
+function metaOf(ctx: ExtensionContext): { title: string; model: string; ctx: number | null; cost: number | null } {
 	let percent: number | null = null;
 	try {
 		const usage = ctx.getContextUsage();
@@ -403,6 +415,7 @@ function metaOf(ctx: ExtensionContext): { title: string; model: string; ctx: num
 		title: ctx.sessionManager.getSessionName() ?? "",
 		model: ctx.model?.name || ctx.model?.id || "",
 		ctx: percent,
+		cost: costOf(ctx),
 	};
 }
 
@@ -577,6 +590,7 @@ export default function liveExtension(pi: ExtensionAPI) {
 			pid: process.pid,
 			busy: !c.isIdle(),
 			ctx: m.ctx,
+			cost: m.cost,
 			items: items.slice(start),
 			older: start > 0,
 			commands: list,

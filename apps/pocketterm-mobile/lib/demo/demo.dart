@@ -41,9 +41,9 @@ List<Map<String, dynamic>> _sessions(DateTime now, Map<String, Map<String, dynam
         'window': 'kitty-1/3',
         'title': 'Add a soil moisture endpoint',
         'cwd': demoGarden,
-        'model': 'claude-sonnet-4.5',
+        'model': 'Sonnet 4.5',
         'ctx': 23,
-        'preview': 'Done: GET /plants/:id/moisture, with tests.',
+        'cost': 1.86,
         'at': ago(4),
         'epoch': 'e1',
         'seq': 7,
@@ -55,9 +55,10 @@ List<Map<String, dynamic>> _sessions(DateTime now, Map<String, Map<String, dynam
         'window': 'wezterm-2',
         'title': 'Fix the pricing table on small screens',
         'cwd': demoSite,
-        'model': 'opus',
+        'model': 'Opus 4.5',
+        'ctx': 61,
+        'cost': 12.4,
         'ask': {'kind': 'approval', 'id': 'a1', 'tool': 'Bash', 'summary': 'npm run build'},
-        'preview': 'Wants to run npm run build',
         'at': ago(1),
         'epoch': 'e1',
         'seq': 4,
@@ -69,8 +70,10 @@ List<Map<String, dynamic>> _sessions(DateTime now, Map<String, Map<String, dynam
         'window': 'tmux-%4',
         'title': 'Rate-limit the plant search',
         'cwd': demoGarden,
+        'model': 'GPT-5.5',
         'busy': true,
-        'preview': 'Running the integration tests…',
+        'ctx': 84,
+        'cost': 43.34,
         'at': ago(0),
         'epoch': 'e1',
         'seq': 5,
@@ -350,7 +353,7 @@ class DemoComputer {
                   'prompts for real.',
             ),
           ],
-          {'preview': 'Demo: nothing ran.', 'busy': false},
+          {'busy': false},
         );
         return {};
       case 'answer' when session != null:
@@ -365,7 +368,7 @@ class DemoComputer {
                   : "Okay, I won't build it. The change is in src/components/Pricing.tsx when you want to check it.",
             ),
           ],
-          {'ask': null, 'busy': false, 'preview': approved ? 'Built: the table stacks on phones.' : 'Not built.'},
+          {'ask': null, 'busy': false},
         );
         return {};
       case 'probe':

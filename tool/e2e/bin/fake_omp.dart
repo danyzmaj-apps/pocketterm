@@ -136,6 +136,13 @@ class FakeOmp {
   var _seq = 0;
   bool _busy = false;
 
+  /// What the session has cost so far, as omp tallies it: a made-up price per answer, so it grows with each one
+  /// and starts again after /new; null before the first, as omp leaves it out.
+  double? get _cost {
+    final answers = _items.where((i) => i['k'] == 'assistant').length;
+    return answers == 0 ? null : (answers * 37) / 100;
+  }
+
   /// The ask up now: an approval, the color question or the plan review.
   Map<String, Object?>? _ask;
   int _askCursor = 0;
@@ -274,7 +281,9 @@ class FakeOmp {
         'id': 'color',
         'header': 'Color',
         'question': _question,
-        'options': [for (final c in _colors) {'label': c}],
+        'options': [
+          for (final c in _colors) {'label': c},
+        ],
       },
     ],
   });
@@ -410,6 +419,8 @@ class FakeOmp {
       await _say(last);
     }
     if (run != _run || !_busy) return;
+    // omp sends its meta at each turn's end; a changed cost is in it.
+    _send({'t': 'meta', 'cost': _cost});
     _setBusy(false, summary: last);
     if (_queue.isNotEmpty) {
       final next = _queue.removeAt(0);
@@ -808,6 +819,7 @@ class FakeOmp {
       'pid': pid,
       'busy': _busy,
       'ctx': 1,
+      'cost': _cost,
       'items': _items.length > 300 ? _items.sublist(_items.length - 300) : _items,
       'older': false,
       'commands': _commands,

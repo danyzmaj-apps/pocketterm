@@ -238,29 +238,37 @@ void main() {
     },
   );
 
-  test('slash commands come with the hello and change with a meta that has them', () async {
-    final ext = await connect();
-    ext.hello(
-      commands: [
-        {'name': 'new', 'description': 'Start a new session'},
-        {'name': 'review'},
-      ],
-    );
-    await until(() => hub['kitty-1/7'] != null);
-    final s = hub['kitty-1/7']!;
-    expect(s.summary.commands, [(name: 'new', description: 'Start a new session'), (name: 'review', description: '')]);
-    ext.send({'t': 'meta', 'ctx': 40});
-    await until(() => s.ctx == 40);
-    expect(s.commands.length, 2);
-    ext.send({
-      't': 'meta',
-      'commands': [
-        {'name': 'skill:pdf', 'description': 'Read PDFs'},
-      ],
-    });
-    await until(() => s.commands.length == 1);
-    expect(s.commands.single.name, 'skill:pdf');
-  });
+  test(
+    'slash commands come with the hello and change with a meta that has them; ctx and cost reach the phone',
+    () async {
+      final ext = await connect();
+      ext.hello(
+        commands: [
+          {'name': 'new', 'description': 'Start a new session'},
+          {'name': 'review'},
+        ],
+      );
+      await until(() => hub['kitty-1/7'] != null);
+      final s = hub['kitty-1/7']!;
+      expect(s.summary.commands, [
+        (name: 'new', description: 'Start a new session'),
+        (name: 'review', description: ''),
+      ]);
+      ext.send({'t': 'meta', 'ctx': 40, 'cost': 43.34});
+      await until(() => s.ctx == 40);
+      expect(s.commands.length, 2);
+      final phone = LiveSummary.fromJson(jsonDecode(jsonEncode(s.summary.toJson())) as Map<String, dynamic>);
+      expect((phone.ctx, phone.cost), (40, 43.34));
+      ext.send({
+        't': 'meta',
+        'commands': [
+          {'name': 'skill:pdf', 'description': 'Read PDFs'},
+        ],
+      });
+      await until(() => s.commands.length == 1);
+      expect(s.commands.single.name, 'skill:pdf');
+    },
+  );
 
   test('items and streamed text become ops in order', () async {
     final ext = await connect();

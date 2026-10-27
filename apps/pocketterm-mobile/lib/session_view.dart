@@ -16,6 +16,7 @@ import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/coach.dart';
+import 'package:pocketterm_mobile/drafts.dart';
 import 'package:pocketterm_mobile/motion.dart';
 import 'package:pocketterm_mobile/queue_screen.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
@@ -57,7 +58,7 @@ class SessionPage extends StatefulWidget {
   State<SessionPage> createState() => _SessionPageState();
 }
 
-class _SessionPageState extends State<SessionPage> {
+class _SessionPageState extends State<SessionPage> with WidgetsBindingObserver {
   final _scroll = ScrollController();
   final _field = TextEditingController();
   final _fieldFocus = FocusNode();
@@ -116,10 +117,44 @@ class _SessionPageState extends State<SessionPage> {
   TerminalRemote get remote => widget.remote;
   String get key => widget.sessionKey;
 
+  // The unsent text is kept per session (lib/drafts.dart); attachments aren't.
+  String get _draftKey => routedKey(remote.desktopId, key);
+  Timer? _draftSoon;
+  String _savedDraft = '';
+
+  void _saveDraft() {
+    _draftSoon?.cancel();
+    final text = _field.text;
+    if (text == _savedDraft) return;
+    _savedDraft = text;
+    unawaited(saveDraft(_draftKey, text));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _saveDraft();
+  }
+
   @override
   void initState() {
     super.initState();
-    _field.addListener(() => setState(() {}));
+    _field.addListener(() {
+      setState(() {});
+      _draftSoon?.cancel();
+      _draftSoon = Timer(const Duration(milliseconds: 300), _saveDraft);
+    });
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(
+      loadDraft(_draftKey).then((text) {
+        // Typed before it came: what's in the field wins.
+        if (!mounted || text.isEmpty || _field.text.isNotEmpty) return;
+        _savedDraft = text;
+        _field.value = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+      }),
+    );
     _attachments.addListener(() => setState(() {}));
     _scroll.addListener(() {
       final p = _scroll.position;
@@ -134,6 +169,8 @@ class _SessionPageState extends State<SessionPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _saveDraft();
     _unwatch();
     remote.removeListener(_continueWhenReady);
     _scroll.dispose();

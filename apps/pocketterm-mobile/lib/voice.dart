@@ -687,7 +687,7 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
     ],
   };
 
-  /// The controls under what's said: the orb becomes Keep talking, Cancel, Insert and Send by motes flying from one to
+  /// The controls under what's said: the orb becomes Keep talking, Insert and Send by motes flying from one to
   /// the other (and a problem's buttons come and go) by a cross-fade, the room they take changing with it.
   Widget _bottom() => FadeSwap(
     scale: .95,
@@ -777,20 +777,8 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
         final can = _edit.text.trim().isNotEmpty;
         const tall = Size(0, 48);
         const tight = EdgeInsets.symmetric(horizontal: 12);
+        // No Cancel: the sheet's close button and dragging it away already do that.
         final row = [
-          _Spot(
-            _Mark.cancel,
-            _spots,
-            child: Semantics(
-              identifier: 'voice-cancel',
-              child: TextButton(
-                key: const ValueKey('voice-cancel'),
-                style: TextButton.styleFrom(foregroundColor: C.dim, minimumSize: tall, padding: tight),
-                onPressed: () => Navigator.of(context).maybePop(),
-                child: Text(C.label('Cancel')),
-              ),
-            ),
-          ),
           _Spot(
             _Mark.insert,
             _spots,
@@ -824,11 +812,11 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
             padding: pad,
             child: LayoutBuilder(
               builder: (context, box) {
-                // Side by side while the longest label fits a third of the width; very large text stacks them.
+                // Side by side while the longer label fits half the width; very large text stacks them.
                 final style = Theme.of(context).textTheme.labelLarge;
                 final scaler = MediaQuery.textScalerOf(context);
                 var widest = 0.0;
-                for (final text in ['Cancel', 'Insert', 'Send']) {
+                for (final text in ['Insert', 'Send']) {
                   final label = TextPainter(
                     text: TextSpan(text: C.label(text), style: style),
                     textDirection: TextDirection.ltr,
@@ -837,7 +825,7 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
                   widest = math.max(widest, label.width);
                   label.dispose();
                 }
-                final fits = 3 * (widest + tight.horizontal) + 16 <= box.maxWidth;
+                final fits = 2 * (widest + tight.horizontal) + 8 <= box.maxWidth;
                 return Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -958,11 +946,10 @@ class _LiveWordsState extends State<_LiveWords> with SingleTickerProviderStateMi
 enum _Mark {
   orb,
   more,
-  cancel,
   insert,
   send;
 
-  static const List<_Mark> buttons = [more, cancel, insert, send];
+  static const List<_Mark> buttons = [more, insert, send];
 }
 
 /// [child], found in [spots] under [mark] while it's shown. Unlike a GlobalKey, the one going in a cross-fade and the
@@ -1048,8 +1035,8 @@ class _Flock {
   _Flock._(this.orb, this.motes);
 
   /// Where on [buttons] (in [_Mark.buttons]' order) the motes land, as which button, where on it (a fraction of its
-  /// width and height) and where that is now: Send and Keep talking fill with them, Insert's outline traces, and a
-  /// few gather where Cancel's label is. Keep talking flies the star back together from the same points.
+  /// width and height) and where that is now: Send and Keep talking fill with them and Insert's outline traces. Keep
+  /// talking flies the star back together from the same points.
   static List<(int, Offset, Offset)> landings(List<Rect> buttons, ThemeShape shape, math.Random rnd) {
     final out = <(int, Offset, Offset)>[];
     for (final (i, rect) in buttons.indexed) {
@@ -1058,7 +1045,7 @@ class _Flock {
         Radius.circular(shape == ThemeShape.soft ? rect.height / 2 : math.min(shape.maxRadius, rect.height / 2)),
       );
       Offset land(Offset p) => Offset((p.dx - rect.left) / rect.width, (p.dy - rect.top) / rect.height);
-      if (i == 2) {
+      if (i == 1) {
         final edge = (Path()..addRRect(round.deflate(1))).computeMetrics().first;
         for (var k = 0; k < counts[i]; k++) {
           final p = edge.getTangentForOffset(edge.length * (k + rnd.nextDouble() * .5) / counts[i])!.position;
@@ -1066,9 +1053,7 @@ class _Flock {
         }
         continue;
       }
-      final area = i == 1
-          ? Rect.fromCenter(center: rect.center, width: rect.width * .4, height: rect.height * .3)
-          : rect;
+      final area = rect;
       for (var k = 0; k < counts[i];) {
         final p = Offset(area.left + rnd.nextDouble() * area.width, area.top + rnd.nextDouble() * area.height);
         if (!round.contains(p)) continue;
@@ -1080,7 +1065,7 @@ class _Flock {
   }
 
   /// How many motes it makes: what each button gets, in [_Mark.buttons]' order.
-  static const counts = [130, 30, 80, 130];
+  static const counts = [140, 90, 140];
   static final int count = counts.fold(0, (a, b) => a + b);
 
   /// The longest a mote waits to set off, as a fraction of the flight.
@@ -1104,7 +1089,7 @@ class _FlockPainter extends CustomPainter {
     if (p >= 1) return;
     final rects = buttons();
     if (rects.contains(null)) return;
-    final colors = [C.accent, C.dim, C.text, C.accent];
+    final colors = [C.accent, C.text, C.accent];
     final fade = 1 - const Interval(.8, 1).transform(p);
 
     final flash = 1 - (p / .3).clamp(0.0, 1.0);

@@ -97,11 +97,10 @@ appId: com.danyzmaj.pocketterm
       id: "voice-send"
     timeout: 8000
 - takeScreenshot: voice-${NAME}-hold-review
-- tapOn:
-    id: "voice-cancel"
+- tapOn: "Close"
 - extendedWaitUntil:
     notVisible:
-      id: "voice-cancel"
+      id: "voice-send"
     timeout: 5000
 - assertVisible:
     id: "session-mic"

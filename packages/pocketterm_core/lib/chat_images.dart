@@ -113,49 +113,66 @@ Future<List<Uint8List>> _clipboardImages() async {
   return image == null ? const [] : [image];
 }
 
-/// Images picked from the photo picker. `imageQuality` makes image_picker
-/// re-encode each as JPEG, so a HEIC photo never reaches the computer.
-Future<List<Uint8List>> _pickImages({required int limit}) async {
+/// Images picked from the photo picker, not yet read. `imageQuality` makes
+/// image_picker re-encode each as JPEG, so a HEIC photo never reaches the
+/// computer, and `maxWidth`/`maxHeight` scale it natively to [maxImageSide],
+/// so [prepareChatImage] keeps it as it is.
+Future<List<XFile>> _pickImages({required int limit}) async {
   if (limit <= 0) return const [];
-  final picked = limit == 1
-      ? [?await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 90)]
-      : await ImagePicker().pickMultiImage(limit: limit, imageQuality: 90);
-  return [for (final f in picked) await f.readAsBytes()];
+  final side = maxImageSide.toDouble();
+  return limit == 1
+      ? [?await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: side, maxHeight: side, imageQuality: 90)]
+      : await ImagePicker().pickMultiImage(limit: limit, maxWidth: side, maxHeight: side, imageQuality: 90);
 }
 
 /// The images and files a composer holds until the message is sent, at most
 /// [maxChatAttachments], in the order they came. Images load through
 /// [prepareChatImage]; files go as they are, up to [maxChatFileBytes] each.
 /// Errors (not an image, too many, too large) go to [problem] for the
-/// composer to show.
+/// composer to show. While images load, [loading] is true and [pending]
+/// counts those not ready yet; each joins [items] as soon as it is.
 class ChatAttachments extends ChangeNotifier {
   final List<ChatAttachment> items = [];
   String? problem;
 
+  /// True from the moment the photo picker opens until it hands back its
+  /// files (image_picker re-encodes them after it closes, without a signal).
+  bool picking = false;
+
+  /// Images and files taken in but not ready yet.
+  int pending = 0;
+
   bool get isEmpty => items.isEmpty;
-  int get room => maxChatAttachments - items.length;
+  bool get loading => picking || pending > 0;
+  int get room => maxChatAttachments - items.length - pending;
 
   static const _tooMany = 'At most $maxChatAttachments images and files per message.';
 
   Future<void> addAll(List<Uint8List> raws) async {
     problem = null;
-    var skipped = 0;
-    for (final raw in raws) {
-      if (room <= 0) {
-        problem = _tooMany;
-        break;
-      }
-      final image = await prepareChatImage(raw);
-      if (image == null) {
-        skipped++;
-      } else {
-        items.add(image);
-      }
-    }
-    if (skipped > 0) {
-      problem ??= skipped == 1 ? "That isn't an image PocketTerm can read." : "$skipped files aren't images.";
-    }
+    final take = min(raws.length, maxChatAttachments - items.length);
+    if (raws.length > take) problem = _tooMany;
+    pending = take;
     notifyListeners();
+    var skipped = 0;
+    try {
+      for (final raw in raws.take(take)) {
+        final image = await prepareChatImage(raw);
+        if (image == null) {
+          skipped++;
+        } else {
+          items.add(image);
+        }
+        pending--;
+        notifyListeners();
+      }
+      if (skipped > 0) {
+        problem ??= skipped == 1 ? "That isn't an image PocketTerm can read." : "$skipped files aren't images.";
+      }
+    } finally {
+      pending = 0;
+      notifyListeners();
+    }
   }
 
   /// Adds files picked from the phone's files. Images among them (by their
@@ -163,36 +180,47 @@ class ChatAttachments extends ChangeNotifier {
   /// [maxChatFileBytes] is left out, and said so.
   Future<void> addFiles(List<XFile> files) async {
     problem = null;
-    final tooLarge = <String>[];
-    for (final f in files) {
-      if (room <= 0) {
-        problem = _tooMany;
-        break;
-      }
-      final name = f.name.isNotEmpty ? f.name : 'file';
-      final named = _imageExtensions.contains(fileExtension(name));
-      if (!named && await f.length() > maxChatFileBytes) {
-        tooLarge.add(name);
-        continue;
-      }
-      final bytes = await f.readAsBytes();
-      final image = named || sniffImageType(bytes) != null ? await prepareChatImage(bytes) : null;
-      if (image != null) {
-        items.add(image);
-      } else if (bytes.length > maxChatFileBytes) {
-        tooLarge.add(name);
-      } else {
-        final mime = f.mimeType;
-        items.add(ChatFile(name, bytes, mime == null || mime.isEmpty ? fileMime(name) : mime));
-      }
-    }
-    if (tooLarge.isNotEmpty) {
-      const most = 'files can be up to ${maxChatFileBytes ~/ (1000 * 1000)} MB';
-      problem ??= tooLarge.length == 1
-          ? '"${tooLarge.single}" is too large: $most.'
-          : '${tooLarge.length} files are too large: $most.';
-    }
+    final take = min(files.length, maxChatAttachments - items.length);
+    if (files.length > take) problem = _tooMany;
+    pending = take;
     notifyListeners();
+    final tooLarge = <String>[];
+    try {
+      for (final f in files.take(take)) {
+        await _addFile(f, tooLarge);
+        pending--;
+        notifyListeners();
+      }
+      if (tooLarge.isNotEmpty) {
+        const most = 'files can be up to ${maxChatFileBytes ~/ (1000 * 1000)} MB';
+        problem ??= tooLarge.length == 1
+            ? '"${tooLarge.single}" is too large: $most.'
+            : '${tooLarge.length} files are too large: $most.';
+      }
+    } finally {
+      pending = 0;
+      notifyListeners();
+    }
+  }
+
+  /// Adds [f] to [items], or its name to [tooLarge].
+  Future<void> _addFile(XFile f, List<String> tooLarge) async {
+    final name = f.name.isNotEmpty ? f.name : 'file';
+    final named = _imageExtensions.contains(fileExtension(name));
+    if (!named && await f.length() > maxChatFileBytes) {
+      tooLarge.add(name);
+      return;
+    }
+    final bytes = await f.readAsBytes();
+    final image = named || sniffImageType(bytes) != null ? await prepareChatImage(bytes) : null;
+    if (image != null) {
+      items.add(image);
+    } else if (bytes.length > maxChatFileBytes) {
+      tooLarge.add(name);
+    } else {
+      final mime = f.mimeType;
+      items.add(ChatFile(name, bytes, mime == null || mime.isEmpty ? fileMime(name) : mime));
+    }
   }
 
   /// Pastes images from the clipboard; false if it holds none (a text paste
@@ -204,7 +232,20 @@ class ChatAttachments extends ChangeNotifier {
     return true;
   }
 
-  Future<void> pick() async => await addAll(await _pickImages(limit: room));
+  /// Picks photos; [picking] shows a placeholder until the picker hands them
+  /// back. A cancelled picker leaves nothing behind.
+  Future<void> pick() async {
+    picking = true;
+    notifyListeners();
+    final List<Uint8List> raws;
+    try {
+      raws = [for (final f in await _pickImages(limit: room)) await f.readAsBytes()];
+    } finally {
+      picking = false;
+      notifyListeners();
+    }
+    await addAll(raws);
+  }
 
   void removeAt(int i) {
     items.removeAt(i);
@@ -221,7 +262,8 @@ class ChatAttachments extends ChangeNotifier {
 }
 
 /// The composer's pending images and files, each with a ✕: a thumbnail per
-/// image, a chip with its name and size per file; nothing when empty.
+/// image, a chip with its name and size per file, a spinner tile per one
+/// still loading; nothing when empty.
 /// It grows and shrinks smoothly, and [top] spaces it from what sits above
 /// only while it shows something.
 class AttachmentStrip extends StatelessWidget {
@@ -236,11 +278,12 @@ class AttachmentStrip extends StatelessWidget {
     builder: (context, _) {
       final items = attachments.items;
       final problem = attachments.problem;
+      final loading = attachments.pending + (attachments.picking ? 1 : 0);
       return AnimatedSize(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
         alignment: Alignment.topCenter,
-        child: items.isEmpty && problem == null
+        child: items.isEmpty && loading == 0 && problem == null
             ? const SizedBox(width: double.infinity)
             : Padding(
                 padding: EdgeInsets.only(top: top, bottom: 10),
@@ -248,7 +291,7 @@ class AttachmentStrip extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (items.isNotEmpty)
+                    if (items.isNotEmpty || loading > 0)
                       // 2 plus each thumbnail's 6pt corner room: 8 between them.
                       Wrap(
                         spacing: 2,
@@ -267,6 +310,8 @@ class AttachmentStrip extends StatelessWidget {
                                 final ChatFile file => _FileChip(file: file, height: size),
                               },
                             ),
+                          for (var i = 0; i < loading; i++)
+                            _Loading(size: size, key: ValueKey('attachment-loading-$i')),
                         ],
                       ),
                     if (problem != null)
@@ -366,6 +411,33 @@ class _Thumb extends StatelessWidget {
         borderRadius: C.round(8),
       ),
       child: Image.memory(bytes, fit: BoxFit.cover, cacheWidth: (size * 3).round(), gaplessPlayback: true),
+    ),
+  );
+}
+
+/// A tile the size of a [_Thumb], with a spinner, for an image still
+/// loading; its corner room lines it up with the [_Removable] thumbnails.
+class _Loading extends StatelessWidget {
+  const _Loading({required this.size, super.key});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: 'Loading image',
+    child: Padding(
+      padding: const EdgeInsets.only(top: 6, right: 6),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: C.field,
+          border: Border.all(color: C.line, width: C.border),
+          borderRadius: C.round(8),
+        ),
+        child: Center(
+          child: SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2, color: C.dim)),
+        ),
+      ),
     ),
   );
 }

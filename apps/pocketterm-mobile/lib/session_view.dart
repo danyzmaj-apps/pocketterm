@@ -203,7 +203,7 @@ class _SessionPageState extends State<SessionPage> with WidgetsBindingObserver {
   Future<void> _send({required bool busy}) async {
     final typed = _field.text;
     final text = typed.trim();
-    if ((text.isEmpty && _attachments.isEmpty) || _sending || _delivering) return;
+    if ((text.isEmpty && _attachments.isEmpty) || _attachments.loading || _sending || _delivering) return;
     final attached = List.of(_attachments.items);
     // A slash command is typed into the agent's window, where its editor
     // reads it; sent as a prompt, the agent would take it for chat.
@@ -706,9 +706,13 @@ class _SessionPageState extends State<SessionPage> with WidgetsBindingObserver {
     final busy = s?.busy ?? false;
     final agent = _agent(s);
     // One at a time, in order: the next waits until the computer has the one sending.
-    final canSend = online && !_sending && !_delivering && (_field.text.trim().isNotEmpty || !_attachments.isEmpty);
+    // While images load, the button stays a disabled Send.
+    final loading = _attachments.loading;
+    final canSend =
+        online && !_sending && !_delivering && !loading && (_field.text.trim().isNotEmpty || !_attachments.isEmpty);
     // Nothing to send: the button there is the microphone.
-    final talk = !_sending && _field.text.trim().isEmpty && _attachments.isEmpty;
+    final talk = !_sending && !loading && _field.text.trim().isEmpty && _attachments.isEmpty;
+    final canAttach = online && _attachments.room > 0 && !loading;
     final slash = _field.text.startsWith('/');
     final commanding = online && s != null && slash;
     final noWindow = commanding && !_can(_windowKey(s), TermCap.line);
@@ -801,8 +805,8 @@ class _SessionPageState extends State<SessionPage> with WidgetsBindingObserver {
                 TextFieldTapRegion(
                   child: PopupMenuButton<String>(
                     tooltip: 'Attach images or files',
-                    enabled: online && _attachments.room > 0,
-                    icon: Icon(Icons.attach_file, color: online && _attachments.room > 0 ? C.dim : C.dim2),
+                    enabled: canAttach,
+                    icon: Icon(Icons.attach_file, color: canAttach ? C.dim : C.dim2),
                     color: C.bar,
                     onSelected: (from) => unawaited(_attach(from)),
                     itemBuilder: (_) => const [

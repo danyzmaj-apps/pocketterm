@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -120,4 +121,80 @@ void main() {
       expect(a.items.map((i) => (i as ChatFile).name), ['doc5.txt']);
     });
   });
+
+  testWidgets('images join one at a time, each counted as pending until it does', (tester) async {
+    await tester.runAsync(() async {
+      final a = ChatAttachments();
+      final image = await png(20, 20);
+      final seen = <(int, int)>[];
+      int? roomAtStart;
+      a.addListener(() {
+        seen.add((a.items.length, a.pending));
+        roomAtStart ??= a.room;
+      });
+      await a.addAll([image, image, image]);
+      expect(seen, [(0, 3), (1, 2), (2, 1), (3, 0), (3, 0)]);
+      expect(roomAtStart, 10 - 3);
+      expect(a.loading, isFalse);
+    });
+  });
+
+  testWidgets('only what fits loads', (tester) async {
+    await tester.runAsync(() async {
+      final a = ChatAttachments();
+      final image = await png(20, 20);
+      await a.addAll([for (var i = 0; i < 9; i++) image]);
+      final pendingAtStart = <int>[];
+      a.addListener(() => pendingAtStart.add(a.pending));
+      await a.addAll([image, image, image]);
+      expect(pendingAtStart.first, 1);
+      expect(a.items, hasLength(10));
+      expect(a.problem, 'At most 10 images and files per message.');
+    });
+  });
+
+  testWidgets('the strip shows a spinner per image still loading, each replaced by its thumbnail once ready', (
+    tester,
+  ) async {
+    final a = ChatAttachments();
+    final image = (await tester.runAsync(() => png(20, 20)))!;
+    final gates = [for (var i = 0; i < 3; i++) Completer<void>()];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: AttachmentStrip(attachments: a)),
+      ),
+    );
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    final done = a.addFiles([for (final (i, gate) in gates.indexed) _SlowFile('shot$i.png', image, gate.future)]);
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsNWidgets(3));
+    expect(find.bySemanticsLabel('Loading image'), findsNWidgets(3));
+    expect(a.loading, isTrue);
+
+    for (var i = 0; i < 3; i++) {
+      gates[i].complete();
+      await tester.pump();
+      expect(find.byType(Image), findsNWidgets(i + 1));
+      expect(find.byType(CircularProgressIndicator), findsNWidgets(2 - i));
+    }
+    await done;
+    expect(a.loading, isFalse);
+  });
+}
+
+/// A picked image whose bytes arrive when [gate] completes.
+class _SlowFile extends XFile {
+  _SlowFile(String name, this.bytes, this.gate) : super('/picked/$name');
+  final Uint8List bytes;
+  final Future<void> gate;
+
+  @override
+  Future<int> length() async => bytes.length;
+
+  @override
+  Future<Uint8List> readAsBytes() async {
+    await gate;
+    return bytes;
+  }
 }

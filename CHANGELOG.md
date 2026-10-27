@@ -12,6 +12,7 @@ To see what a session has cost on the phone, click **Update** for omp and Claude
 - **Done only when you haven't seen it.** A session whose run ends while you're reading its conversation no longer lights its row as done when you go back to the list.
 - **Even room around a highlighted row.** A project with one session leaves as much room above and below its row's border as at its sides.
 - **Sheets show all of themselves.** A sheet is as tall as what's in it instead of stopping at part of the screen, so its last row (like the account sheet's **PocketTerm is open source** link) is no longer cut off; a sheet too tall for the screen scrolls on under the home indicator.
+- **Attached images show while they load.** From the moment the photo picker closes, the composer shows a spinner tile for each image still loading (photos, files or a pasted image), and each turns into its thumbnail as soon as it's ready instead of all of them appearing at once at the end. **Send** and the attach button wait until the last one is in. Photos are now scaled down by the phone as they're picked, so they load faster and go as JPEG instead of a larger PNG.
 
 ## 0.1.5
 

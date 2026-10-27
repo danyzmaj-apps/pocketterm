@@ -89,8 +89,8 @@ deno task test
 It runs on danyzmaj-server as app `pocketterm-relay`
 ([connect-an-app](https://github.com/danyzmaj-apps/danyzmaj-server/blob/master/docs/connect-an-app.md)): `Dockerfile`
 (Deno, non-root, read-only filesystem, no capabilities) and `deploy/compose.yaml`. [Baker](https://baker.danyzmaj.com)'s
-_Relay_ workflow (project `pocketterm-mobile`) deploys it on every push to `main` that touches this folder, once the
-commit's checks (the `relay` check runs these tests) pass, or on _Deploy_ in Baker.
+_Relay_ workflow (project `pocketterm-mobile`) tests it and deploys it on every push to `main` that touches this
+folder, or on _Deploy_ in Baker.
 
 Settings and secrets live on the server only, in `/etc/danyzmaj/pocketterm-relay/` (folder `750 root:runner`):
 

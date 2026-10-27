@@ -21,6 +21,7 @@ Servers and the push relay need no update. To see a session's error border on th
 - **Rename and colour your rows.** Swipe a session or window left and **Rename** and **Color** sit beside **End session**; a long press offers the same three. A name you give replaces the agent's title in the list, and a colour tints the row (instead of the flash a question brings); **Reset** and **No color** put them back. They stay on this phone, per computer.
 - **Sorting is one tap.** The order above the projects switches between **Name** and **Recent activity** when tapped, instead of opening a menu.
 - **A question's long answers show whole.** When an agent asks you to choose, an answer too long for one line wraps inside its button instead of being cut off.
+- **What you typed waits for you.** Text you've typed into a session but not sent stays there when you go back to the list and when the app is closed, until you send or delete it; each session keeps its own. Attached images and files aren't kept.
 
 ## 0.1.4
 

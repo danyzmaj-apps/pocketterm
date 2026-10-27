@@ -131,7 +131,7 @@ class _MacTerminalsCardState extends State<MacTerminalsCard> {
       children: [
         Text(
           found.isEmpty && all != null
-              ? 'No terminal app found. PocketTerm works with kitty, Ghostty and WezTerm.'
+              ? 'No terminal app found. PocketTerm works with kitty, iTerm2, Ghostty and WezTerm.'
               : 'Sessions you start from your phone open in the one you used last (Settings can pin one).',
           style: TextStyle(color: C.dim, height: 1.45, fontSize: 13),
         ),

@@ -80,6 +80,7 @@ String termLabel(String app) => switch (app) {
   'kitty' => 'kitty',
   'tmux' => 'tmux',
   'wezterm' => 'WezTerm',
+  'iterm' => 'iTerm2',
   'ghostty' => 'Ghostty',
   _ => app,
 };

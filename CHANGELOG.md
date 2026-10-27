@@ -2,6 +2,14 @@
 
 What each PocketTerm release brings.
 
+## 0.1.7
+
+Servers and the push relay need no update. To have omp and Claude Code in iTerm2 found as their window, click **Update** for them in PocketTerm on the computer.
+
+### Desktop app
+
+- **iTerm2 works with PocketTerm.** Its tabs and split panes show on the phone with their screens (without colors) and take typing, keys and closing; sessions you start from the phone can open in iTerm2 as a new tab, and **Settings → Terminals** lists it (macOS asks once whether PocketTerm may control iTerm2). omp and Claude Code running in iTerm2 are tied to their window.
+
 ## 0.1.6
 
 Servers and the push relay need no update. To see what a session has cost on the phone, click **Update** for omp and Claude Code in PocketTerm on the computer.

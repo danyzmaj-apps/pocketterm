@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/ghostty.dart';
+import 'package:pocketterm_core/iterm.dart';
 import 'package:pocketterm_core/kitty.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/tmux.dart';
@@ -25,12 +26,13 @@ class Terminals {
     this.kitty,
     this.tmux,
     this.wezterm,
+    this.iterm,
     this.ghostty,
     this.recency = appsByRecency,
     this.snapshot = Procs.snapshot,
   });
 
-  /// The terminals of this computer: all four on a Mac (kitty's sockets in
+  /// The terminals of this computer: all five on a Mac (kitty's sockets in
   /// [kittyDir]), WezTerm alone on Windows ([windowsPath]: the PATH a new
   /// login has, for the WezTerm it starts; see WezTerm).
   factory Terminals.standard({String kittyDir = '/tmp', String? home, bool? windows, String Function()? windowsPath}) {
@@ -46,6 +48,7 @@ class Terminals {
       kitty: Kitty(socketDir: kittyDir, home: h),
       tmux: Tmux(),
       wezterm: WezTerm(home: h),
+      iterm: ITerm2(),
       ghostty: Ghostty(),
     );
   }
@@ -55,6 +58,7 @@ class Terminals {
   final Kitty? kitty;
   final Tmux? tmux;
   final WezTerm? wezterm;
+  final ITerm2? iterm;
   final Ghostty? ghostty;
 
   /// App names, most recently used first (`lsappinfo`); tests pass their own.
@@ -64,11 +68,11 @@ class Terminals {
   final Future<Procs> Function() snapshot;
 
   /// In the order their windows are listed.
-  List<TerminalHost> get hosts => [?kitty, ?tmux, ?wezterm, ?ghostty];
+  List<TerminalHost> get hosts => [?kitty, ?tmux, ?wezterm, ?iterm, ?ghostty];
 
   /// The terminal apps (tmux isn't one), in the order Auto prefers them
   /// when none was used lately.
-  List<TerminalHost> get apps => [?kitty, ?wezterm, ?ghostty];
+  List<TerminalHost> get apps => [?kitty, ?wezterm, ?iterm, ?ghostty];
 
   /// Terminal windows PocketTerm opened to show a tmux session: their key → the
   /// pane's (Ghostty tells no tty to match them by).

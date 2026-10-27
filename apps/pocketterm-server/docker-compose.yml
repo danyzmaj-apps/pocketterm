@@ -17,7 +17,7 @@ x-logging: &logging
 
 services:
   server:
-    image: ${POCKETTERM_IMAGE:-ghcr.io/danyzmaj-apps/pocketterm-server:${POCKETTERM_VERSION:-0.1.6}}
+    image: ${POCKETTERM_IMAGE:-ghcr.io/danyzmaj-apps/pocketterm-server:${POCKETTERM_VERSION:-0.1.7}}
     restart: unless-stopped
     logging: *logging
     environment:

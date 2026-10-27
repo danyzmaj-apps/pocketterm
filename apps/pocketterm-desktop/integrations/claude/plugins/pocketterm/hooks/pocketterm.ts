@@ -262,6 +262,7 @@ async function termOf($: EngineInterface): Promise<Record<string, string>> {
 		["TMUX_PANE", await $.env.get("TMUX_PANE")],
 		["WEZTERM_PANE", await $.env.get("WEZTERM_PANE")],
 		["WEZTERM_UNIX_SOCKET", await $.env.get("WEZTERM_UNIX_SOCKET")],
+		["ITERM_SESSION_ID", await $.env.get("ITERM_SESSION_ID")],
 	];
 	const found: Record<string, string> = {};
 	for (const [name, v] of vars) if (v) found[name] = v;

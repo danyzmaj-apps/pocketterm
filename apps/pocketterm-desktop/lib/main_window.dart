@@ -1222,7 +1222,7 @@ class _SettingsPageState extends State<SettingsPage> {
       items.add((
         tab: _Tab.terminals,
         short: 'No terminal app found',
-        text: 'No terminal app found: PocketTerm works with kitty, Ghostty and WezTerm',
+        text: 'No terminal app found: PocketTerm works with kitty, iTerm2, Ghostty and WezTerm',
         action: null,
       ));
     }

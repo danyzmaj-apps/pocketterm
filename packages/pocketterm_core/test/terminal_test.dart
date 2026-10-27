@@ -188,6 +188,18 @@ void main() {
       expect(windowOfTerm({...leaked, 'TERM_PROGRAM': 'ghostty', 'tty': '/dev/ttys007'}), isNull);
     });
 
+    test("iTerm2: its session's UUID, only where iTerm2 is the TERM_PROGRAM", () {
+      const id = 'w0t1p0:4E0BF942-D30A-4EDD-BD3A-616CCAED64DF';
+      const leaked = {'KITTY_WINDOW_ID': '116', 'KITTY_PID': '23224', 'KITTY_LISTEN_ON': 'unix:/tmp/kitty-23224'};
+      expect(
+        windowOfTerm({...leaked, 'TERM_PROGRAM': 'iTerm.app', 'ITERM_SESSION_ID': id}),
+        'iterm:4E0BF942-D30A-4EDD-BD3A-616CCAED64DF',
+      );
+      // kitty started from iTerm2 keeps iTerm2's variable.
+      expect(windowOfTerm({...leaked, 'TERM_PROGRAM': 'kitty', 'ITERM_SESSION_ID': id}), 'kitty-23224/116');
+      expect(windowOfTerm({'TERM_PROGRAM': 'iTerm.app', 'ITERM_SESSION_ID': 'w0t0p0:nope'}), isNull);
+    });
+
     test('nothing known: null', () {
       expect(windowOfTerm(null), isNull);
       expect(windowOfTerm({}), isNull);

@@ -51,7 +51,7 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 | Coding agents tab (state, Install/Update, Default, Make default) | step "settings: coding agents tab"; `settings_agent_test.dart` | Make default with two agents installed: unit only (the e2e has no Claude Code) |
 | Terminals tab: New sessions open in | step "settings: new sessions open in <terminal>" | none |
 | Terminals tab: kitty Set up (remote control in kitty.conf) | `kitty_test.dart`, `terminals_card_test.dart` | e2e kitty already listens (its throwaway config); the Set up click: unit only |
-| Terminals tab: Allow… (Automation for Ghostty) | `ghostty_test.dart` | manual: a macOS permission prompt for the owner |
+| Terminals tab: Allow… (Automation for Ghostty, iTerm2) | `ghostty_test.dart` | manual: a macOS permission prompt for the owner |
 | Terminals tab: Ghostty Start new windows in tmux / Remove / line upgrade | steps "ghostty: Start new windows in tmux", "ghostty: Remove takes tmux out"; `ghostty_config_test.dart`, `settings_test.dart` | none |
 | Terminals tab: tmux install (brew, MacPorts, no Homebrew) | `terminals_card_test.dart`, `commands_test.dart` | installing for real: manual |
 | WezTerm on Windows (install, PATH) | `wezterm_setup_test.dart`, `windows_test.dart` | manual: Windows hardware |
@@ -139,6 +139,7 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 | kitty adapter | `kitty_test.dart`; e2e `--terminal kitty` | none |
 | Ghostty adapter (no screen, tmux, one row per window in tmux, config line upgrade) | `ghostty_test.dart`, `ghostty_surface_test.dart`, `terminals_test.dart`, `ghostty_config_test.dart`; e2e `--terminal ghostty` | none |
 | WezTerm adapter | `wezterm_test.dart`; e2e `--terminal wezterm` | Windows: unit only |
+| iTerm2 adapter (screen vs scrollback, gone windows, colors, `ITERM_SESSION_ID`) | `iterm_test.dart`, `terminal_test.dart` | e2e: none; launching, typing, keys, closing and finding an agent's window run by hand against a real iTerm2 |
 | tmux adapter | `tmux_test.dart`; Ghostty's tmux windows in the e2e | none |
 
 ## Per terminal

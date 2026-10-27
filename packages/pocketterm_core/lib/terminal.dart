@@ -7,7 +7,7 @@ import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/terminals.dart' show Terminals;
 
 // The Mac's terminals as the phone reaches them (lib/terminals.dart merges
-// them): one TerminalHost per terminal app (kitty, WezTerm, Ghostty) or
+// them): one TerminalHost per terminal app (kitty, WezTerm, iTerm2, Ghostty) or
 // multiplexer (tmux), each with what its scripting
 // can do (TermCap). A window's key starts with its host's prefix and fits
 // the push function's session keys, `[\w.:/-]{1,64}`:
@@ -16,6 +16,7 @@ import 'package:pocketterm_core/terminals.dart' show Terminals;
 //   tmux       tmux:<socket name>/<pane n>   (%n is the pane)
 //   wezterm    wezterm:<gui pid>/<pane id>
 //   ghostty    ghostty:<terminal UUID>
+//   iterm      iterm:<session UUID>          (ITERM_SESSION_ID's)
 
 /// What a window's terminal lets the phone do with it.
 enum TermCap {
@@ -86,7 +87,7 @@ class TermWindow {
   /// The window its app has focused.
   final bool focused;
 
-  /// Its host's id: kitty, tmux, wezterm, ghostty.
+  /// Its host's id: kitty, tmux, wezterm, iterm, ghostty.
   final String app;
   final Set<TermCap> caps;
 
@@ -199,7 +200,7 @@ class TermStatus {
 /// uses. Keys are always those [owns] accepts.
 abstract class TerminalHost {
   /// The key prefix family and the id in Settings: kitty, tmux, wezterm,
-  /// ghostty.
+  /// iterm, ghostty.
   String get id;
 
   /// How people name it: "WezTerm".
@@ -432,7 +433,7 @@ String _tail(String line, int maxBytes) {
 
 /// The key of the window a coding agent runs in, from the `term` its
 /// extension reports (its environment, raw: TERM_PROGRAM, KITTY_*, TMUX,
-/// TMUX_PANE, WEZTERM_*, and `tty`).
+/// TMUX_PANE, WEZTERM_*, ITERM_SESSION_ID, and `tty`).
 /// tmux wins (the pane, not the terminal showing it); then the terminal
 /// TERM_PROGRAM names (other terminals' variables leak into apps started
 /// from them); then kitty's own variables. Null when it can't be told
@@ -467,8 +468,14 @@ String? windowOfTerm(Map<String, dynamic>? term) {
     return pane != null && pid != null ? 'wezterm:$pid/$pane' : null;
   }
 
+  String? iterm() {
+    final id = RegExp(r'^w\d+t\d+p\d+:([0-9A-Fa-f-]{36})$').firstMatch(v('ITERM_SESSION_ID') ?? '')?[1];
+    return id != null ? 'iterm:$id' : null;
+  }
+
   return switch (v('TERM_PROGRAM')) {
     'WezTerm' => wezterm(),
+    'iTerm.app' => iterm(),
     'ghostty' => null,
     _ => kitty() ?? wezterm(),
   };

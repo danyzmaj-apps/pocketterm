@@ -8,7 +8,7 @@ One Dart pub workspace (root `pubspec.yaml`): the desktop app for macOS and Wind
 flowchart LR
   subgraph computer ["A computer (Mac or Windows PC)"]
     agent["omp or Claude Code<br/>with PocketTerm's integration"]
-    term["Terminal windows<br/>kitty · tmux · WezTerm · Ghostty<br/>(Windows: WezTerm)"]
+    term["Terminal windows<br/>kitty · tmux · WezTerm · iTerm2 · Ghostty<br/>(Windows: WezTerm)"]
     app["PocketTerm desktop"]
     agent -->|"transcript, questions<br/>(local API)"| app
     app -->|"prompts, stop"| agent
@@ -40,7 +40,7 @@ flowchart LR
 | `core/lib/terminal_remote.dart` | Phone: the remote for one computer (with that computer's key; images sealed, then uploaded) and its disk cache |
 | `core/lib/live_activity.dart` | Phone: followed sessions (Live Activities on iOS, ongoing notifications on Android) and their push tokens |
 | `core/lib/terminal.dart`, `terminals.dart` | The terminal layer: `TerminalHost`, `TermWindow`, `TermCap`, `TermStatus`, keys, process snapshots, `windowOfTerm`, AppleScript; `Terminals`, every installed terminal as one |
-| `core/lib/kitty.dart`, `tmux.dart`, `wezterm.dart`, `ghostty.dart`, `ghostty_config.dart` | One `TerminalHost` per terminal; who sets the command Ghostty's new windows run (tmux) |
+| `core/lib/kitty.dart`, `tmux.dart`, `wezterm.dart`, `iterm.dart`, `ghostty.dart`, `ghostty_config.dart` | One `TerminalHost` per terminal; who sets the command Ghostty's new windows run (tmux) |
 | `core/lib/ansi.dart`, `chat_images.dart`, `file_types.dart`, `ui.dart`, `theme.dart`, `native.dart`, `timing.dart` | Screen lines with ANSI colors; the images and files a prompt takes (at most 10, files up to 20 MB) and their types; shared UI; the themes (kitty's Catppuccin Mocha, the default, Rosé Pine Dawn, Tokyo Night and Gruvbox Material; kept per device as the preference `theme`, where 0.1.2's `auto` reads as Mocha), read through `C` and applied by `Themed`, which builds the whole app again on a change; the `pocketterm/native` platform channel; debug-only connection timings for the end-to-end run's report |
 | `core/lib/speech.dart` | Voice prompts' speech to text: `SpeechSource` (check, listen, stop, fix) and `NativeSpeech`, the phone's recognizer over `pocketterm/native` (`speechCheck`, `speechStop`, `speechFix`) and the `pocketterm/speech` event channel (what's heard so far, the level, how it ended) |
 | `core/lib/logo.dart`, `intro.dart`, `app_icon.dart` | The logo in the active theme's colors and corners (`LogoStyle`, as `desktop/tool/make_icon.swift` draws the icons); the launch intro over both apps (the phone springs out of the pocket and stands up, its screen shows the app itself, laid out at full size and drawn scaled and clipped to the screen, and the view zooms in until the screen, taking the display's shape, is the display; the app keeps its place in the tree and gets no taps until the end; a tap skips it, reduced motion makes it a fade; on the desktop it plays when the window first shows); the app icon that goes with the theme (`default`, the app's own, for Mocha) and `followAppIcon`, which hands it to the native side on every change of choice |
@@ -123,9 +123,10 @@ Each terminal is a `TerminalHost` (`core/lib/terminal.dart`): list its windows (
 | kitty | Remote control over its unix socket (`listen_on unix:/tmp/kitty`); only sockets the current user owns | `kitty-<pid>/<id>` |
 | tmux | The `tmux` CLI on every server socket of the user | `tmux:<socket>/<pane n>` |
 | WezTerm | `wezterm cli` per GUI socket (`~/.local/share/wezterm/gui-sock-<pid>`; on Windows under `%USERPROFILE%`) | `wezterm:<gui pid>/<pane>` |
+| iTerm2 | AppleScript: `contents` (scrollback and screen, plain), `write text`; a new session runs a launcher script that removes itself (iTerm2 splits a command line itself and mangles quotes) | `iterm:<session UUID>` (from `ITERM_SESSION_ID`) |
 | Ghostty | AppleScript | `ghostty:<UUID>` |
 
-`Terminals` (`core/lib/terminals.dart`) puts the installed ones together: all four on macOS, WezTerm only on Windows (Settings and the setup checklist install it there: `desktop/lib/wezterm_setup.dart`). A tmux pane shown in a GUI window is listed once, as the pane. An app that can't both read and press keys (Ghostty) launches a phone-started session inside tmux when tmux is installed. An agent's `hello` carries its terminal environment (`TERM_PROGRAM`, `KITTY_*`, `TMUX`, `WEZTERM_PANE`, …), which `windowOfTerm` turns into its window's key.
+`Terminals` (`core/lib/terminals.dart`) puts the installed ones together: all five on macOS, WezTerm only on Windows (Settings and the setup checklist install it there: `desktop/lib/wezterm_setup.dart`). A tmux pane shown in a GUI window is listed once, as the pane. An app that can't both read and press keys (Ghostty) launches a phone-started session inside tmux when tmux is installed. An agent's `hello` carries its terminal environment (`TERM_PROGRAM`, `KITTY_*`, `TMUX`, `WEZTERM_PANE`, `ITERM_SESSION_ID`, …), which `windowOfTerm` turns into its window's key.
 
 **Screen only to conversation.** An agent window no live session claims (its agent started without PocketTerm in it) shows on the phone as a screen, badged **Screen only**. Where the computer says PocketTerm is installed in that agent and the window's terminal can press keys and type, the phone offers to switch it, with two `run` ops (`core/lib/live.dart`) the bridge does with the window's terminal (`desktop/lib/terminal_bridge.dart`):
 

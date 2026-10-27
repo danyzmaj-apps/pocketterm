@@ -85,6 +85,7 @@ Full model: [SECURITY.md](SECURITY.md). What the publisher collects: the [privac
 | Terminal | Platform | Notes |
 | --- | --- | --- |
 | kitty | macOS | One click in **Settings → Terminals → Set up**, then restart kitty |
+| iTerm2 | macOS | Needs macOS Automation permission. Screens show without colors |
 | Ghostty 1.3 or later, with tmux | macOS | Needs macOS Automation permission. Without tmux, sessions show without a screen and answers happen on the computer |
 | WezTerm 20230326 or later | macOS, Windows | The only supported terminal on Windows; PocketTerm offers to install it |
 | tmux | macOS | Inside any of the above |
@@ -97,8 +98,8 @@ Full model: [SECURITY.md](SECURITY.md). What the publisher collects: the [privac
 
    | Device | Get it |
    | --- | --- |
-   | Mac | [PocketTerm-0.1.6.dmg](https://github.com/danyzmaj-apps/pocketterm/releases/download/v0.1.6/PocketTerm-0.1.6.dmg): notarized, updates itself |
-   | Windows | [PocketTerm-0.1.6-setup.exe](https://github.com/danyzmaj-apps/pocketterm/releases/download/v0.1.6/PocketTerm-0.1.6-setup.exe): per-user install. Not code-signed yet: on the SmartScreen warning choose **More info → Run anyway** |
+   | Mac | [PocketTerm-0.1.7.dmg](https://github.com/danyzmaj-apps/pocketterm/releases/download/v0.1.7/PocketTerm-0.1.7.dmg): notarized, updates itself |
+   | Windows | [PocketTerm-0.1.7-setup.exe](https://github.com/danyzmaj-apps/pocketterm/releases/download/v0.1.7/PocketTerm-0.1.7-setup.exe): per-user install. Not code-signed yet: on the SmartScreen warning choose **More info → Run anyway** |
    | iPhone | TestFlight, for invited testers |
    | Android | Google Play internal testing, for invited testers |
 

@@ -52,9 +52,9 @@ tool/smoke/run.sh clean
 
 ### The test server
 
-`https://pocketterm-test.danyzmaj.com` is a PocketTerm server on the publisher's server for the end-to-end runs ([apps/pocketterm-server/deploy/compose.yaml](../apps/pocketterm-server/deploy/compose.yaml), compose project `pocketterm-test`). Redeploy it after server changes: Actions → test-server-deploy → *Run workflow*, on the branch to deploy. It builds the image from that branch and starts it with danyzmaj-server's shared deploy.
+`https://pocketterm-test.danyzmaj.com` is a PocketTerm server on the publisher's server for the end-to-end runs ([apps/pocketterm-server/deploy/compose.yaml](../apps/pocketterm-server/deploy/compose.yaml), compose project `pocketterm-test`). Redeploy it after server changes: in [Baker](https://baker.danyzmaj.com), project `pocketterm-mobile` → workflow *Test server* → *Deploy*, on the branch to deploy (manual only, no trigger). Baker sends that commit to danyzmaj-server, which builds the image there and starts it with a healthcheck-gated deploy.
 
-After `docker compose … build --pull`, a plain `up -d --wait` can keep the old container running although a new image was built, so the server silently runs old code (the reusable deploy workflow has the same gap). When redeploying, recreate the container, as the runner user, from the uploaded archive's folder:
+After `docker compose … build --pull`, a plain `up -d --wait` can keep the old container running although a new image was built, so the server silently runs old code (the deploy runs `up --wait` too, so it may have the same gap). After redeploying, check the image; if it's the old one, recreate the container on the server, from the deployed checkout's folder:
 
 ```sh
 docker compose -p pocketterm-test -f apps/pocketterm-server/deploy/compose.yaml up -d --force-recreate --wait --wait-timeout 180
@@ -70,7 +70,7 @@ Every user's server sends phone notifications through one relay the publisher ru
 1. **APNs key.** At [developer.apple.com → Keys](https://developer.apple.com/account/resources/authkeys/add), create a key with Apple Push Notifications service (Sandbox & Production, team scoped), or reuse an existing key of the team: APNs keys work for every app of the team. The `.p8` downloads once; keep its `AuthKey_<KEYID>.p8` name.
 2. **Firebase service account.** In the Firebase project that holds the Android app (package `com.danyzmaj.pocketterm`), Project settings → Service accounts → **Generate new private key**. The same project's `google-services.json` goes into Android release builds (below).
 3. **Secrets on the server**, in `/etc/danyzmaj/pocketterm-relay/`: the relay's X25519 private key (`openssl genpkey -algorithm X25519`, kept as `<keys>/pocketterm-relay-x25519.key`), the `.p8`, the service account and `app.env` with `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_TOPIC`. File names and the copy command: [apps/pocketterm-relay/README.md](../apps/pocketterm-relay/README.md#deploy).
-4. **Deploy:** a push to `main` that touches `apps/pocketterm-relay` runs `.github/workflows/relay-deploy.yml` (tests, then danyzmaj-server's shared deploy on the server itself); Actions → relay-deploy → *Run workflow* redeploys.
+4. **Deploy:** a push to `main` that touches `apps/pocketterm-relay/**` starts Baker's *Relay* workflow (project `pocketterm-mobile`): it runs the relay's tests (`deno check main.ts && deno task test`), then deploys it on the server itself as compose project `pocketterm-relay`. Baker → *Relay* → *Deploy* redeploys.
 
 Every PocketTerm server sends to `PUSH_RELAY_URL` (default `https://push.danyzmaj.com/v1/push`), sealed to `PUSH_RELAY_KEY` (default the relay's public key); both defaults are in `packages/pocketterm_server/lib/src/relay.dart`. Servers pick up a new default only when they update, so a new relay key or URL goes in the changelog, and the old one keeps working until they have.
 

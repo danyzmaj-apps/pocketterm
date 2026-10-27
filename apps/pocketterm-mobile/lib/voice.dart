@@ -762,12 +762,14 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
                     child: orb,
                   ),
                 ),
-              Text(
-                _held ? (away ? 'Release to cancel' : 'Release to stop · Slide away to cancel') : 'Tap to stop',
-                key: _held ? const ValueKey('voice-hold-hint') : null,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, height: 1.4, color: away ? C.error : C.dim),
-              ),
+              // A tap needs no hint: the star is the stop button. A hold says how to stop or cancel.
+              if (_held)
+                Text(
+                  away ? 'Release to cancel' : 'Release to stop · Slide away to cancel',
+                  key: const ValueKey('voice-hold-hint'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, height: 1.4, color: away ? C.error : C.dim),
+                ),
             ],
           ),
         );

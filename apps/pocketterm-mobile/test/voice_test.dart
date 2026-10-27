@@ -306,7 +306,6 @@ void main() {
       ..say('fix the tests')
       ..level(.6);
     await heard(tester);
-    expect(find.text('Tap to stop'), findsOneWidget);
     await stop(tester);
     expect(speech.stops, 1);
     expect(find.byKey(const ValueKey('voice-stop')), findsNothing);

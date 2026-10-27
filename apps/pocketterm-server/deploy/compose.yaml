@@ -12,6 +12,7 @@ services:
       context: ../../.. # the repository root
       dockerfile: apps/pocketterm-server/Dockerfile
     restart: unless-stopped
+    mem_limit: 128m # ~6 MiB idle (Dart AOT); room for blob uploads and live channels on a test server
     env_file: # overrides for the settings below, kept on the server
       - path: /etc/danyzmaj/pocketterm-test/app.env
         required: false

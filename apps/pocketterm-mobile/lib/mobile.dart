@@ -1164,9 +1164,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Future<void> _accountSheet() => showAppSheet<void>(
     context,
-    builder: (sheet) => SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 12),
+    // Scrolls on under the home indicator rather than being cut off above it.
+    builder: (sheet) => SingleChildScrollView(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, sheetTop, 20, sheetBottom(sheet)),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,

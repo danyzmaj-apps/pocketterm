@@ -341,7 +341,6 @@ void openWindow(BuildContext context, TerminalRemote remote, String window, {boo
 Future<void> openNewSession(BuildContext context, TerminalRemote remote) async {
   final launched = await showAppSheet<({String window, bool agent})>(
     context,
-    isScrollControlled: true,
     builder: (_) => NewSessionSheet(remote: remote),
   );
   if (launched == null || !context.mounted) return;
@@ -687,7 +686,6 @@ class _TerminalListState extends State<TerminalList> {
     final look = _look(row);
     final name = await showAppSheet<String>(
       context,
-      isScrollControlled: true,
       builder: (_) => _RenameSheet(initial: look.name ?? shown, canReset: look.name != null),
     );
     if (name == null || !mounted) return;

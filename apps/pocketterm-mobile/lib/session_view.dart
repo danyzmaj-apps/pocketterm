@@ -1288,7 +1288,7 @@ class _QueueStripState extends State<_QueueStrip> {
   }
 
   Future<void> _edit(LiveQueued q) async {
-    final text = await showAppSheet<String>(context, isScrollControlled: true, builder: (_) => _EditQueuedSheet(q));
+    final text = await showAppSheet<String>(context, builder: (_) => _EditQueuedSheet(q));
     if (text == null || !mounted) return;
     try {
       await remote.editQueued(widget.session, q.id, text);

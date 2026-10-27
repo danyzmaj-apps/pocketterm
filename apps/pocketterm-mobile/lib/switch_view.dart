@@ -71,8 +71,6 @@ class _SwitchBannerState extends State<SwitchBanner> {
   Future<void> _offer(Agent agent) async {
     final after = await showAppSheet<AfterSwitch>(
       context,
-      // Its height is its content's: the choices at work take more than the default share of the screen.
-      isScrollControlled: true,
       builder: (_) => SwitchSheet(remote: remote, window: widget.window, agent: agent),
     );
     if (after == null || !mounted) return;
@@ -223,67 +221,65 @@ class _SwitchSheetState extends State<SwitchSheet> {
   Widget build(BuildContext context) {
     final omp = widget.agent == Agent.omp;
     final busy = _busy;
-    return SafeArea(
-      // Landscape or large text: the sheet scrolls rather than running off the screen.
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Switch to conversation', style: sheetTitleStyle),
-            const SizedBox(height: 8),
-            Text(
-              omp
-                  ? 'PocketTerm restarts omp in this window and picks the same conversation back up '
-                        '(${Agent.omp.resume}). Nothing is lost.'
-                  : 'PocketTerm types ${Agent.claude.pickUp} in it. Nothing restarts.',
-              style: TextStyle(fontSize: 14, color: C.dim, height: 1.4),
-            ),
-            if (busy ?? false)
-              Padding(
-                key: const ValueKey('switch-busy'),
-                padding: const EdgeInsets.only(top: 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.warning_amber_rounded, size: 18, color: C.warn),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'It’s working right now, and restarting stops it. Restart and continue has it carry on; '
-                        'Just restart leaves it stopped.',
-                        style: TextStyle(fontSize: 14, color: C.warn, height: 1.4),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 12),
-            if (busy == null)
-              const SizedBox(
-                key: ValueKey('switch-probing'),
-                height: 48,
-                child: Center(child: SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))),
-              )
-            else if (busy)
-              ..._busyChoices()
-            else
-              Wrap(
-                alignment: WrapAlignment.end,
-                runSpacing: 4,
+    // Landscape or large text: the sheet scrolls rather than running off the screen, on under the home indicator.
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(20, sheetTop, 20, sheetBottom(context, 8)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Switch to conversation', style: sheetTitleStyle),
+          const SizedBox(height: 8),
+          Text(
+            omp
+                ? 'PocketTerm restarts omp in this window and picks the same conversation back up '
+                      '(${Agent.omp.resume}). Nothing is lost.'
+                : 'PocketTerm types ${Agent.claude.pickUp} in it. Nothing restarts.',
+            style: TextStyle(fontSize: 14, color: C.dim, height: 1.4),
+          ),
+          if (busy ?? false)
+            Padding(
+              key: const ValueKey('switch-busy'),
+              padding: const EdgeInsets.only(top: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _notNow(),
+                  Icon(Icons.warning_amber_rounded, size: 18, color: C.warn),
                   const SizedBox(width: 8),
-                  FilledButton(
-                    key: const ValueKey('switch-confirm'),
-                    onPressed: () => _pick(AfterSwitch.nothing),
-                    child: Text(omp ? 'Restart now' : 'Switch'),
+                  Expanded(
+                    child: Text(
+                      'It’s working right now, and restarting stops it. Restart and continue has it carry on; '
+                      'Just restart leaves it stopped.',
+                      style: TextStyle(fontSize: 14, color: C.warn, height: 1.4),
+                    ),
                   ),
                 ],
               ),
-          ],
-        ),
+            ),
+          const SizedBox(height: 12),
+          if (busy == null)
+            const SizedBox(
+              key: ValueKey('switch-probing'),
+              height: 48,
+              child: Center(child: SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))),
+            )
+          else if (busy)
+            ..._busyChoices()
+          else
+            Wrap(
+              alignment: WrapAlignment.end,
+              runSpacing: 4,
+              children: [
+                _notNow(),
+                const SizedBox(width: 8),
+                FilledButton(
+                  key: const ValueKey('switch-confirm'),
+                  onPressed: () => _pick(AfterSwitch.nothing),
+                  child: Text(omp ? 'Restart now' : 'Switch'),
+                ),
+              ],
+            ),
+        ],
       ),
     );
   }

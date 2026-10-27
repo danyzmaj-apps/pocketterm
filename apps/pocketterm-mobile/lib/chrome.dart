@@ -21,41 +21,46 @@ abstract final class M {
 /// A sheet in the app's one style: radius 28 on top, the raised surface,
 /// clear of the notch, a grab handle on top. What [builder] shows starts
 /// [sheetTop] below the handle. Not [dismissible], only its own buttons
-/// close it (no handle then).
-Future<T?> showAppSheet<T>(
-  BuildContext context, {
-  required WidgetBuilder builder,
-  bool isScrollControlled = false,
-  bool dismissible = true,
-}) => showModalBottomSheet<T>(
-  context: context,
-  isScrollControlled: isScrollControlled,
-  isDismissible: dismissible,
-  enableDrag: dismissible,
-  useSafeArea: true,
-  // Its surface and corners come from the theme ([sheetTheme]), so an open sheet follows a change of theme.
-  builder: (context) => PopScope(
-    canPop: dismissible,
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          height: 20,
-          child: dismissible
-              ? Center(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(color: C.line2, borderRadius: BorderRadius.all(Radius.circular(C.r(2)))),
-                    child: const SizedBox(width: 36, height: 4),
-                  ),
-                )
-              : null,
+/// close it (no handle then). As tall as what it shows, up to under the status bar (no cap at part of the
+/// screen, which cut the last rows off); one taller than that scrolls, and its scroll view should run on under the
+/// home indicator ([sheetBottom]) rather than stopping above it.
+Future<T?> showAppSheet<T>(BuildContext context, {required WidgetBuilder builder, bool dismissible = true}) =>
+    showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: dismissible,
+      enableDrag: dismissible,
+      useSafeArea: true,
+      // Its surface and corners come from the theme ([sheetTheme]), so an open sheet follows a change of theme.
+      builder: (context) => PopScope(
+        canPop: dismissible,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: 20,
+              child: dismissible
+                  ? Center(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: C.line2,
+                          borderRadius: BorderRadius.all(Radius.circular(C.r(2))),
+                        ),
+                        child: const SizedBox(width: 36, height: 4),
+                      ),
+                    )
+                  : null,
+            ),
+            Flexible(child: builder(context)),
+          ],
         ),
-        Flexible(child: builder(context)),
-      ],
-    ),
-  ),
-);
+      ),
+    );
+
+/// The room a sheet's last row keeps below it: [extra] above the home indicator, which a scroll view's padding
+/// gives so its content scrolls on under the indicator instead of being cut off above it.
+double sheetBottom(BuildContext context, [double extra = 12]) => extra + MediaQuery.paddingOf(context).bottom;
 
 /// A screen-high sheet that slides up from the bottom over everything, under the status bar too: the raised
 /// surface, the theme's corners on top, a grab handle, then a row with [title], [actions] and a close button,

@@ -3,7 +3,7 @@
 Every user-facing feature, and what tests it. Four layers:
 
 - **Unit and widget tests**: `fvm flutter test` (or `fvm dart test`) in each package and app; `deno test` in `apps/pocketterm-relay`; `claude plugin test .` in the Claude Code plugin (`apps/pocketterm-desktop/integrations/claude/plugins/pocketterm`, its tests in `tests/`). The core client tests also run against PocketTerm on a local Supabase (`POCKETTERM_SUPABASE=1 fvm flutter test -j 1 test/server_client_test.dart test/session_test.dart`, after `tool/supabase-local.sh start`); CI doesn't run those.
-- **End-to-end run**: `tool/e2e/run.sh` (see `tool/e2e/bin/run.dart`). For each terminal (kitty, Ghostty, WezTerm): a server (`--server local`; `builtin`, over Tailscale; `supabase`, on a local Supabase in Docker; `supabase-cloud`, a new project on supabase.com made by the desktop's setup and deleted after; or a server's URL), the real desktop app under `apps/pocketterm-desktop/integration_test/e2e_test.dart` with throwaway terminals running a fake omp (`tool/e2e/bin/fake_omp.dart`), and the phone app in the iPhone Simulator or an Android emulator driven by Maestro (`apps/pocketterm-mobile/maestro/e2e/run.sh`, phases in order `main`, `computer-off`, `server-down`, `server-restart`, `desktop-restart`, `real-omp`, `revoke`; `supabase-cloud` has no server restart; the phone app is built from HEAD, or from the working tree as it is with `--phone-from-tree`). Below, *flow* `x` is `apps/pocketterm-mobile/maestro/e2e/x.yaml` and *step* "y" is a `report.step` in the desktop test.
+- **End-to-end run**: `tool/e2e/run.sh` (see `tool/e2e/bin/run.dart`). For each terminal (kitty, Ghostty, WezTerm): a server (`--server local`; `builtin`, over Tailscale; `supabase`, on a local Supabase in Docker; `supabase-cloud`, a new project on supabase.com made by the desktop's setup and deleted after; or a server's URL), the real desktop app under `apps/pocketterm-desktop/integration_test/e2e_test.dart` with throwaway terminals running a fake omp (`tool/e2e/bin/fake_omp.dart`), and the phone app in the iPhone Simulator or an Android emulator driven by Maestro (`apps/pocketterm-mobile/maestro/e2e/run.sh`, phases in order `main`, `profiles`, `computer-off`, `server-down`, `server-restart`, `desktop-restart`, `real-omp`, `revoke`; `supabase-cloud` has no server restart; the phone app is built from HEAD, or from the working tree as it is with `--phone-from-tree`). Below, *flow* `x` is `apps/pocketterm-mobile/maestro/e2e/x.yaml` and *step* "y" is a `report.step` in the desktop test.
 - **Installed-app smoke**: `tool/smoke/run.sh` and `tool/smoke/scenario.sh`: a release build copied to a throwaway place, opened as from Finder, driven through accessibility (scenarios `wizard`, `getready`, `settings`, `theme`, `menubar`, `quit`).
 - **Manual**: what needs a camera, real push delivery, a real right click, Windows, or the owner's own accounts.
 
@@ -16,8 +16,8 @@ Don't run the whole e2e suite for every change: test what you changed and what i
 1. **Unit and widget tests** of every package and app you touched (CI runs them all anyway).
 2. **Find the rows** in the tables below for the features you changed *and* the features that share their code or screens (a sheet you made taller, a shared widget, a native file, a setting both apps read). Their *How it's tested* column names the e2e step, phone flow, smoke scenario or test file.
 3. **Run only those**, on the cheapest target that covers them:
-   - phone flows: `tool/e2e/run.sh --terminal kitty --phone-only <flow>,… [--phone-from-tree]` (add `fresh,pair-accept` first when the flow needs a paired phone), on the platform the change affects (`--platform android --avd <avd>` for Android code);
-   - desktop only: `tool/e2e/run.sh --terminal kitty --no-phone`, or a smoke scenario (`tool/smoke/scenario.sh <scenario>`);
+   - phone flows: `tool/e2e/run.sh --terminal kitty --phone-only <flow>,… [--phone-from-tree]` (add `fresh,pair-accept` first when the flow needs a paired phone), on the platform the change affects (`--platform android --avd <avd>` for Android code); the desktop then checks only what those flows did;
+   - desktop steps: `--desktop-only <text>,…` keeps the steps whose name contains one of the texts (besides setup, Get ready, the windows, pairing and the hand-off, which every run needs), e.g. `tool/e2e/run.sh --terminal kitty --phone-only fresh,pair-accept,profiles --desktop-only profile`; `--no-phone` runs the desktop with the stand-in phone; or a smoke scenario (`tool/smoke/scenario.sh <scenario>`);
    - another terminal or server only when the change is about that terminal or server.
 4. **New behaviour gets a test** in the same change (a flow, step, scenario or unit test) and a row here, so the next change can find it.
 
@@ -37,7 +37,7 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 | Setup, Supabase: Paste a setup link | the `--server supabase` run signs in with the local project's link (step "setup: own server, paste link"); `supabase_setup_test.dart` (the Supabase branch's paste screen) | none |
 | Sign-in when the Keychain refuses (locked, missing): message and Try again | core `session_test.dart`; `setup_page_test.dart`, `hosting_test.dart` | a real locked Keychain: manual |
 | First sign-in turns Terminal from phone on, adds no login item | steps "setup: …" assert both | none |
-| Get ready: omp gets PocketTerm | step "get ready: omp gets PocketTerm"; `get_ready_test.dart`, `integrations_test.dart` | Claude Code install: plugin tests and `integrations_test.dart` only (the e2e never touches the owner's Claude Code) |
+| Get ready: omp gets PocketTerm | step "get ready: omp gets PocketTerm" (Install, confirmed); `get_ready_test.dart`, `integrations_test.dart` | Claude Code install: plugin tests and `integrations_test.dart` only (the e2e never touches the owner's Claude Code) |
 | Get ready: sessions already open (unreported) | step "get ready: sessions already open are listed" | none |
 | Get ready: terminals row | step "get ready: terminals"; `terminals_card_test.dart` | none |
 | Get ready: project folders, Choose folder… | step "get ready: project folders" | none |
@@ -49,6 +49,9 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 | Phone tab: Reset key… | step "phone tab: Reset key"; `channel_keys_test.dart`, `settings_test.dart` | none |
 | Phone tab: project folders (remove, Add folder…) | step "settings: project folders remove and add"; `settings_test.dart` | none |
 | Coding agents tab (state, Install/Update, Default, Make default) | step "settings: coding agents tab"; `settings_agent_test.dart` | Make default with two agents installed: unit only (the e2e has no Claude Code) |
+| Coding agents tab: omp profiles (Profiles: line; Install puts PocketTerm in the default profile and each one) | step "profiles: Settings lists them, Install puts PocketTerm in each"; `integrations_test.dart`, `settings_agent_test.dart` | none |
+| Sessions carry their omp profile (the extension's hello, a window's `omp --profile` command line) | steps "profiles: omp in a profile reports it; its window says so", "real omp: a profile loads PocketTerm from its own folder and says so"; core `live_test.dart`, `terminals_test.dart`, `agent_test.dart` | none |
+| Notifications name an omp profile (`omp · <profile> finished · <project>`) | step "profiles: a finished run is notified as omp · personal finished" (the title the app sends) | delivery: manual |
 | Terminals tab: New sessions open in | step "settings: new sessions open in <terminal>" | none |
 | Terminals tab: kitty Set up (remote control in kitty.conf) | `kitty_test.dart`, `terminals_card_test.dart` | e2e kitty already listens (its throwaway config); the Set up click: unit only |
 | Terminals tab: Allow… (Automation for Ghostty, iTerm2) | `ghostty_test.dart` | manual: a macOS permission prompt for the owner |
@@ -70,7 +73,7 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 | Runs as from Finder (launchd PATH, no TERM, no locale) | step "desktop: runs as from Finder"; smoke (`open -n`) | none |
 | Sessions placed in their own windows; plain shells as screens | steps "windows: sessions in their own windows", "windows: plain shell is a screen" | none |
 | Desktop restart keeps the sign-in and sessions | step "restart: desktop app" (+ phone phase `desktop-restart`) | none |
-| Real omp extension | step "real omp: /new from the phone starts a fresh session in place" (when omp is installed) | none |
+| Real omp extension | steps "real omp: /new from the phone starts a fresh session in place", "real omp: a profile loads PocketTerm from its own folder and says so" (when omp is installed) | none |
 
 ## Phone
 
@@ -90,9 +93,11 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 | Motion (`lib/motion.dart`): the theme cross-fade, arrivals in a conversation and the session list, tool rows opening, the microphone turning into Send and growing while pressed, the voice sheet's words and buttons, queued prompts gliding to a new place; Reduce Motion / Remove animations; a mic press the system takes back | flows `demo`, `queue`, `voice`, `theme` walk through every one; `voice_test.dart` (the swap, a press taken back), `queue_strip_test.dart` (rows glide back after a refused move); the rest of the widget tests run with each animation | how it looks moving and with Reduce Motion on: manual (record the Simulator with `xcrun simctl io booted recordVideo` while a flow runs) |
 | Computer picker, locked computer | flow `computers`; `home_page_test.dart`, `phone_edges_test.dart` | scanning a locked computer's code: manual (camera) |
 | Project list: sort, fold, long-press menu | flow `project_list`; `terminal_list_test.dart` | none |
+| omp profiles in the list: the row and the session's header name the profile; the profile filter (a profile, one with no sessions, Show all) | flow `profiles` (phase `profiles`); `terminal_list_test.dart` | none |
 | Swipe left: End session | flow `end_session` | none |
 | Swipe left: Close window | flow `close_window`; step "phone: close a shell window from the window list" | none |
 | New session (+): agent in a project | flow `new_session`; step "phone: new session (+) opens in <terminal>" | none |
+| New session (+) and the project menu's New omp · <profile> session here, in an omp profile | flow `profiles`; steps "phone: New session in a profile types omp --profile=personal", "phone: a project’s New omp · personal session here starts in it"; `new_session_sheet_test.dart` | none |
 | New session (+): plain shell | flow `new_shell`; step "phone: new shell opens in <terminal> without an agent" | none |
 | New session (+): New project… | flow `new_project`; step "phone: new project made in the project folder" | none |
 | Conversation: prompt and streamed reply | flows `conversation-*`; step "phone: prompt reaches the agent" | none |
@@ -109,6 +114,7 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 | Screen page: key bar (Esc, Tab, arrows, Enter, ^C), typing, wrap | flows `screen`, `screen_keys`; steps "phone: keys reach the window", "phone: screen keys Tab, Enter, Ctrl+C reach the window" | none |
 | Screen from a conversation | flow `session_screen` | none |
 | Switch to conversation: Restart and continue / Just restart | flows `switch-continue`, `switch-restart`; matching steps | none |
+| Switch to conversation in an omp profile (`omp --profile=<name> -c`) | flow `profiles`; step "phone: Switch to conversation resumes in the profile"; `terminal_bridge_test.dart` | omp started with only `OMP_PROFILE` set (no flag on its command line) resumes in the default profile: by design |
 | Images from Photos | flow `image`; step "phone: image arrives decrypted at the agent" | Paste image: unit only (no clipboard image in the Simulator) |
 | Files from Files | flow `file`; step "phone: a document arrives …" | none |
 | 10 attachments at most | flow `attach_limit`; `attachments_test.dart` | none |
@@ -134,7 +140,7 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 | PocketTerm on Supabase (function, migrations, Realtime, blobs, push) | core `server_client_test.dart`, `session_test.dart` with `POCKETTERM_SUPABASE=1`; e2e `--server supabase` (local) and `--server supabase-cloud` | not in CI |
 | Live channel, reconnect, no replays | `terminal_channel_test.dart`, `terminal_remote_test.dart`; phases `server-restart`, `desktop-restart` | none |
 | Push forwarding, sealed to the relay | `server_test.dart` push, `edge_test.dart` relay and queue; relay `tests` | real delivery: manual |
-| omp extension | fake omp in the e2e (same protocol), real omp phase | none |
+| omp extension | fake omp in the e2e (same protocol, `--profile` too), real omp phase | none |
 | Claude Code plugin | plugin `tests` (`pocketterm.test.ts`, `streaming.test.ts`) | never installed by the e2e (it would change the owner's Claude Code); manual |
 | kitty adapter | `kitty_test.dart`; e2e `--terminal kitty` | none |
 | Ghostty adapter (no screen, tmux, one row per window in tmux, config line upgrade) | `ghostty_test.dart`, `ghostty_surface_test.dart`, `terminals_test.dart`, `ghostty_config_test.dart`; e2e `--terminal ghostty` | none |

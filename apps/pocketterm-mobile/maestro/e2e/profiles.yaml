@@ -1,0 +1,182 @@
+# omp profiles, with omp in profile PROFILE on the computer and EMPTY, a
+# profile with no sessions: the row and the session's header name the
+# profile; the filter shows only PROFILE's sessions, then EMPTY's (none: Show
+# all brings every one back); New session starts omp in PROFILE picked from
+# its chips, as the project menu's New omp · PROFILE session here does then;
+# Switch on a window showing only the screen of omp in PROFILE resumes it
+# there. Left as found: every profile shown, New session on the default.
+#   env: PROFILE, EMPTY, SESSION (regex: a session in PROFILE), WINDOW (regex:
+#   the screen-only window's title), SWITCHED (regex: its session's title once
+#   switched), PROJECT (regex: a project to start sessions in; PROJECT_NAME
+#   its name as typed), OTHER (regex: a session in the default profile),
+#   TERMINAL_RE
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+# Its row: the profile comes first among the facts after how it stands.
+- scrollUntilVisible:
+    element: "${SESSION}\n.* · ${PROFILE} · .*"
+    timeout: 30000
+- takeScreenshot: row
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible: ".* · ${PROFILE} · .*"
+    timeout: 15000
+- takeScreenshot: header
+- runFlow: sub/back.yaml
+
+# The filter, at the top of the list: every profile to start with; a session
+# of the default profile is there.
+- scrollUntilVisible:
+    element: "${OTHER}\n.*"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: "profile-filter"
+    direction: UP
+    timeout: 20000
+- assertVisible:
+    id: "profile-filter"
+    text: "All profiles(\nShow sessions from)?"
+- tapOn:
+    id: "profile-filter"
+- extendedWaitUntil:
+    visible: "Show sessions from"
+    timeout: 5000
+- assertVisible: "default"
+- assertVisible: "${EMPTY}"
+- takeScreenshot: filter-sheet
+- tapOn: "${PROFILE}"
+- extendedWaitUntil:
+    visible:
+      id: "profile-filter"
+      text: "${PROFILE}(\nShow sessions from)?"
+    timeout: 5000
+# Projects come in name or activity order, the default's session before or
+# after: either way the few left all fit on the screen.
+- assertVisible: "${SESSION}\n.*"
+- assertNotVisible: "${OTHER}\n.*"
+- takeScreenshot: filtered
+- tapOn:
+    id: "profile-filter"
+- tapOn: "${EMPTY}"
+- extendedWaitUntil:
+    visible: "No sessions from ${EMPTY} here."
+    timeout: 5000
+- assertNotVisible: "${SESSION}\n.*"
+- takeScreenshot: filtered-empty
+- tapOn: "Show all"
+- extendedWaitUntil:
+    visible:
+      id: "profile-filter"
+      text: "All profiles(\nShow sessions from)?"
+    timeout: 5000
+- scrollUntilVisible:
+    element: "${OTHER}\n.*"
+    timeout: 20000
+
+# New session in PROFILE: a chip for each profile, PROFILE picked.
+- tapOn: "New session"
+- extendedWaitUntil:
+    visible: "Opens in ${TERMINAL_RE}"
+    timeout: 10000
+- assertVisible: "default"
+- assertVisible: "${EMPTY}"
+- tapOn: "${PROFILE}"
+- takeScreenshot: chips
+# Found by name: with the chips the list starts below the screen's middle,
+# where a scroll would start on the search field.
+- tapOn: "Find a project, or type ~/path"
+- inputText: "${PROJECT_NAME}"
+- extendedWaitUntil:
+    visible: ".*/${PROJECT}"
+    timeout: 10000
+- tapOn: ".*/${PROJECT}"
+- extendedWaitUntil:
+    visible: "Prompt omp…"
+    timeout: 45000
+- extendedWaitUntil:
+    visible: ".* · ${PROFILE} · .*"
+    timeout: 30000
+- takeScreenshot: started
+- runFlow: sub/back.yaml
+
+# Its project's menu starts the next one in the profile picked there too.
+- scrollUntilVisible:
+    element: "${PROJECT}"
+    timeout: 20000
+- longPressOn: "${PROJECT}"
+- extendedWaitUntil:
+    visible: "New omp · ${PROFILE} session here"
+    timeout: 5000
+- takeScreenshot: project-menu
+- tapOn: "New omp · ${PROFILE} session here"
+- extendedWaitUntil:
+    visible: "Prompt omp…"
+    timeout: 45000
+- extendedWaitUntil:
+    visible: ".* · ${PROFILE} · .*"
+    timeout: 30000
+- runFlow: sub/back.yaml
+
+# Switch on omp in PROFILE that shows only its screen: it says so, and
+# restarts in the profile.
+- scrollUntilVisible:
+    element: "${WINDOW}\n.*omp · ${PROFILE} · .*"
+    timeout: 20000
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${WINDOW}
+- extendedWaitUntil:
+    visible: ".*omp · ${PROFILE} session shows only its screen.*"
+    timeout: 15000
+- takeScreenshot: screen-only
+- tapOn: "Switch to conversation"
+- extendedWaitUntil:
+    visible: "Restart and continue"
+    timeout: 15000
+- assertVisible: ".*profile=${PROFILE}.*"
+- takeScreenshot: switch-sheet
+- tapOn: "Restart and continue"
+- extendedWaitUntil:
+    visible: "Prompt omp…"
+    timeout: 45000
+- extendedWaitUntil:
+    visible: ".*fake reply: continue.*"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: ".* · ${PROFILE} · .*"
+    timeout: 15000
+- takeScreenshot: switched
+- runFlow: sub/back.yaml
+- scrollUntilVisible:
+    element: "${SWITCHED}\n.* · ${PROFILE} · .*"
+    timeout: 20000
+
+# New session back on the default profile; the project menu follows.
+- tapOn: "New session"
+- extendedWaitUntil:
+    visible: "Opens in ${TERMINAL_RE}"
+    timeout: 10000
+- tapOn: "default"
+- tapOn:
+    point: "50%,8%"
+- extendedWaitUntil:
+    notVisible: "Opens in ${TERMINAL_RE}"
+    timeout: 5000
+- scrollUntilVisible:
+    element: "${PROJECT}"
+    timeout: 20000
+- longPressOn: "${PROJECT}"
+- extendedWaitUntil:
+    visible: "New omp session here"
+    timeout: 5000
+- tapOn:
+    point: "50%,8%"
+- extendedWaitUntil:
+    notVisible: "New omp session here"
+    timeout: 5000

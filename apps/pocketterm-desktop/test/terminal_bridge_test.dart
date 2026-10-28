@@ -291,11 +291,12 @@ void main() {
       },
     );
 
-    Future<void> run(Terminals t, Agent agent, {String tty = tty}) => switchToConversation(
+    Future<void> run(Terminals t, Agent agent, {String tty = tty, String profile = ''}) => switchToConversation(
       t,
       window,
       agent,
       tty: tty,
+      profile: profile,
       settle: Duration.zero,
       noTty: Duration.zero,
       pollEvery: Duration.zero,
@@ -322,6 +323,21 @@ void main() {
         'type omp -c',
         'keys enter',
       ]);
+    });
+
+    test('omp in a profile starts again in that profile', () async {
+      foreground = ['omp --profile=personal', 'omp --profile=personal', 'zsh'];
+      await run(terms(), Agent.omp, profile: 'personal');
+      expect(log.where((l) => l.startsWith('type')), ['type omp --profile=personal -c']);
+    });
+
+    test("a phone's launch runs omp only in a profile this computer has, and other agents in none", () {
+      expect(launchProfile('personal', Agent.omp, ['personal']), 'personal');
+      expect(launchProfile(null, Agent.omp, ['personal']), '');
+      expect(launchProfile('', Agent.omp, ['personal']), '');
+      expect(() => launchProfile('x', Agent.omp, ['personal']), throwsA(isA<TerminalException>()));
+      expect(() => launchProfile('a; rm -rf ~', Agent.omp, ['personal']), throwsA(isA<TerminalException>()));
+      expect(launchProfile('personal', Agent.claude, ['personal']), '');
     });
 
     test('an agent that quit since the phone looked gets no keys: Ctrl+D would end the shell', () async {

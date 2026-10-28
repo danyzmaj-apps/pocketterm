@@ -2,6 +2,18 @@
 
 What each PocketTerm release brings.
 
+## Unreleased
+
+Servers and the push relay need no update. To have sessions from your omp profiles reach the phone, click **Install** or **Update** for omp in PocketTerm on the computer.
+
+### Desktop app
+
+- **omp profiles.** PocketTerm's extension goes into every omp profile (`omp --profile <name>`) as well as the default, and **Settings → Coding agents** lists them; a profile made later asks for **Install** again. A session started from the phone in a profile runs `omp --profile=<name>`, switching a screen-only window to its conversation resumes it in its own profile, and notifications name the profile (`omp · personal finished · garden`).
+
+### Phone app
+
+- **omp profiles.** A session from an omp profile other than the default says so in its row and its header (`Idle · 4m · personal · Sonnet 4.5`), a filter above the projects shows one profile's sessions, and **New session** picks the profile the new omp starts in, remembered per computer.
+
 ## 0.1.7
 
 Servers and the push relay need no update. To have omp and Claude Code in iTerm2 found as their window, click **Update** for them in PocketTerm on the computer.

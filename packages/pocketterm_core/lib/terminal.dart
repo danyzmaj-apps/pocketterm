@@ -56,6 +56,7 @@ class TermWindow {
     this.caps = allCaps,
     this.via = '',
     this.tty = '',
+    this.profile = '',
   });
 
   factory TermWindow.fromJson(Map<String, dynamic> j) => TermWindow(
@@ -69,6 +70,7 @@ class TermWindow {
     app: j['app'] as String? ?? 'kitty',
     caps: j['caps'] is List ? {for (final c in j['caps'] as List) ?TermCap.values.asNameMap()[c]} : allCaps,
     via: j['via'] as String? ?? '',
+    profile: j['profile'] as String? ?? '',
   );
 
   /// The host's prefix, then which window of which instance.
@@ -97,12 +99,16 @@ class TermWindow {
   /// Its tty (`ttys012`), when the app says; the Mac's own business.
   final String tty;
 
+  /// The omp profile its foreground omp runs, from its command line; '' for the default, for anything else, or where
+  /// no tty tells.
+  final String profile;
+
   /// The coding agent running in it, if one is.
   Agent? get agent => Agent.ofProgram(program);
 
   bool can(TermCap cap) => caps.contains(cap);
 
-  TermWindow copyWith({String? via, Set<TermCap>? caps}) => TermWindow(
+  TermWindow copyWith({String? via, Set<TermCap>? caps, String? profile}) => TermWindow(
     key: key,
     title: title,
     tab: tab,
@@ -113,6 +119,7 @@ class TermWindow {
     caps: caps ?? this.caps,
     via: via ?? this.via,
     tty: tty,
+    profile: profile ?? this.profile,
   );
 
   Map<String, dynamic> toJson() => {
@@ -128,6 +135,7 @@ class TermWindow {
         if (caps.contains(c)) c.name,
     ],
     if (via.isNotEmpty) 'via': via,
+    if (profile.isNotEmpty) 'profile': profile,
   };
 }
 

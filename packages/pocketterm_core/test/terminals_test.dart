@@ -370,6 +370,27 @@ void main() {
     expect(withTmux.note, contains(_RunningGhostty().limits));
   });
 
+  test("an omp window carries the profile its command line names; other windows and the default don't", () async {
+    TermWindow pane(String id, String tty, String program) =>
+        TermWindow(key: 'tmux:default/$id', title: '', tab: '', cwd: '', program: program, app: 'tmux', tty: tty);
+    final terms = Terminals(
+      home: '/nonexistent-pocketterm',
+      tmux: _ListedTmux([pane('1', 'ttys004', 'omp'), pane('2', 'ttys005', 'zsh'), pane('3', 'ttys006', 'omp')], {}),
+      snapshot: () async => Procs(
+        parsePs(
+          '  500   400   500   500 ttys004  S+   omp --profile=personal\n'
+          '  600     1   600   600 ttys005  Ss+  -zsh --profile=personal\n'
+          '  700   400   700   700 ttys006  S+   /opt/homebrew/bin/omp -c\n',
+        ),
+      ),
+    );
+    expect((await terms.windows()).map((w) => (w.key, w.profile)), [
+      ('tmux:default/1', 'personal'),
+      ('tmux:default/2', ''),
+      ('tmux:default/3', ''),
+    ]);
+  });
+
   group('locate: Ghostty windows sharing a folder', () {
     TermWindow g(String id, String title, {String cwd = '/tmp/work'}) =>
         TermWindow(key: 'ghostty:$id', title: title, tab: '', cwd: cwd, program: '', app: 'ghostty');

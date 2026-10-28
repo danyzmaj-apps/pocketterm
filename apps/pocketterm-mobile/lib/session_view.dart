@@ -675,6 +675,7 @@ class _SessionPageState extends State<SessionPage> with WidgetsBindingObserver {
           style: TextStyle(color: s.ask != null || s.busy ? sessionColor(s) : null),
         ),
       );
+      if (s.profile.isNotEmpty) parts.add(TextSpan(text: ' · ${s.profile}'));
       if (s.model.isNotEmpty) parts.add(TextSpan(text: ' · ${s.model}'));
       if (s.ctx != null) parts.add(TextSpan(text: ' · ${s.ctx}%'));
     }

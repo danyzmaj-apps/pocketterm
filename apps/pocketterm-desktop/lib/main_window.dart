@@ -739,6 +739,12 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
       body: [
+        if (agent == Agent.omp && app.ompProfiles.isNotEmpty)
+          Text(
+            'Profiles: default, ${app.ompProfiles.join(', ')}',
+            key: const ValueKey('settings-omp-profiles'),
+            style: _subStyle(C.dim),
+          ),
         if (n > 0) ...[
           Text.rich(
             TextSpan(

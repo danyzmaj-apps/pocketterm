@@ -14,7 +14,8 @@ import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 // from ~/.config/pocketterm/cli.json, or the file POCKETTERM_CLI_JSON names), once whatever answers at that port has
 // proved it holds the token. While PocketTerm isn't running it quietly tries again every few seconds.
 //
-// Install: copy this file to ~/.omp/agent/extensions/pocketterm-live.ts and restart omp (or use Install in PocketTerm's
+// Install: copy this file to ~/.omp/agent/extensions/pocketterm-live.ts, and to
+// ~/.omp/profiles/<name>/agent/extensions/ for each omp profile, then restart omp (or use Install in PocketTerm's
 // Settings).
 
 const CLI_FILE = process.env.POCKETTERM_CLI_JSON || join(homedir(), ".config", "pocketterm", "cli.json");
@@ -585,6 +586,7 @@ export default function liveExtension(pi: ExtensionAPI) {
 			t: "hello",
 			v: VERSION,
 			agent: "omp",
+			profile: process.env.OMP_PROFILE || undefined,
 			session: { id: c.sessionManager.getSessionId(), title: m.title, cwd: c.cwd, model: m.model },
 			window: windowKey(),
 			term: termOf(),

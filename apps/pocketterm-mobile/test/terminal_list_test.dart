@@ -118,7 +118,14 @@ void main() {
     });
   }
 
-  Future<void> pumpList(WidgetTester tester, {Key? key, String? computer, ThemeData? theme}) async {
+  Future<void> pumpList(
+    WidgetTester tester, {
+    Key? key,
+    String? computer,
+    ThemeData? theme,
+    String? profileFilter,
+    ValueChanged<String?>? onProfileFilter,
+  }) async {
     // An iPhone's screen, so the whole list is laid out.
     tester.view
       ..physicalSize = const Size(1179, 2556)
@@ -142,6 +149,8 @@ void main() {
             looks: _Phone(prefs).tileLooks('mac00001'),
             onLooks: (l) => _Phone(prefs).setTileLooks('mac00001', l),
             computer: computer,
+            profileFilter: profileFilter,
+            onProfileFilter: onProfileFilter,
           ),
         ),
       ),
@@ -358,6 +367,74 @@ void main() {
     expect(node.rect.height, closeTo(tester.getSize(pill).height, 1));
     remote.flush();
     semantics.dispose();
+  });
+
+  group('omp profiles', () {
+    /// A personal session in a, a default one in b; [profiles]: the computer's omp profiles.
+    void profileState({List<String>? profiles, String personal = 'personal'}) => remote.handle('state', {
+      'windows': <Object>[],
+      'sessions': [
+        {
+          'key': 'kitty-1/2',
+          'id': 's2',
+          'agent': 'omp',
+          'profile': personal,
+          'title': 'Mine',
+          'cwd': _a,
+          'model': 'claude-sonnet-4-5',
+        },
+        {'key': 'kitty-1/3', 'id': 's3', 'agent': 'omp', 'title': 'Work', 'cwd': _b},
+      ],
+      'projects': [_a, _b],
+      'home': '/Users/me',
+      'agent': 'omp',
+      'profiles': ?profiles,
+    });
+
+    testWidgets("a profile's sessions say so, and the filter shows only the one picked", (tester) async {
+      profileState(profiles: ['personal']);
+      final kept = <String?>[];
+      await pumpList(tester, onProfileFilter: kept.add);
+      expect(
+        find.descendant(of: session('kitty-1/2'), matching: find.textContaining('personal ·', findRichText: true)),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('profile-filter')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('profile-filter')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('profile-filter-personal')));
+      await tester.pumpAndSettle();
+      expect(kept, ['personal']);
+      expect(session('kitty-1/2'), findsOneWidget);
+      expect(session('kitty-1/3'), findsNothing);
+      remote.flush();
+    });
+
+    testWidgets('a filter none of the sessions match says so, and Show all brings them back', (tester) async {
+      profileState(profiles: ['personal'], personal: '');
+      final kept = <String?>[];
+      await pumpList(tester, profileFilter: 'personal', onProfileFilter: kept.add);
+      expect(find.byKey(const ValueKey('profile-filter-empty')), findsOneWidget);
+      expect(session('kitty-1/2'), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('profile-filter-show-all')));
+      await tester.pumpAndSettle();
+      expect(kept, [null]);
+      expect(find.byKey(const ValueKey('profile-filter-empty')), findsNothing);
+      expect(session('kitty-1/2'), findsOneWidget);
+      expect(session('kitty-1/3'), findsOneWidget);
+      remote.flush();
+    });
+
+    testWidgets('a computer with only the default profile: no filter, and a kept one is ignored', (tester) async {
+      profileState(personal: '');
+      await pumpList(tester, profileFilter: 'personal');
+      expect(find.byKey(const ValueKey('profile-filter')), findsNothing);
+      expect(session('kitty-1/2'), findsOneWidget);
+      expect(session('kitty-1/3'), findsOneWidget);
+      remote.flush();
+    });
   });
 
   testWidgets('a long folder name gets the row; its menu starts the agent there', (tester) async {

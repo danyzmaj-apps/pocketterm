@@ -1399,7 +1399,7 @@ class _TerminalListState extends State<TerminalList> {
                   if (windows.isNotEmpty) ...[
                     Panel(
                       key: const ValueKey('windows-heading'),
-                      title: groups.isEmpty ? 'WINDOWS' : 'OTHER WINDOWS',
+                      title: remote.sessions.isEmpty ? 'WINDOWS' : 'OTHER WINDOWS',
                       children: const [],
                     ),
                     if (switchable > 0)

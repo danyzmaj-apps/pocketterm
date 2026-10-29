@@ -1,0 +1,121 @@
+# Voice prompts in Croatian, end to end (an E2E build: lib/voice.dart's scripted speaker stands in for the
+# microphone, and it has every language). Account → Voice prompt language lists Auto, English and Hrvatski, each
+# on this phone; Hrvatski is kept after the app is stopped. In the session a voice prompt is heard in Croatian
+# and sent, and the agent's reply comes back through the computer. Then the language at the top of the voice
+# screen switches to English while listening and that prompt goes too. Auto again at the end.
+#   env: SESSION (regex)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- tapOn: "\n?Account"
+- extendedWaitUntil:
+    visible: "Voice prompt language\nAuto"
+    timeout: 5000
+- tapOn: "Voice prompt language\nAuto"
+- extendedWaitUntil:
+    visible: "Hrvatski\nOn this phone"
+    timeout: 5000
+- assertVisible: "English\nOn this phone"
+- assertVisible: "Auto\n.*English.*"
+- takeScreenshot: picker
+- tapOn: "Hrvatski\nOn this phone"
+- takeScreenshot: picked
+- tapOn:
+    point: "50%,8%"
+- extendedWaitUntil:
+    visible: "Voice prompt language\nHrvatski"
+    timeout: 5000
+# Kept: stopped and started again, the account sheet still says Hrvatski.
+- stopApp
+- runFlow: sub/home.yaml
+- tapOn: "\n?Account"
+- extendedWaitUntil:
+    visible: "Voice prompt language\nHrvatski"
+    timeout: 5000
+- tapOn:
+    point: "50%,8%"
+- extendedWaitUntil:
+    notVisible: "Leave this server"
+    timeout: 5000
+# Spoken in Croatian, sent, answered.
+- extendedWaitUntil:
+    visible: "${SESSION}\n.*"
+    timeout: 30000
+- runFlow:
+    file: sub/open_row.yaml
+    env:
+      ROW: ${SESSION}
+- extendedWaitUntil:
+    visible:
+      id: "session-mic"
+    timeout: 15000
+- tapOn:
+    id: "session-mic"
+- extendedWaitUntil:
+    visible: ".*Dodaj tamni način.*"
+    timeout: 8000
+- assertVisible: "Language: Croatian. Switch"
+- extendedWaitUntil:
+    visible: ".*napiši test za to\\..*"
+    timeout: 10000
+- takeScreenshot: croatian-heard
+- tapOn:
+    id: "voice-stop"
+- extendedWaitUntil:
+    visible:
+      id: "voice-send"
+    timeout: 5000
+- tapOn:
+    id: "voice-send"
+- extendedWaitUntil:
+    visible: ".*fake reply: Dodaj tamni način rada u postavke i napiši test za to\\..*"
+    timeout: 30000
+- takeScreenshot: croatian-replied
+# Switched to English while listening: the Croatian words so far stay, English goes on after them.
+- tapOn:
+    id: "session-mic"
+- extendedWaitUntil:
+    visible: ".*Dodaj.*"
+    timeout: 8000
+- tapOn:
+    id: "voice-language"
+- extendedWaitUntil:
+    visible: "Language: English. Switch"
+    timeout: 5000
+- extendedWaitUntil:
+    visible: ".*Dodaj.*test for it\\..*"
+    timeout: 10000
+- takeScreenshot: switched
+- tapOn:
+    id: "voice-stop"
+- extendedWaitUntil:
+    visible:
+      id: "voice-send"
+    timeout: 5000
+- tapOn:
+    id: "voice-send"
+- extendedWaitUntil:
+    visible: ".*fake reply: Dodaj.*Add a dark mode toggle to the settings page and write a test for it\\..*"
+    timeout: 30000
+- takeScreenshot: english-replied
+- runFlow: sub/back.yaml
+# The switch was kept; Auto again, the phone's default.
+- tapOn: "\n?Account"
+- extendedWaitUntil:
+    visible: "Voice prompt language\nEnglish"
+    timeout: 5000
+- tapOn: "Voice prompt language\nEnglish"
+- extendedWaitUntil:
+    visible: "Auto\n.*"
+    timeout: 5000
+- tapOn: "Auto\n.*"
+- tapOn:
+    point: "50%,8%"
+- extendedWaitUntil:
+    visible: "Voice prompt language\nAuto"
+    timeout: 5000
+- tapOn:
+    point: "50%,8%"
+- extendedWaitUntil:
+    notVisible: "Leave this server"
+    timeout: 5000

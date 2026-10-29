@@ -422,6 +422,7 @@ case $PHASE in
     flow too-large too_large.yaml -e SESSION="$SESSION_0_RE"
     flow account-sheet account_sheet.yaml
     flow theme theme.yaml -e SESSION="$SESSION_0_RE"
+    flow voice-language voice_language.yaml -e SESSION="$SESSION_0_RE"
     flow switch-continue switch.yaml -e WINDOW=".*$SWITCH_CONTINUE_RE" -e HOW="Restart and continue"
     flow switch-restart switch.yaml -e WINDOW=".*$SWITCH_RESTART_RE" -e HOW="Just restart"
     flow end-session end_session.yaml -e SESSION="$END_SESSION_RE"

@@ -45,13 +45,18 @@ void main() {
   tearDown(() => Directory(home).deleteSync(recursive: true));
 
   /// [page] over an app whose home is [home], with `claude` there if
-  /// [claude] is one.
-  Future<_Computer> pump(WidgetTester tester, Widget Function(FakeApp app) page, {FakeClaude? claude}) async {
+  /// [claude] is one, and the terminals showing [shown] from the start.
+  Future<_Computer> pump(
+    WidgetTester tester,
+    Widget Function(FakeApp app) page, {
+    FakeClaude? claude,
+    List<TermWindow> shown = const [],
+  }) async {
     tester.view
       ..physicalSize = const Size(1000, 2400)
       ..devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    final computer = _Computer(home);
+    final computer = _Computer(home)..shown = shown;
     app = await FakeApp.create(
       terminals: computer,
       integrations: Integrations(
@@ -296,6 +301,32 @@ void main() {
     await confirm(tester);
     await settle(tester, () => shows('1 thing needs attention'));
     expect(File('$home/.omp/agent/extensions/pocketterm-live.ts').existsSync(), isTrue);
+  });
+
+  group('Settings: omp sessions opened before PocketTerm', () {
+    TermWindow omp(String key, String profile) =>
+        TermWindow(key: key, title: 'omp', tab: '', cwd: '$home/Dev/garden', program: 'omp', profile: profile);
+
+    Future<void> open(WidgetTester tester, List<TermWindow> shown) async {
+      Directory('$home/.omp').createSync();
+      await pump(tester, (app) => SettingsPage(app: app), shown: shown);
+      await settle(tester, () => shows('things need attention'));
+      await tester.tap(find.text('Show'));
+      await settle(tester, () => shows('2 omp sessions opened before PocketTerm'));
+    }
+
+    testWidgets('in one profile are told to resume in it', (tester) async {
+      await open(tester, [omp('kitty-1/4', 'personal'), omp('kitty-1/5', 'personal')]);
+      expect(find.textContaining('run ${Agent.omp.resumeIn('personal')}'), findsOneWidget);
+    });
+
+    testWidgets('in several profiles get the default’s command; each window’s own is under Show sessions', (
+      tester,
+    ) async {
+      await open(tester, [omp('kitty-1/4', 'personal'), omp('kitty-1/5', '')]);
+      expect(find.textContaining('run ${Agent.omp.resume}'), findsOneWidget);
+      expect(find.textContaining(Agent.omp.resumeIn('personal')), findsNothing);
+    });
   });
 
   test('Windows: GitHub Desktop’s folder is found where OneDrive moved Documents too', () {

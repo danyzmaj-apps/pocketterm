@@ -141,6 +141,8 @@ import UserNotifications
         result(activities.running())
       case "speechCheck":
         dictation.check(args, result: result)
+      case "speechSupport":
+        dictation.support(args, result: result)
       case "speechStop":
         dictation.stop(result: result)
       case "speechFix":

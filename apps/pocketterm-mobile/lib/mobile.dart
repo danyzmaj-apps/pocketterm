@@ -14,7 +14,6 @@ import 'package:pocketterm_core/live_activity.dart';
 import 'package:pocketterm_core/native.dart';
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/session.dart';
-import 'package:pocketterm_core/speech.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/timing.dart';
 import 'package:pocketterm_core/ui.dart';
@@ -1277,10 +1276,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(Icons.translate_rounded, color: C.dim),
                 title: const Text('Voice prompt language'),
-                subtitle: Text(switch (voiceLanguage.choice) {
-                  null => 'Auto: ${voiceLanguage.language.label}',
-                  final l => l.label,
-                }, style: TextStyle(color: C.dim)),
+                subtitle: Text(voiceLanguage.choice?.label ?? 'Auto', style: TextStyle(color: C.dim)),
                 trailing: Icon(Icons.chevron_right, color: C.dim),
                 onTap: () => unawaited(_pickVoiceLanguage()),
               ),
@@ -1357,33 +1353,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     ),
   );
 
-  /// Auto (the phone's languages) or one PocketTerm listens in; a tap keeps it for this phone.
+  /// Auto or one language, each with what this phone has of it ([VoiceLanguagePicker]).
   Future<void> _pickVoiceLanguage() => showAppSheet<void>(
     context,
     builder: (sheet) => SafeArea(
-      child: ListenableBuilder(
-        listenable: voiceLanguage,
-        builder: (_, _) => Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 8),
-              child: Text('Voice prompt language', style: sheetTitleStyle),
-            ),
-            for (final l in <SpeechLanguage?>[null, ...SpeechLanguage.values])
-              ListTile(
-                key: ValueKey('voice-language-${l?.name ?? 'auto'}'),
-                title: Text(l?.label ?? 'Auto'),
-                subtitle: l == null
-                    ? Text('The phone’s language: ${voiceLanguage.phone.label}', style: TextStyle(color: C.dim))
-                    : null,
-                trailing: voiceLanguage.choice == l ? Icon(Icons.check, color: C.accent) : null,
-                onTap: () => unawaited(voiceLanguage.choose(l)),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 8),
+            child: Text('Voice prompt language', style: sheetTitleStyle),
+          ),
+          VoiceLanguagePicker(source: voiceSource),
+          const SizedBox(height: 8),
+        ],
       ),
     ),
   );

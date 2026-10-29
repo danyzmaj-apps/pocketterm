@@ -25,6 +25,9 @@ class FakeSpeech implements SpeechSource {
 
   /// Languages it has no model for: checking one says so, with a download.
   final missing = <SpeechLanguage>{};
+
+  /// Languages this phone can't recognize at all.
+  final unsupported = <SpeechLanguage>{};
   StreamController<SpeechEvent>? _out;
   String _said = '';
   int stops = 0;
@@ -36,8 +39,16 @@ class FakeSpeech implements SpeechSource {
   bool get listening => _out != null && !_out!.isClosed;
 
   @override
+  Future<SpeechCheck> support(SpeechLanguage language) async => unsupported.contains(language)
+      ? const SpeechCheck(SpeechStatus.noLanguage)
+      : missing.contains(language)
+      ? const SpeechCheck(SpeechStatus.noLanguage, fix: SpeechFix.download)
+      : const SpeechCheck(SpeechStatus.ready);
+
+  @override
   Future<SpeechCheck> check(SpeechLanguage language) async {
-    return missing.contains(language) ? const SpeechCheck(SpeechStatus.noLanguage, fix: SpeechFix.download) : status;
+    final s = await support(language);
+    return s.ready ? status : s;
   }
 
   @override
@@ -525,6 +536,74 @@ void main() {
     await tester.tap(find.text('Download'));
     await settle(tester);
     expect(speech.listened.last, SpeechLanguage.croatian);
+  });
+
+  testWidgets('Auto takes the phone’s Croatian when it has it, and English when it can’t have it', (tester) async {
+    tester.platformDispatcher.localesTestValue = const [Locale('hr', 'HR'), Locale('en', 'US')];
+    addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+    await open(tester);
+    await tapOpen(tester, mic);
+    expect(speech.listened, [SpeechLanguage.croatian]);
+    await stop(tester);
+    await tester.tap(find.byKey(const ValueKey('voice-close')));
+    await settle(tester);
+
+    speech.unsupported.add(SpeechLanguage.croatian);
+    await tapOpen(tester, mic);
+    expect(speech.listened.last, SpeechLanguage.english, reason: 'no message: it listens in what the phone has');
+    expect(voiceLanguage.choice, isNull, reason: 'still Auto');
+  });
+
+  testWidgets('Croatian picked on a phone that can’t recognize it says it isn’t supported', (tester) async {
+    await voiceLanguage.choose(SpeechLanguage.croatian);
+    speech.unsupported.add(SpeechLanguage.croatian);
+    await open(tester);
+    await tapOpen(tester, mic);
+    expect(find.textContaining('Croatian isn’t supported for speech recognition on this phone'), findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-fix')), findsNothing, reason: 'nothing to download or turn on');
+    expect(speech.listening, isFalse);
+  });
+
+  group('the language picker', () {
+    Future<void> picker(WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: VoiceLanguagePicker(source: speech)),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+    }
+
+    String? note(WidgetTester tester, SpeechLanguage l) {
+      final tile = tester.widget<ListTile>(find.byKey(ValueKey('voice-language-${l.name}')));
+      return (tile.subtitle as Text?)?.data;
+    }
+
+    testWidgets('offers the download of a missing language, then it is on the phone', (tester) async {
+      speech.missing.add(SpeechLanguage.croatian);
+      await picker(tester);
+      expect(note(tester, SpeechLanguage.english), 'On this phone');
+      expect(note(tester, SpeechLanguage.croatian), 'Not downloaded yet');
+      await tester.tap(find.byKey(const ValueKey('voice-language-croatian-download')));
+      await tester.pump();
+      await tester.pump();
+      expect(speech.fixes, [SpeechFix.download]);
+      expect(note(tester, SpeechLanguage.croatian), 'On this phone');
+      expect(find.byKey(const ValueKey('voice-language-croatian-download')), findsNothing);
+    });
+
+    testWidgets('a language the phone can’t recognize is not supported and can’t be picked', (tester) async {
+      speech.unsupported.add(SpeechLanguage.croatian);
+      await picker(tester);
+      expect(note(tester, SpeechLanguage.croatian), 'Not supported on this phone');
+      await tester.tap(find.byKey(const ValueKey('voice-language-croatian')));
+      await tester.pump();
+      expect(voiceLanguage.choice, isNull);
+      await tester.tap(find.byKey(const ValueKey('voice-language-english')));
+      await tester.pump();
+      expect(voiceLanguage.choice, SpeechLanguage.english);
+    });
   });
 
   testWidgets('a call taking the microphone stops listening and keeps what was said', (tester) async {

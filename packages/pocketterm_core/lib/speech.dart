@@ -19,9 +19,10 @@ enum SpeechLanguage {
   /// Its own name, as the voice sheet and Settings offer it.
   final String label;
 
-  /// The phone's first language PocketTerm can listen for, in the order of [locales]; English when none is.
-  static SpeechLanguage fromLocales(Iterable<Locale> locales) =>
-      locales.map((l) => values.where((s) => s.code == l.languageCode).firstOrNull).nonNulls.firstOrNull ?? english;
+  /// The languages PocketTerm can listen for in the order the phone's [locales] list them, then English if they
+  /// don't: Auto's candidates, the first the phone can recognize winning.
+  static List<SpeechLanguage> byLocales(Iterable<Locale> locales) =>
+      {...locales.map((l) => values.where((s) => s.code == l.languageCode).firstOrNull).nonNulls, english}.toList();
 }
 
 /// Whether the phone can listen now, in the chosen [SpeechLanguage], on the device.
@@ -34,7 +35,8 @@ enum SpeechStatus {
   /// Turned off for this phone (Screen Time, a device profile).
   restricted,
 
-  /// The language isn't on the device for recognition; [SpeechCheck.fix] says whether it can be fetched.
+  /// The language isn't on the device for recognition; [SpeechCheck.fix] says whether it can be fetched or added,
+  /// and none means this phone can't recognize it at all.
   noLanguage,
 
   /// The language for the device is on its way.
@@ -63,6 +65,9 @@ class SpeechCheck {
   final SpeechFix? fix;
 
   bool get ready => status == SpeechStatus.ready;
+
+  /// This phone can't listen in the language, whatever the person does.
+  bool get unsupported => status == SpeechStatus.unavailable || (status == SpeechStatus.noLanguage && fix == null);
 }
 
 /// What a listening session reports, in order, the last one [SpeechEnded].
@@ -108,6 +113,11 @@ abstract class SpeechSource {
   /// Whether it can listen in [language]; asks for the permissions it needs the first time.
   Future<SpeechCheck> check(SpeechLanguage language);
 
+  /// Whether the phone has [language] for on-device recognition, asking for no permission: ready, downloading, or
+  /// [SpeechStatus.noLanguage] with its fix (none: not supported), or [SpeechStatus.unavailable]. Ready when it
+  /// can't tell (Android 12 and older); listening finds out.
+  Future<SpeechCheck> support(SpeechLanguage language);
+
   /// Starts listening in [language]. Cancelling the subscription discards what was heard and stops at once; [stop]
   /// ends it with the last words settled instead. The stream closes after [SpeechEnded].
   Stream<SpeechEvent> listen(SpeechLanguage language);
@@ -120,7 +130,8 @@ abstract class SpeechSource {
   Future<void> fix(SpeechFix fix, SpeechLanguage language);
 }
 
-/// The phone's own recognizer, through `pocketterm/native` (methods `speechCheck {language}`, `speechStop`,
+/// The phone's own recognizer, through `pocketterm/native` (methods `speechCheck {language}`,
+/// `speechSupport {language}`, `speechStop`,
 /// `speechFix {fix, language}`) and the `pocketterm/speech` event channel, listened to with `{language}`:
 /// apps/pocketterm-mobile/ios/Runner/Dictation.swift and android/…/Dictation.kt. `language` is a
 /// [SpeechLanguage.code]. Events are maps: `{type: heard, text}`, `{type: level, level}`,
@@ -134,6 +145,12 @@ class NativeSpeech implements SpeechSource {
   @override
   Future<SpeechCheck> check(SpeechLanguage language) async {
     final m = await _channel.invokeMapMethod<String, Object?>('speechCheck', {'language': language.code}) ?? const {};
+    return SpeechCheck(_status(m['status']) ?? SpeechStatus.unavailable, fix: SpeechFix.values.asNameMap()[m['fix']]);
+  }
+
+  @override
+  Future<SpeechCheck> support(SpeechLanguage language) async {
+    final m = await _channel.invokeMapMethod<String, Object?>('speechSupport', {'language': language.code}) ?? const {};
     return SpeechCheck(_status(m['status']) ?? SpeechStatus.unavailable, fix: SpeechFix.values.asNameMap()[m['fix']]);
   }
 

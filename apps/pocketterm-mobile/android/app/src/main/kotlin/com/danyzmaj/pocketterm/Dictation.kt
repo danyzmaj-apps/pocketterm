@@ -84,16 +84,20 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
 
     fun check(code: String?, result: MethodChannel.Result) {
         askMic { granted ->
-            when {
-                !granted -> result.success(mapOf("status" to "denied", "fix" to "appSettings"))
-                // Before Android 12, or no on-device recognizer: the phone's own, asked to stay offline.
-                !onDevice -> result.success(
-                    mapOf("status" to if (SpeechRecognizer.isRecognitionAvailable(activity)) "ready" else "unavailable"),
-                )
-                // Android 12 can't say which languages it has: a missing language shows when listening starts.
-                Build.VERSION.SDK_INT < 33 -> result.success(mapOf("status" to "ready"))
-                else -> checkLanguage(code, result)
-            }
+            if (granted) support(code, result) else result.success(mapOf("status" to "denied", "fix" to "appSettings"))
+        }
+    }
+
+    /** speechSupport: whether the language can be recognized on this phone, asking for no permission. */
+    fun support(code: String?, result: MethodChannel.Result) {
+        when {
+            // Before Android 12, or no on-device recognizer: the phone's own, asked to stay offline.
+            !onDevice -> result.success(
+                mapOf("status" to if (SpeechRecognizer.isRecognitionAvailable(activity)) "ready" else "unavailable"),
+            )
+            // Android 12 can't say which languages it has: a missing language shows when listening starts.
+            Build.VERSION.SDK_INT < 33 -> result.success(mapOf("status" to "ready"))
+            else -> checkLanguage(code, result)
         }
     }
 
@@ -113,7 +117,8 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
                             has(support.installedOnDeviceLanguages) -> mapOf("status" to "ready")
                             has(support.pendingOnDeviceLanguages) -> mapOf("status" to "downloading")
                             has(support.supportedOnDeviceLanguages) -> mapOf("status" to "noLanguage", "fix" to "download")
-                            else -> mapOf("status" to "noLanguage", "fix" to "speechSettings")
+                            // Not even to download: this phone's on-device recognizer doesn't do the language.
+                            else -> mapOf("status" to "noLanguage")
                         },
                     )
                 }

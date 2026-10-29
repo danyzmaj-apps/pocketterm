@@ -52,6 +52,33 @@ final class Dictation: NSObject, FlutterStreamHandler {
     Task { @MainActor in result(await self.status(locale)) }
   }
 
+  /// speechSupport: whether the language can be recognized on this iPhone, asking for no permission.
+  func support(_ args: [String: Any], result: @escaping FlutterResult) {
+    let locale = Self.locale(args["language"] as? String)
+    Task { @MainActor in result(await Self.plan(locale).status) }
+  }
+
+  /// How [wanted] is recognized on this iPhone: its status (ready, downloading, or noLanguage with the fix:
+  /// download for SpeechTranscriber's model, speechSettings for Dictation's language, none when the iPhone can't
+  /// at all), and the SpeechTranscriber locale when SpeechAnalyzer does it. A language SpeechTranscriber hasn't
+  /// got, or hasn't downloaded, that SFSpeechRecognizer has on the device goes to SFSpeechRecognizer.
+  @MainActor static func plan(_ wanted: Locale) async -> (status: [String: Any], modern: Locale?) {
+    let legacy = SFSpeechRecognizer(locale: wanted)
+    let legacyOnDevice = legacy?.supportsOnDeviceRecognition ?? false
+    if #available(iOS 26.0, *), modern, let locale = await SpeechTranscriber.supportedLocale(equivalentTo: wanted) {
+      switch await AssetInventory.status(forModules: [transcriber(locale)]) {
+      case .installed: return (["status": "ready"], locale)
+      case .downloading: return legacyOnDevice ? (["status": "ready"], nil) : (["status": "downloading"], nil)
+      case .supported:
+        return legacyOnDevice ? (["status": "ready"], nil) : (["status": "noLanguage", "fix": "download"], nil)
+      default: break
+      }
+    }
+    guard legacy != nil else { return (["status": "noLanguage"], nil) }
+    // A language for the device comes with Dictation's languages (Settings → General → Keyboard).
+    return legacyOnDevice ? (["status": "ready"], nil) : (["status": "noLanguage", "fix": "speechSettings"], nil)
+  }
+
   func stop(result: @escaping FlutterResult) {
     result(nil)
     finish("stopped")
@@ -88,30 +115,18 @@ final class Dictation: NSObject, FlutterStreamHandler {
       if !(await AVAudioApplication.requestRecordPermission()) { return denied }
     default: break
     }
-    if #available(iOS 26.0, *), Self.modern {
-      // SpeechAnalyzer needs only the microphone; the language's model is a system asset, fetched once.
-      guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: wanted) else {
-        return ["status": "noLanguage"]
-      }
-      switch await AssetInventory.status(forModules: [Self.transcriber(locale)]) {
-      case .installed: return ["status": "ready"]
-      case .downloading: return ["status": "downloading"]
-      case .supported: return ["status": "noLanguage", "fix": "download"]
-      default: return ["status": "noLanguage"]
-      }
-    }
+    let plan = await Self.plan(wanted)
+    // SpeechAnalyzer needs only the microphone; SFSpeechRecognizer also speech recognition's permission.
+    if plan.status["status"] as? String != "ready" || plan.modern != nil { return plan.status }
     var auth = SFSpeechRecognizer.authorizationStatus()
     if auth == .notDetermined {
       auth = await withCheckedContinuation { done in SFSpeechRecognizer.requestAuthorization { done.resume(returning: $0) } }
     }
     switch auth {
-    case .authorized: break
+    case .authorized: return ["status": "ready"]
     case .restricted: return ["status": "restricted"]
     default: return denied
     }
-    guard let recognizer = SFSpeechRecognizer(locale: wanted) else { return ["status": "noLanguage"] }
-    // A language for the device comes with Dictation's languages (Settings → General → Keyboard).
-    return recognizer.supportsOnDeviceRecognition ? ["status": "ready"] : ["status": "noLanguage"]
   }
 
   // MARK: - Listening
@@ -137,6 +152,7 @@ final class Dictation: NSObject, FlutterStreamHandler {
   }
 
   @MainActor private func start(_ mine: Int, locale: Locale) async {
+    var engineName = "SFSpeechRecognizer"
     do {
       let session = AVAudioSession.sharedInstance()
       // Recording ducks or pauses what else plays; deactivating with notifyOthersOnDeactivation lets it resume.
@@ -152,8 +168,9 @@ final class Dictation: NSObject, FlutterStreamHandler {
         self.sink?(["type": "heard", "text": text.trimmingCharacters(in: .whitespacesAndNewlines)])
       }
       let rec: Recognizer
-      if #available(iOS 26.0, *), Self.modern {
-        rec = try await ModernRecognizer.make(locale: locale, natural: format, onText: onText)
+      if #available(iOS 26.0, *), let modern = await Self.plan(locale).modern {
+        engineName = "SpeechAnalyzer"
+        rec = try await ModernRecognizer.make(locale: modern, natural: format, onText: onText)
       } else {
         rec = try LegacyRecognizer(locale: locale, onText: onText) { [weak self] message in
           guard let self, self.generation == mine else { return }
@@ -179,7 +196,7 @@ final class Dictation: NSObject, FlutterStreamHandler {
       observe()
     } catch {
       guard generation == mine else { return }
-      NSLog("PocketTerm: dictation (\(Self.modern ? "SpeechAnalyzer" : "SFSpeechRecognizer")) didn't start: \(error)")
+      NSLog("PocketTerm: dictation (\(engineName)) didn't start: \(error)")
       recognizer?.cancel()
       recognizer = nil
       stopAudio()

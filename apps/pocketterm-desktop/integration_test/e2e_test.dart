@@ -611,6 +611,9 @@ class _Run {
   Future<void> _getReady() async {
     await report.step('get ready: omp gets PocketTerm', () async {
       final ext = File(p.join(c.home, '.omp', 'agent', 'extensions', 'pocketterm-live.ts'));
+      // Nothing goes in on its own: omp's Install (listed first), then the popup's Install once read.
+      await _tap(find.descendant(of: _key('get-ready-agents'), matching: find.text('Install')).first);
+      await _tap(_key('confirm-install-go'));
       await until('extension installed', ext.existsSync);
       await _see(find.descendant(of: _key('get-ready-agents'), matching: find.textContaining('omp')));
     });

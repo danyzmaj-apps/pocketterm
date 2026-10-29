@@ -107,6 +107,7 @@ class _Run {
   bool ours(String key) => switch (t) {
     'kitty' => key.startsWith('kitty'),
     'wezterm' => key.startsWith('wezterm:'),
+    'iterm' => key.startsWith('iterm:'),
     _ => key.startsWith('ghostty:') || key.startsWith('tmux:'),
   };
 
@@ -1272,7 +1273,12 @@ class _Run {
 
   /// Where a window the phone opens goes: the terminal's own windows, tmux
   /// for Ghostty (whose windows can't be read).
-  String get _opensWith => t == 'ghostty' ? 'tmux:' : (t == 'kitty' ? 'kitty' : 'wezterm:');
+  String get _opensWith => switch (t) {
+    'ghostty' => 'tmux:',
+    'kitty' => 'kitty',
+    'iterm' => 'iterm:',
+    _ => 'wezterm:',
+  };
 
   /// Settings → Phone → Terminal from phone off: the phone finds the computer
   /// not answering (phase computer-off) and asks for it back on (rpc

@@ -4,7 +4,7 @@
 // Simulator, phase by phase. Prints a pass/fail table; everything it saw is
 // in build/e2e/<stamp>/.
 //
-//   dart run tool/e2e/bin/run.dart [--terminal kitty|ghostty|wezterm|all]
+//   dart run tool/e2e/bin/run.dart [--terminal kitty|ghostty|wezterm|iterm|all]
 //       [--server local|builtin|supabase|supabase-cloud --supabase-token-file <file>|<https url> (--setup-link <link> |
 //        --setup-link-file <file>) [--server-stop-cmd <sh> --server-start-cmd <sh>]
 //        [--server-ca <pem>]]

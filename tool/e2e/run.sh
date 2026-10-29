@@ -1,10 +1,10 @@
 #!/bin/sh
 # PocketTerm's end-to-end run on this Mac: a local server, the real desktop
-# app, throwaway kitty / Ghostty / WezTerm windows with a fake omp, and the
+# app, throwaway kitty / Ghostty / WezTerm / iTerm2 windows with a fake omp, and the
 # phone in the Simulator (Maestro). Prints a pass/fail table; artifacts in
 # build/e2e/<stamp>/.
 #
-#   tool/e2e/run.sh [--terminal kitty|ghostty|wezterm|all]
+#   tool/e2e/run.sh [--terminal kitty|ghostty|wezterm|iterm|all]
 #                   [--server local|builtin|<https url> --setup-link-file <file>
 #                    [--server-stop-cmd <sh> --server-start-cmd <sh>] [--server-ca <pem>]]
 #                   [--no-phone] [--platform ios|android [--avd <name>]] [--phone-only <flow>,…] [--from-head]

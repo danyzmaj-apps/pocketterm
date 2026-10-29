@@ -139,7 +139,7 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 | kitty adapter | `kitty_test.dart`; e2e `--terminal kitty` | none |
 | Ghostty adapter (no screen, tmux, one row per window in tmux, config line upgrade) | `ghostty_test.dart`, `ghostty_surface_test.dart`, `terminals_test.dart`, `ghostty_config_test.dart`; e2e `--terminal ghostty` | none |
 | WezTerm adapter | `wezterm_test.dart`; e2e `--terminal wezterm` | Windows: unit only |
-| iTerm2 adapter (screen vs scrollback, gone windows, colors, `ITERM_SESSION_ID`) | `iterm_test.dart`, `terminal_test.dart` | e2e: none; launching, typing, keys, closing and finding an agent's window run by hand against a real iTerm2 |
+| iTerm2 adapter (screen vs scrollback, gone windows, colors, titles, `ITERM_SESSION_ID`, one Apple Event per property) | `iterm_test.dart`, `terminal_test.dart`; e2e `--terminal iterm` | none |
 | tmux adapter | `tmux_test.dart`; Ghostty's tmux windows in the e2e | none |
 
 ## Per terminal
@@ -147,7 +147,7 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 The e2e runs every phone flow on each terminal. Where a terminal can't do something, the run checks what the phone says instead:
 
 - **Ghostty** can't share its screen: `screen` checks the phone says so; `approval` checks the phone is told to answer on the computer (the desktop then answers). Sessions the phone starts open in tmux inside Ghostty, which can: `question`, `plan`, `menu_model`, `menu_resume`, `steer_queue` and `stop` run on that session for every terminal.
-- **kitty** and **WezTerm**: everything, screens included.
+- **kitty**, **WezTerm** and **iTerm2**: everything, screens included (iTerm2's without colors). The iTerm2 run starts its own instance, which opens no window by itself, with its settings for the run on its command line only (none written to its preferences); like Ghostty's, it refuses to start while another iTerm2 runs.
 
 ## What ran end to end for 0.1.0 (build 14)
 

@@ -926,6 +926,11 @@ class _Run {
       await r.prompt(chat, 'what is in this image $t', images: [_png]);
     });
     await act('file', () async {
+      // At rest after the image's turn, not before it began (a prompt then steers the turn instead).
+      await until(
+        'the image answered',
+        () => r.view(chat)?.items.any((i) => i.text.contains('fake reply: what is in this image')) ?? false,
+      );
       await until('chat at rest', () => r.session(chat)?.busy == false);
       await r.prompt(chat, 'what is in this file $t', files: [(name: _docName, mime: 'text/plain', bytes: _doc)]);
     });
@@ -988,11 +993,18 @@ class _Run {
       await atRest();
       await until('the queue held', () => r.session(key)?.paused ?? false);
       expect(r.session(key)!.queue.map((q) => q.text), ['after stop $t']);
+      final watching = r.watchSession(key);
       await r.pauseQueue(key, paused: false);
       await until(
         'the held prompt ran on Resume',
         () => fakeOmpLog(dir('newsess')).any((e) => e['event'] == 'prompt' && '${e['text']}'.contains('after stop')),
       );
+      // Its turn over, not just begun (the next prompt would steer it).
+      await until(
+        'the held prompt answered',
+        () => r.view(key)?.items.any((i) => i.text.contains('fake reply: after stop')) ?? false,
+      );
+      watching();
       await atRest();
     });
     await act('question', () async {

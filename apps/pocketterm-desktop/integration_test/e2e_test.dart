@@ -362,20 +362,35 @@ class _Run {
     final running = backend == 'Running';
     final started = running || backend == 'NeedsLogin' || backend == 'NeedsMachineAuth';
     final certs = (json['CertDomains'] as List?)?.isNotEmpty ?? false;
+    // What Tailscale already serves on its HTTPS port (443): PocketTerm won't replace it.
+    final serve = await Process.run('/Applications/Tailscale.app/Contents/MacOS/Tailscale', [
+      'serve',
+      'status',
+      '--json',
+    ]);
+    final served = '${serve.stdout}'.contains(RegExp('"[^"]*:443"'));
     final expected = [
       (key: 'check-installed', done: installed, yes: 'Tailscale is installed', no: 'Install Tailscale'),
       (key: 'check-running', done: started, yes: 'Tailscale is running', no: 'Start Tailscale'),
       (key: 'check-signed-in', done: running, yes: 'Signed in to Tailscale', no: 'Sign in to Tailscale'),
       (key: 'check-https', done: running && certs, yes: 'HTTPS certificates are on', no: 'Turn on HTTPS certificates'),
+      (
+        key: 'check-serve-free',
+        done: running && certs && !served,
+        yes: 'Tailscale’s HTTPS port is free for PocketTerm',
+        no: 'Free Tailscale’s HTTPS port (443)',
+      ),
     ];
-    report.log('tailscale: $backend, certs $certs');
-    // Steps after the first one not done read "to do" whatever they are.
+    report.log('tailscale: $backend, certs $certs, 443 served $served');
+    // Steps after the first one not done read "to do" whatever they are (the port's has a title of its own then).
     final firstTodo = expected.indexWhere((e) => !e.done);
     await until('Tailscale checklist read', () async {
       await _frames(1);
       for (final (i, e) in expected.indexed) {
         final done = e.done && (firstTodo < 0 || i < firstTodo);
-        final f = find.descendant(of: _key(e.key), matching: find.text(done ? e.yes : e.no));
+        final later = !done && firstTodo >= 0 && i > firstTodo && e.key == 'check-serve-free';
+        final text = done ? e.yes : (later ? 'Tailscale’s HTTPS port (443) for PocketTerm' : e.no);
+        final f = find.descendant(of: _key(e.key), matching: find.text(text));
         if (f.evaluate().isEmpty) return false;
       }
       return true;
@@ -610,8 +625,13 @@ class _Run {
   }
 
   Future<void> _getReady() async {
-    await report.step('get ready: omp gets PocketTerm', () async {
+    await report.step('get ready: omp gets PocketTerm on Install, once confirmed', () async {
       final ext = File(p.join(c.home, '.omp', 'agent', 'extensions', 'pocketterm-live.ts'));
+      // Nothing goes into omp by itself: Install asks first.
+      await _tap(find.descendant(of: _key('get-ready-agents'), matching: find.text('Install')));
+      await _see(_key('confirm-install'));
+      expect(ext.existsSync(), isFalse, reason: 'installed before the person confirmed');
+      await _tap(_key('confirm-install-go'));
       await until('extension installed', ext.existsSync);
       await _see(find.descendant(of: _key('get-ready-agents'), matching: find.textContaining('omp')));
     });

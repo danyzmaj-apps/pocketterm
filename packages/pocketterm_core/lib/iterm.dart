@@ -54,8 +54,12 @@ class ITerm2 extends TerminalHost {
   }
 
   /// Runs [body] on the session of [key], with `s` set to it; what [body]
-  /// returns, else empty. An iTerm2 that has quit isn't started again for a
-  /// window it no longer has.
+  /// returns, else empty. Every session's id comes in one Apple Event and is
+  /// looked through here, outside the `tell` (inside it, each `item` and
+  /// `count` goes to iTerm2 as an event of its own: seconds with a dozen
+  /// sessions open); the session is then addressed by its window's id and
+  /// its place there, and checked once more by its id. An iTerm2 that has
+  /// quit isn't started again for a window it no longer has.
   Future<String> _on(String key, String body, [List<String> args = const []]) async {
     try {
       return await _osa(
@@ -63,18 +67,26 @@ class ITerm2 extends TerminalHost {
 on run argv
   if application id "com.googlecode.iterm2" is not running then error "iTerm2 isn't running." number -600
   tell application id "com.googlecode.iterm2"
-    repeat with w in windows
-      repeat with b in tabs of w
-        repeat with s in sessions of b
-          if (id of s) is (item 1 of argv) then
-$body
-            return ""
-          end if
-        end repeat
+    set wids to id of windows
+    set ids to id of sessions of tabs of windows
+  end tell
+  set found to missing value
+  repeat with wi from 1 to count of ids
+    set tw to item wi of ids
+    repeat with ti from 1 to count of tw
+      set tt to item ti of tw
+      repeat with si from 1 to count of tt
+        if (item si of tt) is (item 1 of argv) then set found to {item wi of wids, ti, si}
       end repeat
     end repeat
+  end repeat
+  if found is missing value then error "That window is gone." number -1728
+  tell application id "com.googlecode.iterm2"
+    set s to session (item 3 of found) of tab (item 2 of found) of window id (item 1 of found)
+    if (id of s) is not (item 1 of argv) then error "That window is gone." number -1728
+$body
   end tell
-  error "That window is gone." number -1728
+  return ""
 end run''',
         [_session(key), ...args],
       );
@@ -89,38 +101,48 @@ end run''',
   }
 
   /// A session a record, ended by RS and a newline, its fields apart by US
-  /// (a title or a folder's name may hold a tab or a line break): id, title
-  /// (the one its program set, else iTerm2's name for it), tab title, tty,
-  /// folder (iTerm2's `session.path`), focused; then `front<US>true|false`.
+  /// (a title may hold a tab or a line break): id, title (iTerm2's name for
+  /// it, as its tab shows it), tab title, tty, focused; then
+  /// `front<US>true|false`. Each property of every session comes in one
+  /// Apple Event and the records are made outside the `tell` ([_on] says
+  /// why); a window opened or closed between those events leaves them out
+  /// of step, and they're read again.
   static const _list = '''
 set sep to ASCII character 31
 set eol to (ASCII character 30) & linefeed
-set out to ""
-tell application id "com.googlecode.iterm2"
-  set focusedId to ""
+repeat 3 times
+  tell application id "com.googlecode.iterm2"
+    set focusedId to ""
+    try
+      set focusedId to id of current session of current window
+    end try
+    set ids to id of sessions of tabs of windows
+    set nms to name of sessions of tabs of windows
+    set ttys to tty of sessions of tabs of windows
+    set tts to title of tabs of windows
+    set isFront to frontmost
+  end tell
   try
-    set focusedId to id of current session of current window
-  end try
-  repeat with w in windows
-    repeat with b in tabs of w
-      repeat with s in sessions of b
-        set ttl to missing value
-        set cwd to missing value
-        try
-          tell s to set ttl to (variable named "session.terminalWindowName")
-        end try
-        try
-          tell s to set cwd to (variable named "session.path")
-        end try
-        if ttl is missing value or ttl is "" then set ttl to name of s
-        if cwd is missing value then set cwd to ""
-        set out to out & (id of s) & sep & ttl & sep & (title of b) & sep & (tty of s) & sep & cwd & sep & ((id of s) is focusedId) & eol
+    set out to ""
+    repeat with wi from 1 to count of ids
+      set wid to item wi of ids
+      if (count of wid) is not (count of item wi of tts) then error "out of step"
+      repeat with ti from 1 to count of wid
+        set bid to item ti of wid
+        set bnm to item ti of item wi of nms
+        set bty to item ti of item wi of ttys
+        if (count of bid) is not (count of bnm) or (count of bid) is not (count of bty) then error "out of step"
+        repeat with si from 1 to count of bid
+          set out to out & (item si of bid) & sep & (item si of bnm) & sep & (item ti of item wi of tts) & sep & (item si of bty) & sep & ((item si of bid) is focusedId) & eol
+        end repeat
       end repeat
     end repeat
-  end repeat
-  set out to out & "front" & sep & frontmost
-end tell
-return out''';
+    if (count of ids) is (count of nms) and (count of ids) is (count of ttys) and (count of ids) is (count of tts) then
+      return out & "front" & sep & isFront
+    end if
+  end try
+end repeat
+error "iTerm2's windows kept changing while they were read."''';
 
   @override
   Future<TermStatus> status(Procs procs) async {
@@ -138,8 +160,8 @@ return out''';
     }
   }
 
-  /// Its sessions, with their foreground program and that program's folder
-  /// (iTerm2's own idea of the folder where it has none).
+  /// Its sessions, with their foreground program and that program's folder;
+  /// a title without the ` (program)` iTerm2 adds to it by default.
   @override
   Future<List<TermWindow>> windows(Procs procs) async {
     if (!_running(procs)) return const [];
@@ -150,17 +172,18 @@ return out''';
     ]);
     return [
       for (final w in all)
-        TermWindow(
-          key: w.key,
-          title: w.title,
-          tab: w.tab,
-          cwd: cwds[procs.foreground(w.tty)?.pid] ?? w.cwd,
-          program: procs.foreground(w.tty)?.program ?? '',
-          focused: w.focused,
-          app: w.app,
-          caps: w.caps,
-          tty: w.tty,
-        ),
+        if (procs.foreground(w.tty) case final fg)
+          TermWindow(
+            key: w.key,
+            title: fg == null ? w.title : itermTitle(w.title, fg.program),
+            tab: fg == null ? w.tab : itermTitle(w.tab, fg.program),
+            cwd: cwds[fg?.pid] ?? '',
+            program: fg?.program ?? '',
+            focused: w.focused,
+            app: w.app,
+            caps: w.caps,
+            tty: w.tty,
+          ),
     ];
   }
 
@@ -322,19 +345,19 @@ end run''',
 }
 
 /// The listing script's output (see [ITerm2]) as windows, without their
-/// program ([ITerm2.windows] adds it).
+/// program and folder ([ITerm2.windows] adds them).
 List<TermWindow> parseITermList(String out) {
   final records = [for (final r in out.split('\x1e')) r.replaceFirst(RegExp(r'^(\r\n|\n|\r)'), '').trimRight()];
   final front = records.any((r) => r == 'front\x1ftrue');
   return [
     for (final r in records)
-      if (r.split('\x1f') case [final id, final title, final tab, final tty, final cwd, final focused]
+      if (r.split('\x1f') case [final id, final title, final tab, final tty, final focused]
           when RegExp(r'^[0-9A-Fa-f-]{36}$').hasMatch(id))
         TermWindow(
           key: 'iterm:$id',
           title: cleanTitle(title),
           tab: cleanTitle(tab),
-          cwd: cwd,
+          cwd: '',
           program: '',
           focused: front && focused == 'true',
           app: 'iterm',
@@ -342,6 +365,14 @@ List<TermWindow> parseITermList(String out) {
           tty: tty.replaceFirst('/dev/', ''),
         ),
   ];
+}
+
+/// [title] as iTerm2 shows it, without the ` (job)` it adds by default when
+/// that's [program] (a login shell's `-zsh` too): what the program set.
+String itermTitle(String title, String program) {
+  if (program.isEmpty) return title;
+  final m = RegExp(' \\(-?${RegExp.escape(program)}\\)\$').firstMatch(title);
+  return m == null || m.start == 0 ? title : title.substring(0, m.start);
 }
 
 /// The colors script's output (a line `r,g,b` of 16-bit channels each:

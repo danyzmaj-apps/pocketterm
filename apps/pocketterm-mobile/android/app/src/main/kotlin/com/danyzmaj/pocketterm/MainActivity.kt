@@ -184,9 +184,9 @@ class MainActivity : FlutterActivity() {
                 result.success(null)
             }
             "liveActivities" -> result.success(SessionActivities.running(this))
-            "speechCheck" -> dictation.check(result)
+            "speechCheck" -> dictation.check(args["language"] as? String, result)
             "speechStop" -> dictation.stop(result)
-            "speechFix" -> dictation.fix(args["fix"] as? String, result)
+            "speechFix" -> dictation.fix(args["fix"] as? String, args["language"] as? String, result)
             else -> result.notImplemented()
         }
     }

@@ -14,6 +14,7 @@ import 'package:pocketterm_core/live_activity.dart';
 import 'package:pocketterm_core/native.dart';
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/session.dart';
+import 'package:pocketterm_core/speech.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/timing.dart';
 import 'package:pocketterm_core/ui.dart';
@@ -27,6 +28,7 @@ import 'package:pocketterm_mobile/push_consent.dart';
 import 'package:pocketterm_mobile/setup_page.dart';
 import 'package:pocketterm_mobile/state_border.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
+import 'package:pocketterm_mobile/voice.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// The phone side of [Session]: keeps the computers' channel keys (from
@@ -1268,6 +1270,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               trailing: Icon(Icons.chevron_right, color: C.dim),
               onTap: () => unawaited(_pickTheme()),
             ),
+            ListenableBuilder(
+              listenable: voiceLanguage,
+              builder: (_, _) => ListTile(
+                key: const ValueKey('voice-language-setting'),
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.translate_rounded, color: C.dim),
+                title: const Text('Voice prompt language'),
+                subtitle: Text(switch (voiceLanguage.choice) {
+                  null => 'Auto: ${voiceLanguage.language.label}',
+                  final l => l.label,
+                }, style: TextStyle(color: C.dim)),
+                trailing: Icon(Icons.chevron_right, color: C.dim),
+                onTap: () => unawaited(_pickVoiceLanguage()),
+              ),
+            ),
             const SizedBox(height: 18),
             OutlinedButton(
               onPressed: () async {
@@ -1336,6 +1353,37 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             ),
           const SizedBox(height: 8),
         ],
+      ),
+    ),
+  );
+
+  /// Auto (the phone's languages) or one PocketTerm listens in; a tap keeps it for this phone.
+  Future<void> _pickVoiceLanguage() => showAppSheet<void>(
+    context,
+    builder: (sheet) => SafeArea(
+      child: ListenableBuilder(
+        listenable: voiceLanguage,
+        builder: (_, _) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 8),
+              child: Text('Voice prompt language', style: sheetTitleStyle),
+            ),
+            for (final l in <SpeechLanguage?>[null, ...SpeechLanguage.values])
+              ListTile(
+                key: ValueKey('voice-language-${l?.name ?? 'auto'}'),
+                title: Text(l?.label ?? 'Auto'),
+                subtitle: l == null
+                    ? Text('The phone’s language: ${voiceLanguage.phone.label}', style: TextStyle(color: C.dim))
+                    : null,
+                trailing: voiceLanguage.choice == l ? Icon(Icons.check, color: C.accent) : null,
+                onTap: () => unawaited(voiceLanguage.choose(l)),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     ),
   );

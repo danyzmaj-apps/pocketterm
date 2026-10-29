@@ -21,14 +21,16 @@ import io.flutter.plugin.common.MethodChannel
 import java.util.Locale
 
 /**
- * The composer's microphone (packages/pocketterm_core/lib/speech.dart): English speech to text on the phone.
- * Android 12+: the on-device recognizer (SpeechRecognizer.createOnDeviceSpeechRecognizer), with Android 13+
- * checking that English is installed for it; otherwise the phone's recognizer, asked to stay offline
+ * The composer's microphone (packages/pocketterm_core/lib/speech.dart): speech to text on the phone, in the
+ * language Dart asks for (`en` or `hr`). Android 12+: the on-device recognizer
+ * (SpeechRecognizer.createOnDeviceSpeechRecognizer), with Android 13+ checking that the language is installed for
+ * it; otherwise the phone's recognizer, asked to stay offline
  * (EXTRA_PREFER_OFFLINE). Android's recognizer stops at each pause, so while the person is still listening a new
  * round starts at once and the text so far is kept.
  *
- * Methods (from MainActivity's channel): speechCheck → {status, fix?}, speechStop, speechFix {fix}. Events on
- * `pocketterm/speech`, a stream per listening: {type: heard, text}, {type: level, level 0…1}, then
+ * Methods (from MainActivity's channel): speechCheck {language} → {status, fix?}, speechStop, speechFix {fix,
+ * language}. Events on `pocketterm/speech`, listened to with {language}, a stream per listening: {type: heard,
+ * text}, {type: level, level 0…1}, then
  * {type: ended, why: stopped|interrupted|error, message?, status?} and the stream's end. Cancelling it discards.
  */
 class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
@@ -50,23 +52,29 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
 
     private var micWaiter: ((Boolean) -> Unit)? = null
 
-    /** The phone's English: British when its first English language is, else American. */
-    private val language: String
-        get() {
-            val locales = activity.resources.configuration.locales
-            for (i in 0 until locales.size()) {
-                val l = locales[i]
-                if (l.language == "en") return if (l.country == "GB") "en-GB" else "en-US"
-            }
-            return if (Locale.getDefault().country == "GB") "en-GB" else "en-US"
+    /** The language of the current listening, as onListen was given it. */
+    private var listeningIn = "en"
+
+    /**
+     * The recognizer's tag for [code] (a SpeechLanguage.code): English British when the phone's first English
+     * language is, else American; Croatian hr-HR.
+     */
+    private fun tag(code: String?): String {
+        if (code == "hr") return "hr-HR"
+        val locales = activity.resources.configuration.locales
+        for (i in 0 until locales.size()) {
+            val l = locales[i]
+            if (l.language == "en") return if (l.country == "GB") "en-GB" else "en-US"
         }
+        return if (Locale.getDefault().country == "GB") "en-GB" else "en-US"
+    }
 
     private val onDevice: Boolean
         get() = Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(activity)
 
-    private fun intent() = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+    private fun intent(code: String?) = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
         .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        .putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
+        .putExtra(RecognizerIntent.EXTRA_LANGUAGE, tag(code))
         .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
         .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
@@ -74,7 +82,7 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
 
     // ------------------------------------------------------------------ methods
 
-    fun check(result: MethodChannel.Result) {
+    fun check(code: String?, result: MethodChannel.Result) {
         askMic { granted ->
             when {
                 !granted -> result.success(mapOf("status" to "denied", "fix" to "appSettings"))
@@ -82,20 +90,20 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
                 !onDevice -> result.success(
                     mapOf("status" to if (SpeechRecognizer.isRecognitionAvailable(activity)) "ready" else "unavailable"),
                 )
-                // Android 12 can't say which languages it has: a missing English shows when listening starts.
+                // Android 12 can't say which languages it has: a missing language shows when listening starts.
                 Build.VERSION.SDK_INT < 33 -> result.success(mapOf("status" to "ready"))
-                else -> checkEnglish(result)
+                else -> checkLanguage(code, result)
             }
         }
     }
 
     @RequiresApi(33)
-    private fun checkEnglish(result: MethodChannel.Result) {
+    private fun checkLanguage(code: String?, result: MethodChannel.Result) {
         val r = SpeechRecognizer.createOnDeviceSpeechRecognizer(activity)
-        val lang = language
+        val lang = tag(code)
         fun has(list: List<String>) = list.any { it.equals(lang, ignoreCase = true) }
         r.checkRecognitionSupport(
-            intent(),
+            intent(code),
             activity.mainExecutor,
             object : RecognitionSupportCallback {
                 override fun onSupportResult(support: RecognitionSupport) {
@@ -104,8 +112,8 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
                         when {
                             has(support.installedOnDeviceLanguages) -> mapOf("status" to "ready")
                             has(support.pendingOnDeviceLanguages) -> mapOf("status" to "downloading")
-                            has(support.supportedOnDeviceLanguages) -> mapOf("status" to "noEnglish", "fix" to "download")
-                            else -> mapOf("status" to "noEnglish", "fix" to "speechSettings")
+                            has(support.supportedOnDeviceLanguages) -> mapOf("status" to "noLanguage", "fix" to "download")
+                            else -> mapOf("status" to "noLanguage", "fix" to "speechSettings")
                         },
                     )
                 }
@@ -119,12 +127,12 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
         )
     }
 
-    fun fix(fix: String?, result: MethodChannel.Result) {
+    fun fix(fix: String?, code: String?, result: MethodChannel.Result) {
         when {
             fix == "download" && Build.VERSION.SDK_INT >= 33 -> {
                 // The system downloads it, with its own notification; the recognizer stays bound a while for that.
                 val r = SpeechRecognizer.createOnDeviceSpeechRecognizer(activity)
-                r.triggerModelDownload(intent())
+                r.triggerModelDownload(intent(code))
                 main.postDelayed({ r.destroy() }, 10_000)
             }
             fix == "speechSettings" -> open(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) || openApp()
@@ -164,6 +172,7 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
         teardown()
+        listeningIn = (arguments as? Map<*, *>)?.get("language") as? String ?: "en"
         sink = events
         settled = ""
         partial = ""
@@ -178,7 +187,7 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
         r.setRecognitionListener(listener)
         recognizer = r
         roundAt = System.currentTimeMillis()
-        r.startListening(intent())
+        r.startListening(intent(listeningIn))
     }
 
     override fun onCancel(arguments: Any?) {
@@ -232,7 +241,7 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
         quickEnds = if (now - roundAt < 1000) quickEnds + 1 else 0
         if (quickEnds >= 4) return end("error", "Speech recognition keeps stopping")
         roundAt = now
-        recognizer?.startListening(intent())
+        recognizer?.startListening(intent(listeningIn))
     }
 
     private val listener = object : RecognitionListener {
@@ -271,9 +280,9 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
                     nextRound()
                 SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> main.postDelayed({ if (listening && !stopping) nextRound() }, 200)
                 SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> end("error", "No microphone permission", "denied")
-                // Android 12 learns only now that English isn't on the phone.
+                // Android 12 learns only now that the language isn't on the phone.
                 ERROR_LANGUAGE_NOT_SUPPORTED, ERROR_LANGUAGE_UNAVAILABLE ->
-                    end("error", "English isn't on this phone for speech recognition", "noEnglish")
+                    end("error", "${Locale.forLanguageTag(tag(listeningIn)).getDisplayLanguage(Locale.ENGLISH)} isn't on this phone for speech recognition", "noLanguage")
                 // A call or another app took the microphone.
                 SpeechRecognizer.ERROR_AUDIO -> end("interrupted")
                 else -> end("error", "Speech recognition failed ($error)")

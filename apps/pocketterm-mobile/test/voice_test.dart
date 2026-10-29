@@ -19,6 +19,12 @@ const _session = 'kitty-1/2';
 class FakeSpeech implements SpeechSource {
   SpeechCheck status = const SpeechCheck(SpeechStatus.ready);
   final fixes = <SpeechFix>[];
+
+  /// The language of each listening, in order.
+  final listened = <SpeechLanguage>[];
+
+  /// Languages it has no model for: checking one says so, with a download.
+  final missing = <SpeechLanguage>{};
   StreamController<SpeechEvent>? _out;
   String _said = '';
   int stops = 0;
@@ -30,10 +36,13 @@ class FakeSpeech implements SpeechSource {
   bool get listening => _out != null && !_out!.isClosed;
 
   @override
-  Future<SpeechCheck> check() async => status;
+  Future<SpeechCheck> check(SpeechLanguage language) async {
+    return missing.contains(language) ? const SpeechCheck(SpeechStatus.noLanguage, fix: SpeechFix.download) : status;
+  }
 
   @override
-  Stream<SpeechEvent> listen() {
+  Stream<SpeechEvent> listen(SpeechLanguage language) {
+    listened.add(language);
     _said = '';
     _ended = false;
     discarded = false;
@@ -66,9 +75,12 @@ class FakeSpeech implements SpeechSource {
   }
 
   @override
-  Future<void> fix(SpeechFix fix) async {
+  Future<void> fix(SpeechFix fix, SpeechLanguage language) async {
     fixes.add(fix);
-    if (fix == SpeechFix.download) status = const SpeechCheck(SpeechStatus.ready);
+    if (fix == SpeechFix.download) {
+      missing.remove(language);
+      status = const SpeechCheck(SpeechStatus.ready);
+    }
   }
 }
 
@@ -116,6 +128,7 @@ void main() {
     runs = [];
     speech = FakeSpeech();
     voiceSource = speech;
+    unawaited(voiceLanguage.choose(null));
     remote = TerminalRemote(
       offlineServer(),
       dir,
@@ -451,7 +464,7 @@ void main() {
   });
 
   testWidgets('no English on the device: it says so, and once downloaded it listens', (tester) async {
-    speech.status = const SpeechCheck(SpeechStatus.noEnglish, fix: SpeechFix.download);
+    speech.status = const SpeechCheck(SpeechStatus.noLanguage, fix: SpeechFix.download);
     await open(tester);
     await tapOpen(tester, mic);
     expect(find.textContaining('English for speech recognition isn’t on this phone'), findsOneWidget);
@@ -466,10 +479,52 @@ void main() {
   testWidgets('English found missing only when listening starts says so too', (tester) async {
     await open(tester);
     await tapOpen(tester, mic);
-    await speech.end(SpeechEnd.error, message: 'no English', status: SpeechStatus.noEnglish);
+    await speech.end(SpeechEnd.error, message: 'no English', status: SpeechStatus.noLanguage);
     await settle(tester);
     expect(find.byKey(const ValueKey('voice-problem')), findsOneWidget);
     expect(find.text('Open Settings'), findsOneWidget);
+  });
+
+  testWidgets('switching to Croatian while listening keeps the words and goes on in Croatian', (tester) async {
+    await open(tester);
+    await tapOpen(tester, mic);
+    expect(speech.listened, [SpeechLanguage.english]);
+    speech.say('popravi');
+    await heard(tester);
+    await tester.tap(find.byKey(const ValueKey('voice-language')));
+    await settle(tester);
+    expect(speech.listened, [SpeechLanguage.english, SpeechLanguage.croatian]);
+    expect(voiceLanguage.choice, SpeechLanguage.croatian, reason: 'kept for the next time');
+    expect(find.text('Hrvatski'), findsOneWidget);
+
+    speech.say('testove');
+    await heard(tester);
+    expect(find.text('popravi testove'), findsOneWidget);
+    await stop(tester);
+    expect(tester.widget<TextField>(edit).controller!.text, 'popravi testove');
+  });
+
+  testWidgets('Croatian not on the phone names Croatian, downloads it, and English is a tap away', (tester) async {
+    await voiceLanguage.choose(SpeechLanguage.croatian);
+    speech.missing.add(SpeechLanguage.croatian);
+    await open(tester);
+    await tapOpen(tester, mic);
+    expect(find.textContaining('Croatian for speech recognition isn’t on this phone'), findsOneWidget);
+    expect(speech.listening, isFalse);
+
+    await tester.tap(find.byKey(const ValueKey('voice-language')));
+    await settle(tester);
+    expect(speech.listened, [SpeechLanguage.english], reason: 'English is there: it listens at once');
+    expect(voiceLanguage.choice, SpeechLanguage.english);
+
+    await stop(tester);
+    await tester.tap(find.byKey(const ValueKey('voice-language')));
+    await tester.tap(find.byKey(const ValueKey('voice-more')));
+    await settle(tester);
+    expect(find.text('Download'), findsOneWidget);
+    await tester.tap(find.text('Download'));
+    await settle(tester);
+    expect(speech.listened.last, SpeechLanguage.croatian);
   });
 
   testWidgets('a call taking the microphone stops listening and keeps what was said', (tester) async {

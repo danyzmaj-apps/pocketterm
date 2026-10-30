@@ -59,6 +59,7 @@ class TermWindow {
     this.tty = '',
     this.osWindow = '',
     this.tabId = '',
+    this.profile = '',
   });
 
   factory TermWindow.fromJson(Map<String, dynamic> j) => TermWindow(
@@ -74,6 +75,7 @@ class TermWindow {
     via: j['via'] as String? ?? '',
     osWindow: j['osWindow'] as String? ?? '',
     tabId: j['tabId'] as String? ?? '',
+    profile: j['profile'] as String? ?? '',
   );
 
   /// The host's prefix, then which window of which instance.
@@ -112,25 +114,31 @@ class TermWindow {
   /// unknown. Panes split in one tab share it.
   final String tabId;
 
+  /// The omp profile its foreground omp runs, from its command line; '' for the default, for anything else, or where
+  /// no tty tells.
+  final String profile;
+
   /// The coding agent running in it, if one is.
   Agent? get agent => Agent.ofProgram(program);
 
   bool can(TermCap cap) => caps.contains(cap);
 
-  TermWindow copyWith({String? via, Set<TermCap>? caps, String? osWindow, String? tabId}) => TermWindow(
-    key: key,
-    title: title,
-    tab: tab,
-    cwd: cwd,
-    program: program,
-    focused: focused,
-    app: app,
-    caps: caps ?? this.caps,
-    via: via ?? this.via,
-    tty: tty,
-    osWindow: osWindow ?? this.osWindow,
-    tabId: tabId ?? this.tabId,
-  );
+  TermWindow copyWith({String? via, Set<TermCap>? caps, String? osWindow, String? tabId, String? profile}) =>
+      TermWindow(
+        key: key,
+        title: title,
+        tab: tab,
+        cwd: cwd,
+        program: program,
+        focused: focused,
+        app: app,
+        caps: caps ?? this.caps,
+        via: via ?? this.via,
+        tty: tty,
+        osWindow: osWindow ?? this.osWindow,
+        tabId: tabId ?? this.tabId,
+        profile: profile ?? this.profile,
+      );
 
   Map<String, dynamic> toJson() => {
     'key': key,
@@ -147,6 +155,7 @@ class TermWindow {
     if (via.isNotEmpty) 'via': via,
     if (osWindow.isNotEmpty) 'osWindow': osWindow,
     if (tabId.isNotEmpty) 'tabId': tabId,
+    if (profile.isNotEmpty) 'profile': profile,
   };
 }
 

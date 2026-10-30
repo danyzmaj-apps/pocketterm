@@ -1,15 +1,14 @@
-# The list's projects: the sort pill switches between Name and Recent
-# activity (and back, as kept); tapping a project's heading folds it to a
-# count of its sessions and unfolds it again; long-pressing it offers Fold
-# all others, then Unfold all. Everything is left as it was found.
+# The list's projects: a tap on the sort pill switches between Name and
+# Recent activity (another tap back, as kept); tapping a project's heading
+# folds it to a count of its sessions and unfolds it again; long-pressing it
+# offers Fold all others, then Unfold all. Everything is left as it was found.
 #   env: PROJECT (regex: a project with sessions; its heading reads it in
 #   capitals, and Maestro matches text ignoring case)
 appId: com.danyzmaj.pocketterm
 ---
 - runFlow: sub/home.yaml
 # The pill reads its choice (with its tooltip, Sort projects, after a line
-# break where the platform reads tooltips so); a tap switches to the other
-# order (there are only two, no menu).
+# break where the platform reads tooltips so); a tap switches to the other.
 - extendedWaitUntil:
     visible: "(Name|Recent activity)(\nSort projects)?"
     timeout: 10000
@@ -18,12 +17,14 @@ appId: com.danyzmaj.pocketterm
     when:
       visible: "Name(\nSort projects)?"
     commands:
-      - tapOn: "Name(\nSort projects)?"
+      - tapOn:
+          id: "project-sort"
       - extendedWaitUntil:
           visible: "Recent activity(\nSort projects)?"
           timeout: 5000
       - takeScreenshot: sorted-other
-      - tapOn: "Recent activity(\nSort projects)?"
+      - tapOn:
+          id: "project-sort"
       - extendedWaitUntil:
           visible: "Name(\nSort projects)?"
           timeout: 5000
@@ -33,18 +34,22 @@ appId: com.danyzmaj.pocketterm
     when:
       visible: "Recent activity(\nSort projects)?"
     commands:
-      - tapOn: "Recent activity(\nSort projects)?"
+      - tapOn:
+          id: "project-sort"
       - extendedWaitUntil:
           visible: "Name(\nSort projects)?"
           timeout: 5000
       - takeScreenshot: sorted-other
-      - tapOn: "Name(\nSort projects)?"
+      - tapOn:
+          id: "project-sort"
       - extendedWaitUntil:
           visible: "Recent activity(\nSort projects)?"
           timeout: 5000
-# Fold and unfold by its heading; its session's row goes and comes back.
+# Fold and unfold by its heading (in the middle: at the bottom it sits under the orchestrator's bar); its
+# session's row goes and comes back.
 - scrollUntilVisible:
     element: "${PROJECT}"
+    centerElement: true
     timeout: 20000
 - tapOn: "${PROJECT}"
 - extendedWaitUntil:
@@ -70,6 +75,7 @@ appId: com.danyzmaj.pocketterm
 - takeScreenshot: others-folded
 - scrollUntilVisible:
     element: "${PROJECT}"
+    centerElement: true
     timeout: 20000
 - longPressOn: "${PROJECT}"
 - extendedWaitUntil:

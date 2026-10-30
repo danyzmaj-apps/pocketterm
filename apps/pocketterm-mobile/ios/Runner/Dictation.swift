@@ -2,14 +2,16 @@ import AVFoundation
 import Flutter
 import Speech
 
-/// The composer's microphone (packages/pocketterm_core/lib/speech.dart): English speech to text, on the iPhone only,
+/// The composer's microphone (packages/pocketterm_core/lib/speech.dart): speech to text in the language Dart asks
+/// for (`en` or `hr`), on the iPhone only,
 /// never on Apple's servers. iOS 26 and later: SpeechAnalyzer with SpeechTranscriber, made for long dictation, its
 /// volatile results the live text. Before (or on hardware SpeechTranscriber doesn't run on): SFSpeechRecognizer
 /// with requiresOnDeviceRecognition, a new request taking over before Apple's per-request limit.
 ///
-/// Methods (from AppDelegate's channel): speechCheck → {status, fix?}, speechStop, speechFix {fix}. Events on
-/// `pocketterm/speech`, a stream per listening: {type: heard, text}, {type: level, level 0…1}, then
-/// {type: ended, why: stopped|interrupted|error, message?} and the stream's end. Cancelling it discards.
+/// Methods (from AppDelegate's channel): speechCheck {language} → {status, fix?}, speechStop, speechFix {fix,
+/// language}. Events on `pocketterm/speech`, listened to with {language}, a stream per listening: {type: heard,
+/// text}, {type: level, level 0…1}, then {type: ended, why: stopped|interrupted|error, message?} and the stream's
+/// end. Cancelling it discards.
 final class Dictation: NSObject, FlutterStreamHandler {
   private var sink: FlutterEventSink?
   private let engine = AVAudioEngine()
@@ -20,8 +22,10 @@ final class Dictation: NSObject, FlutterStreamHandler {
   private var observers: [NSObjectProtocol] = []
   private var lastLevel: CFTimeInterval = 0
 
-  /// The phone's English: British when its first English language is, else American.
-  static var english: Locale {
+  /// The locale for [code] (a SpeechLanguage.code): English British when the phone's first English language is,
+  /// else American; Croatian hr-HR.
+  static func locale(_ code: String?) -> Locale {
+    if code == "hr" { return Locale(identifier: "hr-HR") }
     let first = Locale.preferredLanguages.first { $0.hasPrefix("en") }
     let region = first.map { Locale(identifier: $0).region?.identifier } ?? Locale.current.region?.identifier
     return Locale(identifier: region == "GB" ? "en-GB" : "en-US")
@@ -43,8 +47,36 @@ final class Dictation: NSObject, FlutterStreamHandler {
 
   // MARK: - Methods
 
-  func check(result: @escaping FlutterResult) {
-    Task { @MainActor in result(await self.status()) }
+  func check(_ args: [String: Any], result: @escaping FlutterResult) {
+    let locale = Self.locale(args["language"] as? String)
+    Task { @MainActor in result(await self.status(locale)) }
+  }
+
+  /// speechSupport: whether the language can be recognized on this iPhone, asking for no permission.
+  func support(_ args: [String: Any], result: @escaping FlutterResult) {
+    let locale = Self.locale(args["language"] as? String)
+    Task { @MainActor in result(await Self.plan(locale).status) }
+  }
+
+  /// How [wanted] is recognized on this iPhone: its status (ready, downloading, or noLanguage with the fix:
+  /// download for SpeechTranscriber's model, speechSettings for Dictation's language, none when the iPhone can't
+  /// at all), and the SpeechTranscriber locale when SpeechAnalyzer does it. A language SpeechTranscriber hasn't
+  /// got, or hasn't downloaded, that SFSpeechRecognizer has on the device goes to SFSpeechRecognizer.
+  @MainActor static func plan(_ wanted: Locale) async -> (status: [String: Any], modern: Locale?) {
+    let legacy = SFSpeechRecognizer(locale: wanted)
+    let legacyOnDevice = legacy?.supportsOnDeviceRecognition ?? false
+    if #available(iOS 26.0, *), modern, let locale = await SpeechTranscriber.supportedLocale(equivalentTo: wanted) {
+      switch await AssetInventory.status(forModules: [transcriber(locale)]) {
+      case .installed: return (["status": "ready"], locale)
+      case .downloading: return legacyOnDevice ? (["status": "ready"], nil) : (["status": "downloading"], nil)
+      case .supported:
+        return legacyOnDevice ? (["status": "ready"], nil) : (["status": "noLanguage", "fix": "download"], nil)
+      default: break
+      }
+    }
+    guard legacy != nil else { return (["status": "noLanguage"], nil) }
+    // A language for the device comes with Dictation's languages (Settings → General → Keyboard).
+    return legacyOnDevice ? (["status": "ready"], nil) : (["status": "noLanguage", "fix": "speechSettings"], nil)
   }
 
   func stop(result: @escaping FlutterResult) {
@@ -58,7 +90,8 @@ final class Dictation: NSObject, FlutterStreamHandler {
       guard #available(iOS 26.0, *) else { return result(nil) }
       Task { @MainActor in
         do {
-          let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Self.english) ?? Self.english
+          let wanted = Self.locale(args["language"] as? String)
+          let locale = await SpeechTranscriber.supportedLocale(equivalentTo: wanted) ?? wanted
           if let request = try await AssetInventory.assetInstallationRequest(supporting: [Self.transcriber(locale)]) {
             try await request.downloadAndInstall()
           }
@@ -74,7 +107,7 @@ final class Dictation: NSObject, FlutterStreamHandler {
     }
   }
 
-  @MainActor private func status() async -> [String: Any] {
+  @MainActor private func status(_ wanted: Locale) async -> [String: Any] {
     let denied: [String: Any] = ["status": "denied", "fix": "appSettings"]
     switch AVAudioApplication.shared.recordPermission {
     case .denied: return denied
@@ -82,30 +115,18 @@ final class Dictation: NSObject, FlutterStreamHandler {
       if !(await AVAudioApplication.requestRecordPermission()) { return denied }
     default: break
     }
-    if #available(iOS 26.0, *), Self.modern {
-      // SpeechAnalyzer needs only the microphone; its English model is a system asset, fetched once.
-      guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Self.english) else {
-        return ["status": "noEnglish"]
-      }
-      switch await AssetInventory.status(forModules: [Self.transcriber(locale)]) {
-      case .installed: return ["status": "ready"]
-      case .downloading: return ["status": "downloading"]
-      case .supported: return ["status": "noEnglish", "fix": "download"]
-      default: return ["status": "noEnglish"]
-      }
-    }
+    let plan = await Self.plan(wanted)
+    // SpeechAnalyzer needs only the microphone; SFSpeechRecognizer also speech recognition's permission.
+    if plan.status["status"] as? String != "ready" || plan.modern != nil { return plan.status }
     var auth = SFSpeechRecognizer.authorizationStatus()
     if auth == .notDetermined {
       auth = await withCheckedContinuation { done in SFSpeechRecognizer.requestAuthorization { done.resume(returning: $0) } }
     }
     switch auth {
-    case .authorized: break
+    case .authorized: return ["status": "ready"]
     case .restricted: return ["status": "restricted"]
     default: return denied
     }
-    guard let recognizer = SFSpeechRecognizer(locale: Self.english) else { return ["status": "unavailable"] }
-    // English for the device comes with Dictation's languages (Settings → General → Keyboard).
-    return recognizer.supportsOnDeviceRecognition ? ["status": "ready"] : ["status": "noEnglish"]
   }
 
   // MARK: - Listening
@@ -114,7 +135,8 @@ final class Dictation: NSObject, FlutterStreamHandler {
     sink = events
     generation += 1
     let mine = generation
-    Task { @MainActor in await self.start(mine) }
+    let locale = Self.locale((arguments as? [String: Any])?["language"] as? String)
+    Task { @MainActor in await self.start(mine, locale: locale) }
     return nil
   }
 
@@ -129,7 +151,8 @@ final class Dictation: NSObject, FlutterStreamHandler {
     return nil
   }
 
-  @MainActor private func start(_ mine: Int) async {
+  @MainActor private func start(_ mine: Int, locale: Locale) async {
+    var engineName = "SFSpeechRecognizer"
     do {
       let session = AVAudioSession.sharedInstance()
       // Recording ducks or pauses what else plays; deactivating with notifyOthersOnDeactivation lets it resume.
@@ -145,10 +168,11 @@ final class Dictation: NSObject, FlutterStreamHandler {
         self.sink?(["type": "heard", "text": text.trimmingCharacters(in: .whitespacesAndNewlines)])
       }
       let rec: Recognizer
-      if #available(iOS 26.0, *), Self.modern {
-        rec = try await ModernRecognizer.make(locale: Self.english, natural: format, onText: onText)
+      if #available(iOS 26.0, *), let modern = await Self.plan(locale).modern {
+        engineName = "SpeechAnalyzer"
+        rec = try await ModernRecognizer.make(locale: modern, natural: format, onText: onText)
       } else {
-        rec = try LegacyRecognizer(locale: Self.english, onText: onText) { [weak self] message in
+        rec = try LegacyRecognizer(locale: locale, onText: onText) { [weak self] message in
           guard let self, self.generation == mine else { return }
           NSLog("PocketTerm: dictation (SFSpeechRecognizer): \(message)")
           self.recognizer = nil
@@ -172,7 +196,7 @@ final class Dictation: NSObject, FlutterStreamHandler {
       observe()
     } catch {
       guard generation == mine else { return }
-      NSLog("PocketTerm: dictation (\(Self.modern ? "SpeechAnalyzer" : "SFSpeechRecognizer")) didn't start: \(error)")
+      NSLog("PocketTerm: dictation (\(engineName)) didn't start: \(error)")
       recognizer?.cancel()
       recognizer = nil
       stopAudio()
@@ -378,7 +402,7 @@ private final class LegacyRecognizer: Recognizer {
 
   init(locale: Locale, onText: @escaping (String) -> Void, onFail: @escaping (String) -> Void) throws {
     guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.supportsOnDeviceRecognition else {
-      throw DictationError("This iPhone can't recognize English on the device")
+      throw DictationError("This iPhone can't recognize \(Locale(identifier: "en").localizedString(forLanguageCode: locale.language.languageCode?.identifier ?? "") ?? "this language") on the device")
     }
     self.recognizer = recognizer
     self.onText = onText

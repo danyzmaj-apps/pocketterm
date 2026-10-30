@@ -166,6 +166,18 @@ class TerminalRemote extends ChangeNotifier {
 
   List<TermWindow> windows = const [];
   List<LiveSummary> sessions = const [];
+
+  /// The computer's orchestrator ([LiveSummary.orchestrator]): the latest one, when several report; null when none.
+  LiveSummary? get orchestrator {
+    LiveSummary? found;
+    for (final s in sessions) {
+      if (!s.orchestrator) continue;
+      final at = s.at?.millisecondsSinceEpoch ?? 0;
+      if (found == null || at > (found.at?.millisecondsSinceEpoch ?? 0)) found = s;
+    }
+    return found;
+  }
+
   List<String> projects = const [];
 
   /// The Mac's Project folders, where a new project can be made; null from
@@ -181,6 +193,9 @@ class TerminalRemote extends ChangeNotifier {
   /// Where PocketTerm stands in each coding agent found on the computer;
   /// empty from a computer that doesn't say.
   Map<Agent, AgentIntegration> agents = const {};
+
+  /// The computer's omp profiles besides the default, sorted; empty from a computer that has none or doesn't say.
+  List<String> profiles = const [];
 
   /// Where a session the phone starts opens ("kitty", "Ghostty (in tmux)");
   /// null from a Mac that doesn't say.
@@ -411,6 +426,10 @@ class TerminalRemote extends ChangeNotifier {
     home = p['home'] as String? ?? home;
     agent = Agent.parse(p['agent']);
     agents = AgentIntegration.parseAll(p['agents']);
+    profiles = [
+      for (final x in p['profiles'] as List? ?? const [])
+        if (x is String && isOmpProfile(x)) x,
+    ];
     opensIn = p['opensIn'] as String?;
     placement = Placement.values.asNameMap()[p['placement']];
     terminals = [for (final t in p['terminals'] as List? ?? const []) TermStatus.fromJson((t as Map).cast())];
@@ -593,14 +612,26 @@ class TerminalRemote extends ChangeNotifier {
       _run({'op': 'switch', 'window': window, 'agent': agent.name}, wait: answerWait * 2);
 
   /// A new terminal window in [cwd] (where [opensIn] and [placement] say), running the Mac's coding [agent] if
-  /// [startAgent].
-  Future<Opened> launch(String cwd, {required bool startAgent}) =>
-      _open({'op': 'launch', 'cwd': cwd, 'agent': startAgent});
+  /// [startAgent], in omp [profile] (one of [profiles]; '' the default).
+  Future<Opened> launch(String cwd, {required bool startAgent, String profile = ''}) => _open({
+    'op': 'launch',
+    'cwd': cwd,
+    'agent': startAgent,
+    if (startAgent && profile.isNotEmpty) 'profile': profile,
+  });
 
   /// A new folder [name] under [root] (one of [roots]) on the Mac, with a
   /// window in it as [launch].
-  Future<Opened> create(String root, String name, {required bool startAgent}) =>
-      _open({'op': 'create', 'root': root, 'name': name, 'agent': startAgent});
+  Future<Opened> create(String root, String name, {required bool startAgent, String profile = ''}) => _open({
+    'op': 'create',
+    'root': root,
+    'name': name,
+    'agent': startAgent,
+    if (startAgent && profile.isNotEmpty) 'profile': profile,
+  });
+
+  /// Starts the computer's orchestrator, or finds the one running; its window key.
+  Future<String> startOrchestrator() async => (await _open({'op': 'orchestrator'})).window;
 
   /// Runs [request], which opens a window. Starting a terminal app
   /// can take a while; a window that opens after the phone stopped waiting
@@ -824,6 +855,7 @@ class TerminalRemote extends ChangeNotifier {
         'home': home,
         'agent': agent.name,
         'agents': AgentIntegration.toJsonAll(agents),
+        if (profiles.isNotEmpty) 'profiles': profiles,
         'opensIn': ?opensIn,
         'placement': ?placement?.name,
         'terminals': [for (final t in terminals) t.toJson()],

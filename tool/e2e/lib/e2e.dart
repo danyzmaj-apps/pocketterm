@@ -32,6 +32,8 @@ class E2eConfig {
     required this.terminalPath,
     this.serverCa,
     this.supabaseTokenFile,
+    this.phoneOnly,
+    this.desktopOnly,
   });
 
   factory E2eConfig.fromJson(Map<String, dynamic> j) => E2eConfig(
@@ -44,6 +46,8 @@ class E2eConfig {
     terminalPath: j['terminalPath'] as String,
     serverCa: j['serverCa'] as String?,
     supabaseTokenFile: j['supabaseTokenFile'] as String?,
+    phoneOnly: (j['phoneOnly'] as List?)?.cast<String>(),
+    desktopOnly: (j['desktopOnly'] as List?)?.cast<String>(),
   );
 
   factory E2eConfig.read(String path) =>
@@ -81,6 +85,20 @@ class E2eConfig {
   /// Whether the phone's phases run (else the desktop goes on alone).
   final bool phone;
 
+  /// The phone flows the run is limited to (`--phone-only`); null: all of them.
+  final List<String>? phoneOnly;
+
+  /// Whether the phone ran [flow], so what it did can be checked here; the
+  /// stand-in phone ([phone] off) does everything.
+  bool phoneRan(String flow) => !phone || phoneOnly == null || phoneOnly!.contains(flow);
+
+  /// Texts the desktop steps the run is limited to contain (`--desktop-only`); null: every step.
+  final List<String>? desktopOnly;
+
+  /// Whether the run takes desktop step [name]: every step without `--desktop-only`, else those whose name
+  /// contains one of its texts. What the rest needs runs anyway (Report.step's `needed`).
+  bool desktopRuns(String name) => desktopOnly == null || desktopOnly!.any(name.contains);
+
   /// The PATH the throwaway terminals' shells start with: the one of the
   /// terminal the run was started from, as a person's terminal has it (the
   /// desktop itself runs with launchd's, [launchServicesEnv]).
@@ -100,6 +118,8 @@ class E2eConfig {
     'terminalPath': terminalPath,
     'serverCa': ?serverCa,
     'supabaseTokenFile': ?supabaseTokenFile,
+    'phoneOnly': ?phoneOnly,
+    'desktopOnly': ?desktopOnly,
   };
 
   String get home => p.join(work, 'home');

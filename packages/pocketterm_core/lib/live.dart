@@ -23,14 +23,16 @@ import 'package:pocketterm_core/agent.dart';
 //
 //   phone → Mac   hello  {from, session?, window?}   every 4 s while the app is in front;
 //                        session: the live session it shows, window: the screen it shows
-//   Mac → phone   state  {windows, sessions, projects, roots, home, agent, agents?, error?}   on every hello and on changes;
+//   Mac → phone   state  {windows, sessions, projects, roots, home, agent, agents?, profiles?, error?}   on every hello
+//                        and on changes;
 //                        sessions: LiveSummary.toJson, its slash commands as `cmds` [[name, description?]], the
 //                        prompts waiting in its queue as `queue` [LiveQueued.toJson] and `paused` while it's held,
-//                        `failed` when its last run ended in an error;
+//                        `failed` when its last run ended in an error, `orch` when it is the computer's orchestrator;
 //                        agent: what a new session starts (Agent.name, the Mac's setting);
 //                        agents: {agent: installed | outdated | missing | off} for the coding agents found on the
 //                        computer; missing from an older computer
 //                        roots: the Mac's Project folders; projects: the git repositories under them
+//                        profiles: the computer's omp profiles besides the default, sorted; left out when none
 //   phone → Mac   sync   {from, session, epoch?, since}   catch up after a gap or on opening
 //   Mac → phone   items  {to, session, epoch, seq, reset, items, last}   answer to sync, in chunks
 //   Mac → phone   live   {session, epoch, ops}   changes to watched sessions, batched
@@ -40,7 +42,10 @@ import 'package:pocketterm_core/agent.dart';
 //                        switch {window, agent}: a screen-only agent window to its conversation (omp quits and
 //                        runs omp -c, Claude Code types /reload-plugins); queue {session, do, item?, text?, to?}:
 //                        changes the session's queue (do: edit item text, remove item, move item to, send item now
-//                        as a steer, pause, resume)
+//                        as a steer, pause, resume); launch {cwd, agent, profile?} and create {root, name, agent,
+//                        profile?}: a new window there, starting the agent when `agent`, in that omp profile when
+//                        `profile` (one of the state's `profiles`); orchestrator {}: starts the computer's
+//                        orchestrator (omp in PocketTerm's orchestrator folder) unless one runs; `ran {window}`
 //   Mac → phone   ran    {id, error?, window?, busy?, queued?}   busy: probe's answer; queued: the id a prompt
 //                        waits under in the session's queue, when it went there instead of to the agent
 //
@@ -59,8 +64,9 @@ import 'package:pocketterm_core/agent.dart';
 //   some when `wait`. An unknown conn answers 404: the extension says hello
 //   again. A connection nobody asks on for 60 s is gone.
 //
-//   ext → Mac  hello  {v, agent?, session: {id, title, cwd, model}, window?, pid, busy, ctx?, cost?, items, older,
-//                     commands}   agent: Agent.name (omp when left out); the session's newest items, oldest
+//   ext → Mac  hello  {v, agent?, profile?, session: {id, title, cwd, model}, window?, pid, busy, ctx?, cost?, items,
+//                     older, commands}   agent: Agent.name (omp when left out); profile: the omp profile it runs in
+//                     (`omp --profile`), left out for the default; the session's newest items, oldest
 //                     first; again after /new, /resume, /clear.
 //                     commands: [{name, description?}] the agent's own slash commands, then the session's
 //                     cost: what the session has spent so far, in US dollars (the agent's own tally, rounded to
@@ -82,6 +88,10 @@ import 'package:pocketterm_core/agent.dart';
 //                     prompt for the run's end. The Mac's queue sends each prompt as a followUp: an agent at rest
 //                     takes it as a prompt, one that started a run meanwhile keeps it for the run's end
 //   Mac → ext  abort  {req}
+//   ext → Mac  call   {id, op, …}   the orchestrator's tools, from a session in PocketTerm's orchestrator folder only:
+//                     op sessions {}, read {session, last?}, prompt {session, text, deliver?: steer | followUp},
+//                     stop {session}
+//   Mac → ext  result {id, text? | error?}   a call's answer: text for the model, or why it failed
 //   Mac → ext  older  {req, limit}   items before the oldest one sent
 
 /// A session [key] as pushes and links carry it: with the computer it's on,
@@ -1171,6 +1181,7 @@ class LiveSummary {
     required this.epoch,
     required this.seq,
     this.agent = Agent.omp,
+    this.profile = '',
     this.window,
     this.model = '',
     this.busy = false,
@@ -1184,12 +1195,14 @@ class LiveSummary {
     this.queue = const [],
     this.paused = false,
     this.failed = false,
+    this.orchestrator = false,
   });
 
   factory LiveSummary.fromJson(Map<String, dynamic> j) => LiveSummary(
     key: j['key'] as String,
     id: j['id'] as String? ?? '',
     agent: Agent.parse(j['agent']),
+    profile: j['profile'] as String? ?? '',
     window: j['window'] as String?,
     title: j['title'] as String? ?? '',
     cwd: j['cwd'] as String? ?? '',
@@ -1214,6 +1227,7 @@ class LiveSummary {
     ],
     paused: j['paused'] == true,
     failed: j['failed'] == true,
+    orchestrator: j['orch'] == true,
   );
 
   /// Stable for the agent's process: its terminal window's key (`kitty-<pid>/<id>`,
@@ -1226,6 +1240,9 @@ class LiveSummary {
 
   /// Which coding agent this is.
   final Agent agent;
+
+  /// The omp profile it runs in (`omp --profile`); '' for the default and for Claude Code.
+  final String profile;
   final String? window;
   final String title;
   final String cwd;
@@ -1259,10 +1276,15 @@ class LiveSummary {
   /// run clears it.
   final bool failed;
 
+  /// Started by PocketTerm as this computer's orchestrator (an omp session in PocketTerm's orchestrator folder): the
+  /// phone shows it in its own bar, not in the list.
+  final bool orchestrator;
+
   Map<String, dynamic> toJson() => {
     'key': key,
     'id': id,
     'agent': agent.name,
+    if (profile.isNotEmpty) 'profile': profile,
     'window': ?window,
     'title': title,
     'cwd': cwd,
@@ -1283,6 +1305,7 @@ class LiveSummary {
     if (queue.isNotEmpty) 'queue': [for (final q in queue) q.toJson()],
     if (paused) 'paused': true,
     if (failed) 'failed': true,
+    if (orchestrator) 'orch': true,
   };
 }
 

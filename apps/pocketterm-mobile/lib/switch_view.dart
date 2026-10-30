@@ -125,7 +125,7 @@ class _SwitchBannerState extends State<SwitchBanner> {
     final banner = switch (_phase) {
       _Phase.idle when w != null && canSwitch(remote, w) => _bar(
         const ValueKey('switch-offer'),
-        'This ${w.agent!.label} session shows only its screen',
+        'This ${w.agent!.labelIn(w.profile)} session shows only its screen',
         CoachTarget(
           tip: Tip.switchButton,
           radius: 20,
@@ -233,7 +233,7 @@ class _SwitchSheetState extends State<SwitchSheet> {
           Text(
             omp
                 ? 'PocketTerm restarts omp in this window and picks the same conversation back up '
-                      '(${Agent.omp.resume}). Nothing is lost.'
+                      '(${Agent.omp.resumeIn(widget.remote.window(widget.window)?.profile ?? '')}). Nothing is lost.'
                 : 'PocketTerm types ${Agent.claude.pickUp} in it. Nothing restarts.',
             style: TextStyle(fontSize: 14, color: C.dim, height: 1.4),
           ),

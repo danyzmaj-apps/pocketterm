@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { createHmac, randomBytes } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 
 // Streams this omp session to the PocketTerm menu-bar app (github.com/danyzmaj-apps/pocketterm), which relays it to the
@@ -14,8 +14,13 @@ import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 // from ~/.config/pocketterm/cli.json, or the file POCKETTERM_CLI_JSON names), once whatever answers at that port has
 // proved it holds the token. While PocketTerm isn't running it quietly tries again every few seconds.
 //
-// Install: copy this file to ~/.omp/agent/extensions/pocketterm-live.ts and restart omp (or use Install in PocketTerm's
+// Install: copy this file to ~/.omp/agent/extensions/pocketterm-live.ts, and to
+// ~/.omp/profiles/<name>/agent/extensions/ for each omp profile, then restart omp (or use Install in PocketTerm's
 // Settings).
+//
+// A session started in PocketTerm's orchestrator folder (`orchestrator` beside cli.json) also gets the tools
+// pocketterm_sessions, pocketterm_read, pocketterm_prompt and pocketterm_stop, which see and steer the computer's other
+// sessions: the Mac answers them (`call` frames, lib/orchestrator.dart).
 
 const CLI_FILE = process.env.POCKETTERM_CLI_JSON || join(homedir(), ".config", "pocketterm", "cli.json");
 const VERSION = 1;
@@ -31,6 +36,17 @@ const NOTICE_CHARS = 1000;
 const SUMMARY_CHARS = 400;
 const COMMAND_CHARS = 80;
 const SILENT_ABORT = "__omp.silent_abort__";
+const ORCHESTRATOR_DIR = join(dirname(CLI_FILE), "orchestrator");
+const CALL_MS = 30_000;
+
+/** Whether this omp runs in PocketTerm's orchestrator folder (it started there): only then does it get the tools. */
+function inOrchestratorDir(): boolean {
+	try {
+		return realpathSync(process.cwd()) === realpathSync(ORCHESTRATOR_DIR);
+	} catch {
+		return false;
+	}
+}
 
 /** Whether the PocketTerm that wrote cli.json answers at [port]: it proves it holds [token] (HMAC-SHA256 of the
  * port and a fresh nonce, pingProof in lib/local_api.dart) before the token or the transcript goes there.
@@ -557,6 +573,9 @@ export default function liveExtension(pi: ExtensionAPI) {
 	const shells: Shell[] = [];
 	const shellEntries = new Set<string>();
 	let shellPoll: Timer | undefined;
+	// The orchestrator's calls waiting for PocketTerm's result, by id.
+	const calls = new Map<number, (r: { text?: unknown; error?: unknown }) => void>();
+	let callId = 0;
 
 	function send(msg: object): void {
 		const socket = ws;
@@ -564,6 +583,43 @@ export default function liveExtension(pi: ExtensionAPI) {
 		try {
 			socket.send(JSON.stringify(msg));
 		} catch {}
+	}
+
+	/** Asks PocketTerm (the orchestrator's tools): its answer's text, or throws with why not. */
+	async function call(op: string, args: object, signal?: AbortSignal): Promise<string> {
+		if (!ws || ws.readyState !== WebSocket.OPEN) {
+			throw new Error("PocketTerm isn't running on this computer, or this session hasn't reached it yet.");
+		}
+		if (signal?.aborted) throw new Error("Cancelled.");
+		const { promise, resolve, reject } = Promise.withResolvers<string>();
+		const id = ++callId;
+		const cancel = () => {
+			done();
+			reject(new Error("Cancelled."));
+		};
+		const timer = setTimeout(() => {
+			done();
+			reject(new Error("PocketTerm did not answer."));
+		}, CALL_MS);
+		function done(): void {
+			clearTimeout(timer);
+			calls.delete(id);
+			signal?.removeEventListener("abort", cancel);
+		}
+		signal?.addEventListener("abort", cancel, { once: true });
+		calls.set(id, (r) => {
+			done();
+			if (typeof r.error === "string") reject(new Error(r.error));
+			else resolve(typeof r.text === "string" ? r.text : "");
+		});
+		send({ t: "call", id, op, ...args });
+		return promise;
+	}
+
+	/** Answers every call still waiting: PocketTerm can't anymore. */
+	function failCalls(): void {
+		for (const answer of [...calls.values()]) answer({ error: "PocketTerm went away." });
+		calls.clear();
 	}
 
 	const sendItem = (item: Item) => send({ t: "item", item });
@@ -585,6 +641,7 @@ export default function liveExtension(pi: ExtensionAPI) {
 			t: "hello",
 			v: VERSION,
 			agent: "omp",
+			profile: process.env.OMP_PROFILE || undefined,
 			session: { id: c.sessionManager.getSessionId(), title: m.title, cwd: c.cwd, model: m.model },
 			window: windowKey(),
 			term: termOf(),
@@ -659,6 +716,7 @@ export default function liveExtension(pi: ExtensionAPI) {
 			try {
 				if (ws !== socket) return;
 				ws = undefined;
+				failCalls();
 				later();
 			} catch {}
 		};
@@ -677,10 +735,16 @@ export default function liveExtension(pi: ExtensionAPI) {
 			images?: unknown;
 			deliver?: unknown;
 			limit?: unknown;
+			id?: unknown;
+			error?: unknown;
 		};
 		try {
 			msg = JSON.parse(raw);
 		} catch {
+			return;
+		}
+		if (msg.t === "result") {
+			if (typeof msg.id === "number") calls.get(msg.id)?.(msg);
 			return;
 		}
 		const reply = (extra: object = {}) => send({ t: "reply", req: msg.req, ...extra });
@@ -838,6 +902,7 @@ export default function liveExtension(pi: ExtensionAPI) {
 		try {
 			socket?.close(1000);
 		} catch {}
+		failCalls();
 	});
 
 	pi.on("agent_start", (_event, c) =>
@@ -1011,4 +1076,75 @@ export default function liveExtension(pi: ExtensionAPI) {
 
 	pi.on("user_bash", (event, c) => live(c, () => userShell("bashExecution", event.command, c)));
 	pi.on("user_python", (event, c) => live(c, () => userShell("pythonExecution", event.code, c)));
+
+	/** The orchestrator's tools: answered by PocketTerm, which sees every session on this computer. Each sends its
+	 * arguments as they are; the Mac reads them (LiveHub's calls). */
+	function registerOrchestratorTools(): void {
+		const z = pi.zod;
+		const defs = [
+			{
+				name: "pocketterm_sessions",
+				label: "Sessions",
+				approval: "read",
+				op: "sessions",
+				description:
+					"List the coding sessions (omp, Claude Code) running on this computer, as PocketTerm sees them: key, project, title, agent and model, whether each is working, waiting for an answer or idle, context used, cost, queued prompts and its last answer. Call this first; the key names a session in the other pocketterm_ tools.",
+				parameters: z.object({}),
+			},
+			{
+				name: "pocketterm_read",
+				label: "Read session",
+				approval: "read",
+				op: "read",
+				description:
+					"Read the newest part of one session's transcript: the person's prompts, the agent's answers, tool calls with the end of their output, what it waits on and what is queued.",
+				parameters: z.object({
+					session: z.string().describe("A session key from pocketterm_sessions"),
+					last: z
+						.number()
+						.int()
+						.min(1)
+						.max(200)
+						.optional()
+						.describe("How many transcript items, newest last (default 30)"),
+				}),
+			},
+			{
+				name: "pocketterm_prompt",
+				label: "Prompt session",
+				approval: "write",
+				op: "prompt",
+				description:
+					"Send a prompt to another session, as the person would from the phone. Only when the person asked for it.",
+				parameters: z.object({
+					session: z.string(),
+					text: z.string().describe("The prompt, as the person would type it"),
+					deliver: z
+						.enum(["followUp", "steer"])
+						.optional()
+						.describe("followUp (default): wait for its current run to end; steer: redirect the run now"),
+				}),
+			},
+			{
+				name: "pocketterm_stop",
+				label: "Stop session",
+				approval: "write",
+				op: "stop",
+				description:
+					"Stop another session's current run, as Esc would. Its queued prompts wait until the person resumes them. Only when the person asked for it.",
+				parameters: z.object({ session: z.string() }),
+			},
+		] as const;
+		for (const { op, ...tool } of defs) {
+			pi.registerTool({
+				...tool,
+				loadMode: "essential",
+				async execute(_id, params, signal) {
+					return { content: [{ type: "text", text: await call(op, params as object, signal) }] };
+				},
+			});
+		}
+	}
+
+	if (inOrchestratorDir()) registerOrchestratorTools();
 }

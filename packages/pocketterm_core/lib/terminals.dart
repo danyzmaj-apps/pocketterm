@@ -93,7 +93,8 @@ class Terminals {
   /// Every window of every terminal. A terminal window attached to tmux is
   /// left out for its tmux pane, which names it as [TermWindow.via]; a
   /// Ghostty window, which tells no tty, once [tieGhostty] tells which
-  /// tmux client it runs (its tty is then remembered).
+  /// tmux client it runs (its tty is then remembered). An omp window with a
+  /// tty carries the profile its command line names ([TermWindow.profile]).
   Future<List<TermWindow>> windows() async {
     final procs = await snapshot();
     final problems = <String, String>{};
@@ -125,7 +126,14 @@ class Terminals {
         }
       }
     }
-    return merge(hosts, lists, {for (final MapEntry(:key, :value) in clients.entries) key: value.pane}, shows);
+    final panes = {for (final MapEntry(:key, :value) in clients.entries) key: value.pane};
+    return [
+      for (final w in merge(hosts, lists, panes, shows))
+        if (w.agent == Agent.omp && w.tty.isNotEmpty)
+          w.copyWith(profile: ompProfileOfArgs(procs.foreground(w.tty)?.args ?? ''))
+        else
+          w,
+    ];
   }
 
   /// What [tieGhostty] couldn't tell apart, as logged (once each).
@@ -398,7 +406,8 @@ class Terminals {
   String describe(TerminalHost host) => viaTmux(host) ? '${host.label} (in tmux)' : host.label;
 
   /// A new window in [cwd] in [host] running the login shell, which then
-  /// starts [agent] if given: with [Placement.projectWindow] a tab in
+  /// starts [agent] if given, in omp [profile] ('' the default), with
+  /// [flags] after its command: with [Placement.projectWindow] a tab in
   /// [host]'s window that holds [cwd]'s tabs ([projectWindow]). Its key (the
   /// tmux pane's, where [viaTmux]) and where it went, as the phone says it.
   Future<Opened> launch(
@@ -406,6 +415,8 @@ class Terminals {
     required TerminalHost host,
     Agent? agent,
     Placement placement = Placement.projectWindow,
+    String profile = '',
+    String flags = '',
   }) async {
     if (!Directory(cwd).existsSync()) throw TerminalException('No such folder: $cwd');
     final into = placement == Placement.projectWindow ? projectWindow(await windows(), host, cwd, home: home) : null;
@@ -424,7 +435,10 @@ class Terminals {
       key = await host.launch(cwd, into: into);
     }
     // The shell reads it once it's up: the terminal holds what's typed.
-    if (agent != null) await send(key, agent.command, enter: true);
+    if (agent != null) {
+      final command = agent.commandIn(profile);
+      await send(key, flags.isEmpty ? command : '$command $flags', enter: true);
+    }
     final where = into == null
         ? 'a new ${host.label} window'
         : 'a new tab in the ${host.label} window with ${projectName(cwd, home: home)}';
@@ -549,10 +563,11 @@ class Terminals {
     required List<String> roots,
     required TerminalHost host,
     Agent? agent,
+    String profile = '',
   }) async {
     final cwd = createProject(root, name, roots: roots);
     try {
-      return await launch(cwd, host: host, agent: agent, placement: Placement.newWindow);
+      return await launch(cwd, host: host, agent: agent, placement: Placement.newWindow, profile: profile);
     } on Object {
       try {
         Directory(cwd).deleteSync();

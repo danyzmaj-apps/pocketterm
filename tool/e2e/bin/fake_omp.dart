@@ -9,10 +9,16 @@
 // Compiled to an executable named `omp` (the desktop tells agent windows by
 // their program's name), on the PATH of the throwaway terminals.
 //
-//   omp [-c] [--busy] [--ask]
-//     -c      carry on the last conversation in this folder
-//     --busy  start at work (a spinner), as omp in the middle of a run
-//     --ask   start asking to approve a command
+//   omp [--profile=<name> | --profile <name>] [-c] [--busy] [--ask] [--append-system-prompt <file>]
+//     --profile  run in omp profile <name> (also OMP_PROFILE), as omp does
+//     -c         carry on the last conversation in this folder
+//     --busy     start at work (a spinner), as omp in the middle of a run
+//     --ask      start asking to approve a command
+//     --append-system-prompt <file>   read as omp would, logged at start
+//
+// In PocketTerm's orchestrator folder (`orchestrator` beside the run's cli.json) it is the orchestrator, as omp with
+// the extension's tools is: a prompt calls PocketTerm (`call` frames) instead of getting the fake reply. See
+// _orchestrate.
 //
 // A prompt, typed here or from the phone, gets `fake reply: <text>` (and a
 // line for each image or @file it carries). A prompt with:
@@ -29,10 +35,13 @@
 // `/resume` one of three sessions, narrowed by what's typed. Enter picks,
 // Esc closes. Each draws as omp's do, so PocketTerm reads it off the screen.
 //
-// The extension counts as installed while
-// $HOME/.omp/agent/extensions/pocketterm-live.ts exists when it starts, as
-// omp loads extensions once at start. Everything it hears and does goes to
-// .fake_omp/log.jsonl in its folder, one JSON object a line, for the harness.
+// The extension counts as installed while pocketterm-live.ts exists in the
+// profile's extensions folder when it starts, as omp loads extensions once at
+// start: $HOME/.omp/agent/extensions for the default profile,
+// $HOME/.omp/profiles/<name>/agent/extensions for another. Its hello names a
+// profile other than the default, as the extension does (OMP_PROFILE).
+// Everything it hears and does goes to .fake_omp/log.jsonl in its folder, one
+// JSON object a line, for the harness.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -43,11 +52,22 @@ import 'package:path/path.dart' as p;
 
 Future<void> main(List<String> args) async {
   final omp = FakeOmp(
+    args: args,
+    profile: _profileOf(args) ?? Platform.environment['OMP_PROFILE'] ?? Platform.environment['PI_PROFILE'] ?? '',
     resume: args.contains('-c') || args.contains('--continue'),
     busy: args.contains('--busy'),
     ask: args.contains('--ask'),
   );
   await omp.run();
+}
+
+/// The profile [args] name, `--profile=<name>` or `--profile <name>`; null without one.
+String? _profileOf(List<String> args) {
+  for (var i = 0; i < args.length; i++) {
+    if (args[i].startsWith('--profile=')) return args[i].substring('--profile='.length);
+    if (args[i] == '--profile' && i + 1 < args.length) return args[i + 1];
+  }
+  return null;
 }
 
 const _termVars = [
@@ -112,8 +132,15 @@ class _Picker {
 }
 
 class FakeOmp {
-  FakeOmp({required this.resume, required bool busy, required bool ask}) : _startBusy = busy, _startAsk = ask;
+  FakeOmp({required this.args, required this.profile, required this.resume, required bool busy, required bool ask})
+    : _startBusy = busy,
+      _startAsk = ask;
 
+  /// Its command line after `omp`, as the shell passed it.
+  final List<String> args;
+
+  /// The omp profile it runs in; '' the default.
+  final String profile;
   final bool resume;
   final bool _startBusy;
   final bool _startAsk;
@@ -126,9 +153,44 @@ class FakeOmp {
   late final String _home = _env['HOME'] ?? '';
 
   /// PocketTerm's extension, as omp loads it when it starts: there while
-  /// the run's throwaway home has it.
+  /// the run's throwaway home has it in this profile's extensions folder.
   late final bool _extension =
-      _env['PTE2E'] == '1' && File(p.join(_home, '.omp', 'agent', 'extensions', 'pocketterm-live.ts')).existsSync();
+      _env['PTE2E'] == '1' &&
+      File(
+        p.joinAll([
+          _home,
+          '.omp',
+          if (profile.isNotEmpty) ...['profiles', profile],
+          'agent',
+          'extensions',
+          'pocketterm-live.ts',
+        ]),
+      ).existsSync();
+
+  /// What the extension gives its tools to: a session in PocketTerm's orchestrator folder (`orchestrator` beside
+  /// cli.json), as pocketterm-live.ts's inOrchestratorDir tells it.
+  late final bool _orchestrator = () {
+    final cli = _cliFile;
+    if (!_extension || cli == null) return false;
+    try {
+      return Directory(_cwd).resolveSymbolicLinksSync() ==
+          Directory(p.join(cli.parent.path, 'orchestrator')).resolveSymbolicLinksSync();
+    } on FileSystemException {
+      return false;
+    }
+  }();
+
+  /// `--append-system-prompt`'s file, read as omp reads it (relative to the folder it starts in); its text, or the
+  /// value itself when there's no such file; null without the flag.
+  String? get _systemPrompt {
+    final i = args.indexWhere((a) => a == '--append-system-prompt' || a.startsWith('--append-system-prompt='));
+    if (i < 0) return null;
+    final value = args[i].contains('=')
+        ? args[i].substring(args[i].indexOf('=') + 1)
+        : (i + 1 < args.length ? args[i + 1] : '');
+    final f = File(p.isAbsolute(value) ? value : p.join(_cwd, value));
+    return f.existsSync() ? f.readAsStringSync() : value;
+  }
 
   late String _sessionId;
   late final String _title = p.basename(_cwd);
@@ -179,7 +241,17 @@ class FakeOmp {
   Future<void> run() async {
     _load();
     _tty = await _ttyOf(pid);
-    log('start', {'resume': resume, 'extension': _extension, 'tty': _tty, 'cwd': _cwd, 'busy': _startBusy});
+    log('start', {
+      'resume': resume,
+      'extension': _extension,
+      'profile': profile,
+      'args': args,
+      'tty': _tty,
+      'cwd': _cwd,
+      'busy': _startBusy,
+      'orchestrator': _orchestrator,
+      'systemPrompt': ?_systemPrompt,
+    });
     if (stdin.hasTerminal) {
       stdin
         ..echoMode = false
@@ -386,6 +458,7 @@ class FakeOmp {
     _setBusy(true);
     if (text.contains('e2e-question')) return _raiseQuestion();
     if (text.contains('e2e-plan')) return _raisePlan();
+    if (_orchestrator) return await _orchestrate(run, text);
     // Long enough for a phone flow to steer and queue while it works (each
     // Maestro step in the Simulator takes seconds); once a prompt waits its
     // turn, the run ends soon after (the flow needn't sit out the rest).
@@ -444,6 +517,8 @@ class FakeOmp {
       await Future<void>.delayed(const Duration(milliseconds: 60));
     }
     _streaming = null;
+    // The whole message once it's written, as omp's extension sends it at message_end (PocketTerm's preview).
+    _send({'t': 'item', 'item': item});
     _save();
   }
 
@@ -795,6 +870,82 @@ class FakeOmp {
     ws.add(jsonEncode(frame));
   }
 
+  // ------------------------------------------------------------ the orchestrator
+
+  /// The orchestrator's calls waiting for PocketTerm's result, by id.
+  final _calls = <Object?, Completer<Map<String, dynamic>>>{};
+  int _callId = 0;
+
+  /// Asks PocketTerm, as the extension's tools do (`call` → `result`): its answer's text, or its error.
+  Future<({String? text, String? error})> _call(String op, Map<String, Object?> args) async {
+    final id = ++_callId;
+    final done = _calls[id] = Completer();
+    log('call', {'op': op, 'args': args});
+    _send({'t': 'call', 'id': id, 'op': op, ...args});
+    try {
+      final r = await done.future.timeout(const Duration(seconds: 30));
+      final out = (text: r['text'] as String?, error: r['error'] as String?);
+      log('result', {'op': op, 'text': out.text, 'error': out.error});
+      return out;
+    } on TimeoutException {
+      log('result', {'op': op, 'error': 'no answer'});
+      return (text: null, error: 'PocketTerm did not answer.');
+    } finally {
+      _calls.remove(id);
+    }
+  }
+
+  /// One of the orchestrator's tools, shown as omp shows a tool call (a tool item, running, then its result); the
+  /// answer's text, or null when it failed (the error then goes in [out]).
+  Future<String?> _tool(String name, String op, Map<String, Object?> args, List<String> out) async {
+    final id = _itemId();
+    final brief = args.isEmpty ? op : args.values.join(' ');
+    _put({'id': id, 'k': 'tool', 'tl': name, 'a': brief, 'st': 'running'});
+    final r = await _call(op, args);
+    _put({
+      'id': id,
+      'k': 'tool',
+      'tl': name,
+      'a': brief,
+      'st': r.error == null ? 'ok' : 'error',
+      'out': r.text ?? r.error,
+    });
+    if (r.error case final e?) out.add('fake orchestrator: $e');
+    return r.text;
+  }
+
+  /// The orchestrator's turn, as omp's model would take it with PocketTerm's tools:
+  /// `e2e-orch-tell PROJECT: TEXT` sends TEXT to that project's session (after its run), `e2e-orch-read PROJECT`
+  /// reads its transcript's newest items, `e2e-orch-stop PROJECT` stops its run, and anything else lists the
+  /// sessions. Its answer is what PocketTerm said.
+  Future<void> _orchestrate(int run, String text) async {
+    final out = <String>[];
+    final sessions = await _tool('pocketterm_sessions', 'sessions', const {}, out);
+    final m = RegExp(r'e2e-orch-(tell|read|stop)\s+([^:\s]+)(?::\s*(.*))?', dotAll: true).firstMatch(text);
+    if (sessions != null && m == null) out.add(sessions);
+    if (sessions != null && m != null) {
+      final project = m[2]!;
+      final line = sessions.split('\n').where((l) => l.startsWith('- ') && l.contains(' | $project | ')).firstOrNull;
+      final key = line?.substring(2).split(' | ').first;
+      if (key == null) {
+        out.add('fake orchestrator: no session in $project');
+      } else {
+        final answer = switch (m[1]) {
+          'tell' => await _tool('pocketterm_prompt', 'prompt', {
+            'session': key,
+            'text': (m[3] ?? '').trim(),
+            'deliver': 'followUp',
+          }, out),
+          'read' => await _tool('pocketterm_read', 'read', {'session': key, 'last': 5}, out),
+          _ => await _tool('pocketterm_stop', 'stop', {'session': key}, out),
+        };
+        if (answer != null) out.add(answer);
+      }
+    }
+    if (run != _run) return;
+    await _finish(run, out.join('\n'));
+  }
+
   String? get _windowKey {
     final listen = _env['KITTY_LISTEN_ON'];
     final id = _env['KITTY_WINDOW_ID'];
@@ -813,6 +964,7 @@ class FakeOmp {
       't': 'hello',
       'v': 1,
       'agent': 'omp',
+      if (profile.isNotEmpty) 'profile': profile,
       'session': {'id': _sessionId, 'title': _title, 'cwd': _cwd, 'model': _model},
       'window': _windowKey,
       'term': _term,
@@ -837,6 +989,9 @@ class FakeOmp {
     final req = m['req'];
     void reply([Map<String, Object?> body = const {}]) => _send({'t': 'reply', 'req': req, ...body});
     switch (m['t']) {
+      case 'result':
+        // A call's answer (the orchestrator's tools): no reply.
+        if (_calls[m['id']] case final done? when !done.isCompleted) done.complete(m);
       case 'prompt':
         final images = [for (final i in m['images'] as List? ?? const []) (i as Map).cast<String, Object?>()];
         final words = m['text'] as String? ?? '';

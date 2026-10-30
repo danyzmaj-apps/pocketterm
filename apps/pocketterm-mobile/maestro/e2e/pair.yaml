@@ -38,18 +38,16 @@ appId: com.danyzmaj.pocketterm
       true: ${PUSH == 'accept'}
     commands:
       - tapOn: "Turn on notifications"
-      # iOS asks once per install; Android 13+ asks too. Tapped only while the
-      # system's prompt shows: an optional tap with none there could land on
-      # the session list behind it, opening a session.
-      - extendedWaitUntil:
-          visible: "Allow"
-          timeout: 5000
-          optional: true
+      # Android 13+ asks. iOS asks once per install too, but Maestro's iOS
+      # driver answers that prompt itself (it allows every permission): a tap
+      # of ours after it lands on the session list behind and opens a row.
       - runFlow:
           when:
-            visible: "Allow"
+            platform: Android
           commands:
-            - tapOn: "Allow"
+            - tapOn:
+                text: "Allow"
+                optional: true
 - runFlow:
     when:
       true: ${PUSH != 'accept'}

@@ -739,6 +739,12 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
       body: [
+        if (agent == Agent.omp && app.ompProfiles.isNotEmpty)
+          Text(
+            'Profiles: default, ${app.ompProfiles.join(', ')}',
+            key: const ValueKey('settings-omp-profiles'),
+            style: _subStyle(C.dim),
+          ),
         if (n > 0) ...[
           Text.rich(
             TextSpan(
@@ -747,7 +753,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 Agent.claude => '${_count(n, 'session')} opened before PocketTerm: type ',
               },
               children: [
-                WidgetSpan(alignment: PlaceholderAlignment.middle, child: _mono(agent.pickUp)),
+                WidgetSpan(alignment: PlaceholderAlignment.middle, child: _mono(_pickUpOf(agent, sessions))),
                 if (agent == Agent.claude) TextSpan(text: ' in ${n == 1 ? 'it' : 'each'}'),
               ],
             ),
@@ -778,6 +784,13 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _agentButton(Agent agent, String label) => _installing.contains(agent)
       ? _button('Installing…', () {}, active: true)
       : _button(label, () => unawaited(_install(agent)), primary: true);
+
+  /// What picks PocketTerm up in [windows] (all running [agent]): in their omp profile when they share one; the
+  /// default's command when they're in several (each window's own shows under Show sessions).
+  static String _pickUpOf(Agent agent, List<TermWindow> windows) {
+    final profiles = {for (final w in windows) w.profile};
+    return agent.pickUpIn(profiles.length == 1 ? profiles.single : '');
+  }
 
   Widget _mono(String command) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
@@ -1220,7 +1233,8 @@ class _SettingsPageState extends State<SettingsPage> {
       }
     }
     for (final agent in Agent.values) {
-      final n = _unreported.where((w) => w.agent == agent).length;
+      final windows = _unreported.where((w) => w.agent == agent).toList();
+      final n = windows.length;
       if (n == 0) continue;
       items.add((
         tab: _Tab.agents,
@@ -1234,7 +1248,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 '${n == 1 ? 'it' : 'them'}',
           Agent.omp =>
             '${_count(n, 'omp session')} opened before PocketTerm: quit omp in '
-                '${n == 1 ? 'it' : 'them'} and run ${agent.resume}',
+                '${n == 1 ? 'it' : 'them'} and run ${_pickUpOf(agent, windows)}',
         },
         action: null,
       ));

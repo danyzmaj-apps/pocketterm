@@ -87,6 +87,8 @@ Pushes are off until the person turns them on in the phone app, which explains w
 
 The desktop app's API (`apps/pocketterm-desktop/lib/local_api.dart`) listens on `127.0.0.1` only, behind a random token in `~/.config/pocketterm/cli.json` (`%USERPROFILE%\.config\pocketterm` on Windows). On macOS the file is mode 600 in a mode 700 folder, and no token is written if that fails. The omp extension and Claude Code plugin send the token only after the app proves it holds it (an HMAC-SHA256 of a fresh nonce), so a stale port never receives it. The file is removed when PocketTerm quits. kitty is reached over its unix sockets, and only sockets owned by the current user count.
 
+A session in the orchestrator folder (`orchestrator` beside `cli.json`) can, through the local API, list every other session, read its conversation, prompt it (not a slash command, not itself) and stop its run. The desktop app decides who that is from the folder each session reports on connecting, so any process of the same user holding the token could claim it, as it could already drive the terminals. Transcripts it reads can carry text meant to steer it (prompt injection); its tools that prompt or stop ask first only when omp is set to ask before writing.
+
 ## Where the server listens
 
 - **On this computer:** the built-in server listens on `127.0.0.1`. `tailscale serve` publishes it at `https://<computer>.<tailnet>.ts.net` to the owner's tailnet only; Funnel is never used. PocketTerm changes Tailscale's Serve settings only after reading them (`tailscale serve status`): it never replaces or removes what something else serves on port 443, and changes nothing while they can't be read.

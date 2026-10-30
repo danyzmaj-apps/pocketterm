@@ -5,7 +5,7 @@
 # Maestro's reports and a summary to <run dir>/phone/<platform>/<phase>/.
 #
 #   run.sh --run-dir build/e2e/<ts> [--platform ios|android]
-#          [--phase main|server-restart|desktop-restart|real-omp|revoke|server-down|computer-off]
+#          [--phase main|profiles|server-restart|desktop-restart|real-omp|revoke|server-down|computer-off]
 #          [--only <flow>[,<flow>…]] [--device <id>] [--avd <name>] [--no-build | --from-tree]
 #
 # The app is built from HEAD in a detached git worktree ($PHONE_SRC, default
@@ -78,6 +78,13 @@ v = {
   "CLOSE_WINDOW": e.get("closeWindow", ""),
   "NEW_SHELL_PROJECT": e.get("newShellProject", ""),
   "NEW_PROJECT_NAME": e.get("newProjectName", ""),
+  "ORCH_PROJECT": (e.get("orchestrator") or {}).get("project", ""),
+  "ORCH_TEXT": (e.get("orchestrator") or {}).get("text", ""),
+  "PROFILE": (e.get("profiles") or {}).get("profile", ""),
+  "PROFILE_EMPTY": (e.get("profiles") or {}).get("empty", ""),
+  "PROFILE_SESSION": (e.get("profiles") or {}).get("session", ""),
+  "PROFILE_SWITCH": (e.get("profiles") or {}).get("switch", ""),
+  "PROFILE_PROJECT": (e.get("profiles") or {}).get("project", ""),
 }
 for i, x in enumerate(s):
   v[f"SESSION_{i}"] = x.get("title", "")
@@ -130,6 +137,10 @@ android_device() {
 
 if [ -z "$DEVICE" ]; then
   if [ "$PLATFORM" = ios ]; then DEVICE=$(ios_device); else DEVICE=$(android_device) || exit 2; fi
+elif [ "$PLATFORM" = ios ]; then
+  # A Simulator given with --device may be shut down: booted as ios_device does.
+  xcrun simctl boot "$DEVICE" 2>/dev/null || true
+  xcrun simctl bootstatus "$DEVICE" >/dev/null
 fi
 echo "$DEVICE" >"$OUT/device.txt"
 
@@ -427,9 +438,15 @@ case $PHASE in
     flow too-large too_large.yaml -e SESSION="$SESSION_0_RE"
     flow account-sheet account_sheet.yaml
     flow theme theme.yaml -e SESSION="$SESSION_0_RE"
+    flow voice-language voice_language.yaml -e SESSION="$SESSION_0_RE"
     flow switch-continue switch.yaml -e WINDOW=".*$SWITCH_CONTINUE_RE" -e HOW="Restart and continue"
     flow switch-restart switch.yaml -e WINDOW=".*$SWITCH_RESTART_RE" -e HOW="Just restart"
     flow end-session end_session.yaml -e SESSION="$END_SESSION_RE"
+    # The orchestrator: started from the phone on the computer, it tells the session new-session started something.
+    if [ -n "$ORCH_PROJECT" ]; then
+      flow orchestrator orchestrator.yaml -e PROJECT="$ORCH_PROJECT" -e PROJECT_RE="$ORCH_PROJECT_RE" \
+        -e TEXT="$ORCH_TEXT" -e TEXT_RE="$ORCH_TEXT_RE"
+    fi
     # How long a cold start and a return to the front take (timing.txt), and
     # that a followed session's link opens its session on a cold start.
     # E2E_AWAY_LONG=1 also leaves the app in the background for 10 minutes.
@@ -446,6 +463,13 @@ case $PHASE in
       BEFORE="open_cold push '$SESSION_1_KEY'" flow push-tap-cold deep_link.yaml -e SESSION="$SESSION_1_RE" \
         -e REPLY="$REPLY_1"
     fi
+    ;;
+  profiles)
+    # omp in profile $PROFILE: its rows, header and filter (with $PROFILE_EMPTY, which has no sessions), New
+    # session and the project menu in it, Switch on a window that shows only its screen.
+    flow profiles profiles.yaml -e PROFILE="$PROFILE" -e EMPTY="$PROFILE_EMPTY" -e SESSION="$PROFILE_SESSION_RE" \
+      -e WINDOW=".*$PROFILE_SWITCH_RE" -e SWITCHED="$PROFILE_SWITCH_RE" -e PROJECT="$PROFILE_PROJECT_RE" \
+      -e OTHER="$SESSION_0_RE" -e PROJECT_NAME="$PROFILE_PROJECT"
     ;;
   server-restart | desktop-restart)
     # A new prompt goes and comes back once; conversation-1's exchange (session

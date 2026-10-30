@@ -146,8 +146,26 @@ class Integrations {
   /// The oldest Claude Code whose plugins may have mods (hooks/*.ts).
   static const minClaude = [2, 1, 287];
 
-  /// Where omp loads extensions from.
-  String get ompDir => p.join(home, '.omp', 'agent', 'extensions');
+  /// Where omp loads extensions from in [profile] (`omp --profile`); '' is the default profile.
+  String ompDirOf(String profile) => profile.isEmpty
+      ? p.join(home, '.omp', 'agent', 'extensions')
+      : p.join(home, '.omp', 'profiles', profile, 'agent', 'extensions');
+
+  /// The omp profiles on this computer besides the default (the folders under `~/.omp/profiles` named as omp
+  /// names them), sorted.
+  List<String> ompProfiles() {
+    try {
+      return [
+        for (final e in Directory(p.join(home, '.omp', 'profiles')).listSync())
+          if (e is Directory && isOmpProfile(p.basename(e.path))) p.basename(e.path),
+      ]..sort();
+    } on FileSystemException {
+      return const [];
+    }
+  }
+
+  /// Where omp loads extensions from: the default profile's folder, then each of [ompProfiles]'.
+  List<String> get ompDirs => [ompDirOf(''), for (final n in ompProfiles()) ompDirOf(n)];
 
   /// The marketplace Claude Code is pointed at: a stable copy of the bundled
   /// one, which it loads the plugin from in place.
@@ -158,9 +176,16 @@ class Integrations {
   Future<IntegrationState> state(Agent agent) async {
     switch (agent) {
       case Agent.omp:
+        // Installed only where every profile has it, so a profile made since asks for Install again.
         final files = await _bundled('integrations/omp/');
-        final installed = files.keys.every((f) => File(_under(ompDir, f)).existsSync());
-        return (installed: installed, current: installed && await _same(files, ompDir), problem: null);
+        final dirs = ompDirs;
+        final installed = dirs.every((d) => files.keys.every((f) => File(_under(d, f)).existsSync()));
+        var current = installed;
+        for (final d in dirs) {
+          if (!current) break;
+          current = await _same(files, d);
+        }
+        return (installed: installed, current: current, problem: null);
       case Agent.claude:
         final claude = await _claude();
         if (claude.problem != null) return (installed: false, current: false, problem: claude.problem);
@@ -225,8 +250,11 @@ class Integrations {
   Future<void> install(Agent agent) async {
     switch (agent) {
       case Agent.omp:
-        await Directory(ompDir).create(recursive: true);
-        await _write(await _bundled('integrations/omp/'), ompDir);
+        final files = await _bundled('integrations/omp/');
+        for (final d in ompDirs) {
+          await Directory(d).create(recursive: true);
+          await _write(files, d);
+        }
       case Agent.claude:
         final claude = await _claude();
         if (claude.problem != null) throw IntegrationException(claude.problem!);

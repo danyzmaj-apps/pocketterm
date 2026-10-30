@@ -1,7 +1,7 @@
-# The list's projects: the sort pill switches between Name and Recent
-# activity (and back, as kept); tapping a project's heading folds it to a
-# count of its sessions and unfolds it again; long-pressing it offers Fold
-# all others, then Unfold all. Everything is left as it was found.
+# The list's projects: a tap on the sort pill switches between Name and
+# Recent activity (another tap back, as kept); tapping a project's heading
+# folds it to a count of its sessions and unfolds it again; long-pressing it
+# offers Fold all others, then Unfold all. Everything is left as it was found.
 #   env: PROJECT (regex: a project with sessions; its heading reads it in
 #   capitals, and Maestro matches text ignoring case)
 appId: com.danyzmaj.pocketterm

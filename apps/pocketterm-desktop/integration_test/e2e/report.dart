@@ -34,8 +34,14 @@ class Report {
   }
 
   /// Runs scenario [name]; a failure is recorded with a screenshot and, if
-  /// [critical] (the rest can't go on without it), thrown on.
-  Future<bool> step(String name, Future<void> Function() body, {bool critical = false}) async {
+  /// [critical] (the rest can't go on without it), thrown on. A run limited
+  /// to some steps (`--desktop-only`) skips it unless it's one of them, or
+  /// critical, or [needed] (the steps after it need it done).
+  Future<bool> step(String name, Future<void> Function() body, {bool critical = false, bool needed = false}) async {
+    if (!critical && !needed && !c.desktopRuns(name)) {
+      skip(name, 'not in --desktop-only');
+      return false;
+    }
     log('▶ $name');
     try {
       await body();

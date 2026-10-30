@@ -38,18 +38,16 @@ appId: com.danyzmaj.pocketterm
       true: ${PUSH == 'accept'}
     commands:
       - tapOn: "Turn on notifications"
-      # iOS asks once per install; Android 13+ asks too. The alert can be gone by the time the tap lands (it
-      # was found a second before), and the tap then opens the session row under it: back to the list.
-      - tapOn:
-          text: "Allow"
-          optional: true
-          retryTapIfNoChange: false
+      # Android 13+ asks. iOS asks once per install too, but Maestro's iOS
+      # driver answers that prompt itself (it allows every permission): a tap
+      # of ours after it lands on the session list behind and opens a row.
       - runFlow:
           when:
-            platform: iOS
-            visible: "Back"
+            platform: Android
           commands:
-            - tapOn: "Back"
+            - tapOn:
+                text: "Allow"
+                optional: true
 - runFlow:
     when:
       true: ${PUSH != 'accept'}

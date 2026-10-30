@@ -34,6 +34,7 @@ class TerminalBridge {
     this._app,
     this._roots, {
     this._agents,
+    this._ompProfiles,
     this._onPhone,
   });
 
@@ -63,6 +64,9 @@ class TerminalBridge {
   /// checks, which keep themselves fresh); none told if null.
   final Future<Map<Agent, AgentIntegration>> Function()? _agents;
   Map<Agent, AgentIntegration>? _agentsNow;
+
+  /// This computer's omp profiles besides the default.
+  final List<String> Function()? _ompProfiles;
 
   /// A phone said hello: one is signed in to this account.
   final VoidCallback? _onPhone;
@@ -382,6 +386,7 @@ class TerminalBridge {
         'terminals': [for (final s in phoneTerminals(_statuses)) s.toJson()],
         'error': ?_termError,
         if (_agentsNow case final a?) 'agents': AgentIntegration.toJsonAll(a),
+        if (_ompProfiles?.call() case final p? when p.isNotEmpty) 'profiles': p,
       },
       watched: {for (final p in _phones.values) ?p.session},
     );
@@ -663,19 +668,30 @@ class TerminalBridge {
           // As the windows are now: it may have closed since the phone's list.
           final shown = (await _terms.windows()).where((w) => w.key == at).firstOrNull;
           if (shown == null) throw const TerminalException('That window has closed.');
-          await switchToConversation(_terms, at, agent, tty: shown.tty);
+          // Typed into a shell: only a profile this computer has (else the default's conversation).
+          final known = _ompProfiles?.call() ?? const <String>[];
+          final profile = known.contains(shown.profile) ? shown.profile : '';
+          await switchToConversation(_terms, at, agent, tty: shown.tty, profile: profile);
         case 'launch':
           // An older phone says `omp` for "start the coding agent".
           final start = p['agent'] == true || p['omp'] == true;
           final host = await _terms.opensIn(_app());
-          window = await _terms.launch(p['cwd'] as String, host: host, agent: start ? _agent() : null);
+          final agent = start ? _agent() : null;
+          window = await _terms.launch(
+            p['cwd'] as String,
+            host: host,
+            agent: agent,
+            profile: agent == null ? '' : launchProfile(p['profile'], agent, _ompProfiles?.call() ?? const []),
+          );
         case 'create':
+          final agent = p['agent'] == true ? _agent() : null;
           window = await _terms.launchNewProject(
             p['root'] as String,
             p['name'] as String? ?? '',
             roots: _roots(),
             host: await _terms.opensIn(_app()),
-            agent: p['agent'] == true ? _agent() : null,
+            agent: agent,
+            profile: agent == null ? '' : launchProfile(p['profile'], agent, _ompProfiles?.call() ?? const []),
           );
         case 'prompt':
           queued = await _prompt(p);
@@ -1010,13 +1026,31 @@ class TerminalBridge {
     throw const LiveException("The agent won't move to that item. Open the screen to pick it there.");
   }
 
+  /// An orchestrator launch still going: another `orchestrator` op meanwhile (Send again, a second phone) gets it.
+  Future<String>? _orchestratorStart;
+
   /// The phone's `orchestrator` op: the orchestrator's window key, starting it (omp in [LiveHub.orchestratorDir],
-  /// lib/orchestrator.dart) unless one runs. Always omp, whatever new sessions start: only its extension has the
-  /// orchestrator's tools.
+  /// lib/orchestrator.dart) unless one runs or is starting. Always omp, whatever new sessions start: only its
+  /// extension has the orchestrator's tools.
   Future<String> _orchestrator() async {
     final running = _hub.sessions.where((s) => s.orchestrator).firstOrNull;
     if (running != null) return running.key;
+    if (_orchestratorStart case final starting?) return await starting;
+    final start = _orchestratorStart = _startOrchestrator();
+    try {
+      return await start;
+    } finally {
+      _orchestratorStart = null;
+    }
+  }
+
+  Future<String> _startOrchestrator() async {
     final dir = _hub.orchestratorDir ?? (throw const LiveException("PocketTerm's local API isn't running."));
+    // omp already in its folder that hasn't said hello yet (slow to start): that one, not a second.
+    final early = (await _terms.windows())
+        .where((w) => w.agent == Agent.omp && isOrchestratorDir(w.cwd, dir))
+        .firstOrNull;
+    if (early != null) return early.key;
     switch (_agentsNow?[Agent.omp]) {
       case AgentIntegration.missing:
         throw const LiveException('Install PocketTerm in omp first: Settings → Coding agents on this computer.');
@@ -1161,10 +1195,19 @@ Future<bool> screenChanges(Terminals terms, String window, {Duration gap = const
   return await terms.plainScreen(window) != before;
 }
 
+/// The omp profile a phone's `launch`/`create` asks for: '' for none asked or another agent; one this computer
+/// doesn't have is refused (it's typed into a shell, so only a listed name goes).
+String launchProfile(Object? requested, Agent agent, List<String> profiles) {
+  if (requested is! String || requested.isEmpty || agent != Agent.omp) return '';
+  if (!profiles.contains(requested)) throw TerminalException('omp has no profile $requested on this computer.');
+  return requested;
+}
+
 /// Switches [agent] in [window] (an agent window no live session claims) to reporting its session to PocketTerm.
 /// omp quits and starts again on the same conversation: Esc stops a run, Ctrl+C empties its editor (Ctrl+U clears
 /// one line only), Ctrl+D on an empty editor quits; once the foreground program on [tty] isn't omp anymore (or
-/// after [noTty], where the terminal tells no tty) the shell gets `omp -c`. Claude Code reloads its plugins in place.
+/// after [noTty], where the terminal tells no tty) the shell gets `omp -c`, in the omp [profile] it ran in.
+/// Claude Code reloads its plugins in place.
 /// Where [tty] tells, nothing is pressed unless [agent] still runs there: the agent may have quit since the phone
 /// last looked, and Ctrl+D would end the shell (and close the window) instead.
 Future<void> switchToConversation(
@@ -1172,6 +1215,7 @@ Future<void> switchToConversation(
   String window,
   Agent agent, {
   String tty = '',
+  String profile = '',
   Duration settle = const Duration(milliseconds: 400),
   Duration quitFor = const Duration(seconds: 8),
   Duration noTty = const Duration(seconds: 2),
@@ -1201,12 +1245,14 @@ Future<void> switchToConversation(
         final until = DateTime.now().add(quitFor);
         while (await runs()) {
           if (DateTime.now().isAfter(until)) {
-            throw TerminalException("omp didn't quit. Quit it on the computer, then run ${agent.command} -c there.");
+            throw TerminalException(
+              "omp didn't quit. Quit it on the computer, then run ${agent.commandIn(profile)} -c there.",
+            );
           }
           await Future<void>.delayed(pollEvery);
         }
       }
-      await terms.send(window, '${agent.command} -c', enter: true);
+      await terms.send(window, '${agent.commandIn(profile)} -c', enter: true);
   }
 }
 

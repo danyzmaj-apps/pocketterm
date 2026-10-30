@@ -8,19 +8,23 @@
 //       [--server local|builtin|supabase|supabase-cloud --supabase-token-file <file>|<https url> (--setup-link <link> |
 //        --setup-link-file <file>) [--server-stop-cmd <sh> --server-start-cmd <sh>]
 //        [--server-ca <pem>]]
-//       [--no-phone] [--platform ios|android [--avd <name>]]
-//       [--phone-only <flow>,…] [--phone-from-tree] [--from-head] [--artifacts <dir>] [--device <id>]
+//       [--no-phone] [--platform ios|android [--avd <name>]] [--device <udid or serial>]
+//       [--phone-only <flow>,…] [--phone-from-tree] [--desktop-only <text>,…] [--from-head] [--artifacts <dir>]
 //
 // --from-head runs what's committed: a detached worktree of HEAD in /tmp
 // (others' uncommitted edits stay out), artifacts still in this checkout's
 // build/e2e. --artifacts: where the stamped run folders go. --avd: the
-// Android emulator the phone phases boot when none is running. --phone-only:
-// just these phone flows (the phone run.sh's --only). --phone-from-tree: the
-// phone app built from this checkout as it is, uncommitted edits included
-// (by default the phone builds HEAD; the desktop always runs this checkout).
-// --device: the Simulator (UDID) or emulator (serial) the phone phases run on
-// instead of the "PocketTerm E2E" Simulator, so another run can use that one
-// at the same time.
+// Android emulator the phone phases boot when none is running. --device: the
+// Simulator or emulator the phone phases use (the phone run.sh's; by default
+// the Simulator "PocketTerm E2E", which runs started side by side would
+// share). --phone-only:
+// just these phone flows (the phone run.sh's --only); the desktop skips its
+// checks of the others. --phone-from-tree: the phone app built from this
+// checkout as it is, uncommitted edits included (by default the phone builds
+// HEAD; the desktop always runs this checkout). --desktop-only: just the
+// desktop steps whose name contains one of these texts, besides what every
+// run needs (setup, Get ready, the windows, pairing and the hand-off) and
+// the checks of the phone flows that ran; the rest are skipped.
 //
 // --server builtin: the desktop's own "On this computer" server, published
 // by `tailscale serve` (Tailscale must be running with HTTPS on and serve
@@ -146,8 +150,9 @@ Map<String, String> _parse(List<String> args) {
           '--platform' ||
           '--artifacts' ||
           '--avd' ||
+          '--device' ||
           '--phone-only' ||
-          '--device':
+          '--desktop-only':
         o[args[i].substring(2)] = args[++i];
       case '--setup-link-file' ||
           '--server-stop-cmd' ||
@@ -487,6 +492,8 @@ Future<Map<String, String>> _runTerminal(
         final f? => p.absolute(f),
         null => null,
       },
+      phoneOnly: opts['phone-only']?.split(','),
+      desktopOnly: opts['desktop-only']?.split(','),
     );
     writeHome(c);
     File(p.join(bin, 'omp')).copySync(p.join(c.bin, 'omp'));
@@ -661,8 +668,8 @@ Future<String> _phonePhase(String repo, String artifacts, String phase, Map<Stri
     [
       ...['--run-dir', artifacts, '--phase', phase, '--platform', opts['platform']!],
       if (opts['avd'] case final avd?) ...['--avd', avd],
-      if (opts['phone-only'] case final only?) ...['--only', only],
       if (opts['device'] case final device?) ...['--device', device],
+      if (opts['phone-only'] case final only?) ...['--only', only],
       if (opts['phone-from-tree'] != null) '--from-tree',
     ],
     workingDirectory: repo,

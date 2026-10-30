@@ -339,11 +339,17 @@ void openWindow(BuildContext context, TerminalRemote remote, String window, {boo
       ),
     );
 
-/// Asks where to start a session, starts it and opens it.
-Future<void> openNewSession(BuildContext context, TerminalRemote remote) async {
+/// Asks where to start a session, starts it and opens it. [profile] is the omp profile picked last time ('' the
+/// default); [onProfile] keeps a new pick.
+Future<void> openNewSession(
+  BuildContext context,
+  TerminalRemote remote, {
+  String profile = '',
+  ValueChanged<String>? onProfile,
+}) async {
   final launched = await showAppSheet<({String window, bool agent})>(
     context,
-    builder: (_) => NewSessionSheet(remote: remote),
+    builder: (_) => NewSessionSheet(remote: remote, profile: profile, onProfile: onProfile),
   );
   if (launched == null || !context.mounted) return;
   if (launched.agent) {
@@ -413,8 +419,10 @@ String sessionState(LiveSummary s) => s.ask != null
 
 Color sessionColor(LiveSummary s) => s.ask != null ? C.warn : (s.busy ? C.accent : C.dim2);
 
-/// What the agent's status bar shows of [s], each part only when known: "Opus 4.5 · 49% · $43.34".
+/// What the agent's status bar shows of [s], each part only when known, after its omp profile when that isn't the
+/// default: "personal · Opus 4.5 · 49% · $43.34".
 String sessionFacts(LiveSummary s) => [
+  if (s.profile.isNotEmpty) s.profile,
   if (s.model.isNotEmpty) shortModel(s.model),
   if (s.ctx != null) '${s.ctx}%',
   if (s.cost != null) money(s.cost!),
@@ -512,6 +520,9 @@ class TerminalList extends StatefulWidget {
     this.looks = const {},
     this.onLooks,
     this.computer,
+    this.profileFilter,
+    this.onProfileFilter,
+    this.newSessionProfile,
     super.key,
   });
   final TerminalRemote remote;
@@ -532,6 +543,15 @@ class TerminalList extends StatefulWidget {
   /// The computer's name, for advice about it; null says "the computer".
   final String? computer;
 
+  /// The omp profile whose sessions show ('' the default), as kept; null shows every profile's. [onProfileFilter]
+  /// keeps a new choice.
+  final String? profileFilter;
+  final ValueChanged<String?>? onProfileFilter;
+
+  /// The omp profile a new session starts in, as last picked in the New session sheet ('' the default); asked each
+  /// time, so a pick made since the list was built counts.
+  final String Function()? newSessionProfile;
+
   @override
   State<TerminalList> createState() => _TerminalListState();
 }
@@ -542,6 +562,9 @@ class _TerminalListState extends State<TerminalList> {
   late final Set<String> _folded = {...widget.folded};
   late ProjectSort _sort = widget.sort;
   late final Map<String, TileLook> _looks = {...widget.looks};
+
+  /// The omp profile whose sessions show; null for all ([TerminalList.profileFilter]).
+  late String? _filter = widget.profileFilter;
 
   /// By activity: the projects' order as last shown, kept until the list
   /// is pulled to refresh or the sort changes.
@@ -595,6 +618,19 @@ class _TerminalListState extends State<TerminalList> {
     widget.onSort(sort);
   }
 
+  /// The omp profile a session started here runs in: the New session sheet's last pick, while the computer still has
+  /// it.
+  String _newProfile() {
+    final profile = widget.newSessionProfile?.call() ?? '';
+    return remote.agent == Agent.omp && remote.profiles.contains(profile) ? profile : '';
+  }
+
+  /// Shows only [profile]'s sessions (null: every profile's), and keeps the choice.
+  void _setFilter(String? profile) {
+    setState(() => _filter = profile);
+    widget.onProfileFilter?.call(profile);
+  }
+
   /// Starts the agent in a new window in [cwd], and opens its session.
   Future<void> _launchHere(String cwd) async {
     if (_launching != null) return;
@@ -603,7 +639,7 @@ class _TerminalListState extends State<TerminalList> {
     // the session still opens, or what went wrong still shows.
     final nav = Navigator.of(context);
     try {
-      final window = await remote.launch(cwd, startAgent: true);
+      final window = await remote.launch(cwd, startAgent: true, profile: _newProfile());
       // An agent the phone started: its session's key is its window's.
       if (nav.mounted) openSession(nav.context, remote, window, starting: true);
     } on Object catch (e) {
@@ -867,7 +903,8 @@ class _TerminalListState extends State<TerminalList> {
                       builder: (_, color, _) => Icon(Icons.auto_awesome, size: 18, color: color),
                     ),
                     title: _titleText(title),
-                    // How it stands, then the agent's status bar: model, context used, spend; and the context bar.
+                    // How it stands, its omp profile, then the agent's status bar: model, context used, spend; and the
+                    // context bar.
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1015,7 +1052,7 @@ class _TerminalListState extends State<TerminalList> {
               ListTile(
                 key: const ValueKey('project-menu-new'),
                 leading: Icon(isIos ? Icons.add_rounded : Icons.add, color: C.accent),
-                title: Text('New ${remote.agent.label} session here'),
+                title: Text('New ${remote.agent.labelIn(_newProfile())} session here'),
                 enabled: remote.online && _launching == null,
                 onTap: () => run(() => unawaited(_launchHere(cwd))),
               ),
@@ -1049,26 +1086,73 @@ class _TerminalListState extends State<TerminalList> {
     },
   );
 
-  /// Above the projects: how they're ordered. A tap switches to the other order (there are only two), no menu. Its
-  /// press shows as a rounded pill around it, ending where the headings' trailing edge does.
-  Widget _sortControl() => Align(
+  /// Above the projects: which omp profile's sessions show ([filter], when the computer has more than the default)
+  /// and how the projects are ordered ([sort], when there are some to order); [profiles] names the profiles besides
+  /// the default, sorted.
+  Widget _controls({
+    required bool sort,
+    required bool filter,
+    required String? current,
+    List<String> profiles = const [],
+  }) => Align(
     alignment: Alignment.centerRight,
     child: Padding(
       padding: const EdgeInsets.only(right: 16),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 4,
+        children: [
+          if (filter)
+            _pill(
+              key: const ValueKey('profile-filter'),
+              id: 'profile-filter',
+              icon: Icons.filter_list,
+              label: _profileLabel(current),
+              tooltip: 'Show sessions from',
+              hint: 'Picks the omp profile whose sessions show',
+              onTap: () => unawaited(_profileMenu(profiles, current)),
+            ),
+          // A tap switches to the other order (there are only two), no menu.
+          if (sort)
+            _pill(
+              key: const ValueKey('project-sort'),
+              id: 'project-sort',
+              icon: Icons.swap_vert,
+              label: _sortLabel(_sort),
+              tooltip: 'Sort projects',
+              hint: 'Switches to ${_sortLabel(_sort == ProjectSort.name ? ProjectSort.activity : ProjectSort.name)}',
+              onTap: () => _setSort(_sort == ProjectSort.name ? ProjectSort.activity : ProjectSort.name),
+            ),
+        ],
+      ),
+    ),
+  );
+
+  /// One of [_controls]: [icon] and [label]. Its press shows as a rounded pill around it, the last one ending where
+  /// the headings' trailing edge does.
+  Widget _pill({
+    required Key key,
+    required String id,
+    required IconData icon,
+    required String label,
+    required String tooltip,
+    required String hint,
+    required VoidCallback onTap,
+  }) =>
       // A node of its own: otherwise accessibility reads the pill as the whole
       // row (the list item's node), and a tap at that row's middle misses it.
-      child: Semantics(
+      Semantics(
         container: true,
-        identifier: 'project-sort',
+        identifier: id,
         button: true,
-        label: _sortLabel(_sort),
-        tooltip: 'Sort projects',
-        hint: 'Switches to ${_sortLabel(_sort == ProjectSort.name ? ProjectSort.activity : ProjectSort.name)}',
+        label: label,
+        tooltip: tooltip,
+        hint: hint,
         excludeSemantics: true,
         child: InkWell(
-          key: const ValueKey('project-sort'),
+          key: key,
           borderRadius: C.round(Panel.headingRadius),
-          onTap: () => _setSort(_sort == ProjectSort.name ? ProjectSort.activity : ProjectSort.name),
+          onTap: onTap,
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 36),
             child: Padding(
@@ -1076,14 +1160,14 @@ class _TerminalListState extends State<TerminalList> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.swap_vert, size: 16, color: C.dim),
+                  Icon(icon, size: 16, color: C.dim),
                   const SizedBox(width: 4),
                   // The new label cross-fades in, so the switch reads as one.
                   AnimatedSwitcher(
                     duration: Motion.of(context),
                     child: Text(
-                      _sortLabel(_sort),
-                      key: ValueKey(_sort),
+                      label,
+                      key: ValueKey(label),
                       style: TextStyle(fontSize: 13, color: C.dim),
                     ),
                   ),
@@ -1092,9 +1176,47 @@ class _TerminalListState extends State<TerminalList> {
             ),
           ),
         ),
-      ),
-    ),
-  );
+      );
+
+  /// How the profile filter names [profile]: null is every profile, '' the default.
+  static String _profileLabel(String? profile) => switch (profile) {
+    null => 'All profiles',
+    '' => 'default',
+    final name => name,
+  };
+
+  /// The profile filter's choices: every profile, the default, then [profiles]; [current] is ticked.
+  Future<void> _profileMenu(List<String> profiles, String? current) async {
+    final r = await showAppSheet<({String? profile})>(
+      context,
+      builder: (sheet) {
+        Widget choice(String key, String? profile) => ListTile(
+          key: ValueKey('profile-filter-$key'),
+          title: Text(_profileLabel(profile)),
+          trailing: profile == current ? Icon(Icons.check, color: C.accent) : null,
+          onTap: () => Navigator.of(sheet).pop((profile: profile)),
+        );
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 8),
+                child: Text('Show sessions from', style: sheetTitleStyle),
+              ),
+              choice('all', null),
+              choice('default', ''),
+              for (final name in profiles) choice(name, name),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+    if (r == null || !mounted) return;
+    _setFilter(r.profile);
+  }
 
   static String _sortLabel(ProjectSort s) => switch (s) {
     ProjectSort.name => 'Name',
@@ -1133,7 +1255,7 @@ class _TerminalListState extends State<TerminalList> {
               subtitle: _badged(
                 w,
                 Text(
-                  '${w.program} · ${shortPath(remote, w.cwd)}',
+                  '${w.profile.isEmpty ? w.program : '${w.program} · ${w.profile}'} · ${shortPath(remote, w.cwd)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 13, color: C.dim),
@@ -1214,7 +1336,13 @@ class _TerminalListState extends State<TerminalList> {
       final note = linkNote(remote, color: Colors.transparent);
       // The orchestrator has its own bar, not a place in the list; its window is still claimed.
       final sessions = remote.sessions.where((s) => !s.orchestrator).toList();
-      final groups = groupedSessions(sessions, _sort, ranked: _ranked);
+      // The omp profiles there are: the default, the computer's, and any a session runs in.
+      final known = {'', ...remote.profiles, for (final s in sessions) s.profile};
+      final showFilter = known.length > 1;
+      // A profile no longer there reads as all of them; the kept choice stays for when it's back.
+      final filter = showFilter && known.contains(_filter) ? _filter : null;
+      final visible = filter == null ? sessions : sessions.where((s) => s.profile == filter).toList();
+      final groups = groupedSessions(visible, _sort, ranked: _ranked);
       _noteFinished(sessions, watched: remote.watchedSession);
       // What's shown is what stays: a project's activity reorders it only
       // on the next refresh.
@@ -1256,13 +1384,38 @@ class _TerminalListState extends State<TerminalList> {
                 // Rows scroll on under the home indicator; the last one still comes up clear of the +.
                 padding: EdgeInsets.only(bottom: AddButton.contentInset + MediaQuery.paddingOf(context).bottom),
                 children: [
-                  if (groups.isEmpty && windows.isEmpty) _empty(),
-                  if (groups.length > 1) _sortControl(),
+                  if (sessions.isEmpty && windows.isEmpty) _empty(),
+                  if (groups.length > 1 || showFilter)
+                    _controls(
+                      sort: groups.length > 1,
+                      filter: showFilter,
+                      current: filter,
+                      profiles: [...known.where((n) => n.isNotEmpty)]..sort(),
+                    ),
+                  if (filter != null && groups.isEmpty && sessions.isNotEmpty)
+                    Padding(
+                      key: const ValueKey('profile-filter-empty'),
+                      padding: const EdgeInsets.fromLTRB(40, 24, 40, 24),
+                      child: Column(
+                        children: [
+                          Text(
+                            'No sessions from ${_profileLabel(filter)} here.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: C.dim, height: 1.5),
+                          ),
+                          TextButton(
+                            key: const ValueKey('profile-filter-show-all'),
+                            onPressed: () => _setFilter(null),
+                            child: const Text('Show all'),
+                          ),
+                        ],
+                      ),
+                    ),
                   for (final (i, g) in groups.indexed) _project(g, groups.length, first: i == 0),
                   if (windows.isNotEmpty) ...[
                     Panel(
                       key: const ValueKey('windows-heading'),
-                      title: groups.isEmpty ? 'WINDOWS' : 'OTHER WINDOWS',
+                      title: sessions.isEmpty ? 'WINDOWS' : 'OTHER WINDOWS',
                       children: const [],
                     ),
                     if (switchable > 0)
@@ -1841,11 +1994,16 @@ class _TerminalPageState extends State<TerminalPage> {
 
 /// A new terminal window in one of the computer's projects (or any folder typed in),
 /// or in a new project folder made under one of the computer's Project folders,
-/// starting the computer's coding agent unless turned off. Pops the new window's
+/// starting the computer's coding agent unless turned off, in the omp profile
+/// picked when the computer has more than the default. Pops the new window's
 /// key and whether the agent runs in it.
 class NewSessionSheet extends StatefulWidget {
-  const NewSessionSheet({required this.remote, super.key});
+  const NewSessionSheet({required this.remote, this.profile = '', this.onProfile, super.key});
   final TerminalRemote remote;
+
+  /// The omp profile picked last time ('' the default); [onProfile] keeps a new pick.
+  final String profile;
+  final ValueChanged<String>? onProfile;
 
   @override
   State<NewSessionSheet> createState() => _NewSessionSheetState();
@@ -1862,7 +2020,13 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
   final _name = TextEditingController();
   String? _rootPath;
 
+  /// The omp profile picked; [_chosen] is it while the computer has it.
+  late String _profile = widget.profile;
+
   TerminalRemote get remote => widget.remote;
+
+  /// The omp profile the agent starts in: the one picked, while the computer has it; else the default.
+  String get _chosen => remote.agent == Agent.omp && remote.profiles.contains(_profile) ? _profile : '';
 
   @override
   void initState() {
@@ -1894,7 +2058,7 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
     setState(() => _launching = cwd);
     try {
       final agent = _agent;
-      final window = await remote.launch(cwd, startAgent: agent);
+      final window = await remote.launch(cwd, startAgent: agent, profile: agent ? _chosen : '');
       if (mounted) Navigator.of(context).pop((window: window, agent: agent));
     } on Object catch (e) {
       if (mounted) {
@@ -1910,7 +2074,7 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
     setState(() => _launching = root);
     try {
       final agent = _agent;
-      final window = await remote.create(root, _name.text.trim(), startAgent: agent);
+      final window = await remote.create(root, _name.text.trim(), startAgent: agent, profile: agent ? _chosen : '');
       if (mounted) Navigator.of(context).pop((window: window, agent: agent));
     } on Object catch (e) {
       if (mounted) {
@@ -2088,6 +2252,27 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
                     title: Text('Start ${remote.agent.label}', style: const TextStyle(fontSize: 15)),
                     subtitle: Text('Off: just a shell', style: TextStyle(fontSize: 12, color: C.dim)),
                   ),
+                  if (_agent && remote.agent == Agent.omp && remote.profiles.isNotEmpty)
+                    Padding(
+                      key: const ValueKey('start-profile'),
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final p in ['', ...remote.profiles])
+                            ChoiceChip(
+                              key: ValueKey('start-profile-${p.isEmpty ? 'default' : p}'),
+                              label: Text(p.isEmpty ? 'default' : p),
+                              selected: _chosen == p,
+                              onSelected: (_) {
+                                setState(() => _profile = p);
+                                widget.onProfile?.call(p);
+                              },
+                            ),
+                        ],
+                      ),
+                    ),
                   if (_creating) ..._createForm(note) else ..._pickList(note),
                 ],
               ),

@@ -57,6 +57,9 @@ class LiveSession {
   final String key;
   LiveLog log;
   Agent agent = Agent.omp;
+
+  /// The omp profile it runs in ([LiveSummary.profile]).
+  String profile = '';
   String? window;
 
   /// What its extension said of its terminal, to find [window] again.
@@ -96,6 +99,7 @@ class LiveSession {
     key: key,
     id: id,
     agent: agent,
+    profile: profile,
     window: window,
     title: title,
     cwd: cwd,
@@ -349,6 +353,9 @@ class LiveHub {
     }
     session
       ..agent = agent
+      ..profile = agent == Agent.omp && m['profile'] is String && isOmpProfile(m['profile'] as String)
+          ? m['profile'] as String
+          : ''
       ..window = window
       .._term = term
       ..id = s['id'] as String? ?? ''

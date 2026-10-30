@@ -269,10 +269,11 @@ class _OrchestratorSheetState extends State<OrchestratorSheet> {
         o = await _arrival(const Duration(seconds: 30));
       }
       await remote.prompt(o.key, text);
-      _field.clear();
+      // Closed while it went: the prompt is sent all the same, and its draft goes.
+      if (mounted) _field.clear();
       unawaited(saveDraft(_draftKey, ''));
     } on Object catch (e) {
-      _fail(e);
+      if (mounted) _fail(e);
     } finally {
       if (mounted) {
         setState(() {
@@ -312,15 +313,17 @@ class _OrchestratorSheetState extends State<OrchestratorSheet> {
     _released = false;
     widget.error.value = null;
     setState(() => _voice = _Voice.checking);
+    // The language the voice sheet listens in: the phone's choice, else Auto's.
+    final language = await voiceLanguage.resolve(voiceSource);
     SpeechCheck check;
     try {
-      check = await voiceSource.check();
+      check = await voiceSource.check(language);
     } on Object {
       check = const SpeechCheck(SpeechStatus.unavailable);
     }
     if (!mounted) return;
     if (check.status != SpeechStatus.ready) {
-      widget.error.value = speechProblemText(check);
+      widget.error.value = speechProblemText(check, language);
       setState(() => _voice = _Voice.off);
       return;
     }
@@ -330,21 +333,23 @@ class _OrchestratorSheetState extends State<OrchestratorSheet> {
       return;
     }
     unawaited(HapticFeedback.mediumImpact());
-    _sub = voiceSource.listen().listen(
-      (e) {
-        if (!mounted) return;
-        switch (e) {
-          case SpeechHeard(:final text):
-            setState(() => _live = text);
-          case SpeechLevel(:final level):
-            setState(() => _level = level);
-          case SpeechEnded():
-            _finish();
-        }
-      },
-      onDone: _finish,
-      onError: (Object _) => _finish(),
-    );
+    _sub = voiceSource
+        .listen(language)
+        .listen(
+          (e) {
+            if (!mounted) return;
+            switch (e) {
+              case SpeechHeard(:final text):
+                setState(() => _live = text);
+              case SpeechLevel(:final level):
+                setState(() => _level = level);
+              case SpeechEnded():
+                _finish();
+            }
+          },
+          onDone: _finish,
+          onError: (Object _) => _finish(),
+        );
     setState(() => _voice = _Voice.listening);
   }
 

@@ -167,6 +167,33 @@ void main() {
     remote.flush();
   });
 
+  testWidgets('closing the sheet while it starts the orchestrator still sends the prompt', (tester) async {
+    state();
+    await pumpList(tester);
+    await openSheet(tester);
+    await tester.enterText(input, 'what is running?');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('orchestrator-send')));
+    await tester.pump();
+    await tester.pump(Duration.zero);
+    final start = runs('orchestrator').single;
+    await tester.tap(find.byKey(const ValueKey('orchestrator-close')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('orchestrator-sheet')), findsNothing);
+
+    remote.handle('ran', {'id': start['id'], 'window': 'kitty-1/9'});
+    await tester.pump();
+    state(orchestrator: true);
+    await tester.pump();
+    await tester.pump(Duration.zero);
+    final prompt = runs('prompt').single;
+    expect(prompt, containsPair('text', 'what is running?'));
+    remote.handle('ran', {'id': prompt['id'], 'error': 'The computer went away.'});
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    remote.flush();
+  });
+
   testWidgets('the microphone listens while held and puts what it heard after what was typed, unsent', (tester) async {
     state(orchestrator: true);
     await pumpList(tester);

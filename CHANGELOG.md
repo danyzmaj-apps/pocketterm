@@ -2,6 +2,18 @@
 
 What each PocketTerm release brings.
 
+## Unreleased
+
+Servers and the push relay need no update. To have sessions from your omp profiles reach the phone, click **Install** or **Update** for omp in PocketTerm on the computer.
+
+### Desktop app
+
+- **omp profiles.** PocketTerm's extension goes into every omp profile (`omp --profile <name>`) as well as the default, and **Settings → Coding agents** lists them; a profile made later asks for **Install** again. A session started from the phone in a profile runs `omp --profile=<name>`, switching a screen-only window to its conversation resumes it in its own profile, and notifications name the profile (`omp · personal finished · garden`).
+
+### Phone app
+
+- **omp profiles.** A session from an omp profile other than the default says so in its row and its header (`Idle · 4m · personal · Sonnet 4.5`), a filter above the projects shows one profile's sessions, and **New session** picks the profile the new omp starts in, remembered per computer.
+
 ## 0.1.7
 
 Servers and the push relay need no update. To have omp and Claude Code in iTerm2 found as their window, and to use the orchestrator, click **Update** for them in PocketTerm on the computer.
@@ -14,6 +26,10 @@ Servers and the push relay need no update. To have omp and Claude Code in iTerm2
 ### Phone app
 
 - **Ask about your sessions.** A bar beside the + on the Terminal list says what the orchestrator is up to; tap it for a screen-high chat with it. With none running, the first message starts it on the computer. Hold the microphone to talk: the sheet lights up while it listens, and letting go puts what it heard into the field for you to check and send. The orchestrator stays out of the project list.
+
+### Phone app
+
+- **Voice prompts in Croatian.** The microphone now listens in Croatian as well as English, still recognized on the phone itself. **Auto** (the default) checks what the phone has: Croatian when it comes before English in the phone's languages and the phone can recognize it, otherwise English, so it never stops at a missing language. Pick one yourself in the account sheet's **Voice prompt language**, which shows for each language whether it's **On this phone**, can be downloaded (**Download**), turned on (**Open Settings**: on an iPhone, Dictation in that language) or is **Not supported on this phone** (then it can't be picked). Or tap the language at the top of the voice screen to switch, even while talking: what you've said stays and listening goes on in the other language. On iOS 26 a language Apple's new recognizer lacks falls back to the older one when that has it on the device.
 
 ## 0.1.6
 

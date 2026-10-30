@@ -603,6 +603,17 @@ void main() {
     });
   });
 
+  test("a summary's omp profile goes through JSON, and the default's sends no key an older phone would see", () {
+    const s = LiveSummary(key: 'k', id: 's', title: '', cwd: '/x', epoch: 'e', seq: 1, profile: 'personal');
+    expect(s.toJson()['profile'], 'personal');
+    expect(LiveSummary.fromJson(jsonDecode(jsonEncode(s.toJson())) as Map<String, dynamic>).profile, 'personal');
+    expect(
+      const LiveSummary(key: 'k', id: 's', title: '', cwd: '/x', epoch: 'e', seq: 1).toJson(),
+      isNot(contains('profile')),
+    );
+    expect(LiveSummary.fromJson(const {'key': 'k'}).profile, '');
+  });
+
   group('slash commands', () {
     const commands = [
       (name: 'model', description: 'Switch model for this session'),

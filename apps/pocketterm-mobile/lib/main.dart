@@ -6,6 +6,7 @@ import 'package:pocketterm_core/native.dart';
 import 'package:pocketterm_core/theme.dart';
 import 'package:pocketterm_core/timing.dart';
 import 'package:pocketterm_mobile/mobile.dart';
+import 'package:pocketterm_mobile/voice.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> main() async {
@@ -13,6 +14,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   appearance.load(prefs);
+  voiceLanguage.load(prefs);
   followAppIcon(appearance, Native.setAppIcon);
   final device = await Native.deviceName();
   final session = MobileSession(prefs, device);

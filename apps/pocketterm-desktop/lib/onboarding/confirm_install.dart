@@ -73,6 +73,7 @@ Future<bool> confirmAgentInstall(
   final name = Integrations.name(agent);
   String tilde(String dir) => p.isWithin(home, dir) ? '~/${p.relative(dir, from: home).replaceAll(r'\', '/')}' : dir;
   final verb = update ? 'Update' : 'Install';
+  final ompDirs = agent == Agent.omp ? integrations.ompDirs : const <String>[];
   return confirmInstall(
     context,
     title: '$verb PocketTerm in $name?',
@@ -86,8 +87,8 @@ Future<bool> confirmAgentInstall(
     what: switch (agent) {
       Agent.omp =>
         '${update ? 'Replaces' : 'Copies'} PocketTerm\u2019s omp extension (pocketterm-live.ts) '
-            '${update ? 'in' : 'into'} ${tilde(integrations.ompDir)}. Open omp sessions load it once you restart '
-            'them with ${agent.resume}.',
+            '${update ? 'in' : 'into'} ${ompDirs.map(tilde).join(' and ')}. Open omp sessions load it once you '
+            'restart them with ${agent.resume}.',
       Agent.claude =>
         '${update ? 'Replaces' : 'Copies'} PocketTerm\u2019s Claude Code plugin '
             '${update ? 'in' : 'to'} ${tilde(integrations.claudeDir)} and has Claude Code '
@@ -103,7 +104,8 @@ Future<bool> confirmAgentInstall(
                   'claude plugin install pocketterm@pocketterm',
     },
     undo: switch (agent) {
-      Agent.omp => 'To take it out later, delete pocketterm-live.ts from that folder.',
+      Agent.omp =>
+        'To take it out later, delete pocketterm-live.ts from ${ompDirs.length > 1 ? 'those folders' : 'that folder'}.',
       Agent.claude => 'To take it out later, run claude plugin uninstall pocketterm@pocketterm.',
     },
   );

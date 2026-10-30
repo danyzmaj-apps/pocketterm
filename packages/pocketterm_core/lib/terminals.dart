@@ -93,7 +93,8 @@ class Terminals {
   /// Every window of every terminal. A terminal window attached to tmux is
   /// left out for its tmux pane, which names it as [TermWindow.via]; a
   /// Ghostty window, which tells no tty, once [tieGhostty] tells which
-  /// tmux client it runs (its tty is then remembered).
+  /// tmux client it runs (its tty is then remembered). An omp window with a
+  /// tty carries the profile its command line names ([TermWindow.profile]).
   Future<List<TermWindow>> windows() async {
     final procs = await snapshot();
     final problems = <String, String>{};
@@ -125,7 +126,14 @@ class Terminals {
         }
       }
     }
-    return merge(hosts, lists, {for (final MapEntry(:key, :value) in clients.entries) key: value.pane}, shows);
+    final panes = {for (final MapEntry(:key, :value) in clients.entries) key: value.pane};
+    return [
+      for (final w in merge(hosts, lists, panes, shows))
+        if (w.agent == Agent.omp && w.tty.isNotEmpty)
+          w.copyWith(profile: ompProfileOfArgs(procs.foreground(w.tty)?.args ?? ''))
+        else
+          w,
+    ];
   }
 
   /// What [tieGhostty] couldn't tell apart, as logged (once each).
@@ -362,8 +370,9 @@ class Terminals {
   String describe(TerminalHost host) => viaTmux(host) ? '${host.label} (in tmux)' : host.label;
 
   /// A new window in [cwd] in [host] running the login shell, which then
-  /// starts [agent] if given; its key (the tmux pane's, where [viaTmux]).
-  Future<String> launch(String cwd, {required TerminalHost host, Agent? agent}) async {
+  /// starts [agent] if given, in omp [profile] ('' the default); its key (the
+  /// tmux pane's, where [viaTmux]).
+  Future<String> launch(String cwd, {required TerminalHost host, Agent? agent, String profile = ''}) async {
     if (!Directory(cwd).existsSync()) throw TerminalException('No such folder: $cwd');
     final String key;
     if (viaTmux(host)) {
@@ -380,7 +389,7 @@ class Terminals {
       key = await host.launch(cwd);
     }
     // The shell reads it once it's up: the terminal holds what's typed.
-    if (agent != null) await send(key, agent.command, enter: true);
+    if (agent != null) await send(key, agent.commandIn(profile), enter: true);
     return key;
   }
 
@@ -468,10 +477,11 @@ class Terminals {
     required List<String> roots,
     required TerminalHost host,
     Agent? agent,
+    String profile = '',
   }) async {
     final cwd = createProject(root, name, roots: roots);
     try {
-      return await launch(cwd, host: host, agent: agent);
+      return await launch(cwd, host: host, agent: agent, profile: profile);
     } on Object {
       try {
         Directory(cwd).deleteSync();

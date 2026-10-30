@@ -62,7 +62,7 @@ flowchart LR
 | `desktop/lib/test_hooks.dart` | Test builds only (`--dart-define=POCKETTERM_SMOKE=true`): the environment variables that point the app at stand-ins ([SECURITY.md](../SECURITY.md#test-builds)) |
 | `desktop/lib/prompt_files.dart` | Files from phone prompts: saved under safe names in a folder per prompt in the temp folder's `pocketterm-files` (deleted once older than a day, when PocketTerm starts or more arrive) and named in the prompt as `@path` |
 | `desktop/lib/terminal_bridge.dart` | The phone's way in: sessions and screens out on this computer's topic, its requests in |
-| `desktop/lib/integrations.dart` | Finding omp and Claude Code on the computer, and installing and updating the bundled omp extension and Claude Code plugin (**Settings → Coding agents**, the setup checklist, Settings' status bar) |
+| `desktop/lib/integrations.dart` | Finding omp and Claude Code on the computer, and installing and updating the bundled omp extension (into the default profile and each omp profile under `~/.omp/profiles`) and Claude Code plugin (**Settings → Coding agents**, the setup checklist, Settings' status bar) |
 | `desktop/macos/Runner/` | The Mac's native side: the main window, the menu-bar item, activation policy, launch at login, idle time, the Dock icon, Sparkle |
 | `desktop/windows/` | The Windows runner (single instance, `pocketterm://` links handed to the running instance) and `installer.iss` |
 | `desktop/integrations/omp/pocketterm-live.ts` | omp extension: the session, live, for the phone, with its model, context use and cost (omp's own tally, `sessionManager.getUsageStatistics().cost`) |
@@ -133,7 +133,7 @@ Each terminal is a `TerminalHost` (`core/lib/terminal.dart`): list its windows (
 | Op | The computer | Answer |
 | --- | --- | --- |
 | `probe {window}` | Reads the screen, waits 2 s, reads it again | `ran {busy}`: the text changed (the agent is at work) |
-| `switch {window, agent}` | omp: Esc (stops a run), Ctrl+C (empties its editor; Ctrl+U clears one line only), Ctrl+D (quits on an empty editor), waits until the tty's foreground program isn't omp (up to 8 s; 2 s where the terminal tells no tty), then types `omp -c` and Enter. Claude Code: types `/reload-plugins` and Enter | `ran {}`, or `ran {error}` |
+| `switch {window, agent}` | omp: Esc (stops a run), Ctrl+C (empties its editor; Ctrl+U clears one line only), Ctrl+D (quits on an empty editor), waits until the tty's foreground program isn't omp (up to 8 s; 2 s where the terminal tells no tty), then types `omp -c` (`omp --profile=<name> -c` when its command line named a profile) and Enter. Claude Code: types `/reload-plugins` and Enter | `ran {}`, or `ran {error}` |
 
 The phone shows "Switching…" until a session reports from that window, then its session page takes the screen's place; after 25 s it says the window didn't come back as a conversation. When the probe said busy, the sheet offers **Restart and continue**, whose session page prompts `continue` once the session is online and at rest (showing **Continue** if that fails), and **Just restart**, whose session page shows **Continue**.
 

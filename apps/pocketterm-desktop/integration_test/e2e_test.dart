@@ -145,7 +145,7 @@ class _Run {
     await report.step('settings: coding agents tab', _agentsTab);
     await report.step('settings: data protection', _dataProtection);
     await report.step('settings: launch at login switch', _launchAtLogin);
-    await report.step('settings: new sessions open in $t', _chooseTerminal);
+    await report.step('settings: new sessions open in $t', _chooseTerminal, needed: true);
     await report.step('add a phone: two pairing links', _pairingLinks, critical: true);
     await report.step('hand-off files', _handOff, critical: true);
 
@@ -158,6 +158,7 @@ class _Run {
       await report.step('stand-in phone: main scenarios', _standInMain);
     }
     await _verifyMain();
+    await _profiles();
     await report.step('phone: computer off, then Retry brings it back', _computerOff);
 
     if (c.supabaseCloud) {
@@ -168,8 +169,11 @@ class _Run {
     await report.step('restart: desktop app', _desktopRestart);
     if (File(_omp).existsSync()) {
       await report.step('real omp: /new from the phone starts a fresh session in place', _realOmp);
+      await report.step('real omp: a profile loads PocketTerm from its own folder and says so', _realOmpProfile);
     } else {
-      report.skip('real omp: /new from the phone starts a fresh session in place', 'omp is not installed');
+      report
+        ..skip('real omp: /new from the phone starts a fresh session in place', 'omp is not installed')
+        ..skip('real omp: a profile loads PocketTerm from its own folder and says so', 'omp is not installed');
     }
     await report.step('revoke: phone removed on the server', _revoke);
     if (t == 'ghostty') {
@@ -317,7 +321,9 @@ class _Run {
   /// Before PocketTerm is set up: the terminal with a plain shell, another
   /// plain shell the phone closes, two omp at work (started before PocketTerm
   /// was in omp, so they don't report: the phone switches them to their
-  /// conversation later), and folders the phone opens a session and a shell in.
+  /// conversation later), and folders the phone opens a session and a shell
+  /// in, and starts sessions in an omp profile in (the computer lists its
+  /// projects to the phone every few minutes: they're there from the start).
   Future<void> _openEarlyWindows() async {
     await term.start(makeProject(c, name('shell')));
     await _open('closeme');
@@ -325,6 +331,7 @@ class _Run {
     await _open('switchstop', autorun: 'omp --busy');
     makeProject(c, name('newsess'));
     makeProject(c, name('newshell'));
+    makeProject(c, name('profnew'));
     for (final w in ['switchgo', 'switchstop']) {
       await until('fake omp at work in ${name(w)}', () => fakeOmpLog(dir(w)).any((e) => e['event'] == 'start'));
     }
@@ -611,12 +618,17 @@ class _Run {
   Future<void> _getReady() async {
     await report.step('get ready: omp gets PocketTerm', () async {
       final ext = File(p.join(c.home, '.omp', 'agent', 'extensions', 'pocketterm-live.ts'));
-      // Nothing goes in on its own: omp's Install (listed first), then the popup's Install once read.
+      // Nothing goes in on its own: omp's Install (listed first), then the popup's Install once read
+      // (confirmAgentInstall).
       await _tap(find.descendant(of: _key('get-ready-agents'), matching: find.text('Install')).first);
+      await _see(
+        find.descendant(of: _key('confirm-install'), matching: find.textContaining('~/.omp/agent/extensions')),
+      );
+      expect(ext.existsSync(), isFalse, reason: 'installed before the person confirmed');
       await _tap(_key('confirm-install-go'));
       await until('extension installed', ext.existsSync);
       await _see(find.descendant(of: _key('get-ready-agents'), matching: find.textContaining('omp')));
-    });
+    }, needed: true);
     await report.step('get ready: sessions already open are listed', () async {
       await _see(_key('get-ready-open-sessions'), timeout: const Duration(seconds: 20));
       final windows = await app.terminals.windows();
@@ -635,7 +647,7 @@ class _Run {
     await report.step('get ready: project folders', () async {
       await _tap(find.descendant(of: _key('get-ready-folders'), matching: find.text('Choose folder…')));
       await until('project folder added', () => app.projectRoots.contains(c.projects));
-    });
+    }, needed: true);
     await report.step('get ready: phone code', () async {
       // A shared server (--server <url>) may still list another run's phone: then the card says one is signed
       // in, and this run's links come from Add a phone.
@@ -839,6 +851,15 @@ class _Run {
         'newProjectName': name('made'),
         'endSession': name('endme'),
         'realOmp': {'title': name('realomp'), 'project': name('realomp')},
+        // Phase profiles (_profiles): omp in profile [_profile] (a session, a screen-only window to switch, a
+        // project to start one in), and a profile with no sessions.
+        'profiles': {
+          'profile': _profile,
+          'empty': _emptyProfile,
+          'session': name('profchat'),
+          'switch': name('profswitch'),
+          'project': name('profnew'),
+        },
         'lockedComputer': 'Spare Mac $t',
         'prompt': 'hello from phone $t',
       }),
@@ -1071,6 +1092,17 @@ class _Run {
     File(p.join(c.rpcDir, 'approve-on-computer.done')).writeAsStringSync(answer);
   }
 
+  /// Scenario [name], checked here once the phone ran [flow]; a run limited to some flows (`--phone-only`) skips
+  /// the checks of the others, which nothing did.
+  Future<void> _after(String flow, String name, Future<void> Function() body) async {
+    if (c.phoneRan(flow)) {
+      // Checked whenever the phone ran it; the stand-in phone's, as the run's other steps.
+      await report.step(name, body, needed: c.phone);
+    } else {
+      report.skip(name, 'phone flow $flow not run (--phone-only)');
+    }
+  }
+
   /// What every phone scenario should have done on the computer, from the
   /// fake omp's and the shells' own logs.
   Future<void> _verifyMain() async {
@@ -1078,11 +1110,12 @@ class _Run {
     Iterable<Map<String, dynamic>> prompts(String w) =>
         log(w).where((e) => e['event'] == 'prompt' && e['source'] == 'phone');
 
-    await report.step('phone: prompt reaches the agent', () async {
+    await _after('conversation-0', 'phone: prompt reaches the agent', () async {
       await until('prompt in chat', () => prompts('chat').any((e) => '${e['text']}'.startsWith('hello from phone')));
       expect(prompts('chat').where((e) => '${e['text']}'.startsWith('hello from phone')).length, 1);
     });
-    await report.step(
+    await _after(
+      'approval',
       t == 'ghostty'
           ? 'phone: approval left to the computer (Ghostty has no screen to read)'
           : 'phone: approval answered',
@@ -1105,7 +1138,7 @@ class _Run {
         expect(answered['approve'], isTrue);
       },
     );
-    await report.step('phone: keys reach the window', () async {
+    await _after('screen', 'phone: keys reach the window', () async {
       final typed = await until('typed in the shell', () {
         final l = typedLog(c, name('shell'));
         // What screen.yaml types (the shell shows e2e-42).
@@ -1117,7 +1150,7 @@ class _Run {
       });
       report.log('shell got: $typed');
     });
-    await report.step('phone: image arrives decrypted at the agent', () async {
+    await _after('image', 'phone: image arrives decrypted at the agent', () async {
       final e = await until(
         'image prompt',
         () => prompts('chat').where((e) => (e['images'] as List).isNotEmpty).firstOrNull,
@@ -1126,7 +1159,7 @@ class _Run {
       expect(image['decoded'], isTrue, reason: 'PNG or JPEG bytes, not sealed ones: $image');
       expect(image['bytes'] as int, greaterThan(0));
     });
-    await report.step('phone: a document arrives decrypted at the agent, named as @path', () async {
+    await _after('file', 'phone: a document arrives decrypted at the agent, named as @path', () async {
       final e = await until(
         'file prompt',
         () => prompts('chat').where((e) => (e['files'] as List? ?? const []).isNotEmpty).firstOrNull,
@@ -1137,7 +1170,7 @@ class _Run {
       expect(File(file['path'] as String).readAsBytesSync(), _doc);
       expect(e['text'] as String, contains('@"${file['path']}"'), reason: 'a name with spaces is quoted');
     });
-    await report.step('phone: new session (+) opens in $t', () async {
+    await _after('new-session', 'phone: new session (+) opens in $t', () async {
       final s = await until('a session in ${name('newsess')}', () {
         return app.live.sessions.where((s) => s.cwd == dir('newsess') && s.window != null).firstOrNull;
       }, timeout: const Duration(seconds: 40));
@@ -1153,11 +1186,11 @@ class _Run {
         e['event'] == event && '${e['text']}'.contains(text);
     Future<Map<String, dynamic>> heard(String what, bool Function(Map<String, dynamic> e) which) =>
         until(what, () => log('newsess').where(which).firstOrNull, timeout: const Duration(seconds: 60));
-    await report.step('phone: steer reaches the agent while it works', () async {
+    await _after('steer-queue', 'phone: steer reaches the agent while it works', () async {
       final e = await heard('a steer', (e) => says(e, 'steer', 'steer from phone'));
       expect('${e['text']}'.startsWith('steer from phone'), isTrue, reason: '$e');
     });
-    await report.step('phone: a queued prompt runs after the turn', () async {
+    await _after('steer-queue', 'phone: a queued prompt runs after the turn', () async {
       await until('steered, then run on its own', () {
         final l = log('newsess');
         final steer = l.indexWhere((e) => says(e, 'steer', 'steer from phone'));
@@ -1169,44 +1202,44 @@ class _Run {
         reason: 'it waited on the computer, not in the agent',
       );
     });
-    await report.step('phone: Stop interrupts the agent', () async {
+    await _after('stop', 'phone: Stop interrupts the agent', () async {
       await until('stopped from the phone', () {
         final l = log('newsess');
         final slow = l.indexWhere((e) => says(e, 'prompt', 'e2e-slow stop run'));
         return slow >= 0 && l.skip(slow + 1).any((e) => e['event'] == 'abort' && e['why'] == 'phone');
       }, timeout: const Duration(seconds: 60));
     });
-    await report.step('phone: Stop holds the queue; Resume sends what waits', () async {
+    await _after('stop', 'phone: Stop holds the queue; Resume sends what waits', () async {
       await until('stopped, then the held prompt', () {
         final l = log('newsess');
         final stop = l.indexWhere((e) => e['event'] == 'abort' && e['why'] == 'phone');
         return stop >= 0 && l.skip(stop + 1).any((e) => says(e, 'prompt', 'after stop'));
       }, timeout: const Duration(seconds: 60));
     });
-    await report.step('phone: the agent\u2019s question answered', () async {
+    await _after('question', 'phone: the agent\u2019s question answered', () async {
       final e = await heard('the question answered', (e) => e['event'] == 'question-answered');
       expect(e['answer'], 'Green');
       expect(e['custom'], isFalse);
     });
-    await report.step('phone: the plan review answered', () async {
+    await _after('plan', 'phone: the plan review answered', () async {
       final e = await heard('the plan picked', (e) => e['event'] == 'plan-picked');
       expect(e['option'], 'Approve and execute');
     });
-    await report.step('phone: /model picker answered', () async {
+    await _after('menu-model', 'phone: /model picker answered', () async {
       final e = await heard('a model picked', (e) => e['event'] == 'model');
       expect(e['model'], 'fake-model-fast');
     });
-    await report.step('phone: /resume picker searched and answered', () async {
+    await _after('menu-resume', 'phone: /resume picker searched and answered', () async {
       final e = await heard('a session resumed', (e) => e['event'] == 'resume');
       expect(e['session'], 'e2e beta session');
     });
-    await report.step('phone: screen keys Tab, Enter, Ctrl+C reach the window', () async {
+    await _after('screen-keys', 'phone: screen keys Tab, Enter, Ctrl+C reach the window', () async {
       await until('keys in the shell', () {
         final l = typedLog(c, name('shell'));
         return l.contains('key:tab') && l.contains('key:enter') && l.contains('key:ctrl+c');
       });
     });
-    await report.step('phone: close a shell window from the window list', () async {
+    await _after('close-window', 'phone: close a shell window from the window list', () async {
       await until(
         'closeme window gone',
         () async => !(await app.terminals.windows()).any((w) => w.cwd == dir('closeme')),
@@ -1216,7 +1249,7 @@ class _Run {
         expect(windows.where((x) => x.cwd == dir(w)), isNotEmpty, reason: '${name(w)} still open: ${_ws(windows)}');
       }
     });
-    await report.step('phone: new shell opens in $t without an agent', () async {
+    await _after('new-shell', 'phone: new shell opens in $t without an agent', () async {
       final w = await until('a window in ${name('newshell')}', () async {
         return (await app.terminals.windows()).where((w) => w.cwd == dir('newshell')).firstOrNull;
       }, timeout: const Duration(seconds: 40));
@@ -1224,14 +1257,14 @@ class _Run {
       expect(w.agent, isNull, reason: 'a plain shell: ${_ws([w])}');
       expect(app.live.sessions.where((s) => s.window == w.key || s.cwd == dir('newshell')), isEmpty);
     });
-    await report.step('phone: new project made in the project folder', () async {
+    await _after('new-project', 'phone: new project made in the project folder', () async {
       final made = dir('made');
       expect(Directory(made).existsSync(), isTrue, reason: '$made made');
       await until('a session or window in ${name('made')}', () async {
         return app.live.sessions.any((s) => s.cwd == made) || (await app.terminals.windows()).any((w) => w.cwd == made);
       }, timeout: const Duration(seconds: 40));
     });
-    await report.step('phone: switch to conversation, continue', () async {
+    await _after('switch-continue', 'phone: switch to conversation, continue', () async {
       final starts = await until('switchgo restarted with -c', () {
         final s = log('switchgo').where((e) => e['event'] == 'start').toList();
         return s.length >= 2 ? s : null;
@@ -1241,7 +1274,7 @@ class _Run {
       expect(starts.last['extension'], isTrue);
       await until('continue prompt', () => prompts('switchgo').any((e) => e['text'] == 'continue'));
     });
-    await report.step('phone: switch to conversation, just restart', () async {
+    await _after('switch-restart', 'phone: switch to conversation, just restart', () async {
       final starts = await until('switchstop restarted with -c', () {
         final s = log('switchstop').where((e) => e['event'] == 'start').toList();
         return s.length >= 2 ? s : null;
@@ -1253,7 +1286,7 @@ class _Run {
         () => app.live.sessions.any((s) => s.cwd == dir('switchstop') && s.window != null),
       );
     });
-    await report.step('phone: /new starts a fresh session in place', () async {
+    await _after('slash-new', 'phone: /new starts a fresh session in place', () async {
       await until('/new in chat', () => log('chat').any((e) => e['event'] == 'new'));
       final lastNew = log('chat').lastWhere((e) => e['event'] == 'new');
       // By its id: the image flow prompts it again after /new.
@@ -1263,13 +1296,197 @@ class _Run {
       });
       expect(ours(s.window ?? ''), isTrue);
     });
-    await report.step('phone: close window closes only that one', () async {
+    await _after('end-session', 'phone: close window closes only that one', () async {
       await until('endme quit', () => log('endme').any((e) => e['event'] == 'quit'));
       await until('endme window gone', () async => !(await app.terminals.windows()).any((w) => w.cwd == dir('endme')));
       final windows = await app.terminals.windows();
       for (final w in ['shell', 'chat', 'approve']) {
         expect(windows.where((x) => x.cwd == dir(w)), isNotEmpty, reason: '${name(w)} still open: ${_ws(windows)}');
       }
+    });
+  }
+
+  // ---------------------------------------------------------------- profiles
+
+  /// The omp profile the profiles scenarios run in, besides the default.
+  static const _profile = 'personal';
+
+  /// A profile with no sessions: the phone's filter finds nothing from it.
+  static const _emptyProfile = 'work';
+
+  /// Where omp in [profile] ('' the default) loads extensions from in the run's home.
+  String _extensions(String profile) => p.joinAll([
+    c.home,
+    '.omp',
+    if (profile.isNotEmpty) ...['profiles', profile],
+    'agent',
+    'extensions',
+  ]);
+
+  /// Settings → Coding agents, looked at afresh as when the window is shown again: the omp card lists
+  /// [profiles] (sorted) and offers Install, which (confirmed) puts PocketTerm in the default profile and each of
+  /// them, after which the card says it's up to date.
+  Future<void> _installInProfiles(List<String> profiles) async {
+    for (final n in profiles) {
+      Directory(p.join(c.home, '.omp', 'profiles', n)).createSync(recursive: true);
+    }
+    await app.openMain();
+    await _tap(_key('settings-tab-agents'));
+    final card = _key('settings-agent-omp');
+    await _see(find.descendant(of: card, matching: find.text('Profiles: default, ${profiles.join(', ')}')));
+    await _tap(find.descendant(of: card, matching: find.text('Install')));
+    final dialog = _key('confirm-install');
+    for (final n in ['', ...profiles]) {
+      final shown = '~/${p.relative(_extensions(n), from: c.home)}';
+      await _see(find.descendant(of: dialog, matching: find.textContaining(shown)));
+    }
+    await report.shot('install-omp-profiles');
+    await _tap(_key('confirm-install-go'));
+    for (final n in ['', ...profiles]) {
+      final ext = File(p.join(_extensions(n), 'pocketterm-live.ts'));
+      await until('PocketTerm in ${n.isEmpty ? 'the default profile' : n}', ext.existsSync);
+    }
+    // In everywhere: the card no longer offers it, and says to restart the sessions open before.
+    await until('omp up to date', () => integrationOf(app.agents![Agent.omp]!) == AgentIntegration.installed);
+    await _see(find.descendant(of: card, matching: find.textContaining('Installed')));
+    expect(find.descendant(of: card, matching: find.text('Install')), findsNothing);
+  }
+
+  /// omp profiles: the desktop finds them and installs into each; omp in one reports its profile, which a window
+  /// running it shows too; then the phone's flow (phase profiles, or the stand-in phone) lists, filters, starts
+  /// and switches sessions in it, and what it did is checked here.
+  Future<void> _profiles() async {
+    await report.step('profiles: Settings lists them, Install puts PocketTerm in each', () async {
+      // Started before PocketTerm is in its profile: it shows only its screen until Switch restarts it.
+      Directory(p.join(c.home, '.omp', 'profiles', _profile)).createSync(recursive: true);
+      await _open('profswitch', autorun: 'omp --profile=$_profile --busy');
+      final first = await until(
+        'fake omp at work in ${name('profswitch')}',
+        () => fakeOmpLog(dir('profswitch')).where((e) => e['event'] == 'start').firstOrNull,
+      );
+      expect(first['profile'], _profile);
+      expect(first['extension'], isFalse, reason: 'no PocketTerm in $_profile yet');
+      await _installInProfiles([_profile, _emptyProfile]);
+      await report.shot('settings-omp-profiles');
+    });
+    await report.step('profiles: omp in a profile reports it; its window says so', () async {
+      // As a person types it: the flag's other form.
+      await _open('profchat', autorun: 'omp --profile $_profile');
+      final s = await until(
+        '${name('profchat')} reports in a window',
+        () => app.live.sessions.where((s) => s.cwd == dir('profchat') && s.window != null).firstOrNull,
+        timeout: const Duration(seconds: 40),
+      );
+      expect(s.profile, _profile);
+      expect(ours(s.window!), isTrue, reason: 'placed in ${s.window}');
+      final windows = await app.terminals.windows();
+      final w = windows.firstWhere((w) => w.key == s.window);
+      expect(w.profile, _profile, reason: 'from its command line: ${_ws([w])}');
+      final screen = windows.where((w) => w.cwd == dir('profswitch')).single;
+      expect((screen.agent, screen.profile), (Agent.omp, _profile), reason: _ws([screen]));
+      expect(app.live.sessions.where((s) => s.cwd == dir('profswitch')), isEmpty, reason: 'only its screen');
+      expect(app.ompProfiles, [_profile, _emptyProfile]);
+    });
+    // The phone's flow, and what it did, only when the computer was made ready for it.
+    if (!c.desktopRuns('profiles:')) return;
+    if (c.phone) {
+      final code = await handOff(c.phaseDir, 'profiles', out: 'ready', timeout: const Duration(minutes: 15));
+      report.log('phone profiles → $code');
+    } else {
+      await report.step('stand-in phone: profiles scenarios', _standInProfiles);
+    }
+    await _verifyProfiles();
+  }
+
+  /// What the phone's profiles flow does, done by the stand-in phone.
+  Future<void> _standInProfiles() async {
+    final r = phone!.remote;
+    await until(
+      'the phone told of the profiles',
+      () => r.profiles.contains(_profile) && r.profiles.contains(_emptyProfile),
+      timeout: const Duration(seconds: 60),
+    );
+    final listed = await until(
+      'profchat on the phone',
+      () => r.sessions.where((s) => s.cwd == dir('profchat')).firstOrNull,
+    );
+    expect(listed.profile, _profile);
+    // + with the profile picked, then the project menu's New omp · <profile> session here: both launch so.
+    for (var i = 0; i < 2; i++) {
+      report.log('phone launched ${await r.launch(dir('profnew'), startAgent: true, profile: _profile)}');
+    }
+    final screen = r.windows.firstWhere((w) => w.cwd == dir('profswitch'));
+    expect(screen.profile, _profile);
+    await r.switchToConversation(screen.key, Agent.omp);
+    final resumed = await until(
+      'profswitch reports at rest',
+      () => r.sessions.where((s) => s.cwd == dir('profswitch') && !s.busy).firstOrNull,
+      timeout: const Duration(seconds: 40),
+    );
+    await r.prompt(resumed.key, 'continue');
+  }
+
+  /// What the profiles flow should have done on the computer, from the fake omp's and the shells' own logs; and a
+  /// profile's finished run named in its notification.
+  Future<void> _verifyProfiles() async {
+    List<Map<String, dynamic>> starts(String w) => fakeOmpLog(dir(w)).where((e) => e['event'] == 'start').toList();
+    Future<LiveSession> reports(String w) => until(
+      '${name(w)} reports in a window',
+      () => app.live.sessions.where((s) => s.cwd == dir(w) && s.window != null).firstOrNull,
+      timeout: const Duration(seconds: 40),
+    );
+
+    await _after('profiles', 'phone: New session in a profile types omp --profile=$_profile', () async {
+      final s = await until('omp started in ${name('profnew')}', () => starts('profnew').firstOrNull);
+      expect(s['profile'], _profile);
+      expect(s['args'], ['--profile=$_profile']);
+      expect(s['extension'], isTrue);
+      expect(typedLog(c, name('profnew')), contains('cmd:omp --profile=$_profile'));
+      expect((await reports('profnew')).profile, _profile);
+    });
+    await _after('profiles', 'phone: a project\u2019s New omp \u00b7 $_profile session here starts in it', () async {
+      final s = await until('a second omp in ${name('profnew')}', () {
+        final s = starts('profnew');
+        return s.length >= 2 ? s : null;
+      }, timeout: const Duration(seconds: 40));
+      expect({for (final e in s) e['pid']}.length, s.length, reason: 'each its own omp');
+      expect({for (final e in s) e['profile']}, {_profile});
+      await until(
+        'both report in $_profile',
+        () =>
+            app.live.sessions
+                .where((x) => x.cwd == dir('profnew') && x.window != null && x.profile == _profile)
+                .length >=
+            2,
+        timeout: const Duration(seconds: 40),
+      );
+    });
+    await _after('profiles', 'phone: Switch to conversation resumes in the profile', () async {
+      final s = await until('profswitch restarted with -c', () {
+        final s = starts('profswitch');
+        return s.length >= 2 ? s : null;
+      }, timeout: const Duration(seconds: 40));
+      expect(s.first['extension'], isFalse);
+      expect(s.last['args'], ['--profile=$_profile', '-c']);
+      expect(s.last['resume'], isTrue);
+      expect(s.last['extension'], isTrue);
+      expect(typedLog(c, name('profswitch')), contains('cmd:omp --profile=$_profile -c'));
+      await until(
+        'continue prompt',
+        () =>
+            fakeOmpLog(dir('profswitch'))
+                .any((e) => e['event'] == 'prompt' && e['source'] == 'phone' && e['text'] == 'continue'),
+      );
+      expect((await reports('profswitch')).profile, _profile);
+    });
+    await report.step('profiles: a finished run is notified as omp \u00b7 $_profile finished', () async {
+      final s = await reports('profchat');
+      await until('profchat at rest', () => app.live[s.key]?.busy == false);
+      final before = app.phoneNotices.length;
+      await app.terminals.send(s.window!, 'e2e notify $t', enter: true);
+      final want = '${Agent.omp.label} \u00b7 $_profile finished \u00b7 ${app.live.projectName(s)}';
+      // Another profile session's run (profswitch's continue) may finish meanwhile: wait for this one's.
+      await until('its notification: $want', () => app.phoneNotices.skip(before).any((n) => n.title == want));
     });
   }
 
@@ -1440,8 +1657,7 @@ class _Run {
   /// phone's `/new` then starts a fresh session in the same window.
   Future<void> _realOmp() async {
     final sessions = p.join(c.work, 'omp-sessions');
-    String q(String s) => "'${s.replaceAll("'", r"'\''")}'";
-    await _open('realomp', autorun: 'OMP_SKIP_SETUP=1 $_omp --session-dir ${q(sessions)} --no-title --no-lsp');
+    await _open('realomp', autorun: 'OMP_SKIP_SETUP=1 $_omp --session-dir ${_sh(sessions)} --no-title --no-lsp');
     bool here(String cwd) => _isDir(cwd, 'realomp');
     final LiveSession s;
     try {
@@ -1490,6 +1706,51 @@ class _Run {
     expect(after.key, s.key, reason: 'the same window, the same session key');
     expect(after.log.items.any((i) => '${i.args}${i.output}${i.text}'.contains('e2e-real')), isFalse);
   }
+
+  /// The real omp in a profile of its own (`omp --profile <name>`, as `--alias` and people start it), in the
+  /// throwaway home: Install put PocketTerm in the profile's folder (`~/.omp/profiles/<name>/agent/extensions`),
+  /// omp loads it from there, and the extension's hello names the profile, which omp hands it in OMP_PROFILE.
+  Future<void> _realOmpProfile() async {
+    const profile = 'pt-e2e';
+    await _installInProfiles(
+      [
+        ...{..._profilesMade, profile},
+      ]..sort(),
+    );
+    final sessions = p.join(c.work, 'omp-sessions');
+    await _open(
+      'realprof',
+      autorun: 'OMP_SKIP_SETUP=1 $_omp --profile $profile --session-dir ${_sh(sessions)} --no-title --no-lsp',
+    );
+    bool here(String cwd) => _isDir(cwd, 'realprof');
+    final LiveSession s;
+    try {
+      s = await until(
+        'real omp in $profile reports',
+        () => app.live.sessions.where((s) => here(s.cwd) && s.window != null).firstOrNull,
+        timeout: const Duration(seconds: 60),
+      );
+    } on TimeoutException {
+      for (final w in await app.terminals.windows()) {
+        if (!here(w.cwd)) continue;
+        report.log('real omp $profile: window ${w.key} ${w.program}\n${await app.terminals.plainScreen(w.key)}');
+      }
+      rethrow;
+    }
+    expect(s.profile, profile, reason: 'its hello names the profile');
+    expect(ours(s.window!), isTrue, reason: 'placed in ${s.window}');
+    final w = (await app.terminals.windows()).firstWhere((w) => w.key == s.window);
+    expect(w.profile, profile, reason: 'from its command line: ${_ws([w])}');
+  }
+
+  /// The profiles the run made in its home so far.
+  List<String> get _profilesMade {
+    final d = Directory(p.join(c.home, '.omp', 'profiles'));
+    return d.existsSync() ? [for (final e in d.listSync().whereType<Directory>()) p.basename(e.path)] : const [];
+  }
+
+  /// [s] quoted for the throwaway shell.
+  static String _sh(String s) => "'${s.replaceAll("'", r"'\''")}'";
 
   /// Whether [cwd], as an agent reports it, is project [what]'s folder. The
   /// real omp drops macOS's /private: the run's /private/tmp/… is /tmp/… to it.

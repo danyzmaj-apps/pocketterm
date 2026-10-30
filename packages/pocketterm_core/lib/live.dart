@@ -23,7 +23,8 @@ import 'package:pocketterm_core/agent.dart';
 //
 //   phone → Mac   hello  {from, session?, window?}   every 4 s while the app is in front;
 //                        session: the live session it shows, window: the screen it shows
-//   Mac → phone   state  {windows, sessions, projects, roots, home, agent, agents?, error?}   on every hello and on changes;
+//   Mac → phone   state  {windows, sessions, projects, roots, home, agent, agents?, profiles?, error?}   on every hello
+//                        and on changes;
 //                        sessions: LiveSummary.toJson, its slash commands as `cmds` [[name, description?]], the
 //                        prompts waiting in its queue as `queue` [LiveQueued.toJson] and `paused` while it's held,
 //                        `failed` when its last run ended in an error;
@@ -31,6 +32,7 @@ import 'package:pocketterm_core/agent.dart';
 //                        agents: {agent: installed | outdated | missing | off} for the coding agents found on the
 //                        computer; missing from an older computer
 //                        roots: the Mac's Project folders; projects: the git repositories under them
+//                        profiles: the computer's omp profiles besides the default, sorted; left out when none
 //   phone → Mac   sync   {from, session, epoch?, since}   catch up after a gap or on opening
 //   Mac → phone   items  {to, session, epoch, seq, reset, items, last}   answer to sync, in chunks
 //   Mac → phone   live   {session, epoch, ops}   changes to watched sessions, batched
@@ -40,7 +42,9 @@ import 'package:pocketterm_core/agent.dart';
 //                        switch {window, agent}: a screen-only agent window to its conversation (omp quits and
 //                        runs omp -c, Claude Code types /reload-plugins); queue {session, do, item?, text?, to?}:
 //                        changes the session's queue (do: edit item text, remove item, move item to, send item now
-//                        as a steer, pause, resume)
+//                        as a steer, pause, resume); launch {cwd, agent, profile?} and create {root, name, agent,
+//                        profile?}: a new window there, starting the agent when `agent`, in that omp profile when
+//                        `profile` (one of the state's `profiles`)
 //   Mac → phone   ran    {id, error?, window?, busy?, queued?}   busy: probe's answer; queued: the id a prompt
 //                        waits under in the session's queue, when it went there instead of to the agent
 //
@@ -59,8 +63,9 @@ import 'package:pocketterm_core/agent.dart';
 //   some when `wait`. An unknown conn answers 404: the extension says hello
 //   again. A connection nobody asks on for 60 s is gone.
 //
-//   ext → Mac  hello  {v, agent?, session: {id, title, cwd, model}, window?, pid, busy, ctx?, cost?, items, older,
-//                     commands}   agent: Agent.name (omp when left out); the session's newest items, oldest
+//   ext → Mac  hello  {v, agent?, profile?, session: {id, title, cwd, model}, window?, pid, busy, ctx?, cost?, items,
+//                     older, commands}   agent: Agent.name (omp when left out); profile: the omp profile it runs in
+//                     (`omp --profile`), left out for the default; the session's newest items, oldest
 //                     first; again after /new, /resume, /clear.
 //                     commands: [{name, description?}] the agent's own slash commands, then the session's
 //                     cost: what the session has spent so far, in US dollars (the agent's own tally, rounded to
@@ -1171,6 +1176,7 @@ class LiveSummary {
     required this.epoch,
     required this.seq,
     this.agent = Agent.omp,
+    this.profile = '',
     this.window,
     this.model = '',
     this.busy = false,
@@ -1190,6 +1196,7 @@ class LiveSummary {
     key: j['key'] as String,
     id: j['id'] as String? ?? '',
     agent: Agent.parse(j['agent']),
+    profile: j['profile'] as String? ?? '',
     window: j['window'] as String?,
     title: j['title'] as String? ?? '',
     cwd: j['cwd'] as String? ?? '',
@@ -1226,6 +1233,9 @@ class LiveSummary {
 
   /// Which coding agent this is.
   final Agent agent;
+
+  /// The omp profile it runs in (`omp --profile`); '' for the default and for Claude Code.
+  final String profile;
   final String? window;
   final String title;
   final String cwd;
@@ -1263,6 +1273,7 @@ class LiveSummary {
     'key': key,
     'id': id,
     'agent': agent.name,
+    if (profile.isNotEmpty) 'profile': profile,
     'window': ?window,
     'title': title,
     'cwd': cwd,

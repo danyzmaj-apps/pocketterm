@@ -9,10 +9,11 @@
 // Compiled to an executable named `omp` (the desktop tells agent windows by
 // their program's name), on the PATH of the throwaway terminals.
 //
-//   omp [-c] [--busy] [--ask]
-//     -c      carry on the last conversation in this folder
-//     --busy  start at work (a spinner), as omp in the middle of a run
-//     --ask   start asking to approve a command
+//   omp [--profile=<name> | --profile <name>] [-c] [--busy] [--ask]
+//     --profile  run in omp profile <name> (also OMP_PROFILE), as omp does
+//     -c         carry on the last conversation in this folder
+//     --busy     start at work (a spinner), as omp in the middle of a run
+//     --ask      start asking to approve a command
 //
 // A prompt, typed here or from the phone, gets `fake reply: <text>` (and a
 // line for each image or @file it carries). A prompt with:
@@ -29,10 +30,13 @@
 // `/resume` one of three sessions, narrowed by what's typed. Enter picks,
 // Esc closes. Each draws as omp's do, so PocketTerm reads it off the screen.
 //
-// The extension counts as installed while
-// $HOME/.omp/agent/extensions/pocketterm-live.ts exists when it starts, as
-// omp loads extensions once at start. Everything it hears and does goes to
-// .fake_omp/log.jsonl in its folder, one JSON object a line, for the harness.
+// The extension counts as installed while pocketterm-live.ts exists in the
+// profile's extensions folder when it starts, as omp loads extensions once at
+// start: $HOME/.omp/agent/extensions for the default profile,
+// $HOME/.omp/profiles/<name>/agent/extensions for another. Its hello names a
+// profile other than the default, as the extension does (OMP_PROFILE).
+// Everything it hears and does goes to .fake_omp/log.jsonl in its folder, one
+// JSON object a line, for the harness.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -43,11 +47,22 @@ import 'package:path/path.dart' as p;
 
 Future<void> main(List<String> args) async {
   final omp = FakeOmp(
+    args: args,
+    profile: _profileOf(args) ?? Platform.environment['OMP_PROFILE'] ?? Platform.environment['PI_PROFILE'] ?? '',
     resume: args.contains('-c') || args.contains('--continue'),
     busy: args.contains('--busy'),
     ask: args.contains('--ask'),
   );
   await omp.run();
+}
+
+/// The profile [args] name, `--profile=<name>` or `--profile <name>`; null without one.
+String? _profileOf(List<String> args) {
+  for (var i = 0; i < args.length; i++) {
+    if (args[i].startsWith('--profile=')) return args[i].substring('--profile='.length);
+    if (args[i] == '--profile' && i + 1 < args.length) return args[i + 1];
+  }
+  return null;
 }
 
 const _termVars = [
@@ -112,8 +127,15 @@ class _Picker {
 }
 
 class FakeOmp {
-  FakeOmp({required this.resume, required bool busy, required bool ask}) : _startBusy = busy, _startAsk = ask;
+  FakeOmp({required this.args, required this.profile, required this.resume, required bool busy, required bool ask})
+    : _startBusy = busy,
+      _startAsk = ask;
 
+  /// Its command line after `omp`, as the shell passed it.
+  final List<String> args;
+
+  /// The omp profile it runs in; '' the default.
+  final String profile;
   final bool resume;
   final bool _startBusy;
   final bool _startAsk;
@@ -126,9 +148,19 @@ class FakeOmp {
   late final String _home = _env['HOME'] ?? '';
 
   /// PocketTerm's extension, as omp loads it when it starts: there while
-  /// the run's throwaway home has it.
+  /// the run's throwaway home has it in this profile's extensions folder.
   late final bool _extension =
-      _env['PTE2E'] == '1' && File(p.join(_home, '.omp', 'agent', 'extensions', 'pocketterm-live.ts')).existsSync();
+      _env['PTE2E'] == '1' &&
+      File(
+        p.joinAll([
+          _home,
+          '.omp',
+          if (profile.isNotEmpty) ...['profiles', profile],
+          'agent',
+          'extensions',
+          'pocketterm-live.ts',
+        ]),
+      ).existsSync();
 
   late String _sessionId;
   late final String _title = p.basename(_cwd);
@@ -179,7 +211,15 @@ class FakeOmp {
   Future<void> run() async {
     _load();
     _tty = await _ttyOf(pid);
-    log('start', {'resume': resume, 'extension': _extension, 'tty': _tty, 'cwd': _cwd, 'busy': _startBusy});
+    log('start', {
+      'resume': resume,
+      'extension': _extension,
+      'profile': profile,
+      'args': args,
+      'tty': _tty,
+      'cwd': _cwd,
+      'busy': _startBusy,
+    });
     if (stdin.hasTerminal) {
       stdin
         ..echoMode = false
@@ -813,6 +853,7 @@ class FakeOmp {
       't': 'hello',
       'v': 1,
       'agent': 'omp',
+      if (profile.isNotEmpty) 'profile': profile,
       'session': {'id': _sessionId, 'title': _title, 'cwd': _cwd, 'model': _model},
       'window': _windowKey,
       'term': _term,

@@ -585,7 +585,8 @@ class _SessionToPickUpState extends State<SessionToPickUp> {
       widget.terminals.hosts.where((h) => h.id == w.app).firstOrNull?.label ?? w.app,
     ].join(' · ');
     // As typed: the no-break characters keep it whole on screen, not in a terminal.
-    final typed = agent.pickUp.replaceAll('\u00A0', ' ').replaceAll('\u2060', '');
+    final pickUp = agent.pickUpIn(w.profile);
+    final typed = pickUp.replaceAll('\u00A0', ' ').replaceAll('\u2060', '');
     return Row(
       children: [
         Icon(Icons.refresh, size: 18, color: C.warn),
@@ -602,7 +603,7 @@ class _SessionToPickUpState extends State<SessionToPickUp> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(agent.pickUp, style: monoStyle),
+              Text(pickUp, style: monoStyle),
               IconButton(
                 tooltip: _copied ? 'Copied' : 'Copy',
                 iconSize: 14,

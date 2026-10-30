@@ -206,6 +206,24 @@ class MobileSession extends Session {
 
   Future<void> setProjectSort(ProjectSort sort) => _prefs.setString(_sortKey, sort.name);
 
+  static const _profileFilterKey = 'pocketterm_profile_filter';
+
+  /// The omp profile whose sessions the Terminal list shows for computer [desktop] ('' the default); null, until
+  /// chosen, shows every profile's.
+  String? profileFilter(String desktop) => _prefs.getString('${_profileFilterKey}_$desktop');
+
+  Future<void> setProfileFilter(String desktop, String? profile) => profile == null
+      ? _prefs.remove('${_profileFilterKey}_$desktop')
+      : _prefs.setString('${_profileFilterKey}_$desktop', profile);
+
+  static const _newProfileKey = 'pocketterm_new_profile';
+
+  /// The omp profile a new session on computer [desktop] starts in, as last picked; '' (the default) until then.
+  String newSessionProfile(String desktop) => _prefs.getString('${_newProfileKey}_$desktop') ?? '';
+
+  Future<void> setNewSessionProfile(String desktop, String profile) =>
+      _prefs.setString('${_newProfileKey}_$desktop', profile);
+
   static const _looksKey = 'pocketterm_tile_looks';
 
   /// The names and colours the person gave rows in the Terminal list, by computer and row key. A row keeps them
@@ -977,7 +995,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           : CoachTarget(
               tip: Tip.newSession,
               radius: isIos ? 32 : 20,
-              child: AddButton(tooltip: 'New session', onPressed: () => unawaited(openNewSession(context, terminal))),
+              child: AddButton(
+                tooltip: 'New session',
+                onPressed: () => unawaited(
+                  openNewSession(
+                    context,
+                    terminal,
+                    profile: widget.session.newSessionProfile(terminal.desktopId),
+                    onProfile: (p) => unawaited(widget.session.setNewSessionProfile(terminal.desktopId, p)),
+                  ),
+                ),
+              ),
             ),
       // The list runs on under the home indicator.
       body: SafeArea(
@@ -1019,6 +1047,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   looks: widget.session.tileLooks(t.desktopId),
                   onLooks: (l) => unawaited(widget.session.setTileLooks(t.desktopId, l)),
                   computer: selected?.name,
+                  profileFilter: widget.session.profileFilter(t.desktopId),
+                  onProfileFilter: (f) => unawaited(widget.session.setProfileFilter(t.desktopId, f)),
+                  newSessionProfile: () => widget.session.newSessionProfile(t.desktopId),
                 ),
                 null when selected != null && widget.session.computerKey(selected.id) == null => _Locked(
                   computer: selected.name,

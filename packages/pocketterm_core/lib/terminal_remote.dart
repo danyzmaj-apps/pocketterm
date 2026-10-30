@@ -182,6 +182,9 @@ class TerminalRemote extends ChangeNotifier {
   /// empty from a computer that doesn't say.
   Map<Agent, AgentIntegration> agents = const {};
 
+  /// The computer's omp profiles besides the default, sorted; empty from a computer that has none or doesn't say.
+  List<String> profiles = const [];
+
   /// Where a session the phone starts opens ("kitty", "Ghostty (in tmux)");
   /// null from a Mac that doesn't say.
   String? opensIn;
@@ -407,6 +410,10 @@ class TerminalRemote extends ChangeNotifier {
     home = p['home'] as String? ?? home;
     agent = Agent.parse(p['agent']);
     agents = AgentIntegration.parseAll(p['agents']);
+    profiles = [
+      for (final x in p['profiles'] as List? ?? const [])
+        if (x is String && isOmpProfile(x)) x,
+    ];
     opensIn = p['opensIn'] as String?;
     terminals = [for (final t in p['terminals'] as List? ?? const []) TermStatus.fromJson((t as Map).cast())];
   }
@@ -588,14 +595,23 @@ class TerminalRemote extends ChangeNotifier {
       _run({'op': 'switch', 'window': window, 'agent': agent.name}, wait: answerWait * 2);
 
   /// A new terminal window in [cwd] (where [opensIn] says), running the Mac's coding [agent] if
-  /// [startAgent]; its window key.
-  Future<String> launch(String cwd, {required bool startAgent}) =>
-      _open({'op': 'launch', 'cwd': cwd, 'agent': startAgent});
+  /// [startAgent], in omp [profile] (one of [profiles]; '' the default); its window key.
+  Future<String> launch(String cwd, {required bool startAgent, String profile = ''}) => _open({
+    'op': 'launch',
+    'cwd': cwd,
+    'agent': startAgent,
+    if (startAgent && profile.isNotEmpty) 'profile': profile,
+  });
 
   /// A new folder [name] under [root] (one of [roots]) on the Mac, with a
   /// window in it as [launch]; its window key.
-  Future<String> create(String root, String name, {required bool startAgent}) =>
-      _open({'op': 'create', 'root': root, 'name': name, 'agent': startAgent});
+  Future<String> create(String root, String name, {required bool startAgent, String profile = ''}) => _open({
+    'op': 'create',
+    'root': root,
+    'name': name,
+    'agent': startAgent,
+    if (startAgent && profile.isNotEmpty) 'profile': profile,
+  });
 
   /// Runs [request], which opens a window; its key. Starting a terminal app
   /// can take a while; a window that opens after the phone stopped waiting
@@ -819,6 +835,7 @@ class TerminalRemote extends ChangeNotifier {
         'home': home,
         'agent': agent.name,
         'agents': AgentIntegration.toJsonAll(agents),
+        if (profiles.isNotEmpty) 'profiles': profiles,
         'opensIn': ?opensIn,
         'terminals': [for (final t in terminals) t.toJson()],
         'at': stateAt?.millisecondsSinceEpoch ?? now,

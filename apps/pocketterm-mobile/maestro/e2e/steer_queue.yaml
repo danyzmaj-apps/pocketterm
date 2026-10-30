@@ -56,14 +56,18 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     visible: ".*fake steered: ${STEER_RE}.*"
     timeout: 90000
-# The queued prompt runs and the agent goes idle; its reply is read once
-# Working… stopped changing the screen (while it animates, a read of the
-# screen can come back failed at once).
-- extendedWaitUntil:
-    notVisible: "Stop"
-    timeout: 30000
-- extendedWaitUntil:
-    visible: ".*fake reply: ${QUEUE_RE}.*"
-    timeout: 15000
+# The queued prompt runs and the agent goes idle. Right after the run's end
+# the screen changes fast (the reply streams, Working… animates), and a read
+# of it can come back failed at once, which fails a wait without waiting:
+# the checks go again then.
+- retry:
+    maxRetries: 3
+    commands:
+      - extendedWaitUntil:
+          visible: ".*fake reply: ${QUEUE_RE}.*"
+          timeout: 30000
+      - extendedWaitUntil:
+          notVisible: "Stop"
+          timeout: 30000
 - takeScreenshot: queued-ran
 - runFlow: sub/back.yaml

@@ -77,6 +77,8 @@ v = {
   "CLOSE_WINDOW": e.get("closeWindow", ""),
   "NEW_SHELL_PROJECT": e.get("newShellProject", ""),
   "NEW_PROJECT_NAME": e.get("newProjectName", ""),
+  "ORCH_PROJECT": (e.get("orchestrator") or {}).get("project", ""),
+  "ORCH_TEXT": (e.get("orchestrator") or {}).get("text", ""),
   "PROFILE": (e.get("profiles") or {}).get("profile", ""),
   "PROFILE_EMPTY": (e.get("profiles") or {}).get("empty", ""),
   "PROFILE_SESSION": (e.get("profiles") or {}).get("session", ""),
@@ -435,6 +437,11 @@ case $PHASE in
     flow switch-continue switch.yaml -e WINDOW=".*$SWITCH_CONTINUE_RE" -e HOW="Restart and continue"
     flow switch-restart switch.yaml -e WINDOW=".*$SWITCH_RESTART_RE" -e HOW="Just restart"
     flow end-session end_session.yaml -e SESSION="$END_SESSION_RE"
+    # The orchestrator: started from the phone on the computer, it tells the session new-session started something.
+    if [ -n "$ORCH_PROJECT" ]; then
+      flow orchestrator orchestrator.yaml -e PROJECT="$ORCH_PROJECT" -e PROJECT_RE="$ORCH_PROJECT_RE" \
+        -e TEXT="$ORCH_TEXT" -e TEXT_RE="$ORCH_TEXT_RE"
+    fi
     # How long a cold start and a return to the front take (timing.txt), and
     # that a followed session's link opens its session on a cold start.
     # E2E_AWAY_LONG=1 also leaves the app in the background for 10 minutes.

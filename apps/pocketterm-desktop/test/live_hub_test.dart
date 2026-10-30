@@ -744,6 +744,126 @@ void main() {
     await until(() => hub['kitty-1/7'] == null);
     expect(hub.sessions, isEmpty);
   });
+
+  group('the orchestrator', () {
+    late Directory tmp;
+    late String dir;
+
+    setUp(() {
+      tmp = Directory.systemTemp.createTempSync('pocketterm_orchestrator');
+      dir = p.join(tmp.path, 'orchestrator');
+      Directory(dir).createSync();
+      hub.orchestratorDir = dir;
+    });
+    tearDown(() => tmp.deleteSync(recursive: true));
+
+    Future<_Ext> at(
+      String window,
+      String cwd, {
+      String title = 'Fix bug',
+      bool busy = false,
+      List<Map<String, dynamic>> items = const [],
+    }) async {
+      final ext = await connect();
+      ext.send({
+        't': 'hello',
+        'session': {'id': window, 'title': title, 'cwd': cwd},
+        'window': window,
+        'busy': busy,
+        'items': items,
+      });
+      await until(() => hub[window] != null);
+      return ext;
+    }
+
+    var calls = 0;
+    Future<Map<String, dynamic>> call(_Ext ext, Map<String, dynamic> m) async {
+      final id = ++calls;
+      ext.send({'t': 'call', 'id': id, ...m});
+      final r = await ext.request();
+      expect(r, containsPair('t', 'result'));
+      expect(r, containsPair('id', id));
+      return r;
+    }
+
+    test('a session in its folder is the orchestrator, through a symlink too; one elsewhere is not', () async {
+      await at('kitty-1/1', dir);
+      final link = Link(p.join(tmp.path, 'via'))..createSync(dir);
+      await at('kitty-1/2', link.path);
+      await at('kitty-1/3', '/Users/me/Dev/api');
+      expect(hub['kitty-1/1']!.summary.orchestrator, isTrue);
+      expect(hub['kitty-1/2']!.summary.orchestrator, isTrue);
+      expect(hub['kitty-1/3']!.summary.orchestrator, isFalse);
+      expect(LiveSummary.fromJson(hub['kitty-1/1']!.summary.toJson()).orchestrator, isTrue);
+    });
+
+    test('sessions lists every session but the orchestrator', () async {
+      final orch = await at('kitty-1/1', dir);
+      expect((await call(orch, {'op': 'sessions'}))['text'], 'No other coding sessions are running on this computer.');
+      await at('kitty-1/2', '/Users/me/Dev/api', title: 'Add login');
+      final text = (await call(orch, {'op': 'sessions'}))['text'] as String;
+      expect(text, startsWith('1 coding session on this computer:'));
+      expect(text, contains('kitty-1/2 | api | "Add login" | omp | idle'));
+      expect(text, isNot(contains('kitty-1/1')));
+    });
+
+    test('only the orchestrator may call', () async {
+      final other = await at('kitty-1/2', '/Users/me/Dev/api');
+      final r = await call(other, {'op': 'sessions'});
+      expect(r['error'], 'Only the PocketTerm orchestrator can do that.');
+      expect(r.containsKey('text'), isFalse);
+    });
+
+    test('prompt steers an idle session, queues for a busy one, and never the orchestrator or a command', () async {
+      final orch = await at('kitty-1/1', dir);
+      final idle = await at('kitty-1/2', '/Users/me/Dev/api', title: 'Add login');
+      orch.send({
+        't': 'call',
+        'id': 1,
+        'op': 'prompt',
+        'session': 'kitty-1/2',
+        'text': 'run the tests',
+        'deliver': 'steer',
+      });
+      final req = await idle.request();
+      expect(req, containsPair('t', 'prompt'));
+      expect(req, containsPair('text', 'run the tests'));
+      expect(req, containsPair('deliver', 'steer'));
+      idle.send({'t': 'reply', 'req': req['req']});
+      final sent = await orch.request();
+      expect(sent['text'], startsWith('Sent to api "Add login" (kitty-1/2)'));
+
+      await at('kitty-1/3', '/Users/me/Dev/web', busy: true);
+      final queued = await call(orch, {'op': 'prompt', 'session': 'kitty-1/3', 'text': 'then the docs'});
+      expect(queued['text'], startsWith('Queued in'));
+      expect(hub['kitty-1/3']!.summary.queue.single.text, 'then the docs');
+
+      final self = await call(orch, {'op': 'prompt', 'session': 'kitty-1/1', 'text': 'hi'});
+      expect(self['error'], 'That is the orchestrator itself.');
+      final slash = await call(orch, {'op': 'prompt', 'session': 'kitty-1/2', 'text': '/model'});
+      expect(slash['error'], "Slash commands can't be sent from the orchestrator.");
+    });
+
+    test('read gives the newest items, oldest first, each clipped', () async {
+      final orch = await at('kitty-1/1', dir);
+      await at(
+        'kitty-1/2',
+        '/Users/me/Dev/api',
+        items: [
+          {'id': 'a', 'k': 'user', 't': 'first question'},
+          {'id': 'b', 'k': 'assistant', 't': 'first answer'},
+          {'id': 'c', 'k': 'user', 't': 'second question'},
+          {'id': 'd', 'k': 'assistant', 't': 'x' * 10000},
+        ],
+      );
+      final text = (await call(orch, {'op': 'read', 'session': 'kitty-1/2', 'last': 2}))['text'] as String;
+      expect(text, contains('(earlier items left out)'));
+      expect(text, isNot(contains('first')));
+      expect(text.indexOf('[user] second question'), lessThan(text.indexOf('[assistant] ')));
+      expect(text, contains('${'x' * 6000}…'));
+      expect(text, isNot(contains('x' * 6001)));
+    });
+  });
 }
 
 /// Ghostty listing these windows (as they are when asked).

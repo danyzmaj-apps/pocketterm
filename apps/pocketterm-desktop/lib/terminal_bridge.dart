@@ -13,6 +13,7 @@ import 'package:pocketterm_core/terminal_channel.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_desktop/desktop_host.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
+import 'package:pocketterm_desktop/orchestrator.dart';
 
 /// The desktop side of Terminal from the phone (protocol: packages/pocketterm_core/lib/live.dart): the
 /// coding sessions [LiveHub] knows and the terminals' windows
@@ -702,6 +703,8 @@ class TerminalBridge {
           await _answer(p);
         case 'older':
           await _hub.older(p['session'] as String);
+        case 'orchestrator':
+          window = await _orchestrator();
         default:
           error = 'Unknown request.';
       }
@@ -715,7 +718,7 @@ class TerminalBridge {
     final ran = {'id': id, 'error': ?error, 'window': ?window, 'busy': ?busy, 'queued': ?queued};
     _runs.done(id, ran);
     _send('ran', ran);
-    unawaited(_poll(windows: const {'launch', 'create', 'close', 'switch'}.contains(p['op'])));
+    unawaited(_poll(windows: const {'launch', 'create', 'close', 'switch', 'orchestrator'}.contains(p['op'])));
   }
 
   /// The phone's prompt, with its images and files fetched from Storage
@@ -1021,6 +1024,48 @@ class TerminalBridge {
       shown = again;
     }
     throw const LiveException("The agent won't move to that item. Open the screen to pick it there.");
+  }
+
+  /// An orchestrator launch still going: another `orchestrator` op meanwhile (Send again, a second phone) gets it.
+  Future<String>? _orchestratorStart;
+
+  /// The phone's `orchestrator` op: the orchestrator's window key, starting it (omp in [LiveHub.orchestratorDir],
+  /// lib/orchestrator.dart) unless one runs or is starting. Always omp, whatever new sessions start: only its
+  /// extension has the orchestrator's tools.
+  Future<String> _orchestrator() async {
+    final running = _hub.sessions.where((s) => s.orchestrator).firstOrNull;
+    if (running != null) return running.key;
+    if (_orchestratorStart case final starting?) return await starting;
+    final start = _orchestratorStart = _startOrchestrator();
+    try {
+      return await start;
+    } finally {
+      _orchestratorStart = null;
+    }
+  }
+
+  Future<String> _startOrchestrator() async {
+    final dir = _hub.orchestratorDir ?? (throw const LiveException("PocketTerm's local API isn't running."));
+    // omp already in its folder that hasn't said hello yet (slow to start): that one, not a second.
+    final early = (await _terms.windows())
+        .where((w) => w.agent == Agent.omp && isOrchestratorDir(w.cwd, dir))
+        .firstOrNull;
+    if (early != null) return early.key;
+    switch (_agentsNow?[Agent.omp]) {
+      case AgentIntegration.missing:
+        throw const LiveException('Install PocketTerm in omp first: Settings → Coding agents on this computer.');
+      case AgentIntegration.outdated:
+        throw const LiveException('Update PocketTerm in omp first: Settings → Coding agents on this computer.');
+      case null || AgentIntegration.installed || AgentIntegration.off:
+        break;
+    }
+    await prepareOrchestratorDir(dir);
+    return await _terms.launch(
+      dir,
+      host: await _terms.opensIn(_app()),
+      agent: Agent.omp,
+      flags: '--append-system-prompt $orchestratorPromptFile',
+    );
   }
 
   /// Answers the agent's question, approval, plan review or a picker with

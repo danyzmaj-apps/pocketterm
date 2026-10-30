@@ -8,7 +8,7 @@ appId: com.danyzmaj.pocketterm
 ---
 - runFlow: sub/home.yaml
 # The pill reads its choice (with its tooltip, Sort projects, after a line
-# break where the platform reads tooltips so).
+# break where the platform reads tooltips so); a tap switches to the other.
 - extendedWaitUntil:
     visible: "(Name|Recent activity)(\nSort projects)?"
     timeout: 10000
@@ -45,9 +45,11 @@ appId: com.danyzmaj.pocketterm
       - extendedWaitUntil:
           visible: "Recent activity(\nSort projects)?"
           timeout: 5000
-# Fold and unfold by its heading; its session's row goes and comes back.
+# Fold and unfold by its heading (in the middle: at the bottom it sits under the orchestrator's bar); its
+# session's row goes and comes back.
 - scrollUntilVisible:
     element: "${PROJECT}"
+    centerElement: true
     timeout: 20000
 - tapOn: "${PROJECT}"
 - extendedWaitUntil:
@@ -73,6 +75,7 @@ appId: com.danyzmaj.pocketterm
 - takeScreenshot: others-folded
 - scrollUntilVisible:
     element: "${PROJECT}"
+    centerElement: true
     timeout: 20000
 - longPressOn: "${PROJECT}"
 - extendedWaitUntil:

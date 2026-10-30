@@ -29,7 +29,13 @@ appId: com.danyzmaj.pocketterm
 - runFlow: sub/back.yaml
 
 # The filter, at the top of the list: every profile to start with; a session
-# of the default profile is there.
+# of the default profile is there. Looked for from the top: the list may have
+# been left scrolled down (the sessions earlier flows made push it past the screen).
+- scrollUntilVisible:
+    element:
+      id: "profile-filter"
+    direction: UP
+    timeout: 20000
 - scrollUntilVisible:
     element: "${OTHER}\n.*"
     timeout: 20000
@@ -105,8 +111,11 @@ appId: com.danyzmaj.pocketterm
 - runFlow: sub/back.yaml
 
 # Its project's menu starts the next one in the profile picked there too.
+# Scrolled to the middle: at the bottom of the screen it sits under the
+# orchestrator's bar or the +, and the long press opened those instead.
 - scrollUntilVisible:
     element: "${PROJECT}"
+    centerElement: true
     timeout: 20000
 - longPressOn: "${PROJECT}"
 - extendedWaitUntil:
@@ -176,6 +185,7 @@ appId: com.danyzmaj.pocketterm
     timeout: 20000
 - scrollUntilVisible:
     element: "${PROJECT}"
+    centerElement: true
     timeout: 20000
 - longPressOn: "${PROJECT}"
 - extendedWaitUntil:

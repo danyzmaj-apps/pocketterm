@@ -370,9 +370,15 @@ class Terminals {
   String describe(TerminalHost host) => viaTmux(host) ? '${host.label} (in tmux)' : host.label;
 
   /// A new window in [cwd] in [host] running the login shell, which then
-  /// starts [agent] if given, in omp [profile] ('' the default); its key (the
-  /// tmux pane's, where [viaTmux]).
-  Future<String> launch(String cwd, {required TerminalHost host, Agent? agent, String profile = ''}) async {
+  /// starts [agent] if given, in omp [profile] ('' the default), with
+  /// [flags] after its command; its key (the tmux pane's, where [viaTmux]).
+  Future<String> launch(
+    String cwd, {
+    required TerminalHost host,
+    Agent? agent,
+    String profile = '',
+    String flags = '',
+  }) async {
     if (!Directory(cwd).existsSync()) throw TerminalException('No such folder: $cwd');
     final String key;
     if (viaTmux(host)) {
@@ -389,7 +395,10 @@ class Terminals {
       key = await host.launch(cwd);
     }
     // The shell reads it once it's up: the terminal holds what's typed.
-    if (agent != null) await send(key, agent.commandIn(profile), enter: true);
+    if (agent != null) {
+      final command = agent.commandIn(profile);
+      await send(key, flags.isEmpty ? command : '$command $flags', enter: true);
+    }
     return key;
   }
 

@@ -149,6 +149,8 @@ POST  /v1/live/http      {conn?, frames, wait?, close?} → {conn, frames}   the
 Authorization: Bearer <token>   (everything but /v1/ping?nonce=)
 ```
 
+The orchestrator is omp started in `orchestrator` beside `cli.json`, with `ORCHESTRATOR.md` appended to its system prompt (`lib/orchestrator.dart`). The omp extension registers `pocketterm_sessions`, `pocketterm_read`, `pocketterm_prompt` and `pocketterm_stop` only when its real cwd is that folder; each sends a `call` frame on its live connection, and LiveHub answers with a `result` frame after checking again that the caller's hello came from that folder.
+
 ## Building and testing
 
 See [BUILDING.md](BUILDING.md) and [CONTRIBUTING.md](../CONTRIBUTING.md#pull-requests).

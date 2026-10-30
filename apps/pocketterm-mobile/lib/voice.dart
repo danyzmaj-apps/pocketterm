@@ -238,6 +238,30 @@ String appendSpoken(String existing, String spoken) {
   return before.isEmpty ? spoken : '$before $spoken';
 }
 
+/// Why the phone can't listen in [language], as [c] says, for the person.
+String speechProblemText(SpeechCheck c, SpeechLanguage language) {
+  final lang = language.title;
+  return switch ((c.status, c.fix)) {
+    (SpeechStatus.denied, _) =>
+      isIos
+          ? 'PocketTerm isn’t allowed to use the microphone or speech recognition. Allow them in Settings.'
+          : 'PocketTerm isn’t allowed to use the microphone. Allow it in Settings.',
+    (SpeechStatus.restricted, _) => 'Speech recognition is turned off on this phone.',
+    (SpeechStatus.noLanguage, SpeechFix.download) =>
+      '$lang for speech recognition isn’t on this phone yet. Download it once; what you say stays on the phone.',
+    (SpeechStatus.noLanguage, SpeechFix.speechSettings) =>
+      isIos
+          ? 'This iPhone can’t recognize $lang on the device yet. Turn on Dictation in $lang in Settings → General '
+                '→ Keyboard, and it downloads.'
+          : 'This phone has no $lang for speech recognition on the device. Add it in the phone’s speech settings.',
+    (SpeechStatus.noLanguage, _) =>
+      '$lang isn’t supported for speech recognition on this phone. Tap the language above to pick another.',
+    (SpeechStatus.downloading, _) => '$lang for speech recognition is downloading. Try again when it’s done.',
+    (SpeechStatus.unavailable || SpeechStatus.ready, _) =>
+      'This phone can’t recognize speech on the device, so voice prompts are off here.',
+  };
+}
+
 /// The composer's microphone. A tap opens the voice sheet, which listens until Stop; a hold opens it at once and
 /// listens while held: lifting the finger stops and leaves what was said to check, sliding far up or left first
 /// cancels. [existing]: the composer's text then, shown dimmed above what's said.
@@ -812,29 +836,6 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
     Navigator.of(context).pop(VoiceResult(text, send: send));
   }
 
-  static String problemText(SpeechCheck c, SpeechLanguage language) {
-    final lang = language.title;
-    return switch ((c.status, c.fix)) {
-      (SpeechStatus.denied, _) =>
-        isIos
-            ? 'PocketTerm isn’t allowed to use the microphone or speech recognition. Allow them in Settings.'
-            : 'PocketTerm isn’t allowed to use the microphone. Allow it in Settings.',
-      (SpeechStatus.restricted, _) => 'Speech recognition is turned off on this phone.',
-      (SpeechStatus.noLanguage, SpeechFix.download) =>
-        '$lang for speech recognition isn’t on this phone yet. Download it once; what you say stays on the phone.',
-      (SpeechStatus.noLanguage, SpeechFix.speechSettings) =>
-        isIos
-            ? 'This iPhone can’t recognize $lang on the device yet. Turn on Dictation in $lang in Settings → General '
-                  '→ Keyboard, and it downloads.'
-            : 'This phone has no $lang for speech recognition on the device. Add it in the phone’s speech settings.',
-      (SpeechStatus.noLanguage, _) =>
-        '$lang isn’t supported for speech recognition on this phone. Tap the language above to pick another.',
-      (SpeechStatus.downloading, _) => '$lang for speech recognition is downloading. Try again when it’s done.',
-      (SpeechStatus.unavailable || SpeechStatus.ready, _) =>
-        'This phone can’t recognize speech on the device, so voice prompts are off here.',
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
     final existing = widget.existing.trim();
@@ -897,7 +898,7 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
   List<Widget> _body() => switch (_phase) {
     _Phase.problem => [
       Text(
-        problemText(_problem, _language),
+        speechProblemText(_problem, _language),
         key: const ValueKey('voice-problem'),
         style: TextStyle(fontSize: 18, height: 1.4, color: C.text),
       ),

@@ -9,6 +9,7 @@ import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
+import 'package:pocketterm_desktop/orchestrator.dart';
 import 'package:pocketterm_desktop/prompt_files.dart';
 
 /// One extension's connection, whatever carries it (lib/local_api.dart): a
@@ -84,6 +85,9 @@ class LiveSession {
   final _queue = <_Queued>[];
   bool paused = false;
 
+  /// Its folder is the orchestrator folder ([LiveHub.orchestratorDir]): it may make calls.
+  bool orchestrator = false;
+
   /// The queue's next prompt went to the agent, which hasn't said yet that it started; [_handoff] gives up on that.
   bool _handing = false;
   Timer? _handoff;
@@ -113,6 +117,7 @@ class LiveSession {
     queue: [for (final q in _queue) q.summary],
     paused: paused,
     failed: failed,
+    orchestrator: orchestrator,
   );
 
   Future<Map<String, dynamic>> _request(String type, Map<String, dynamic> payload, Duration timeout) async {
@@ -232,6 +237,9 @@ class LiveHub {
 
   Iterable<LiveSession> get sessions => _byKey.values;
   LiveSession? operator [](String key) => _byKey[key];
+
+  /// PocketTerm's orchestrator folder, next to cli.json; set by LocalApi. Null: no orchestrator.
+  String? orchestratorDir;
 
   /// What notifications call [s]'s project: its folder's name, with the one
   /// above it when another session's folder has the same name (two
@@ -362,7 +370,8 @@ class LiveHub {
       ..ask = null
       ..commands = liveCommands(m['commands'])
       ..preview = _preview(log.items.lastWhere((i) => i.kind == ItemKind.assistant, orElse: () => _none).text)
-      ..at = DateTime.now();
+      ..at = DateTime.now()
+      ..orchestrator = isOrchestratorDir(cwd, orchestratorDir);
     session._handoff?.cancel();
     _changes.add(null);
     _drain(session);
@@ -482,6 +491,8 @@ class LiveHub {
         _changes.add(null);
       case 'reply':
         s._pending[m['req']]?.complete(m);
+      case 'call':
+        unawaited(_call(s, m));
     }
   }
 
@@ -489,6 +500,54 @@ class LiveHub {
     final s = _byKey[key];
     if (s == null) throw const LiveException('That session has ended.');
     return s;
+  }
+
+  /// Answers a call of the orchestrator's tools ([LiveSession.orchestrator] only): a `result` with the text for its
+  /// model, or the error.
+  Future<void> _call(LiveSession s, Map<String, dynamic> m) async {
+    final id = m['id'];
+    String? text;
+    String? error;
+    try {
+      if (!s.orchestrator) throw const LiveException('Only the PocketTerm orchestrator can do that.');
+      switch (m['op']) {
+        case 'sessions':
+          text = sessionsText(this, DateTime.now());
+        case 'read':
+          text = transcriptText(this, _target(m), last: (m['last'] as num?)?.toInt() ?? 30);
+        case 'prompt':
+          final words = (m['text'] as String? ?? '').trim();
+          if (words.isEmpty) throw const LiveException('Nothing to send.');
+          if (words.startsWith('/')) throw const LiveException("Slash commands can't be sent from the orchestrator.");
+          final t = _target(m);
+          final queued = await prompt(t.key, words, followUp: m['deliver'] != 'steer');
+          text = queued == null
+              ? 'Sent to ${namedSession(this, t)}.'
+              : 'Queued in ${namedSession(this, t)}: it goes when its current run ends.';
+        case 'stop':
+          final t = _target(m);
+          await abort(t.key);
+          final n = t._queue.length;
+          text =
+              'Stopped ${namedSession(this, t)}.'
+              '${n == 0 ? '' : ' Its $n queued prompt${n == 1 ? '' : 's'} wait${n == 1 ? 's' : ''} until the person resumes them.'}';
+        default:
+          throw const LiveException('Unknown call.');
+      }
+    } on LiveException catch (e) {
+      error = e.message;
+    } on Object catch (e) {
+      error = '$e';
+    }
+    if (!identical(_byKey[s.key], s)) return;
+    s._link.send(jsonEncode({'t': 'result', 'id': id, 'text': ?text, 'error': ?error}));
+  }
+
+  /// The session a call names: not gone, not the orchestrator itself.
+  LiveSession _target(Map<String, dynamic> m) {
+    final t = _session(m['session'] as String? ?? '');
+    if (t.orchestrator) throw const LiveException('That is the orchestrator itself.');
+    return t;
   }
 
   /// Replaces session [key]'s ask, while it's still [id] (null: while there

@@ -15,6 +15,7 @@ import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/coach.dart';
 import 'package:pocketterm_mobile/motion.dart';
+import 'package:pocketterm_mobile/orchestrator_view.dart';
 import 'package:pocketterm_mobile/session_view.dart';
 import 'package:pocketterm_mobile/state_border.dart';
 import 'package:pocketterm_mobile/swipe_action.dart';
@@ -1314,26 +1315,41 @@ class _TerminalListState extends State<TerminalList> {
   };
 
   @override
-  Widget build(BuildContext context) => _KeepAwake(child: _list());
+  Widget build(BuildContext context) => _KeepAwake(
+    child: Stack(
+      children: [
+        _list(),
+        // Beside the + (56 tall, 16 in from the edges); the list's bottom inset already clears both.
+        Positioned(
+          left: 16,
+          right: 16 + 56 + 16,
+          bottom: 16 + MediaQuery.paddingOf(context).bottom,
+          child: OrchestratorBar(remote: remote, computer: widget.computer),
+        ),
+      ],
+    ),
+  );
 
   Widget _list() => ListenableBuilder(
     listenable: remote,
     builder: (context, _) {
       final note = linkNote(remote, color: Colors.transparent);
+      // The orchestrator has its own bar, not a place in the list; its window is still claimed.
+      final sessions = remote.sessions.where((s) => !s.orchestrator).toList();
       // The omp profiles there are: the default, the computer's, and any a session runs in.
-      final known = {'', ...remote.profiles, for (final s in remote.sessions) s.profile};
+      final known = {'', ...remote.profiles, for (final s in sessions) s.profile};
       final showFilter = known.length > 1;
       // A profile no longer there reads as all of them; the kept choice stays for when it's back.
       final filter = showFilter && known.contains(_filter) ? _filter : null;
-      final visible = filter == null ? remote.sessions : remote.sessions.where((s) => s.profile == filter).toList();
+      final visible = filter == null ? sessions : sessions.where((s) => s.profile == filter).toList();
       final groups = groupedSessions(visible, _sort, ranked: _ranked);
-      _noteFinished(remote.sessions, watched: remote.watchedSession);
+      _noteFinished(sessions, watched: remote.watchedSession);
       // What's shown is what stays: a project's activity reorders it only
       // on the next refresh.
       if (_sort == ProjectSort.activity) _ranked = [for (final g in groups) g.cwd];
       final claimed = {for (final s in remote.sessions) ?s.window};
       final windows = remote.windows.where((w) => !claimed.contains(w.key)).toList();
-      final rows = {for (final s in remote.sessions) s.key, for (final w in windows) w.key};
+      final rows = {for (final s in sessions) s.key, for (final w in windows) w.key};
       _entering = _rows == null ? const {} : rows.difference(_rows!);
       _rows = rows;
       // Agent windows the phone can switch to the conversation view; the others say why they show as screens.
@@ -1368,7 +1384,7 @@ class _TerminalListState extends State<TerminalList> {
                 // Rows scroll on under the home indicator; the last one still comes up clear of the +.
                 padding: EdgeInsets.only(bottom: AddButton.contentInset + MediaQuery.paddingOf(context).bottom),
                 children: [
-                  if (remote.sessions.isEmpty && windows.isEmpty) _empty(),
+                  if (sessions.isEmpty && windows.isEmpty) _empty(),
                   if (groups.length > 1 || showFilter)
                     _controls(
                       sort: groups.length > 1,
@@ -1376,7 +1392,7 @@ class _TerminalListState extends State<TerminalList> {
                       current: filter,
                       profiles: [...known.where((n) => n.isNotEmpty)]..sort(),
                     ),
-                  if (filter != null && groups.isEmpty && remote.sessions.isNotEmpty)
+                  if (filter != null && groups.isEmpty && sessions.isNotEmpty)
                     Padding(
                       key: const ValueKey('profile-filter-empty'),
                       padding: const EdgeInsets.fromLTRB(40, 24, 40, 24),
@@ -1399,7 +1415,7 @@ class _TerminalListState extends State<TerminalList> {
                   if (windows.isNotEmpty) ...[
                     Panel(
                       key: const ValueKey('windows-heading'),
-                      title: remote.sessions.isEmpty ? 'WINDOWS' : 'OTHER WINDOWS',
+                      title: sessions.isEmpty ? 'WINDOWS' : 'OTHER WINDOWS',
                       children: const [],
                     ),
                     if (switchable > 0)

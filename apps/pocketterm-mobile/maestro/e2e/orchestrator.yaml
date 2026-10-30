@@ -1,0 +1,71 @@
+# The orchestrator from the phone (run.sh, main phase): its bar opens its sheet, the held microphone puts what it
+# heard into the field and sends nothing, and the first message starts it on the computer, in a terminal window,
+# then it tells another session something; asked what runs, it lists the sessions. It stays out of the list.
+# The fake omp is the orchestrator in its folder (tool/e2e/bin/fake_omp.dart's _orchestrate); the desktop test
+# checks on the computer what it did (integration_test/e2e_test.dart).
+#   env: PROJECT (the project to tell), PROJECT_RE, TEXT (what to tell it), TEXT_RE
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- assertVisible:
+    id: "orchestrator-bar"
+- assertVisible: ".*Ask about your sessions…"
+- takeScreenshot: bar
+- tapOn:
+    id: "orchestrator-bar"
+- assertVisible:
+    id: "orchestrator-sheet"
+- assertVisible: "Ask about the sessions on.*"
+# Held: listening while the finger is down (lib/voice.dart's scripted speaker in an E2E build); let go, it's in
+# the field and nothing went.
+- longPressOn:
+    id: "orchestrator-mic"
+- extendedWaitUntil:
+    visible: ".*dark mode toggle.*"
+    timeout: 5000
+- extendedWaitUntil:
+    notVisible: "Listening…"
+    timeout: 5000
+- assertVisible: ".*dark mode toggle.*"
+- assertNotVisible: "Starting the orchestrator.*"
+- takeScreenshot: heard
+- tapOn:
+    id: "orchestrator-input"
+- eraseText: 120
+- inputText: "e2e-orch-tell ${PROJECT}: ${TEXT}"
+- tapOn:
+    id: "orchestrator-send"
+- extendedWaitUntil:
+    visible: "Starting the orchestrator.*"
+    timeout: 10000
+    optional: true
+- takeScreenshot: starting
+# Started in a window on the computer, it calls PocketTerm and says what it did; its tool calls don't show here.
+- extendedWaitUntil:
+    visible: ".*Sent to ${PROJECT_RE} .*"
+    timeout: 90000
+- assertNotVisible: ".*pocketterm_prompt.*"
+- takeScreenshot: told
+- tapOn:
+    id: "orchestrator-input"
+- inputText: "Which sessions are running?"
+- tapOn:
+    id: "orchestrator-send"
+- extendedWaitUntil:
+    visible: ".*coding sessions? on this computer:.*"
+    timeout: 60000
+- takeScreenshot: listed
+- tapOn: "Close"
+- extendedWaitUntil:
+    notVisible:
+      id: "orchestrator-sheet"
+    timeout: 5000
+# Back on the list: the bar shows its last answer; its folder is no project and its window no other window.
+- assertVisible:
+    id: "orchestrator-bar"
+- extendedWaitUntil:
+    visible: "Orchestrator\n.*coding sessions? on this computer.*"
+    timeout: 10000
+- assertNotVisible: "ORCHESTRATOR|orchestrator"
+- assertNotVisible: ".*π . orchestrator.*"
+- takeScreenshot: list

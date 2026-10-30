@@ -1,8 +1,11 @@
-# Opens the list row whose first line is ROW (a regex), scrolling to it.
+# Opens the list row whose first line is ROW (a regex), scrolling it to the
+# middle: at the bottom of the screen it sits under the orchestrator's bar or
+# the +, and the tap opened those instead.
 appId: com.danyzmaj.pocketterm
 ---
 - scrollUntilVisible:
     element: "${ROW}\n.*"
+    centerElement: true
     timeout: 20000
 - tapOn: "${ROW}\n.*"
 # A tap while the list still moves (a row's age refreshed) can be lost: tapped

@@ -191,7 +191,7 @@ class Terminals {
   /// Whether [a] and [b] are one folder as a terminal and tmux tell it
   /// (`/private/tmp` is `/tmp`); never for an empty one.
   static bool _sameFolder(String a, String b) =>
-      a.isNotEmpty && b.isNotEmpty && (a == b || '/private$a' == b || a == '/private$b');
+      a.isNotEmpty && b.isNotEmpty && (p.equals(a, b) || p.equals('/private$a', b) || p.equals(a, '/private$b'));
 
   /// [lists] (one per host of [hosts]) as one list: a window whose tty is a
   /// tmux client's in [clients] (tty → pane key), or which [shows] a pane,
@@ -460,8 +460,8 @@ class Terminals {
   static bool _under(String dir, String project, String home) {
     if (_sameFolder(project, home) || dir.isEmpty || project.isEmpty) return false;
     String bare(String d) => d.startsWith('/private/') ? d.substring('/private'.length) : d;
-    final root = bare(project).endsWith('/') ? bare(project) : '${bare(project)}/';
-    return bare(dir).startsWith(root);
+    // p: either separator on Windows (WezTerm's folders there are C:\…), and its case.
+    return p.isWithin(bare(project), bare(dir));
   }
 
   /// Git repositories up to three levels under [roots] (the Mac's Project

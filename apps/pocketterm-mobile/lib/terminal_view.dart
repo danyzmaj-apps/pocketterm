@@ -1159,7 +1159,7 @@ class _TerminalListState extends State<TerminalList> {
       children: [
         if (layout.isNotEmpty)
           Expanded(
-            child: Align(alignment: Alignment.centerLeft, child: _layoutControl(layout)),
+            child: Align(alignment: AlignmentDirectional.centerStart, child: _layoutControl(layout)),
           )
         else
           const Spacer(),

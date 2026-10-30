@@ -81,9 +81,9 @@ Each release is a notarized DMG on GitHub Releases, plus an `appcast.xml` that i
 ### One-time setup (maintainer's Mac)
 
 1. **Developer ID Application certificate** for the team in `config/PocketTerm.xcconfig` (`POCKETTERM_TEAM`, or `config/Local.xcconfig` if it sets one): Xcode → Settings → Accounts → your team → Manage Certificates → **+** → Developer ID Application.
-2. **Notarization credentials** as a keychain profile. `release.sh` uses the profile named by `NOTARY_PROFILE`, default `dzep-notary`: it's a team credential, so the one the team already has works. To make one, create an app-specific password at [account.apple.com](https://account.apple.com), then:
+2. **Notarization credentials** as a keychain profile. `release.sh` uses the profile named by `NOTARY_PROFILE`, default `pocketterm-notary`. To make one, create an app-specific password at [account.apple.com](https://account.apple.com), then:
    ```sh
-   xcrun notarytool store-credentials <profile> --apple-id <you@example.com> --team-id <TEAM>
+   xcrun notarytool store-credentials pocketterm-notary --apple-id <you@example.com> --team-id <TEAM>
    ```
 3. **Sparkle signing key**, stored in the login keychain under the account `pocketterm`. In `apps/pocketterm-desktop`, after `pod install` in `macos/`:
    ```sh

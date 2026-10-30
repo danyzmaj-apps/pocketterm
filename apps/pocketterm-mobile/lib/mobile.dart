@@ -27,6 +27,7 @@ import 'package:pocketterm_mobile/push_consent.dart';
 import 'package:pocketterm_mobile/setup_page.dart';
 import 'package:pocketterm_mobile/state_border.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
+import 'package:pocketterm_mobile/voice.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// The phone side of [Session]: keeps the computers' channel keys (from
@@ -1299,6 +1300,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               trailing: Icon(Icons.chevron_right, color: C.dim),
               onTap: () => unawaited(_pickTheme()),
             ),
+            ListenableBuilder(
+              listenable: voiceLanguage,
+              builder: (_, _) => ListTile(
+                key: const ValueKey('voice-language-setting'),
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.translate_rounded, color: C.dim),
+                title: const Text('Voice prompt language'),
+                subtitle: Text(voiceLanguage.choice?.label ?? 'Auto', style: TextStyle(color: C.dim)),
+                trailing: Icon(Icons.chevron_right, color: C.dim),
+                onTap: () => unawaited(_pickVoiceLanguage()),
+              ),
+            ),
             const SizedBox(height: 18),
             OutlinedButton(
               onPressed: () async {
@@ -1365,6 +1378,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               trailing: appearance.choice == c ? Icon(Icons.check, color: C.accent) : null,
               onTap: () => unawaited(appearance.choose(c)),
             ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+
+  /// Auto or one language, each with what this phone has of it ([VoiceLanguagePicker]).
+  Future<void> _pickVoiceLanguage() => showAppSheet<void>(
+    context,
+    builder: (sheet) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 8),
+            child: Text('Voice prompt language', style: sheetTitleStyle),
+          ),
+          VoiceLanguagePicker(source: voiceSource),
           const SizedBox(height: 8),
         ],
       ),

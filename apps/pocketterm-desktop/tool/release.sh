@@ -7,7 +7,7 @@
 #
 # Needs (checked below): Xcode signed in to the team in config/PocketTerm.xcconfig
 # with a "Developer ID Application" certificate, a notarytool keychain profile
-# for that team (NOTARY_PROFILE, default dzep-notary: the team's existing one;
+# for that team (NOTARY_PROFILE, default pocketterm-notary;
 # `xcrun notarytool store-credentials <name>` makes one), PocketTerm's Sparkle
 # signing key in the login keychain under the account "pocketterm"
 # (macos/Pods/Sparkle/bin/generate_keys --account pocketterm), fvm and gh.
@@ -19,7 +19,7 @@ ROOT=../..
 
 DRY=false
 [[ "${1:-}" == "--dry-run" ]] && DRY=true
-NOTARY_PROFILE="${NOTARY_PROFILE:-dzep-notary}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-pocketterm-notary}"
 REPO="${REPO:-danyzmaj-apps/pocketterm}"
 
 die() { echo "release: $*" >&2; exit 1; }

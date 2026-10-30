@@ -134,6 +134,10 @@ android_device() {
 
 if [ -z "$DEVICE" ]; then
   if [ "$PLATFORM" = ios ]; then DEVICE=$(ios_device); else DEVICE=$(android_device) || exit 2; fi
+elif [ "$PLATFORM" = ios ]; then
+  # A Simulator given with --device may be shut down: booted as ios_device does.
+  xcrun simctl boot "$DEVICE" 2>/dev/null || true
+  xcrun simctl bootstatus "$DEVICE" >/dev/null
 fi
 echo "$DEVICE" >"$OUT/device.txt"
 

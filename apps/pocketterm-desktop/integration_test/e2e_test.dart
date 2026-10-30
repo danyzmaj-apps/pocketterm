@@ -617,15 +617,14 @@ class _Run {
 
   Future<void> _getReady() async {
     await report.step('get ready: omp gets PocketTerm', () async {
-      // Installed once the person read why and confirmed (confirmAgentInstall).
-      await _tap(find.descendant(of: _key('get-ready-agents'), matching: find.text('Install')));
+      final ext = File(p.join(c.home, '.omp', 'agent', 'extensions', 'pocketterm-live.ts'));
+      // Nothing goes in on its own: omp's Install (listed first), then the popup's Install once read
+      // (confirmAgentInstall).
+      await _tap(find.descendant(of: _key('get-ready-agents'), matching: find.text('Install')).first);
       await _see(
         find.descendant(of: _key('confirm-install'), matching: find.textContaining('~/.omp/agent/extensions')),
       );
-      await _tap(_key('confirm-install-go'));
-      final ext = File(p.join(c.home, '.omp', 'agent', 'extensions', 'pocketterm-live.ts'));
-      // Nothing goes in on its own: omp's Install (listed first), then the popup's Install once read.
-      await _tap(find.descendant(of: _key('get-ready-agents'), matching: find.text('Install')).first);
+      expect(ext.existsSync(), isFalse, reason: 'installed before the person confirmed');
       await _tap(_key('confirm-install-go'));
       await until('extension installed', ext.existsSync);
       await _see(find.descendant(of: _key('get-ready-agents'), matching: find.textContaining('omp')));

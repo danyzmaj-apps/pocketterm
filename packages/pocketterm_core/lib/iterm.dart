@@ -115,8 +115,10 @@ end run''',
   /// at once, so the title and the folder take an event per session, each
   /// addressed by its window's place and its own. A window opened, closed or
   /// brought to the front between those events leaves them out of step, and
-  /// they're read again.
+  /// they're read again. Nothing when iTerm2 isn't running: it quit since the
+  /// process snapshot that said it was, and a `tell` would start it again.
   static const _list = '''
+if application id "com.googlecode.iterm2" is not running then return ""
 set sep to ASCII character 31
 set eol to (ASCII character 30) & linefeed
 repeat 3 times

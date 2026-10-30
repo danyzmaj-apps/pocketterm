@@ -481,8 +481,8 @@ class _SessionPageState extends State<SessionPage> with WidgetsBindingObserver {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
         child: switch (i.kind) {
-          ItemKind.user => _UserBubble(i),
-          ItemKind.assistant => _AssistantText(i.text),
+          ItemKind.user => UserBubble(i),
+          ItemKind.assistant => AssistantText(i.text),
           ItemKind.tool => _ToolCard(
             i,
             open: open,
@@ -1581,8 +1581,9 @@ class _EditQueuedSheetState extends State<_EditQueuedSheet> {
   }
 }
 
-class _UserBubble extends StatelessWidget {
-  const _UserBubble(this.item);
+/// The person's prompt in a transcript: a bubble on the right, with how many images came with it.
+class UserBubble extends StatelessWidget {
+  const UserBubble(this.item, {super.key});
   final LiveItem item;
 
   @override
@@ -1613,8 +1614,9 @@ class _UserBubble extends StatelessWidget {
   }
 }
 
-class _AssistantText extends StatelessWidget {
-  const _AssistantText(this.text);
+/// An assistant's answer in a transcript: Markdown, links open outside the app.
+class AssistantText extends StatelessWidget {
+  const AssistantText(this.text, {super.key});
   final String text;
 
   static TextStyle get _code => TextStyle(fontFamily: 'Menlo', fontSize: 12.5, color: C.text);

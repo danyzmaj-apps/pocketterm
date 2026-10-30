@@ -8,6 +8,7 @@
 #                   [--server local|builtin|<https url> --setup-link-file <file>
 #                    [--server-stop-cmd <sh> --server-start-cmd <sh>] [--server-ca <pem>]]
 #                   [--no-phone] [--platform ios|android [--avd <name>]] [--phone-only <flow>,…] [--from-head]
+#                   [--device <simulator udid or emulator serial>]
 # (tool/e2e/bin/run.dart says what each does.)
 set -eu
 cd "$(dirname "$0")/../.."

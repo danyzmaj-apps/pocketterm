@@ -19,7 +19,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/backend.dart';
-import 'package:pocketterm_core/live.dart' show LiveAnswer, LiveAsk, routedKey;
+import 'package:pocketterm_core/live.dart' show ItemKind, LiveAnswer, LiveAsk, routedKey;
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/supabase_server.dart' show SupabaseServerClient;
 import 'package:pocketterm_core/terminal.dart';
@@ -30,6 +30,7 @@ import 'package:pocketterm_desktop/integrations.dart';
 import 'package:pocketterm_desktop/live_hub.dart';
 import 'package:pocketterm_desktop/local_api.dart';
 import 'package:pocketterm_desktop/main_window.dart';
+import 'package:pocketterm_desktop/orchestrator.dart' show orchestratorInstructions, orchestratorPromptFile;
 import 'package:pocketterm_desktop/setup_page.dart'
     show CheckState, SetupCheck, SetupPage, SupabaseTools, setupLinkProblem;
 import 'package:pocketterm_e2e/e2e.dart';
@@ -78,6 +79,9 @@ final Uint8List _png = base64Decode(
 /// A document the stand-in phone sends, with a name that needs quoting.
 const _docName = 'notes from the phone.txt';
 final Uint8List _doc = utf8.encode('PocketTerm e2e notes\n');
+
+/// Tailscale's CLI, asked how it stands and what it serves.
+const _tailscale = '/Applications/Tailscale.app/Contents/MacOS/Tailscale';
 
 class _Run {
   _Run(this.tester, this.c) : report = Report(c), owned = Owned(c.owned);
@@ -349,8 +353,8 @@ class _Run {
   Future<void> _thisComputer() async {
     await _toChoose();
     await _tap(_key('setup-this-computer'));
-    final cli = await Process.run('/Applications/Tailscale.app/Contents/MacOS/Tailscale', ['status', '--json']);
-    final installed = File('/Applications/Tailscale.app/Contents/MacOS/Tailscale').existsSync();
+    final cli = await Process.run(_tailscale, ['status', '--json']);
+    final installed = File(_tailscale).existsSync();
     var json = const <String, dynamic>{};
     try {
       json = jsonDecode('${cli.stdout}') as Map<String, dynamic>;
@@ -380,7 +384,14 @@ class _Run {
       return true;
     }, timeout: const Duration(seconds: 20));
     final start = tester.widget<FilledButton>(_key('setup-start-server'));
-    expect(start.onPressed != null, firstTodo < 0, reason: 'Start is on only when every check is done');
+    // Tailscale already serving something there (the person's own PocketTerm) keeps Start off too: PocketTerm
+    // won't replace it.
+    final serving = !'${(await Process.run(_tailscale, ['serve', 'status'])).stdout}'.contains('No serve config');
+    expect(
+      start.onPressed != null,
+      firstTodo < 0 && !serving,
+      reason: 'Start is on only when every check is done and Tailscale serves nothing yet',
+    );
     await report.shot('setup-this-computer');
     if (!c.builtIn) {
       await _tap(find.text('Back'));
@@ -609,11 +620,18 @@ class _Run {
   }
 
   Future<void> _getReady() async {
-    await report.step('get ready: omp gets PocketTerm', () async {
+    await report.step('get ready: omp gets PocketTerm once confirmed', () async {
       final ext = File(p.join(c.home, '.omp', 'agent', 'extensions', 'pocketterm-live.ts'));
+      // Nothing goes in on its own: Install asks first (onboarding/confirm_install.dart).
+      await _see(
+        find.descendant(of: _key('get-ready-agents'), matching: find.textContaining('isn\u2019t installed in omp')),
+      );
+      expect(ext.existsSync(), isFalse, reason: 'installed before anyone asked');
+      await _tap(find.descendant(of: _key('get-ready-agents'), matching: find.text('Install')));
+      await _tap(_key('confirm-install-go'));
       await until('extension installed', ext.existsSync);
       await _see(find.descendant(of: _key('get-ready-agents'), matching: find.textContaining('omp')));
-    });
+    }, critical: true);
     await report.step('get ready: sessions already open are listed', () async {
       await _see(_key('get-ready-open-sessions'), timeout: const Duration(seconds: 20));
       final windows = await app.terminals.windows();
@@ -836,6 +854,8 @@ class _Run {
         'newProjectName': name('made'),
         'endSession': name('endme'),
         'realOmp': {'title': name('realomp'), 'project': name('realomp')},
+        // What orchestrator.yaml tells the orchestrator to send, and to which project.
+        'orchestrator': {'project': name('newsess'), 'text': 'orchestrated from phone $t'},
         'lockedComputer': 'Spare Mac $t',
         'prompt': 'hello from phone $t',
       }),
@@ -1004,6 +1024,26 @@ class _Run {
         (a) => a.isMenu && a.items.isNotEmpty && a.items.every((i) => i.label.toLowerCase().contains('beta')),
       );
       await pick(key, found, found.items.indexWhere((i) => i.label == 'e2e beta session'));
+    });
+    await act('orchestrator', () async {
+      await atRest();
+      await r.startOrchestrator();
+      final o = await until(
+        'the orchestrator on the phone',
+        () => r.orchestrator,
+        timeout: const Duration(seconds: 40),
+      );
+      final unwatch = r.watchSession(o.key);
+      try {
+        await r.prompt(o.key, 'e2e-orch-tell ${name('newsess')}: orchestrated from phone $t');
+        await until(
+          'the orchestrator answered',
+          () => r.view(o.key)?.items.any((i) => i.kind == ItemKind.assistant && i.text.contains('Sent to')) ?? false,
+          timeout: const Duration(seconds: 40),
+        );
+      } finally {
+        unwatch();
+      }
     });
     await act('screen keys', () async {
       final shell = windowOf('shell');
@@ -1267,6 +1307,35 @@ class _Run {
       for (final w in ['shell', 'chat', 'approve']) {
         expect(windows.where((x) => x.cwd == dir(w)), isNotEmpty, reason: '${name(w)} still open: ${_ws(windows)}');
       }
+    });
+    await report.step('phone: the orchestrator starts in $t and steers a session', () async {
+      final folder = p.join(p.dirname(c.cliJson), 'orchestrator');
+      final o = await until(
+        'the orchestrator reports',
+        () => app.live.sessions.where((s) => s.orchestrator && s.window != null).firstOrNull,
+        timeout: const Duration(seconds: 40),
+      );
+      expect(ours(o.window!), isTrue, reason: 'opened in ${o.window}');
+      expect(File(p.join(folder, orchestratorPromptFile)).readAsStringSync(), orchestratorInstructions);
+      final start = fakeOmpLog(folder).firstWhere((e) => e['event'] == 'start');
+      expect(start['orchestrator'], isTrue, reason: 'the extension gives its tools to omp in that folder: $start');
+      expect(start['args'], ['--append-system-prompt', orchestratorPromptFile], reason: 'always omp, with its prompt');
+      expect(start['systemPrompt'], orchestratorInstructions, reason: 'omp read the file from its folder');
+      final told = await until(
+        'the prompt the orchestrator sent',
+        () => log('newsess').where((e) => says(e, 'prompt', 'orchestrated from phone')).firstOrNull,
+        timeout: const Duration(seconds: 60),
+      );
+      expect(told['text'], 'orchestrated from phone $t');
+      final results = fakeOmpLog(folder).where((e) => e['event'] == 'result').toList();
+      expect(results.where((e) => e['error'] != null), isEmpty, reason: '$results');
+      expect(results.map((e) => e['op']), containsAll(['sessions', 'prompt']));
+      final listed = '${results.firstWhere((e) => e['op'] == 'sessions')['text']}';
+      expect(listed, contains(' | ${name('newsess')} | '));
+      expect(listed, isNot(contains(o.key)), reason: 'the orchestrator leaves itself out');
+      // Out of the way of the phases after.
+      await app.terminals.close(o.window!);
+      await until('the orchestrator gone', () => !app.live.sessions.any((s) => s.orchestrator));
     });
   }
 

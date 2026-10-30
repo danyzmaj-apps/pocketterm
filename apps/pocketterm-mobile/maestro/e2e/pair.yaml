@@ -38,10 +38,18 @@ appId: com.danyzmaj.pocketterm
       true: ${PUSH == 'accept'}
     commands:
       - tapOn: "Turn on notifications"
-      # iOS asks once per install; Android 13+ asks too.
+      # iOS asks once per install; Android 13+ asks too. The alert can be gone by the time the tap lands (it
+      # was found a second before), and the tap then opens the session row under it: back to the list.
       - tapOn:
           text: "Allow"
           optional: true
+          retryTapIfNoChange: false
+      - runFlow:
+          when:
+            platform: iOS
+            visible: "Back"
+          commands:
+            - tapOn: "Back"
 - runFlow:
     when:
       true: ${PUSH != 'accept'}

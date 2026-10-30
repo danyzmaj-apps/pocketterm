@@ -166,6 +166,18 @@ class TerminalRemote extends ChangeNotifier {
 
   List<TermWindow> windows = const [];
   List<LiveSummary> sessions = const [];
+
+  /// The computer's orchestrator ([LiveSummary.orchestrator]): the latest one, when several report; null when none.
+  LiveSummary? get orchestrator {
+    LiveSummary? found;
+    for (final s in sessions) {
+      if (!s.orchestrator) continue;
+      final at = s.at?.millisecondsSinceEpoch ?? 0;
+      if (found == null || at > (found.at?.millisecondsSinceEpoch ?? 0)) found = s;
+    }
+    return found;
+  }
+
   List<String> projects = const [];
 
   /// The Mac's Project folders, where a new project can be made; null from
@@ -596,6 +608,9 @@ class TerminalRemote extends ChangeNotifier {
   /// window in it as [launch]; its window key.
   Future<String> create(String root, String name, {required bool startAgent}) =>
       _open({'op': 'create', 'root': root, 'name': name, 'agent': startAgent});
+
+  /// Starts the computer's orchestrator, or finds the one running; its window key.
+  Future<String> startOrchestrator() => _open({'op': 'orchestrator'});
 
   /// Runs [request], which opens a window; its key. Starting a terminal app
   /// can take a while; a window that opens after the phone stopped waiting

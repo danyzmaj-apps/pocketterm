@@ -15,6 +15,7 @@ import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/coach.dart';
 import 'package:pocketterm_mobile/motion.dart';
+import 'package:pocketterm_mobile/orchestrator_view.dart';
 import 'package:pocketterm_mobile/session_view.dart';
 import 'package:pocketterm_mobile/state_border.dart';
 import 'package:pocketterm_mobile/swipe_action.dart';
@@ -1192,20 +1193,35 @@ class _TerminalListState extends State<TerminalList> {
   };
 
   @override
-  Widget build(BuildContext context) => _KeepAwake(child: _list());
+  Widget build(BuildContext context) => _KeepAwake(
+    child: Stack(
+      children: [
+        _list(),
+        // Beside the + (56 tall, 16 in from the edges); the list's bottom inset already clears both.
+        Positioned(
+          left: 16,
+          right: 16 + 56 + 16,
+          bottom: 16 + MediaQuery.paddingOf(context).bottom,
+          child: OrchestratorBar(remote: remote, computer: widget.computer),
+        ),
+      ],
+    ),
+  );
 
   Widget _list() => ListenableBuilder(
     listenable: remote,
     builder: (context, _) {
       final note = linkNote(remote, color: Colors.transparent);
-      final groups = groupedSessions(remote.sessions, _sort, ranked: _ranked);
-      _noteFinished(remote.sessions, watched: remote.watchedSession);
+      // The orchestrator has its own bar, not a place in the list; its window is still claimed.
+      final sessions = remote.sessions.where((s) => !s.orchestrator).toList();
+      final groups = groupedSessions(sessions, _sort, ranked: _ranked);
+      _noteFinished(sessions, watched: remote.watchedSession);
       // What's shown is what stays: a project's activity reorders it only
       // on the next refresh.
       if (_sort == ProjectSort.activity) _ranked = [for (final g in groups) g.cwd];
       final claimed = {for (final s in remote.sessions) ?s.window};
       final windows = remote.windows.where((w) => !claimed.contains(w.key)).toList();
-      final rows = {for (final s in remote.sessions) s.key, for (final w in windows) w.key};
+      final rows = {for (final s in sessions) s.key, for (final w in windows) w.key};
       _entering = _rows == null ? const {} : rows.difference(_rows!);
       _rows = rows;
       // Agent windows the phone can switch to the conversation view; the others say why they show as screens.

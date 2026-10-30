@@ -9,7 +9,7 @@
 //        --setup-link-file <file>) [--server-stop-cmd <sh> --server-start-cmd <sh>]
 //        [--server-ca <pem>]]
 //       [--no-phone] [--platform ios|android [--avd <name>]]
-//       [--phone-only <flow>,…] [--phone-from-tree] [--from-head] [--artifacts <dir>]
+//       [--phone-only <flow>,…] [--phone-from-tree] [--from-head] [--artifacts <dir>] [--device <id>]
 //
 // --from-head runs what's committed: a detached worktree of HEAD in /tmp
 // (others' uncommitted edits stay out), artifacts still in this checkout's
@@ -18,6 +18,9 @@
 // just these phone flows (the phone run.sh's --only). --phone-from-tree: the
 // phone app built from this checkout as it is, uncommitted edits included
 // (by default the phone builds HEAD; the desktop always runs this checkout).
+// --device: the Simulator (UDID) or emulator (serial) the phone phases run on
+// instead of the "PocketTerm E2E" Simulator, so another run can use that one
+// at the same time.
 //
 // --server builtin: the desktop's own "On this computer" server, published
 // by `tailscale serve` (Tailscale must be running with HTTPS on and serve
@@ -137,7 +140,14 @@ Map<String, String> _parse(List<String> args) {
   final o = <String, String>{'terminal': 'all', 'server': 'local', 'platform': 'ios'};
   for (var i = 0; i < args.length; i++) {
     switch (args[i]) {
-      case '--terminal' || '--server' || '--setup-link' || '--platform' || '--artifacts' || '--avd' || '--phone-only':
+      case '--terminal' ||
+          '--server' ||
+          '--setup-link' ||
+          '--platform' ||
+          '--artifacts' ||
+          '--avd' ||
+          '--phone-only' ||
+          '--device':
         o[args[i].substring(2)] = args[++i];
       case '--setup-link-file' ||
           '--server-stop-cmd' ||
@@ -652,6 +662,7 @@ Future<String> _phonePhase(String repo, String artifacts, String phase, Map<Stri
       ...['--run-dir', artifacts, '--phase', phase, '--platform', opts['platform']!],
       if (opts['avd'] case final avd?) ...['--avd', avd],
       if (opts['phone-only'] case final only?) ...['--only', only],
+      if (opts['device'] case final device?) ...['--device', device],
       if (opts['phone-from-tree'] != null) '--from-tree',
     ],
     workingDirectory: repo,

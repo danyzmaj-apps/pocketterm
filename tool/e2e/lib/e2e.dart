@@ -590,12 +590,14 @@ class GhosttyThrowaway extends Throwaway {
 
 /// iTerm2 as a new instance that opens no window by itself, with its
 /// settings for this run given on its command line (NSArgumentDomain: none
-/// is written to its preferences): no question on quit, no update check, no
-/// windows restored. Refuses to start while another iTerm2 runs, as
-/// AppleScript can't tell two instances apart. Its sessions get the throwaway
-/// home from its own environment, and so does iTerm2 itself
-/// (CFFIXED_USER_HOME: Foundation ignores HOME), so its saved windows and
-/// preferences are the run's, never the person's.
+/// of them is written to its preferences): no question on quit, no update
+/// check, no windows restored. Refuses to start while another iTerm2 runs,
+/// as AppleScript can't tell two instances apart. Its sessions get the
+/// throwaway home from its own environment, and so does iTerm2's Application
+/// Support (CFFIXED_USER_HOME: Foundation ignores HOME), so its saved windows
+/// are the run's, never the person's. Its preferences stay the person's
+/// (cfprefsd ignores both): iTerm2 records window places and a launch count
+/// there.
 class ITermThrowaway extends Throwaway {
   ITermThrowaway(super.c, super.owned);
 

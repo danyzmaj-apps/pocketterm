@@ -147,7 +147,7 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 The e2e runs every phone flow on each terminal. Where a terminal can't do something, the run checks what the phone says instead:
 
 - **Ghostty** can't share its screen: `screen` checks the phone says so; `approval` checks the phone is told to answer on the computer (the desktop then answers). Sessions the phone starts open in tmux inside Ghostty, which can: `question`, `plan`, `menu_model`, `menu_resume`, `steer_queue` and `stop` run on that session for every terminal.
-- **kitty**, **WezTerm** and **iTerm2**: everything, screens included (iTerm2's without colors). The iTerm2 run starts its own instance, which opens no window by itself, with its settings for the run on its command line only (none written to its preferences); like Ghostty's, it refuses to start while another iTerm2 runs.
+- **kitty**, **WezTerm** and **iTerm2**: everything, screens included (iTerm2's without colors). The iTerm2 run starts its own instance, which opens no window by itself, with its settings for the run on its command line only and its saved windows in the throwaway home (the person's are never restored or erased); iTerm2 itself still records its windows' places and a launch count in the person's iTerm2 preferences. Like Ghostty's, it refuses to start while another iTerm2 runs.
 
 ## What ran end to end for 0.1.0 (build 14)
 

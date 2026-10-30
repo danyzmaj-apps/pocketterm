@@ -673,7 +673,8 @@ void _keepLogs(String work, String artifacts) {
   if (!w.existsSync()) return;
   final keep = p.join(artifacts, 'work');
   for (final e in w.listSync(recursive: true, followLinks: false)) {
-    if (e is! File) continue;
+    // Regular files only: iTerm2 leaves a socket in the throwaway home's ~/.config.
+    if (e is! File || e.statSync().type != FileSystemEntityType.file) continue;
     final rel = p.relative(e.path, from: work);
     final wanted =
         rel.contains('.fake_omp${p.separator}') ||

@@ -25,13 +25,18 @@ import 'package:pocketterm_desktop/test_hooks.dart';
 ///                                  integrations/omp/pocketterm-live.ts, lib/live_hub.dart)
 ///   POST  /v1/live/http            {conn?, frames, wait?} → {conn, frames}: the same over
 ///                                  HTTP long polls (the Claude Code plugin); packages/pocketterm_core/lib/live.dart
+///
+/// The orchestrator's folder ([LiveHub.orchestratorDir]) is `orchestrator` beside [file]: a session started there
+/// may call on the hub (lib/orchestrator.dart).
 class LocalApi {
   /// [windows]: Windows' rules for [file] (no chmod; the per-user profile
   /// keeps it private), else the running platform's.
   LocalApi(this._live, {File? file, bool? windows})
     : file = file ?? _defaultFile(windows: windows),
       _ownFolder = file == null && !_named(testHooks()),
-      _windows = windows ?? Platform.isWindows;
+      _windows = windows ?? Platform.isWindows {
+    _live.orchestratorDir = p.join(this.file.parent.path, 'orchestrator');
+  }
 
   final LiveHub _live;
   HttpServer? _server;

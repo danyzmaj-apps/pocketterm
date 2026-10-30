@@ -226,6 +226,10 @@ class AppController extends Session {
   Map<Agent, AgentCheck>? get agents => _agents;
   Map<Agent, AgentCheck>? _agents;
   Future<void>? _checkingAgents;
+
+  /// This computer's omp profiles besides the default, as of the last [checkAgents]; empty without omp.
+  List<String> get ompProfiles => _ompProfiles;
+  List<String> _ompProfiles = const [];
   DateTime? _agentsAt;
 
   /// Looks for the coding agents and PocketTerm in them. One look at a time:
@@ -245,6 +249,7 @@ class AppController extends Session {
       }
     }
     _agents = found;
+    _ompProfiles = found.containsKey(Agent.omp) ? integrations.ompProfiles() : const [];
     _agentsAt = DateTime.now();
     notifyListeners();
   }
@@ -359,6 +364,7 @@ class AppController extends Session {
         () => terminalApp,
         () => projectRoots,
         agents: _agentsForPhone,
+        ompProfiles: () => ompProfiles,
         onPhone: _phoneHeard,
       )).start();
       _seen(id);
@@ -386,8 +392,8 @@ class AppController extends Session {
     final project = live.projectName(s);
     final where = project.isEmpty ? '' : ' · $project';
     final (title, body, state) = switch (e) {
-      LiveFinished(:final summary) => ('${s.agent.label} finished$where', summary, 'done'),
-      LiveAsked(:final ask) => ('${s.agent.label} needs you$where', ask.text, 'needs'),
+      LiveFinished(:final summary) => ('${s.agent.labelIn(s.profile)} finished$where', summary, 'done'),
+      LiveAsked(:final ask) => ('${s.agent.labelIn(s.profile)} needs you$where', ask.text, 'needs'),
     };
     await notifyPhone(title, body, session: s.key, activity: state);
   }

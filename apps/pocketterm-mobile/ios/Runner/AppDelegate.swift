@@ -140,7 +140,9 @@ import UserNotifications
       case "liveActivities":
         result(activities.running())
       case "speechCheck":
-        dictation.check(result: result)
+        dictation.check(args, result: result)
+      case "speechSupport":
+        dictation.support(args, result: result)
       case "speechStop":
         dictation.stop(result: result)
       case "speechFix":

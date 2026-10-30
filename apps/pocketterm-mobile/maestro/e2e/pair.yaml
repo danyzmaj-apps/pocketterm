@@ -38,10 +38,9 @@ appId: com.danyzmaj.pocketterm
       true: ${PUSH == 'accept'}
     commands:
       - tapOn: "Turn on notifications"
-      # Android 13+ asks for notifications: Allow. On iOS Maestro's driver
-      # answers the system's alert itself; a tap of ours on the Allow it saw
-      # comes after the alert has gone and lands on the session list behind it
-      # (an approval row's Allow, opening a session).
+      # Android 13+ asks. iOS asks once per install too, but Maestro's iOS
+      # driver answers that prompt itself (it allows every permission): a tap
+      # of ours after it lands on the session list behind and opens a row.
       - runFlow:
           when:
             platform: Android

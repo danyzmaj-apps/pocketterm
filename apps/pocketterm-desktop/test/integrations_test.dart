@@ -55,6 +55,31 @@ void main() {
         File('integrations/omp/pocketterm-live.ts').readAsStringSync(),
       );
     });
+
+    test('goes into every omp profile too, and counts as installed only where each has it', () async {
+      Directory('$home/.omp/profiles/personal').createSync(recursive: true);
+      Directory('$home/.omp/profiles/Bad').createSync(recursive: true);
+      File('$home/.omp/profiles/notes.txt').writeAsStringSync('');
+      final integrations = Integrations(home: home);
+      expect(integrations.ompProfiles(), ['personal']);
+
+      await integrations.install(Agent.omp);
+      const live = 'pocketterm-live.ts';
+      expect(File('$home/.omp/agent/extensions/$live').existsSync(), isTrue);
+      expect(File('$home/.omp/profiles/personal/agent/extensions/$live').existsSync(), isTrue);
+      expect(Directory('$home/.omp/profiles/Bad/agent').existsSync(), isFalse);
+      expect(await integrations.state(Agent.omp), (installed: true, current: true, problem: null));
+
+      File('$home/.omp/profiles/personal/agent/extensions/$live').writeAsStringSync('// older');
+      expect(await integrations.state(Agent.omp), (installed: true, current: false, problem: null));
+
+      File('$home/.omp/profiles/personal/agent/extensions/$live').deleteSync();
+      expect((await integrations.state(Agent.omp)).installed, isFalse);
+    });
+
+    test('no profiles folder: no profiles', () {
+      expect(Integrations(home: home).ompProfiles(), isEmpty);
+    });
   });
 
   group('Claude Code', () {

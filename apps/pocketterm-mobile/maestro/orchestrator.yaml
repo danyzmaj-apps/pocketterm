@@ -1,0 +1,54 @@
+# The orchestrator's bar and sheet in the demo, photographed as orchestrator-*. Needs an E2E build
+# (--dart-define=POCKETTERM_E2E=true): the Simulator has no microphone, so lib/voice.dart's scripted speaker says
+# "Add a dark mode toggle to the settings page and write a test for it." while the microphone is held. Signed out:
+#   maestro test orchestrator.yaml
+appId: com.danyzmaj.pocketterm
+---
+- launchApp
+- extendedWaitUntil:
+    visible: ".*changed the icon.*"
+    timeout: 3000
+    optional: true
+- tapOn:
+    text: "OK"
+    optional: true
+    retryTapIfNoChange: false
+- scrollUntilVisible:
+    element: "Try the demo"
+- tapOn: "Try the demo"
+- extendedWaitUntil:
+    visible: ".*DEMO.*"
+    timeout: 8000
+# The demo's computer has PocketTerm in omp, and no orchestrator yet: the bar beside the + asks.
+- assertVisible:
+    id: "orchestrator-bar"
+- assertVisible: ".*Ask about your sessions…"
+- tapOn:
+    id: "orchestrator-bar"
+- assertVisible:
+    id: "orchestrator-sheet"
+# Held, the microphone listens and the sheet lights up; let go, what it heard goes into the field, unsent.
+- longPressOn:
+    id: "orchestrator-mic"
+- extendedWaitUntil:
+    visible: ".*dark mode toggle.*"
+    timeout: 5000
+- extendedWaitUntil:
+    notVisible: "Listening…"
+    timeout: 5000
+- assertVisible:
+    id: "orchestrator-input"
+- assertVisible: ".*dark mode toggle.*"
+- assertNotVisible: ".*nothing ran.*"
+- takeScreenshot: orchestrator-inserted
+# Sent: the demo has no computer to start one on, and says so.
+- tapOn:
+    id: "orchestrator-send"
+- extendedWaitUntil:
+    visible: ".*This is the demo.*"
+    timeout: 8000
+- takeScreenshot: orchestrator-demo-answer
+# Closed, and out of the demo: signed out again, as the run's next flow expects.
+- tapOn: "Close"
+- tapOn: "Exit demo"
+- assertVisible: "Scan the code from your computer"

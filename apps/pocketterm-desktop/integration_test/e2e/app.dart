@@ -59,6 +59,16 @@ class E2eApp extends AppController {
     pairingLinks.add(link);
     return link;
   }
+
+  /// Every notification meant for the phones, oldest first, whether it went
+  /// or not (none goes while someone uses this Mac): its title and body.
+  final phoneNotices = <({String title, String body})>[];
+
+  @override
+  Future<bool> notifyPhone(String title, String body, {String? session, String? activity}) {
+    phoneNotices.add((title: title, body: body));
+    return super.notifyPhone(title, body, session: session, activity: activity);
+  }
 }
 
 /// The setup's Supabase branch on the real Management API, kept to what the

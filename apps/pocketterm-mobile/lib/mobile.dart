@@ -27,6 +27,7 @@ import 'package:pocketterm_mobile/push_consent.dart';
 import 'package:pocketterm_mobile/setup_page.dart';
 import 'package:pocketterm_mobile/state_border.dart';
 import 'package:pocketterm_mobile/terminal_view.dart';
+import 'package:pocketterm_mobile/voice.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// The phone side of [Session]: keeps the computers' channel keys (from
@@ -204,6 +205,24 @@ class MobileSession extends Session {
       ProjectSort.values.where((s) => s.name == _prefs.getString(_sortKey)).firstOrNull ?? ProjectSort.name;
 
   Future<void> setProjectSort(ProjectSort sort) => _prefs.setString(_sortKey, sort.name);
+
+  static const _profileFilterKey = 'pocketterm_profile_filter';
+
+  /// The omp profile whose sessions the Terminal list shows for computer [desktop] ('' the default); null, until
+  /// chosen, shows every profile's.
+  String? profileFilter(String desktop) => _prefs.getString('${_profileFilterKey}_$desktop');
+
+  Future<void> setProfileFilter(String desktop, String? profile) => profile == null
+      ? _prefs.remove('${_profileFilterKey}_$desktop')
+      : _prefs.setString('${_profileFilterKey}_$desktop', profile);
+
+  static const _newProfileKey = 'pocketterm_new_profile';
+
+  /// The omp profile a new session on computer [desktop] starts in, as last picked; '' (the default) until then.
+  String newSessionProfile(String desktop) => _prefs.getString('${_newProfileKey}_$desktop') ?? '';
+
+  Future<void> setNewSessionProfile(String desktop, String profile) =>
+      _prefs.setString('${_newProfileKey}_$desktop', profile);
 
   static const _looksKey = 'pocketterm_tile_looks';
 
@@ -976,7 +995,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           : CoachTarget(
               tip: Tip.newSession,
               radius: isIos ? 32 : 20,
-              child: AddButton(tooltip: 'New session', onPressed: () => unawaited(openNewSession(context, terminal))),
+              child: AddButton(
+                tooltip: 'New session',
+                onPressed: () => unawaited(
+                  openNewSession(
+                    context,
+                    terminal,
+                    profile: widget.session.newSessionProfile(terminal.desktopId),
+                    onProfile: (p) => unawaited(widget.session.setNewSessionProfile(terminal.desktopId, p)),
+                  ),
+                ),
+              ),
             ),
       // The list runs on under the home indicator.
       body: SafeArea(
@@ -1018,6 +1047,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   looks: widget.session.tileLooks(t.desktopId),
                   onLooks: (l) => unawaited(widget.session.setTileLooks(t.desktopId, l)),
                   computer: selected?.name,
+                  profileFilter: widget.session.profileFilter(t.desktopId),
+                  onProfileFilter: (f) => unawaited(widget.session.setProfileFilter(t.desktopId, f)),
+                  newSessionProfile: () => widget.session.newSessionProfile(t.desktopId),
                 ),
                 null when selected != null && widget.session.computerKey(selected.id) == null => _Locked(
                   computer: selected.name,
@@ -1268,6 +1300,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               trailing: Icon(Icons.chevron_right, color: C.dim),
               onTap: () => unawaited(_pickTheme()),
             ),
+            ListenableBuilder(
+              listenable: voiceLanguage,
+              builder: (_, _) => ListTile(
+                key: const ValueKey('voice-language-setting'),
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.translate_rounded, color: C.dim),
+                title: const Text('Voice prompt language'),
+                subtitle: Text(voiceLanguage.choice?.label ?? 'Auto', style: TextStyle(color: C.dim)),
+                trailing: Icon(Icons.chevron_right, color: C.dim),
+                onTap: () => unawaited(_pickVoiceLanguage()),
+              ),
+            ),
             const SizedBox(height: 18),
             OutlinedButton(
               onPressed: () async {
@@ -1334,6 +1378,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               trailing: appearance.choice == c ? Icon(Icons.check, color: C.accent) : null,
               onTap: () => unawaited(appearance.choose(c)),
             ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+
+  /// Auto or one language, each with what this phone has of it ([VoiceLanguagePicker]).
+  Future<void> _pickVoiceLanguage() => showAppSheet<void>(
+    context,
+    builder: (sheet) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 8),
+            child: Text('Voice prompt language', style: sheetTitleStyle),
+          ),
+          VoiceLanguagePicker(source: voiceSource),
           const SizedBox(height: 8),
         ],
       ),

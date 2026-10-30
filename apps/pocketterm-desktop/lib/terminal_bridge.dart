@@ -36,7 +36,8 @@ class TerminalBridge {
     this._agents,
     this._ompProfiles,
     this._onPhone,
-  });
+    Placement Function()? placement,
+  }) : _placement = placement ?? (() => Placement.projectWindow);
 
   final Server _server;
 
@@ -56,6 +57,9 @@ class TerminalBridge {
 
   /// The terminal app it opens in: an app's id or `auto` (this computer's setting).
   final String Function() _app;
+
+  /// Whether that is a tab in the project's window or a window of its own (this computer's setting).
+  final Placement Function() _placement;
 
   /// This computer's Project folders setting.
   final List<String> Function() _roots;
@@ -383,6 +387,7 @@ class TerminalBridge {
         'home': _terms.home,
         'agent': _agent().name,
         'opensIn': ?_opensIn,
+        'placement': _placement().name,
         'terminals': [for (final s in phoneTerminals(_statuses)) s.toJson()],
         'error': ?_termError,
         if (_agentsNow case final a?) 'agents': AgentIntegration.toJsonAll(a),
@@ -644,6 +649,7 @@ class TerminalBridge {
     if (id == null || !_runs.start(id, (ran) => _send('ran', ran))) return;
     String? error;
     String? window;
+    String? where;
     bool? busy;
     String? queued;
     try {
@@ -677,15 +683,16 @@ class TerminalBridge {
           final start = p['agent'] == true || p['omp'] == true;
           final host = await _terms.opensIn(_app());
           final agent = start ? _agent() : null;
-          window = await _terms.launch(
+          (:window, :where) = await _terms.launch(
             p['cwd'] as String,
             host: host,
             agent: agent,
+            placement: _placement(),
             profile: agent == null ? '' : launchProfile(p['profile'], agent, _ompProfiles?.call() ?? const []),
           );
         case 'create':
           final agent = p['agent'] == true ? _agent() : null;
-          window = await _terms.launchNewProject(
+          (:window, :where) = await _terms.launchNewProject(
             p['root'] as String,
             p['name'] as String? ?? '',
             roots: _roots(),
@@ -715,7 +722,7 @@ class TerminalBridge {
     } on Object catch (e) {
       error = 'The computer could not do that: $e';
     }
-    final ran = {'id': id, 'error': ?error, 'window': ?window, 'busy': ?busy, 'queued': ?queued};
+    final ran = {'id': id, 'error': ?error, 'window': ?window, 'where': ?where, 'busy': ?busy, 'queued': ?queued};
     _runs.done(id, ran);
     _send('ran', ran);
     unawaited(_poll(windows: const {'launch', 'create', 'close', 'switch', 'orchestrator'}.contains(p['op'])));
@@ -1060,12 +1067,14 @@ class TerminalBridge {
         break;
     }
     await prepareOrchestratorDir(dir);
-    return await _terms.launch(
+    final (:window, where: _) = await _terms.launch(
       dir,
       host: await _terms.opensIn(_app()),
       agent: Agent.omp,
+      placement: _placement(),
       flags: '--append-system-prompt $orchestratorPromptFile',
     );
+    return window;
   }
 
   /// Answers the agent's question, approval, plan review or a picker with

@@ -1,0 +1,38 @@
+# The computer's windows and tabs: the count above the projects opens them,
+# each window under its app's name with its tabs; a tab in PROJECT (two
+# shells there by now, one window) opens its screen. A long press on a row
+# says which window and tab it sits in.
+#   env: PROJECT (regex), TERMINAL_RE
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- extendedWaitUntil:
+    visible: "[0-9]+ windows? · [0-9]+ tabs?"
+    timeout: 20000
+- takeScreenshot: count
+- tapOn: "[0-9]+ windows? · [0-9]+ tabs?"
+- extendedWaitUntil:
+    visible: "Windows and tabs"
+    timeout: 10000
+- assertVisible: "${TERMINAL_RE} window [0-9]+(\n.*)?"
+- takeScreenshot: sheet
+# A tab's row: its title, then its program and folder.
+- scrollUntilVisible:
+    element: ".*\n.* · .*/${PROJECT}"
+    timeout: 20000
+- tapOn: ".*\n.* · .*/${PROJECT}"
+- extendedWaitUntil:
+    visible: "(Type a line…|\nSend \\(types it, then Enter\\))"
+    timeout: 30000
+- takeScreenshot: tab-opened
+- runFlow: sub/back.yaml
+# Back on the list: the shell's row says where it is.
+- scrollUntilVisible:
+    element: ".* · .*/${PROJECT}(\n.*)?"
+    centerElement: true
+    timeout: 30000
+- longPressOn: ".* · .*/${PROJECT}(\n.*)?"
+- extendedWaitUntil:
+    visible: "${TERMINAL_RE} window [0-9]+ · tab [0-9]+"
+    timeout: 10000
+- takeScreenshot: row-place

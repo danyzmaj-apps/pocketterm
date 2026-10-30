@@ -201,6 +201,10 @@ class TerminalRemote extends ChangeNotifier {
   /// null from a Mac that doesn't say.
   String? opensIn;
 
+  /// Whether that is a tab in the project's window or a window of its own;
+  /// null from a Mac that doesn't say.
+  Placement? placement;
+
   /// The Mac's terminals (installed ones, and tmux) and how each stands;
   /// empty from a Mac that doesn't say.
   List<TermStatus> terminals = const [];
@@ -427,6 +431,7 @@ class TerminalRemote extends ChangeNotifier {
         if (x is String && isOmpProfile(x)) x,
     ];
     opensIn = p['opensIn'] as String?;
+    placement = Placement.values.asNameMap()[p['placement']];
     terminals = [for (final t in p['terminals'] as List? ?? const []) TermStatus.fromJson((t as Map).cast())];
   }
 
@@ -606,9 +611,9 @@ class TerminalRemote extends ChangeNotifier {
   Future<void> switchToConversation(String window, Agent agent) =>
       _run({'op': 'switch', 'window': window, 'agent': agent.name}, wait: answerWait * 2);
 
-  /// A new terminal window in [cwd] (where [opensIn] says), running the Mac's coding [agent] if
-  /// [startAgent], in omp [profile] (one of [profiles]; '' the default); its window key.
-  Future<String> launch(String cwd, {required bool startAgent, String profile = ''}) => _open({
+  /// A new terminal window in [cwd] (where [opensIn] and [placement] say), running the Mac's coding [agent] if
+  /// [startAgent], in omp [profile] (one of [profiles]; '' the default).
+  Future<Opened> launch(String cwd, {required bool startAgent, String profile = ''}) => _open({
     'op': 'launch',
     'cwd': cwd,
     'agent': startAgent,
@@ -616,8 +621,8 @@ class TerminalRemote extends ChangeNotifier {
   });
 
   /// A new folder [name] under [root] (one of [roots]) on the Mac, with a
-  /// window in it as [launch]; its window key.
-  Future<String> create(String root, String name, {required bool startAgent, String profile = ''}) => _open({
+  /// window in it as [launch].
+  Future<Opened> create(String root, String name, {required bool startAgent, String profile = ''}) => _open({
     'op': 'create',
     'root': root,
     'name': name,
@@ -626,12 +631,12 @@ class TerminalRemote extends ChangeNotifier {
   });
 
   /// Starts the computer's orchestrator, or finds the one running; its window key.
-  Future<String> startOrchestrator() => _open({'op': 'orchestrator'});
+  Future<String> startOrchestrator() async => (await _open({'op': 'orchestrator'})).window;
 
-  /// Runs [request], which opens a window; its key. Starting a terminal app
+  /// Runs [request], which opens a window. Starting a terminal app
   /// can take a while; a window that opens after the phone stopped waiting
   /// is still taken as new ([_fresh]).
-  Future<String> _open(Map<String, dynamic> request) async {
+  Future<Opened> _open(Map<String, dynamic> request) async {
     final reply = await _run(
       request,
       wait: answerWait * 2,
@@ -641,7 +646,7 @@ class TerminalRemote extends ChangeNotifier {
     );
     final window = reply['window'] as String;
     _fresh(window);
-    return window;
+    return (window: window, where: reply['where'] as String? ?? '');
   }
 
   /// A window just opened under [window]'s key. A key can come back (tmux
@@ -852,6 +857,7 @@ class TerminalRemote extends ChangeNotifier {
         'agents': AgentIntegration.toJsonAll(agents),
         if (profiles.isNotEmpty) 'profiles': profiles,
         'opensIn': ?opensIn,
+        'placement': ?placement?.name,
         'terminals': [for (final t in terminals) t.toJson()],
         'at': stateAt?.millisecondsSinceEpoch ?? now,
       };

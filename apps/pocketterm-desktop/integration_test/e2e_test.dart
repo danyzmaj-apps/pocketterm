@@ -172,7 +172,8 @@ class _Run {
     }
     await report.step('restart: desktop app', _desktopRestart);
     if (File(_omp).existsSync()) {
-      await report.step('real omp: /new from the phone starts a fresh session in place', _realOmp);
+      // The phone sends the /new: only when its flow runs (--phone-only may leave it out).
+      await _after('real-omp', 'real omp: /new from the phone starts a fresh session in place', _realOmp);
       await report.step('real omp: a profile loads PocketTerm from its own folder and says so', _realOmpProfile);
     } else {
       report
@@ -372,13 +373,24 @@ class _Run {
     final running = backend == 'Running';
     final started = running || backend == 'NeedsLogin' || backend == 'NeedsMachineAuth';
     final certs = (json['CertDomains'] as List?)?.isNotEmpty ?? false;
+    // Port 443 free: Tailscale serves nothing there yet (the person's own PocketTerm may already).
+    final serve = running
+        ? await Process.run('/Applications/Tailscale.app/Contents/MacOS/Tailscale', ['serve', 'status', '--json'])
+        : null;
+    final serveFree = serve != null && !'${serve.stdout}'.contains(':443"');
     final expected = [
       (key: 'check-installed', done: installed, yes: 'Tailscale is installed', no: 'Install Tailscale'),
       (key: 'check-running', done: started, yes: 'Tailscale is running', no: 'Start Tailscale'),
       (key: 'check-signed-in', done: running, yes: 'Signed in to Tailscale', no: 'Sign in to Tailscale'),
       (key: 'check-https', done: running && certs, yes: 'HTTPS certificates are on', no: 'Turn on HTTPS certificates'),
+      (
+        key: 'check-serve-free',
+        done: running && certs && serveFree,
+        yes: 'Tailscale’s HTTPS port is free for PocketTerm',
+        no: running && certs ? 'Free Tailscale’s HTTPS port (443)' : 'Tailscale’s HTTPS port (443) for PocketTerm',
+      ),
     ];
-    report.log('tailscale: $backend, certs $certs');
+    report.log('tailscale: $backend, certs $certs, 443 free $serveFree');
     // Steps after the first one not done read "to do" whatever they are.
     final firstTodo = expected.indexWhere((e) => !e.done);
     await until('Tailscale checklist read', () async {
@@ -841,6 +853,8 @@ class _Run {
         'terminalId': t,
         'computer': app.device,
         'terminal': app.terminals.describe(host),
+        // How the phone heads that app's windows: "kitty window 1", "Ghostty window 1" (tmux inside it).
+        'terminalApp': host.label,
         'sessions': [
           for (final w in ['chat', 'approve', 'endme'])
             {
@@ -1072,6 +1086,11 @@ class _Run {
     await act('new shell', () async {
       report.log('phone opened ${await r.launch(dir('newshell'), startAgent: false)}');
     });
+    await act('a second shell in that project', () async {
+      final opened = await r.launch(dir('newshell'), startAgent: false);
+      report.log('phone opened $opened');
+      expect(opened.where, startsWith('a new tab in the '), reason: 'where the computer said it went');
+    });
     await act('new project', () async {
       final root = (r.roots ?? const <String>[]).firstWhere((x) => x == c.projects);
       report.log('phone made ${await r.create(root, name('made'), startAgent: true)}');
@@ -1289,6 +1308,15 @@ class _Run {
       expect(w.key.startsWith(_opensWith), isTrue, reason: 'opened in ${w.key}, expected $_opensWith…');
       expect(w.agent, isNull, reason: 'a plain shell: ${_ws([w])}');
       expect(app.live.sessions.where((s) => s.window == w.key || s.cwd == dir('newshell')), isEmpty);
+    });
+    await _after('new-tab', 'phone: a second shell in a project opens as a tab of its window', () async {
+      final ws = await until('two windows in ${name('newshell')}', () async {
+        final ws = (await app.terminals.windows()).where((w) => w.cwd == dir('newshell')).toList();
+        return ws.length >= 2 ? ws : null;
+      }, timeout: const Duration(seconds: 40));
+      expect(ws.map((w) => w.osWindow).toSet(), hasLength(1), reason: 'one app window: ${_ws(ws)}');
+      expect(ws.first.osWindow, isNotEmpty, reason: _ws(ws));
+      expect(ws.map((w) => w.tabId).toSet(), hasLength(ws.length), reason: 'a tab each: ${_ws(ws)}');
     });
     await _after('new-project', 'phone: new project made in the project folder', () async {
       final made = dir('made');
@@ -1761,10 +1789,19 @@ class _Run {
       final key = await until('the phone lists real omp', () => r.sessions.where((x) => here(x.cwd)).firstOrNull?.key);
       await r.prompt(key, '/new');
     }
-    final after = await until('real omp on a new session', () {
-      final now = app.live.sessions.where((x) => here(x.cwd)).toList();
-      return now.length == 1 && now.single.id != before ? now.single : null;
-    });
+    final LiveSession after;
+    try {
+      after = await until('real omp on a new session', () {
+        final now = app.live.sessions.where((x) => here(x.cwd)).toList();
+        return now.length == 1 && now.single.id != before ? now.single : null;
+      });
+    } on TimeoutException {
+      report.log('real omp: before /new $before');
+      for (final x in app.live.sessions.where((x) => here(x.cwd))) {
+        report.log('real omp: live ${x.key} id=${x.id} window=${x.window} items=${x.log.items.length}');
+      }
+      rethrow;
+    }
     expect(after.key, s.key, reason: 'the same window, the same session key');
     expect(after.log.items.any((i) => '${i.args}${i.output}${i.text}'.contains('e2e-real')), isFalse);
   }

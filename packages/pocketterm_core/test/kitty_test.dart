@@ -66,7 +66,6 @@ class FakeKitty {
 }
 
 void main() {
-  _placement();
   late FakeKitty fake;
   setUp(() async => fake = await FakeKitty.start());
   tearDown(() => fake.stop());
@@ -141,8 +140,10 @@ void main() {
   test('windows() reads the ls JSON kitty nests inside data', () async {
     final ls = [
       {
+        'id': 2,
         'tabs': [
           {
+            'id': 3,
             'title': 'work',
             'windows': [
               {
@@ -176,6 +177,8 @@ void main() {
       [
         {
           'key': 'kitty-test/4',
+          'osWindow': 'kitty-test/os2',
+          'tabId': 'kitty-test/tab3',
           'title': 'omp: pocketterm',
           'tab': 'work',
           'cwd': '/Users/me/pocketterm',
@@ -186,6 +189,8 @@ void main() {
         },
         {
           'key': 'kitty-test/5',
+          'osWindow': 'kitty-test/os2',
+          'tabId': 'kitty-test/tab3',
           'title': 'shell',
           'tab': 'work',
           'cwd': '/Users/me',
@@ -307,54 +312,91 @@ void main() {
     expect(lines, hasLength(60));
     expect(lines.first, body[41]);
   });
-}
 
-void _placement() {
-  // kitty's ls: OS window 1 (focused) holds the person's window 1; OS window
-  // 2 holds windows 5 and 7 that PocketTerm opened (user variable pocketterm).
-  final ls = jsonEncode([
-    {
-      'id': 1,
-      'is_focused': true,
-      'tabs': [
-        {
-          'windows': [
-            {'id': 1, 'user_vars': <String, String>{}},
-          ],
-        },
-      ],
-    },
-    {
-      'id': 2,
-      'is_focused': false,
-      'tabs': [
-        {
-          'windows': [
-            {
-              'id': 5,
-              'user_vars': {'pocketterm': '1'},
-            },
-          ],
-        },
-        {
-          'windows': [
-            {
-              'id': 7,
-              'user_vars': {'pocketterm': '1'},
-            },
-          ],
-        },
-      ],
-    },
-  ]);
+  group('a new session', () {
+    /// Answers `ls` with [_ls] and `launch` with window 42.
+    void listing() => fake.answer = (r) => [FakeKitty.ok(r['cmd'] == 'ls' ? _ls : '42')];
+    Map<String, dynamic> launched() =>
+        fake.requests.singleWhere((r) => r['cmd'] == 'launch')['payload'] as Map<String, dynamic>;
 
-  test("a new session is a tab next to PocketTerm's newest window, taking no focus; with none, an OS window", () {
-    expect(pocketTermTabSpot(ls), (window: 7, focused: false));
-    expect(pocketTermTabSpot(jsonEncode([(jsonDecode(ls) as List).first])), isNull);
+    test('into an OS window in the background: a tab there, next to one of its windows', () async {
+      listing();
+      expect(await fake.kitty().launch(fake.dir.path, into: 'kitty-test/os2'), 'kitty-test/42');
+      expect(launched(), {
+        'args': <String>[],
+        'cwd': fake.dir.path,
+        'type': 'tab',
+        'match': 'window_id:5',
+        'keep_focus': false,
+      });
+    });
+
+    test('into the OS window being typed in: a tab that takes no focus from it', () async {
+      listing();
+      await fake.kitty().launch(fake.dir.path, command: ['omp'], into: 'kitty-test/os1');
+      expect(launched(), {
+        'args': ['omp'],
+        'cwd': fake.dir.path,
+        'type': 'tab',
+        'match': 'window_id:1',
+        'keep_focus': true,
+      });
+    });
+
+    test('into an OS window that is gone, or of a kitty that is: a new OS window', () async {
+      for (final into in ['kitty-test/os9', 'kitty-gone/os2']) {
+        listing();
+        fake.requests.clear();
+        expect(await fake.kitty().launch(fake.dir.path, into: into), 'kitty-test/42');
+        expect(launched(), {'args': <String>[], 'cwd': fake.dir.path, 'type': 'os-window', 'keep_focus': true});
+      }
+    });
+
+    test('into no window: a new OS window, without asking what kitty has open', () async {
+      listing();
+      await fake.kitty().launch(fake.dir.path);
+      expect(fake.requests.map((r) => r['cmd']), ['launch']);
+      expect(launched(), {'args': <String>[], 'cwd': fake.dir.path, 'type': 'os-window', 'keep_focus': true});
+    });
   });
 
   test("closing an OS window's last window is told apart from closing a tab", () {
-    expect(lastInOsWindow(ls, 1), isTrue);
-    expect(lastInOsWindow(ls, 7), isFalse);
+    expect(lastInOsWindow(_ls, 1), isTrue);
+    expect(lastInOsWindow(_ls, 7), isFalse);
   });
 }
+
+// kitty's ls: OS window 1 (focused) holds window 1; OS window 2 holds windows
+// 5 and 7, each in a tab of its own.
+final String _ls = jsonEncode([
+  {
+    'id': 1,
+    'is_focused': true,
+    'tabs': [
+      {
+        'id': 1,
+        'windows': [
+          {'id': 1},
+        ],
+      },
+    ],
+  },
+  {
+    'id': 2,
+    'is_focused': false,
+    'tabs': [
+      {
+        'id': 2,
+        'windows': [
+          {'id': 5},
+        ],
+      },
+      {
+        'id': 3,
+        'windows': [
+          {'id': 7},
+        ],
+      },
+    ],
+  },
+]);

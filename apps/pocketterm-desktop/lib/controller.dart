@@ -11,7 +11,7 @@ import 'package:pocketterm_core/e2e.dart';
 import 'package:pocketterm_core/live.dart';
 import 'package:pocketterm_core/server_client.dart';
 import 'package:pocketterm_core/session.dart';
-import 'package:pocketterm_core/terminal.dart' show TermWindow;
+import 'package:pocketterm_core/terminal.dart' show Placement, TermWindow;
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_desktop/channel_keys.dart';
 import 'package:pocketterm_desktop/commands.dart';
@@ -169,6 +169,17 @@ class AppController extends Session {
 
   Future<void> setTerminalApp(String id) async {
     await _prefs.setString(_terminalAppKey, id);
+    notifyListeners();
+  }
+
+  static const _placementKey = 'session_placement';
+
+  /// Whether a new session from the phone opens as a tab in its project's
+  /// window (the default) or in a window of its own.
+  Placement get placement => Placement.values.asNameMap()[_prefs.getString(_placementKey)] ?? Placement.projectWindow;
+
+  Future<void> setPlacement(Placement placement) async {
+    await _prefs.setString(_placementKey, placement.name);
     notifyListeners();
   }
 
@@ -365,6 +376,7 @@ class AppController extends Session {
         () => projectRoots,
         agents: _agentsForPhone,
         ompProfiles: () => ompProfiles,
+        placement: () => placement,
         onPhone: _phoneHeard,
       )).start();
       _seen(id);

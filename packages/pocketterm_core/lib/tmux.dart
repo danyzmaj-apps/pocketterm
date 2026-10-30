@@ -7,7 +7,10 @@ import 'package:pocketterm_core/terminal.dart';
 /// tmux, whichever terminal shows it: every server of this user (the
 /// default socket and any `-L` one in `$TMUX_TMPDIR/tmux-<uid>` or
 /// `/private/tmp/tmux-<uid>`), through its command line. Window keys:
-/// `tmux:<socket name>/<pane number>` (the pane `%n`).
+/// `tmux:<socket name>/<pane number>` (the pane `%n`). A pane no terminal app
+/// shows sits in its session as the window (`tmux:<socket name>/s<n>`, the
+/// session `$n`) and its tmux window as the tab (`tmux:<socket name>/w<n>`,
+/// the window `@n`).
 class Tmux extends TerminalHost {
   Tmux({String? executable, List<String>? socketDirs, this.env, this.timeout = const Duration(seconds: 5)})
     : _fixedExe = executable,
@@ -173,7 +176,8 @@ class Tmux extends TerminalHost {
   /// folder's name may hold a tab or a line break, which tmux prints as is.
   static const _format =
       '#{pane_id}\x1f#{pane_tty}\x1f#{pane_current_command}\x1f#{pane_current_path}\x1f#{pane_title}\x1f'
-      '#{window_name}\x1f#{session_name}\x1f#{pane_active}\x1f#{window_active}\x1f#{session_attached}\x1e';
+      '#{window_name}\x1f#{session_name}\x1f#{pane_active}\x1f#{window_active}\x1f#{session_attached}\x1f'
+      '#{session_id}\x1f#{window_id}\x1e';
 
   /// A client a record like a pane: its tty, its pane, and the title tmux
   /// gives its terminal (`set-titles-string` as tmux expands it for that
@@ -265,9 +269,12 @@ class Tmux extends TerminalHost {
   /// A detached session of its own on the default server (started if none
   /// runs): a terminal app then shows it with `tmux attach` ([attach]). A
   /// server started here keeps PocketTerm's environment for every shell in
-  /// it, so it gets a UTF-8 locale should PocketTerm have none.
+  /// it, so it gets a UTF-8 locale should PocketTerm have none. [into] is
+  /// ignored: the session is the phone's alone (closing it closes nothing of
+  /// the person's), and where it shows is up to the terminal app that
+  /// attaches it, which is given [into] instead.
   @override
-  Future<String> launch(String cwd, {List<String>? command}) async {
+  Future<String> launch(String cwd, {List<String>? command, String? into}) async {
     if (!Directory(cwd).existsSync()) throw TerminalException('No such folder: $cwd');
     final exe = _exe;
     if (exe == null) throw const TerminalException(notInstalled);
@@ -313,12 +320,16 @@ List<TermWindow> parseTmuxPanes(String socket, String out, [Procs? procs]) => [
       final paneActive,
       final windowActive,
       final attached,
+      final sessionId,
+      final windowId,
     ])
       () {
         final fg = procs?.foreground(tty);
         final program = fg?.program ?? command;
         return TermWindow(
           key: 'tmux:$socket/${id.replaceFirst('%', '')}',
+          osWindow: 'tmux:$socket/s${sessionId.replaceFirst(r'$', '')}',
+          tabId: 'tmux:$socket/w${windowId.replaceFirst('@', '')}',
           // A pane's default title is the host name: its window's name says more.
           title: cleanTitle(title.isEmpty || title == Platform.localHostname ? window : title),
           tab: cleanTitle('$session:$window'),

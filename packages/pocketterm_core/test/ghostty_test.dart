@@ -39,7 +39,7 @@ void main() {
     final link = Link('${app.path}/link')..createSync(real.path);
     final g = ghostty(
       ['0'],
-      ["printf '${_key.substring(8)}\\037omp\\037${link.path}\\037t\\037true\\036\\nfront\\037true'"],
+      ["printf '${_key.substring(8)}\\037omp\\037${link.path}\\037t\\037true\\037W1\\037T1\\036\\nfront\\037true'"],
     );
     final procs = Procs([
       Proc(pid: 1, ppid: 0, pgid: 1, tpgid: -1, tty: '', stat: 'S', args: '${app.path}/Contents/MacOS/ghostty'),
@@ -53,9 +53,9 @@ void main() {
       const other = 'ghostty:0B9E2E2E-67BF-48C7-8D0A-83F3FA5B8074';
       const shell = 'ghostty:1C9E2E2E-67BF-48C7-8D0A-83F3FA5B8074';
       final records = [
-        '${_key.substring(8)}\\037π > endme\\037\\037t\\037true',
-        '${other.substring(8)}\\037π > chat\\037\\037t\\037false',
-        '${shell.substring(8)}\\037zsh\\037/somewhere/else\\037t\\037false',
+        '${_key.substring(8)}\\037π > endme\\037\\037t\\037true\\037W1\\037T1',
+        '${other.substring(8)}\\037π > chat\\037\\037t\\037false\\037W1\\037T2',
+        '${shell.substring(8)}\\037zsh\\037/somewhere/else\\037t\\037false\\037W2\\037T3',
       ];
       final g = ghostty(['0'], ["printf '${records.join(r'\036\n')}\\036\\nfront\\037true'"]);
       final procs = Procs([
@@ -75,7 +75,7 @@ void main() {
       addTearDown(sleep.kill);
       final g = ghostty(
         ['0', '0'],
-        ["printf '${_key.substring(8)}\\037omp\\037\\037t\\037true\\036\\nfront\\037true'"],
+        ["printf '${_key.substring(8)}\\037omp\\037\\037t\\037true\\037W1\\037T1\\036\\nfront\\037true'"],
       );
       final procs = Procs([
         Proc(pid: 1, ppid: 0, pgid: 1, tpgid: -1, tty: '', stat: 'S', args: '${app.path}/Contents/MacOS/ghostty'),
@@ -94,6 +94,7 @@ void main() {
       final w = (await g.windows(procs)).single;
       expect(w.cwd, dir.resolveSymbolicLinksSync());
       expect(w.program, 'sleep');
+      expect((w.osWindow, w.tabId), ('ghostty:wW1', 'ghostty:tT1'), reason: 'kept when its tty is known');
     },
   );
   Matcher says(String message) => throwsA(isA<TerminalException>().having((e) => e.message, 'message', message));
@@ -109,6 +110,19 @@ void main() {
     }
     expect(argvs.map((a) => a[1].substring('text:'.length)).join(), ghosttyText(text));
   });
+
+  test(
+    'a new session goes into the window it is asked into, by its id; with none asked, a new window',
+    () async {
+      // The script opens a tab in that window when it still has it, else a window.
+      final g = ghostty(['0'], ['printf ${_key.substring(8)}']);
+      expect(await g.launch(app.path, into: 'ghostty:wW1'), _key);
+      expect(await g.launch(app.path), _key);
+      expect(argvs.map((a) => (a[0], a[2])), [(app.path, 'W1'), (app.path, '')]);
+    },
+    // Each launch looks for its new terminal's tty for five seconds: this fake has none.
+    timeout: const Timeout(Duration(seconds: 60)),
+  );
 
   test('a Ghostty that has quit: its windows read as gone (it is not started again for them)', () async {
     final g = ghostty(

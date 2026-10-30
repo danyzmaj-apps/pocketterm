@@ -38,18 +38,40 @@ Terminals _terms() => Terminals(
   ghostty: Ghostty(appPath: '/nonexistent-pocketterm/Ghostty.app'),
 );
 
-TermWindow _w(String key, {String tty = '', String app = 'x'}) =>
-    TermWindow(key: key, title: '', tab: '', cwd: '', program: '', app: app, tty: tty);
+TermWindow _w(
+  String key, {
+  String tty = '',
+  String app = 'x',
+  String cwd = '',
+  String osWindow = '',
+  String tabId = '',
+  String via = '',
+}) => TermWindow(
+  key: key,
+  title: '',
+  tab: '',
+  cwd: cwd,
+  program: '',
+  app: app,
+  tty: tty,
+  osWindow: osWindow,
+  tabId: tabId,
+  via: via,
+);
 
 void main() {
   group('tmux', () {
     test('list-panes: a pane per record, its program from the tty, the window name for a host-name title', () {
       const out =
-          '%0\x1f/dev/ttys008\x1fzsh\x1f/private/tmp/dzt/cap-tmux\x1fcap-tmux\x1fzsh\x1fpt-mv82o7z3\x1f1\x1f1\x1f1\x1e\n'
-          '%3\x1f/dev/ttys012\x1fnode\x1f/Users/me/Dev/x\x1f\x1feditor\x1fwork\x1f1\x1f0\x1f0\x1e\n';
+          '%0\x1f/dev/ttys008\x1fzsh\x1f/private/tmp/dzt/cap-tmux\x1fcap-tmux\x1fzsh\x1fpt-mv82o7z3\x1f1\x1f1\x1f1'
+          '\x1f\$0\x1f@0\x1e\n'
+          '%3\x1f/dev/ttys012\x1fnode\x1f/Users/me/Dev/x\x1f\x1feditor\x1fwork\x1f1\x1f0\x1f0\x1f\$2\x1f@5\x1e\n';
       final procs = Procs(parsePs(' 97892 97891 97892 97892 ttys008  Ss+  -zsh\n'));
       final panes = parseTmuxPanes('default', out, procs);
-      expect(panes.map((w) => w.key), ['tmux:default/0', 'tmux:default/3']);
+      expect(panes.map((w) => (w.key, w.osWindow, w.tabId)), [
+        ('tmux:default/0', 'tmux:default/s0', 'tmux:default/w0'),
+        ('tmux:default/3', 'tmux:default/s2', 'tmux:default/w5'),
+      ]);
       final first = panes.first;
       expect(
         (first.title, first.tab, first.cwd, first.program, first.tty, first.focused, first.app),
@@ -63,8 +85,8 @@ void main() {
     test('a folder whose name holds a tab or a line break keeps its pane, and the panes after it', () {
       // As tmux 3.8 prints them: the folder's bytes as they are.
       const out =
-          '%1\x1f/dev/ttys014\x1fbash\x1f/tmp/ptx/tab\tdir\nnl\x1f\x1fbash\x1fs\x1f1\x1f1\x1f0\x1e\n'
-          '%2\x1f/dev/ttys015\x1fzsh\x1f/tmp\x1ft\x1fzsh\x1fs\x1f1\x1f0\x1f0\x1e\n';
+          '%1\x1f/dev/ttys014\x1fbash\x1f/tmp/ptx/tab\tdir\nnl\x1f\x1fbash\x1fs\x1f1\x1f1\x1f0\x1f\$1\x1f@1\x1e\n'
+          '%2\x1f/dev/ttys015\x1fzsh\x1f/tmp\x1ft\x1fzsh\x1fs\x1f1\x1f0\x1f0\x1f\$1\x1f@2\x1e\n';
       final panes = parseTmuxPanes('edge', out);
       expect(panes.map((w) => (w.key, w.cwd)), [('tmux:edge/1', '/tmp/ptx/tab\tdir\nnl'), ('tmux:edge/2', '/tmp')]);
     });
@@ -88,31 +110,37 @@ void main() {
     });
   });
 
-  test('WezTerm list: pane key with the GUI pid, folder from the file URL, program from the tty', () {
-    final w = parseWezTermList('1128', _wezList, procs: Procs(parsePs(_psWezTerm))).single;
-    expect(
-      (w.key, w.title, w.cwd, w.tty, w.program, w.focused, w.app),
-      ('wezterm:1128/0', 'cap-wezterm', '/tmp/dzt/cap-wezterm', 'ttys008', 'claude', true, 'wezterm'),
-    );
-  });
+  test(
+    'WezTerm list: pane key with the GUI pid, its window and tab, folder from the file URL, program from the tty',
+    () {
+      final w = parseWezTermList('1128', _wezList, procs: Procs(parsePs(_psWezTerm))).single;
+      expect(
+        (w.key, w.title, w.cwd, w.tty, w.program, w.focused, w.app),
+        ('wezterm:1128/0', 'cap-wezterm', '/tmp/dzt/cap-wezterm', 'ttys008', 'claude', true, 'wezterm'),
+      );
+      expect((w.osWindow, w.tabId), ('wezterm:1128/w0', 'wezterm:1128/t0'));
+    },
+  );
 
-  test("Ghostty list: id, title and folder; no tty, and its windows can't be read", () {
+  test("Ghostty list: id, title, folder, window and tab; no tty, and its windows can't be read", () {
     const out =
-        'CB2035E7-67BF-48C7-8D0A-83F3FA5B8074\x1fcap-ghostty\x1f/tmp/dzt/cap-ghostty\x1fcap-ghostty\x1ftrue\x1e\n'
+        'CB2035E7-67BF-48C7-8D0A-83F3FA5B8074\x1fcap-ghostty\x1f/tmp/dzt/cap-ghostty\x1fcap-ghostty\x1ftrue\x1f'
+        'W-1\x1fT-2\x1e\n'
         'front\x1ffalse';
     final w = parseGhosttyList(out).single;
     expect(
       (w.key, w.title, w.cwd, w.tty, w.focused),
       ('ghostty:CB2035E7-67BF-48C7-8D0A-83F3FA5B8074', 'cap-ghostty', '/tmp/dzt/cap-ghostty', '', false),
     );
+    expect((w.osWindow, w.tabId), ('ghostty:wW-1', 'ghostty:tT-2'));
     expect(w.can(TermCap.read), isFalse);
     expect(w.can(TermCap.keys), isTrue);
   });
 
   test('Ghostty list: a title or folder with a tab or line break stays one window; the title reads as one line', () {
     const out =
-        'CB2035E7-67BF-48C7-8D0A-83F3FA5B8074\x1fa\tb\nc\x1f/tmp/x\ty\x1ftab\x1ftrue\x1e\r'
-        'DB2035E7-67BF-48C7-8D0A-83F3FA5B8074\x1fsecond\x1f/tmp\x1ftab\x1ffalse\x1e\n'
+        'CB2035E7-67BF-48C7-8D0A-83F3FA5B8074\x1fa\tb\nc\x1f/tmp/x\ty\x1ftab\x1ftrue\x1fW-1\x1fT-1\x1e\r'
+        'DB2035E7-67BF-48C7-8D0A-83F3FA5B8074\x1fsecond\x1f/tmp\x1ftab\x1ffalse\x1fW-1\x1fT-1\x1e\n'
         'front\x1ftrue\n';
     final ws = parseGhosttyList(out);
     expect(ws.map((w) => (w.title, w.cwd, w.focused)), [('a b c', '/tmp/x\ty', true), ('second', '/tmp', false)]);
@@ -127,7 +155,7 @@ void main() {
   group('Terminals.merge', () {
     final terms = _terms();
 
-    test("a terminal window attached to tmux gives way to the tmux pane, which names the app it's in", () {
+    test("a terminal window attached to tmux gives way to the tmux pane, in its place, naming the app it's in", () {
       final merged = Terminals.merge(
         terms.hosts,
         [
@@ -141,8 +169,8 @@ void main() {
       );
       expect(merged.map((w) => (w.key, w.via)), [
         ('kitty-1/2', ''),
-        ('tmux:default/0', 'WezTerm'),
         ('tmux:default/1', ''),
+        ('tmux:default/0', 'WezTerm'),
         ('wezterm:9/2', ''),
       ]);
     });
@@ -161,6 +189,84 @@ void main() {
       );
       expect(merged.map((w) => (w.key, w.via)), [('tmux:default/4', 'Ghostty'), ('ghostty:G2', '')]);
     });
+
+    test("every pane of a shown tmux session sits in the app's window and tab; another session keeps its own", () {
+      final merged = Terminals.merge(
+        terms.hosts,
+        [
+          [_w('kitty-1/2', tty: 'ttys003', osWindow: 'kitty-1/os1', tabId: 'kitty-1/tab4')],
+          [
+            _w('tmux:default/0', osWindow: 'tmux:default/s1', tabId: 'tmux:default/w1'),
+            _w('tmux:default/1', osWindow: 'tmux:default/s1', tabId: 'tmux:default/w2'),
+            _w('tmux:default/2', osWindow: 'tmux:default/s2', tabId: 'tmux:default/w3'),
+          ],
+          [],
+          [],
+        ],
+        {'ttys003': 'tmux:default/1'},
+        const {},
+      );
+      expect(merged.map((w) => (w.key, w.via, w.osWindow, w.tabId)), [
+        ('tmux:default/0', 'kitty', 'kitty-1/os1', 'kitty-1/tab4'),
+        ('tmux:default/1', 'kitty', 'kitty-1/os1', 'kitty-1/tab4'),
+        ('tmux:default/2', '', 'tmux:default/s2', 'tmux:default/w3'),
+      ]);
+    });
+  });
+
+  group('Terminals.projectWindow', () {
+    final terms = _terms();
+    const home = '/Users/me';
+    String? find(List<TermWindow> ws, String cwd) => Terminals.projectWindow(ws, terms.kitty!, cwd, home: home);
+
+    test("the app's window with the most of the project's tabs; panes of one tab count once", () {
+      final ws = [
+        _w('kitty-1/1', app: 'kitty', cwd: '/Users/me/a', osWindow: 'kitty-1/os1', tabId: 'kitty-1/tab1'),
+        _w('kitty-1/2', app: 'kitty', cwd: '/Users/me/a', osWindow: 'kitty-1/os1', tabId: 'kitty-1/tab1'),
+        _w('kitty-1/3', app: 'kitty', cwd: '/Users/me/b', osWindow: 'kitty-1/os1', tabId: 'kitty-1/tab2'),
+        _w('kitty-1/4', app: 'kitty', cwd: '/Users/me/a/lib', osWindow: 'kitty-1/os2', tabId: 'kitty-1/tab3'),
+        _w('kitty-1/5', app: 'kitty', cwd: '/Users/me/a', osWindow: 'kitty-1/os2', tabId: 'kitty-1/tab5'),
+        // Another app's window, and a tmux pane no app shows: not kitty's to open a tab in.
+        _w('wezterm:9/1', app: 'wezterm', cwd: '/Users/me/a', osWindow: 'wezterm:9/w1', tabId: 'wezterm:9/t1'),
+        _w('tmux:default/0', app: 'tmux', cwd: '/Users/me/a', osWindow: 'tmux:default/s1'),
+      ];
+      expect(find(ws, '/Users/me/a'), 'kitty-1/os2');
+      expect(find(ws, '/Users/me/b'), 'kitty-1/os1');
+      expect(find(ws, '/Users/me/ab'), isNull, reason: 'a folder whose name starts the same is another project');
+    });
+
+    test('a tmux pane counts for the app window showing it', () {
+      final ws = [
+        _w(
+          'tmux:default/0',
+          app: 'tmux',
+          via: 'kitty',
+          cwd: '/Users/me/a',
+          osWindow: 'kitty-1/os3',
+          tabId: 'kitty-1/tab7',
+        ),
+      ];
+      expect(find(ws, '/Users/me/a'), 'kitty-1/os3');
+    });
+
+    test('the home folder (General) counts only tabs in it, not every folder under it', () {
+      final ws = [
+        _w('kitty-1/1', app: 'kitty', cwd: '/Users/me/a', osWindow: 'kitty-1/os1', tabId: 'kitty-1/tab1'),
+        _w('kitty-1/2', app: 'kitty', cwd: '/Users/me/b', osWindow: 'kitty-1/os1', tabId: 'kitty-1/tab2'),
+        _w('kitty-1/3', app: 'kitty', cwd: '/Users/me', osWindow: 'kitty-1/os2', tabId: 'kitty-1/tab3'),
+      ];
+      expect(find(ws, home), 'kitty-1/os2');
+      expect(find(ws.take(2).toList(), home), isNull);
+    });
+
+    test('a window that tells no app window is no place for a tab (an older listing)', () {
+      expect(find([_w('kitty-1/1', app: 'kitty', cwd: '/Users/me/a')], '/Users/me/a'), isNull);
+    });
+  });
+
+  test('the home folder is General; a project is its folder', () {
+    expect(Terminals.projectName('/Users/me', home: '/Users/me'), 'General');
+    expect(Terminals.projectName('/Users/me/wrkly', home: '/Users/me'), 'wrkly');
   });
 
   group('Ghostty windows running tmux (its config line): one row each', () {
@@ -184,11 +290,12 @@ void main() {
     const g1 = 'E7AD8A26-8A2F-4A2E-B8AA-AB5575C50B75';
     const g2 = 'F1AD8A26-8A2F-4A2E-B8AA-AB5575C50B75';
     String ghosttyList(List<(String id, String title, String cwd)> ws) =>
-        '${[for (final (id, title, cwd) in ws) '$id\x1f$title\x1f$cwd\x1f$title\x1ffalse\x1e\n'].join()}front\x1ffalse';
+        '${[for (final (id, title, cwd) in ws) '$id\x1f$title\x1f$cwd\x1f$title\x1ffalse\x1fW-$id\x1fT-$id\x1e\n'].join()}'
+        'front\x1ffalse';
     final panes = parseTmuxPanes(
       'default',
-      '%0\x1f/dev/ttys014\x1fzsh\x1f/Users/me/a\x1fa\x1fzsh\x1f3\x1f1\x1f1\x1f1\x1e\n'
-          '%1\x1f/dev/ttys015\x1fzsh\x1f/Users/me/b\x1fb\x1fzsh\x1f4\x1f1\x1f1\x1f1\x1e\n',
+      '%0\x1f/dev/ttys014\x1fzsh\x1f/Users/me/a\x1fa\x1fzsh\x1f3\x1f1\x1f1\x1f1\x1f\$3\x1f@0\x1e\n'
+          '%1\x1f/dev/ttys015\x1fzsh\x1f/Users/me/b\x1fb\x1fzsh\x1f4\x1f1\x1f1\x1f1\x1f\$4\x1f@1\x1e\n',
     );
     TieGhostty tie(String ps, String list, String clients) => Terminals.tieGhostty(
       windows: parseGhosttyList(list),
@@ -508,7 +615,7 @@ void main() {
 
     test('launchNewProject takes the folder back when no window opens, so trying again works', () async {
       // kitty isn't listening here: the launch fails.
-      Future<String> attempt() => terms.launchNewProject(root, 'demo', roots: [root], host: terms.kitty!);
+      Future<Opened> attempt() => terms.launchNewProject(root, 'demo', roots: [root], host: terms.kitty!);
       await expectLater(attempt(), throwsA(isA<TerminalException>()));
       expect(Directory('$root/demo').existsSync(), isFalse);
       // The same failure again, not "already something named demo there".

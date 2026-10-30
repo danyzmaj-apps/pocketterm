@@ -168,6 +168,20 @@ void main() {
     expect(find.text('Always WezTerm'), findsOneWidget);
   });
 
+  testWidgets("Place them: a tab in the project's window unless a new window is chosen", (tester) async {
+    await pumpSettings(tester);
+    await tester.tap(find.byKey(const ValueKey('settings-tab-terminals')));
+    await tester.pumpAndSettle();
+    expect(app.placement, Placement.projectWindow);
+
+    await tester.tap(find.byKey(const ValueKey('settings-placement')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('New window').last);
+    await tester.pumpAndSettle();
+    expect(app.placement, Placement.newWindow);
+    expect(find.text('A new window for every session.'), findsOneWidget);
+  });
+
   testWidgets("kitty's Set up stays after it fails, and its note gives way once kitty's status moves on", (
     tester,
   ) async {

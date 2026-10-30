@@ -5,17 +5,21 @@ appId: com.danyzmaj.pocketterm
 ---
 - runFlow: sub/home.yaml
 - tapOn: "New session"
+# Where it goes: in that terminal, as a tab in the project's window (the computer's default).
 - extendedWaitUntil:
-    visible: "Opens in ${TERMINAL_RE}"
+    visible: "Opens in ${TERMINAL_RE}, as a tab in the project's window"
     timeout: 10000
 - assertVisible: "Start omp\n.*"
+# General (the home folder) comes first, for a session about nothing in particular.
+- assertVisible: "General\n~"
 - takeScreenshot: sheet
-# The run's projects aren't under its home, so the sheet lists their full
-# paths; open windows' folders come first, so it may be further down.
+# Each project is a tile: its name, its path under it (the run's projects
+# aren't under its home, so the full path); open windows' folders come first,
+# so it may be further down.
 - scrollUntilVisible:
-    element: ".*/${PROJECT}"
+    element: "${PROJECT}\n.*/${PROJECT}"
     timeout: 20000
-- tapOn: ".*/${PROJECT}"
+- tapOn: "${PROJECT}\n.*/${PROJECT}"
 - extendedWaitUntil:
     visible: "Prompt omp…"
     timeout: 45000

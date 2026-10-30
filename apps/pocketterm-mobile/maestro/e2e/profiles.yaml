@@ -87,7 +87,7 @@ appId: com.danyzmaj.pocketterm
 # New session in PROFILE: a chip for each profile, PROFILE picked.
 - tapOn: "New session"
 - extendedWaitUntil:
-    visible: "Opens in ${TERMINAL_RE}"
+    visible: "Opens in ${TERMINAL_RE}(, .*)?"
     timeout: 10000
 - assertVisible: "default"
 - assertVisible: "${EMPTY}"
@@ -169,13 +169,13 @@ appId: com.danyzmaj.pocketterm
 # New session back on the default profile; the project menu follows.
 - tapOn: "New session"
 - extendedWaitUntil:
-    visible: "Opens in ${TERMINAL_RE}"
+    visible: "Opens in ${TERMINAL_RE}(, .*)?"
     timeout: 10000
 - tapOn: "default"
 - tapOn:
     point: "50%,8%"
 - extendedWaitUntil:
-    notVisible: "Opens in ${TERMINAL_RE}"
+    notVisible: "Opens in ${TERMINAL_RE}(, .*)?"
     timeout: 5000
 # From the top: the list may be scrolled past the project (by name or by activity, it can be anywhere).
 - scrollUntilVisible:

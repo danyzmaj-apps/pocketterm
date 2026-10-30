@@ -38,7 +38,7 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 | Setup, Supabase: Paste a setup link | the `--server supabase` run signs in with the local project's link (step "setup: own server, paste link"); `supabase_setup_test.dart` (the Supabase branch's paste screen) | none |
 | Sign-in when the Keychain refuses (locked, missing): message and Try again | core `session_test.dart`; `setup_page_test.dart`, `hosting_test.dart` | a real locked Keychain: manual |
 | First sign-in turns Terminal from phone on, adds no login item | steps "setup: …" assert both | none |
-| Get ready: omp gets PocketTerm | step "get ready: omp gets PocketTerm" (Install, confirmed); `get_ready_test.dart`, `integrations_test.dart` | Claude Code install: plugin tests and `integrations_test.dart` only (the e2e never touches the owner's Claude Code) |
+| Get ready: omp gets PocketTerm (Install, confirmed) | step "get ready: omp gets PocketTerm once confirmed"; `get_ready_test.dart`, `integrations_test.dart` | Claude Code install: plugin tests and `integrations_test.dart` only (the e2e never touches the owner's Claude Code) |
 | Get ready: sessions already open (unreported) | step "get ready: sessions already open are listed" | none |
 | Get ready: terminals row | step "get ready: terminals"; `terminals_card_test.dart` | none |
 | Get ready: project folders, Choose folder… | step "get ready: project folders" | none |
@@ -54,6 +54,7 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 | Sessions carry their omp profile (the extension's hello, a window's `omp --profile` command line) | steps "profiles: omp in a profile reports it; its window says so", "real omp: a profile loads PocketTerm from its own folder and says so"; core `live_test.dart`, `terminals_test.dart`, `agent_test.dart` | none |
 | Notifications name an omp profile (`omp · <profile> finished · <project>`) | step "profiles: a finished run is notified as omp · personal finished" (the title the app sends) | delivery: manual |
 | Terminals tab: New sessions open in | step "settings: new sessions open in <terminal>" | none |
+| Terminals tab: Place them (tab in the project's window, new window) | step "phone: a second shell in a project opens as a tab of its window" (the default); `terminals_test.dart` (`projectWindow`), `settings_test.dart` | New window on a real terminal: unit only |
 | Terminals tab: kitty Set up (remote control in kitty.conf) | `kitty_test.dart`, `terminals_card_test.dart` | e2e kitty already listens (its throwaway config); the Set up click: unit only |
 | Terminals tab: Allow… (Automation for Ghostty, iTerm2) | `ghostty_test.dart` | manual: a macOS permission prompt for the owner |
 | Terminals tab: Ghostty Start new windows in tmux / Remove / line upgrade | steps "ghostty: Start new windows in tmux", "ghostty: Remove takes tmux out"; `ghostty_config_test.dart`, `settings_test.dart` | none |
@@ -101,6 +102,8 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 | New session (+): agent in a project | flow `new_session`; step "phone: new session (+) opens in <terminal>" | none |
 | New session (+) and the project menu's New omp · <profile> session here, in an omp profile | flow `profiles`; steps "phone: New session in a profile types omp --profile=personal", "phone: a project’s New omp · personal session here starts in it"; `new_session_sheet_test.dart` | none |
 | New session (+): plain shell | flow `new_shell`; step "phone: new shell opens in <terminal> without an agent" | none |
+| New session (+): a second window in a project goes in as a tab of its window, and the phone says where | flow `new_tab`; step "phone: a second shell in a project opens as a tab of its window" | General (`~`): `new_session_sheet_test.dart` only (the e2e keeps out of the owner's home folder) |
+| Windows and tabs (the count above the projects, the list of windows and their tabs, a tab opening its screen; where a row sits on its long press) | flow `windows`; `terminal_list_test.dart` "where terminals sit on the computer" | none |
 | New session (+): New project… | flow `new_project`; step "phone: new project made in the project folder" | none |
 | Conversation: prompt and streamed reply | flows `conversation-*`; step "phone: prompt reaches the agent" | none |
 | Conversation: steer while it works, Queue | flow `steer_queue`; steps "phone: steer reaches the agent while it works", "phone: a queued prompt runs after the turn"; `live_hub_test.dart` "the queue" (edit, move, remove, Send now, limits, reconnect); `queue_strip_test.dart` | none |

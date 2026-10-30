@@ -339,15 +339,15 @@ void openWindow(BuildContext context, TerminalRemote remote, String window, {boo
       ),
     );
 
-/// Asks where to start a session, starts it and opens it. [profile] is the omp profile picked last time ('' the
-/// default); [onProfile] keeps a new pick.
+/// Asks where to start a session, starts it and opens it, saying where on the computer it opened. [profile] is the
+/// omp profile picked last time ('' the default); [onProfile] keeps a new pick.
 Future<void> openNewSession(
   BuildContext context,
   TerminalRemote remote, {
   String profile = '',
   ValueChanged<String>? onProfile,
 }) async {
-  final launched = await showAppSheet<({String window, bool agent})>(
+  final launched = await showAppSheet<({String window, String where, bool agent})>(
     context,
     builder: (_) => NewSessionSheet(remote: remote, profile: profile, onProfile: onProfile),
   );
@@ -358,6 +358,83 @@ Future<void> openNewSession(
   } else {
     openWindow(context, remote, launched.window, starting: true);
   }
+  toastOpened(context, launched.where);
+}
+
+/// Says [where] on the computer a window the phone started went ("Opened in a new tab in the kitty window with
+/// wrkly"), when the computer says (`Opened.where`). [context] can be the app's navigator's: the toast shows on the
+/// page just opened.
+void toastOpened(BuildContext context, String where) {
+  if (where.isNotEmpty) termToast(context, 'Opened in $where');
+}
+
+/// How the phone names the project in [cwd]: its folder's name, General for the home folder (a session started
+/// without picking a project), Somewhere when unknown.
+String projectName(TerminalRemote r, String cwd) => cwd.isEmpty
+    ? 'Somewhere'
+    : cwd == r.home
+    ? 'General'
+    : baseName(cwd);
+
+/// A tab of an app window on the computer: the terminals in it (panes split in one tab share it), in list order;
+/// `number` counts from 1 within its window.
+typedef MacTab = ({String id, int number, List<TermWindow> panes});
+
+/// An app window on the computer (what Cmd+N opens) and its tabs. `app` names its terminal app; `number` counts
+/// from 1 among that app's windows, so the phone can say "kitty window 2".
+typedef MacWindow = ({String id, String app, int number, List<MacTab> tabs});
+
+/// The app [w] shows in: the terminal app a tmux pane is shown in, else its own, named as [terminals] (the
+/// computer's) name it.
+String termApp(TermWindow w, {List<TermStatus> terminals = const []}) =>
+    w.via.isNotEmpty ? w.via : terminals.where((t) => t.id == w.app).firstOrNull?.label ?? termLabel(w.app);
+
+/// [windows] as they sit on the computer: its app windows, each with its tabs, numbered in the order they first
+/// come in [windows] (the computer's list order). A terminal that doesn't say its app window (an older computer)
+/// is left out; one that doesn't say its tab is a tab of its own.
+List<MacWindow> macLayout(List<TermWindow> windows, {List<TermStatus> terminals = const []}) {
+  final byWindow = <String, Map<String, List<TermWindow>>>{};
+  for (final w in windows) {
+    if (w.osWindow.isEmpty) continue;
+    ((byWindow[w.osWindow] ??= {})[w.tabId.isEmpty ? w.key : w.tabId] ??= []).add(w);
+  }
+  final perApp = <String, int>{};
+  final layout = <MacWindow>[];
+  for (final MapEntry(key: id, value: tabs) in byWindow.entries) {
+    final app = termApp(tabs.values.first.first, terminals: terminals);
+    final number = perApp[app] = (perApp[app] ?? 0) + 1;
+    layout.add((
+      id: id,
+      app: app,
+      number: number,
+      tabs: [
+        for (final (i, MapEntry(key: t, value: panes)) in tabs.entries.indexed) (id: t, number: i + 1, panes: panes),
+      ],
+    ));
+  }
+  return layout;
+}
+
+/// Where each terminal of [layout] sits, by its key: "kitty window 2 · tab 1".
+Map<String, String> macPlaces(List<MacWindow> layout) => {
+  for (final w in layout)
+    for (final t in w.tabs)
+      for (final p in t.panes) p.key: '${w.app} window ${w.number} · tab ${t.number}',
+};
+
+/// [layout] counted: "3 windows · 7 tabs".
+String layoutCount(List<MacWindow> layout) {
+  final tabs = layout.fold<int>(0, (n, w) => n + w.tabs.length);
+  return '${layout.length} window${layout.length == 1 ? '' : 's'} · $tabs tab${tabs == 1 ? '' : 's'}';
+}
+
+/// The pane a tab shows for itself: the focused one, else its first.
+TermWindow tabLead(MacTab t) => t.panes.where((p) => p.focused).firstOrNull ?? t.panes.first;
+
+/// The live session running in tab [t], if one is.
+LiveSummary? tabSession(TerminalRemote r, MacTab t) {
+  final keys = {for (final p in t.panes) p.key};
+  return r.sessions.where((s) => s.window != null && keys.contains(s.window)).firstOrNull;
 }
 
 /// The sessions in one project folder.
@@ -375,11 +452,17 @@ enum ProjectSort {
 /// Sessions by project folder, each project's in the computer's order (as it
 /// first saw them), so a session changing state never moves.
 ///
-/// [sort] orders the projects. By activity, the projects in [ranked] keep its
+/// [sort] orders the projects; by name, [home] goes by General, the name it
+/// shows under ([projectName]). By activity, the projects in [ranked] keep its
 /// order, so the list doesn't reshuffle while it's looked at; projects not
 /// in it yet go first, the most recently active first. An empty [ranked]
 /// ranks them all afresh.
-List<SessionGroup> groupedSessions(List<LiveSummary> sessions, ProjectSort sort, {List<String> ranked = const []}) {
+List<SessionGroup> groupedSessions(
+  List<LiveSummary> sessions,
+  ProjectSort sort, {
+  List<String> ranked = const [],
+  String home = '',
+}) {
   final byCwd = <String, List<LiveSummary>>{};
   for (final s in sessions) {
     (byCwd[s.cwd] ??= []).add(s);
@@ -387,7 +470,7 @@ List<SessionGroup> groupedSessions(List<LiveSummary> sessions, ProjectSort sort,
   final List<String> order;
   switch (sort) {
     case ProjectSort.name:
-      String name(String cwd) => baseName(cwd).toLowerCase();
+      String name(String cwd) => cwd == home ? 'general' : baseName(cwd).toLowerCase();
       order = byCwd.keys.toList()
         ..sort((a, b) {
           if (a.isEmpty != b.isEmpty) return a.isEmpty ? 1 : -1;
@@ -631,7 +714,7 @@ class _TerminalListState extends State<TerminalList> {
     widget.onProfileFilter?.call(profile);
   }
 
-  /// Starts the agent in a new window in [cwd], and opens its session.
+  /// Starts the agent in a new window in [cwd], opens its session and says where it opened.
   Future<void> _launchHere(String cwd) async {
     if (_launching != null) return;
     setState(() => _launching = cwd);
@@ -639,9 +722,12 @@ class _TerminalListState extends State<TerminalList> {
     // the session still opens, or what went wrong still shows.
     final nav = Navigator.of(context);
     try {
-      final window = await remote.launch(cwd, startAgent: true, profile: _newProfile());
-      // An agent the phone started: its session's key is its window's.
-      if (nav.mounted) openSession(nav.context, remote, window, starting: true);
+      final opened = await remote.launch(cwd, startAgent: true, profile: _newProfile());
+      if (nav.mounted) {
+        // An agent the phone started: its session's key is its window's.
+        openSession(nav.context, remote, opened.window, starting: true);
+        toastOpened(nav.context, opened.where);
+      }
     } on Object catch (e) {
       if (nav.mounted) termToast(nav.context, e);
     } finally {
@@ -772,12 +858,14 @@ class _TerminalListState extends State<TerminalList> {
     _setLook(row, look.withColor(picked == 0 ? null : picked));
   }
 
-  /// A long press on a row: what its swipe offers, as a sheet.
+  /// A long press on a row: where it sits on the computer ("kitty window 2 · tab 1", numbered as the windows and
+  /// tabs overview does), then what its swipe offers, as a sheet.
   Future<void> _rowMenu(String row, String shown, TermWindow? w) => showAppSheet<void>(
     context,
     builder: (sheet) {
       final closable = w != null && w.can(TermCap.close) && remote.online && !_closing.contains(w.key);
       final color = _look(row).color;
+      final place = w == null ? null : macPlaces(macLayout(remote.windows, terminals: remote.terminals))[w.key];
       void then(Future<void> Function() action) {
         Navigator.of(sheet).pop();
         unawaited(action());
@@ -786,7 +874,19 @@ class _TerminalListState extends State<TerminalList> {
       return SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (place != null)
+              Padding(
+                key: const ValueKey('row-menu-place'),
+                padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 4),
+                child: Text(
+                  place,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13, color: C.dim),
+                ),
+              ),
             ListTile(
               key: const ValueKey('row-menu-rename'),
               leading: Icon(Icons.edit_outlined, color: C.dim),
@@ -959,7 +1059,7 @@ class _TerminalListState extends State<TerminalList> {
     final folded = _folded.contains(g.cwd);
     return Panel(
       key: ValueKey('project-${g.cwd}'),
-      title: _projectName(g.cwd).toUpperCase(),
+      title: projectName(remote, g.cwd).toUpperCase(),
       titleTip: first ? Tip.projectHeading : null,
       onTitleTap: () => _fold(g.cwd),
       onTitleLongPress: () {
@@ -978,8 +1078,6 @@ class _TerminalListState extends State<TerminalList> {
           : [for (final (i, s) in g.sessions.indexed) _session(s, first: i == 0, last: i == g.sessions.length - 1)],
     );
   }
-
-  static String _projectName(String cwd) => cwd.isEmpty ? 'Somewhere' : baseName(cwd);
 
   /// A folded project's one row: how many sessions, and what needs you or
   /// is working, so folding never hides a question.
@@ -1035,7 +1133,12 @@ class _TerminalListState extends State<TerminalList> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 2),
-              child: Text(_projectName(cwd), style: sheetTitleStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+              child: Text(
+                projectName(remote, cwd),
+                style: sheetTitleStyle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             if (cwd.isNotEmpty)
               Padding(
@@ -1086,50 +1189,109 @@ class _TerminalListState extends State<TerminalList> {
     },
   );
 
-  /// Above the projects: which omp profile's sessions show ([filter], when the computer has more than the default)
-  /// and how the projects are ordered ([sort], when there are some to order); [profiles] names the profiles besides
-  /// the default, sorted.
-  Widget _controls({
+  /// Above the projects, on one line: how many app windows and tabs the computer has open ([_layoutControl], when
+  /// it says where its terminals sit); which omp profile's sessions show ([filter], when the computer has more than
+  /// the default) and how the projects are ordered ([sort], when there are some to order). [profiles] names the
+  /// profiles besides the default, sorted.
+  Widget _controls(
+    List<MacWindow> layout, {
     required bool sort,
     required bool filter,
     required String? current,
     List<String> profiles = const [],
-  }) => Align(
-    alignment: Alignment.centerRight,
-    child: Padding(
-      padding: const EdgeInsets.only(right: 16),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        spacing: 4,
-        children: [
-          if (filter)
-            _pill(
-              key: const ValueKey('profile-filter'),
-              id: 'profile-filter',
-              icon: Icons.filter_list,
-              label: _profileLabel(current),
-              tooltip: 'Show sessions from',
-              hint: 'Picks the omp profile whose sessions show',
-              onTap: () => unawaited(_profileMenu(profiles, current)),
-            ),
-          // A tap switches to the other order (there are only two), no menu.
-          if (sort)
-            _pill(
-              key: const ValueKey('project-sort'),
-              id: 'project-sort',
-              icon: Icons.swap_vert,
-              label: _sortLabel(_sort),
-              tooltip: 'Sort projects',
-              hint: 'Switches to ${_sortLabel(_sort == ProjectSort.name ? ProjectSort.activity : ProjectSort.name)}',
-              onTap: () => _setSort(_sort == ProjectSort.name ? ProjectSort.activity : ProjectSort.name),
-            ),
-        ],
-      ),
+  }) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    child: Row(
+      spacing: 4,
+      children: [
+        if (layout.isNotEmpty)
+          Expanded(
+            child: Align(alignment: AlignmentDirectional.centerStart, child: _layoutControl(layout)),
+          )
+        else
+          const Spacer(),
+        if (filter)
+          _pill(
+            key: const ValueKey('profile-filter'),
+            id: 'profile-filter',
+            icon: Icons.filter_list,
+            label: _profileLabel(current),
+            tooltip: 'Show sessions from',
+            hint: 'Picks the omp profile whose sessions show',
+            onTap: () => unawaited(_profileMenu(profiles, current)),
+          ),
+        // A tap switches to the other order (there are only two), no menu.
+        if (sort)
+          _pill(
+            key: const ValueKey('project-sort'),
+            id: 'project-sort',
+            icon: Icons.swap_vert,
+            label: _sortLabel(_sort),
+            tooltip: 'Sort projects',
+            hint: 'Switches to ${_sortLabel(_sort == ProjectSort.name ? ProjectSort.activity : ProjectSort.name)}',
+            onTap: () => _setSort(_sort == ProjectSort.name ? ProjectSort.activity : ProjectSort.name),
+          ),
+      ],
     ),
   );
 
-  /// One of [_controls]: [icon] and [label]. Its press shows as a rounded pill around it, the last one ending where
-  /// the headings' trailing edge does.
+  /// "3 windows · 7 tabs": a tap shows them ([_LayoutSheet]). A pill like the sort's, its text in line with the
+  /// project headings'.
+  Widget _layoutControl(List<MacWindow> layout) {
+    final count = layoutCount(layout);
+    return Semantics(
+      container: true,
+      identifier: 'layout-summary',
+      button: true,
+      label: count,
+      hint: 'Shows the windows and tabs open on ${widget.computer ?? 'the computer'}',
+      excludeSemantics: true,
+      child: InkWell(
+        key: const ValueKey('layout-summary'),
+        borderRadius: C.round(Panel.headingRadius),
+        onTap: () => unawaited(_showLayout()),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 36),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 10, 0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.web_asset_outlined, size: 16, color: C.dim),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    count,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 13, color: C.dim),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The computer's windows and tabs; the tab picked opens: its session when one runs there, else its screen.
+  Future<void> _showLayout() async {
+    final picked = await showAppSheet<({String? session, String window})>(
+      context,
+      builder: (_) => _LayoutSheet(remote: remote),
+    );
+    if (picked == null || !mounted) return;
+    if (picked.session case final session?) {
+      _finished.remove(session);
+      openSession(context, remote, session);
+    } else {
+      openWindow(context, remote, picked.window);
+    }
+  }
+
+  /// One of [_controls]' trailing pills: [icon] and [label]. Its press shows as a rounded pill around it, the last
+  /// one ending where the headings' trailing edge does.
   Widget _pill({
     required Key key,
     required String id,
@@ -1342,12 +1504,13 @@ class _TerminalListState extends State<TerminalList> {
       // A profile no longer there reads as all of them; the kept choice stays for when it's back.
       final filter = showFilter && known.contains(_filter) ? _filter : null;
       final visible = filter == null ? sessions : sessions.where((s) => s.profile == filter).toList();
-      final groups = groupedSessions(visible, _sort, ranked: _ranked);
+      final groups = groupedSessions(visible, _sort, ranked: _ranked, home: remote.home);
       _noteFinished(sessions, watched: remote.watchedSession);
       // What's shown is what stays: a project's activity reorders it only
       // on the next refresh.
       if (_sort == ProjectSort.activity) _ranked = [for (final g in groups) g.cwd];
       final claimed = {for (final s in remote.sessions) ?s.window};
+      final layout = macLayout(remote.windows, terminals: remote.terminals);
       final windows = remote.windows.where((w) => !claimed.contains(w.key)).toList();
       final rows = {for (final s in sessions) s.key, for (final w in windows) w.key};
       _entering = _rows == null ? const {} : rows.difference(_rows!);
@@ -1385,8 +1548,9 @@ class _TerminalListState extends State<TerminalList> {
                 padding: EdgeInsets.only(bottom: AddButton.contentInset + MediaQuery.paddingOf(context).bottom),
                 children: [
                   if (sessions.isEmpty && windows.isEmpty) _empty(),
-                  if (groups.length > 1 || showFilter)
+                  if (layout.isNotEmpty || groups.length > 1 || showFilter)
                     _controls(
+                      layout,
                       sort: groups.length > 1,
                       filter: showFilter,
                       current: filter,
@@ -1452,6 +1616,115 @@ class _TerminalListState extends State<TerminalList> {
       );
     },
   );
+}
+
+/// The computer's app windows in its list's order, each headed by its app and number ("kitty window 2") over the
+/// projects in it, then its tabs, one row each whatever panes are split in it. A tab running a live session shows
+/// that session. Pops the tab picked: its session's key, if one runs there, and its pane to show otherwise.
+class _LayoutSheet extends StatelessWidget {
+  const _LayoutSheet({required this.remote});
+  final TerminalRemote remote;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: remote,
+    builder: (context, _) {
+      final layout = macLayout(remote.windows, terminals: remote.terminals);
+      return SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .8),
+          child: Column(
+            key: const ValueKey('layout-sheet'),
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, sheetTop, 20, 2),
+                child: Text('Windows and tabs', style: sheetTitleStyle),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+                child: Text(
+                  '${layoutCount(layout)} on ${remote.desktopName ?? 'the computer'}',
+                  style: TextStyle(fontSize: 13, color: C.dim),
+                ),
+              ),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.only(bottom: 16),
+                  children: [for (final w in layout) ..._window(context, w)],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+
+  /// [w]'s heading, its tabs under it.
+  List<Widget> _window(BuildContext context, MacWindow w) {
+    final projects = {
+      for (final t in w.tabs)
+        for (final p in t.panes)
+          if (p.cwd.isNotEmpty) projectName(remote, p.cwd),
+    };
+    return [
+      Padding(
+        key: ValueKey('layout-window-${w.id}'),
+        padding: const EdgeInsets.fromLTRB(32, 12, 32, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${w.app} window ${w.number}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+            if (projects.isNotEmpty)
+              Text(
+                projects.join(', '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 13, color: C.dim),
+              ),
+          ],
+        ),
+      ),
+      Panel(children: [for (final t in w.tabs) _tab(context, t)]),
+    ];
+  }
+
+  /// One tab's row: its live session when one runs there, else its pane as the window rows show one.
+  Widget _tab(BuildContext context, MacTab t) {
+    final lead = tabLead(t);
+    final s = tabSession(remote, t);
+    final cwd = shortPath(remote, s?.cwd ?? lead.cwd);
+    final (title, detail) = s != null
+        ? (s.title.isNotEmpty ? s.title : s.agent.label, sessionState(s))
+        : (lead.tab.isNotEmpty ? lead.tab : (lead.title.isNotEmpty ? lead.title : lead.program), lead.program);
+    return ListTile(
+      key: ValueKey('layout-tab-${t.id}'),
+      contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      onTap: () => Navigator.of(context).pop((session: s?.key, window: lead.key)),
+      leading: s != null
+          ? Icon(Icons.auto_awesome, size: 18, color: sessionColor(s))
+          : Icon(
+              lead.agent != null ? Icons.auto_awesome : Icons.terminal,
+              size: 18,
+              color: lead.focused ? C.accent : C.dim2,
+            ),
+      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15)),
+      subtitle: Text(
+        [detail, cwd].where((p) => p.isNotEmpty).join(' · '),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 13, color: C.dim),
+      ),
+    );
+  }
 }
 
 /// Why [agent]'s windows show only as screens, from where PocketTerm stands in it ([integration], null from a
@@ -1992,11 +2265,11 @@ class _TerminalPageState extends State<TerminalPage> {
   );
 }
 
-/// A new terminal window in one of the computer's projects (or any folder typed in),
+/// A new terminal window in one of the computer's projects (or any folder typed in, or General: the home folder),
 /// or in a new project folder made under one of the computer's Project folders,
 /// starting the computer's coding agent unless turned off, in the omp profile
 /// picked when the computer has more than the default. Pops the new window's
-/// key and whether the agent runs in it.
+/// key, where on the computer it opened (`Opened.where`) and whether the agent runs in it.
 class NewSessionSheet extends StatefulWidget {
   const NewSessionSheet({required this.remote, this.profile = '', this.onProfile, super.key});
   final TerminalRemote remote;
@@ -2058,8 +2331,8 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
     setState(() => _launching = cwd);
     try {
       final agent = _agent;
-      final window = await remote.launch(cwd, startAgent: agent, profile: agent ? _chosen : '');
-      if (mounted) Navigator.of(context).pop((window: window, agent: agent));
+      final opened = await remote.launch(cwd, startAgent: agent, profile: agent ? _chosen : '');
+      if (mounted) Navigator.of(context).pop((window: opened.window, where: opened.where, agent: agent));
     } on Object catch (e) {
       if (mounted) {
         setState(() => _launching = null);
@@ -2074,8 +2347,8 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
     setState(() => _launching = root);
     try {
       final agent = _agent;
-      final window = await remote.create(root, _name.text.trim(), startAgent: agent, profile: agent ? _chosen : '');
-      if (mounted) Navigator.of(context).pop((window: window, agent: agent));
+      final opened = await remote.create(root, _name.text.trim(), startAgent: agent, profile: agent ? _chosen : '');
+      if (mounted) Navigator.of(context).pop((window: opened.window, where: opened.where, agent: agent));
     } on Object catch (e) {
       if (mounted) {
         setState(() => _launching = null);
@@ -2142,16 +2415,22 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
     ];
   }
 
-  /// Find a project (or type a path) and open a window there; or start a
-  /// new project.
+  /// Find a project (or type a path) and open a window there, or in General (the home folder: a quick question
+  /// without picking a project); or start a new project.
   List<Widget> _pickList(Widget? note) {
     final words = _query.text.toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
     final open = {for (final w in remote.windows) w.cwd};
+    final home = remote.home;
+    // General stands for the home folder; it gives way only to a search for something else.
+    final general = home.isNotEmpty && words.every('general ~'.contains);
     final places = [
-      ...open.where((p) => p.isNotEmpty && p != remote.home),
-      ...remote.projects.where((p) => !open.contains(p)),
+      ...open.where((p) => p.isNotEmpty && p != home),
+      ...remote.projects.where((p) => !open.contains(p) && p != home),
     ].where((p) => words.every(shortPath(remote, p).toLowerCase().contains)).toList();
-    final typed = _typed;
+    final typed = switch (_typed) {
+      final t? when !(general && t == home) => t,
+      _ => null,
+    };
     // null: a computer that predates Project folders, and can't make a project.
     final roots = remote.roots;
     final noRoots = roots != null && roots.isEmpty;
@@ -2183,6 +2462,7 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
         child: ListView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           children: [
+            if (general) _place(home, name: 'General', open: open.contains(home), key: const ValueKey('place-general')),
             if (_query.text.isEmpty && roots != null)
               ListTile(
                 key: const ValueKey('new-project'),
@@ -2200,23 +2480,38 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
                       )
                     : null,
               ),
-            for (final p in [?typed, ...places])
-              ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-                enabled: remote.online,
-                onTap: () => unawaited(_launch(p)),
-                leading: Icon(open.contains(p) ? Icons.terminal : Icons.folder_outlined, size: 18, color: C.dim2),
-                title: Text(shortPath(remote, p), style: const TextStyle(fontSize: 14)),
-                trailing: _launching == p
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : null,
-              ),
+            for (final p in [?typed, ...places]) _place(p, open: open.contains(p)),
           ],
         ),
       ),
     ];
   }
+
+  /// A project's tile, as the home list names it: the folder's name ([name] instead, if given), its short path in
+  /// small under it, and a terminal for a folder a window is [open] in.
+  Widget _place(String path, {required bool open, String? name, Key? key}) => ListTile(
+    key: key ?? ValueKey('place-$path'),
+    dense: true,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+    enabled: remote.online,
+    onTap: () => unawaited(_launch(path)),
+    leading: Icon(open ? Icons.terminal : Icons.folder_outlined, size: 18, color: C.dim2),
+    title: Text(
+      name ?? baseName(path),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(fontSize: 15),
+    ),
+    subtitle: Text(
+      shortPath(remote, path),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontSize: 12, color: C.dim),
+    ),
+    trailing: _launching == path
+        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+        : null,
+  );
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -2242,7 +2537,14 @@ class _NewSessionSheetState extends State<NewSessionSheet> {
                     Padding(
                       key: const ValueKey('opens-in'),
                       padding: const EdgeInsets.fromLTRB(20, 2, 20, 4),
-                      child: Text('Opens in $opensIn', style: TextStyle(fontSize: 13, color: C.dim)),
+                      child: Text(
+                        // "Opens in kitty, as a tab in the project's window", when the computer says which. At most
+                        // two lines: with large text the projects below still need the room.
+                        ['Opens in $opensIn', ?remote.placement?.describe].join(', '),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, color: C.dim),
+                      ),
                     ),
                   SwitchListTile(
                     key: const ValueKey('start-agent'),

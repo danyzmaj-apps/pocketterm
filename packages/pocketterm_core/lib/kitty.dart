@@ -12,7 +12,8 @@ import 'package:pocketterm_core/terminal.dart';
 /// `listen_on unix:/tmp/kitty` in kitty.conf (read at startup), which makes it
 /// `/tmp/kitty-<pid>`; every unix socket named `kitty*` in /tmp that this
 /// user owns counts, so several kittys work. Window keys:
-/// `<socket name>/<window id>`.
+/// `<socket name>/<window id>`; its OS window `<socket name>/os<id>` and its
+/// tab `<socket name>/tab<id>`, by the ids kitty's `ls` gives them.
 class Kitty extends TerminalHost {
   Kitty({
     String? home,
@@ -317,13 +318,13 @@ class Kitty extends TerminalHost {
     await keepFront(close, app: bundleId);
   }
 
-  /// A new tab in the OS window of the newest window PocketTerm opened (marked
-  /// with the user variable `pocketterm`), or a new OS window if there's none. A
-  /// kitty in the background comes to the front for a new OS window (the
-  /// app that was in front gets it back), not for a tab; the tab takes no
-  /// focus from a window being typed in.
+  /// With [into] (`<socket>/os<id>`), a new tab in that OS window, taking no
+  /// focus from a window being typed in there; otherwise, or if that OS
+  /// window is gone, a new OS window. A kitty in the background comes to the
+  /// front for a new OS window (the app that was in front gets it back), not
+  /// for a tab.
   @override
-  Future<String> launch(String cwd, {List<String>? command}) async {
+  Future<String> launch(String cwd, {List<String>? command, String? into}) async {
     if (!Directory(cwd).existsSync()) throw TerminalException('No such folder: $cwd');
     final sockets = _sockets();
     if (sockets.isEmpty) throw const TerminalException(notListening);
@@ -333,17 +334,18 @@ class Kitty extends TerminalHost {
         'cwd': cwd,
         'type': spot == null ? 'os-window' : 'tab',
         if (spot != null) 'match': 'window_id:${spot.window}',
+        // In the OS window being typed in, the tab opens behind the one in
+        // use; in one in the background it becomes that window's active tab.
         'keep_focus': spot?.focused ?? true,
-        'var': ['pocketterm=1'],
       });
       return '$socket/${'$data'.trim()}';
     }
 
     TerminalException? last;
-    for (final socket in sockets) {
+    if (RegExp(r'^(kitty[\w.-]*)/os(\d+)$').firstMatch(into ?? '') case final m? when sockets.contains(m[1])) {
       try {
-        final spot = pocketTermTabSpot(await _rc(socket, 'ls') as String? ?? '[]');
-        if (spot != null) return await open(socket, spot);
+        final spot = kittyTabSpot(await _rc(m[1]!, 'ls') as String? ?? '[]', int.parse(m[2]!));
+        if (spot != null) return await open(m[1]!, spot);
       } on TerminalException catch (e) {
         last = e;
       }
@@ -363,22 +365,19 @@ class Kitty extends TerminalHost {
   }
 }
 
-/// Where in kitty's `ls` [json] a window PocketTerm opens goes as a tab: next to
-/// the newest window PocketTerm opened before (user variable `pocketterm`), with
-/// whether its OS window has the focus; null if there's none.
-({int window, bool focused})? pocketTermTabSpot(String json) {
-  ({int window, bool focused})? spot;
+/// Where in kitty's `ls` [json] a new tab in OS window [osWindow] goes: next
+/// to one of its windows (kitty's `launch` matches a window, not an OS
+/// window), with whether that OS window has the focus; null if it's gone.
+({int window, bool focused})? kittyTabSpot(String json, int osWindow) {
   for (final os in jsonDecode(json) as List) {
-    for (final tab in (os as Map)['tabs'] as List) {
+    if ((os as Map)['id'] != osWindow) continue;
+    for (final tab in os['tabs'] as List) {
       for (final w in (tab as Map)['windows'] as List) {
-        final id = (w as Map)['id'] as int;
-        if ((w['user_vars'] as Map?)?.containsKey('pocketterm') == true && (spot == null || id > spot.window)) {
-          spot = (window: id, focused: os['is_focused'] == true);
-        }
+        return (window: (w as Map)['id'] as int, focused: os['is_focused'] == true);
       }
     }
   }
-  return spot;
+  return null;
 }
 
 /// Whether window [id] is the last one of its OS window in kitty's `ls`
@@ -407,6 +406,8 @@ List<TermWindow> parseKittyLs(String socket, String json, [Procs? procs]) => [
           final cmd = (proc?['cmdline'] as List?)?.cast<String>() ?? (win['cmdline'] as List).cast<String>();
           return TermWindow(
             key: '$socket/${win['id']}',
+            osWindow: '$socket/os${os['id']}',
+            tabId: '$socket/tab${tab['id']}',
             title: cleanTitle(win['title'] as String? ?? ''),
             tab: cleanTitle(tab['title'] as String? ?? ''),
             cwd: proc?['cwd'] as String? ?? win['cwd'] as String? ?? '',

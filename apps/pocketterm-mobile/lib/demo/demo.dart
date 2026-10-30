@@ -85,15 +85,69 @@ List<Map<String, dynamic>> _sessions(DateTime now, Map<String, Map<String, dynam
 
 /// The computer's state: three coding sessions (finished, needing you,
 /// working), a window showing only its screen and three plain terminal
-/// windows, in two projects.
+/// windows, in two projects. They sit in three app windows: kitty's with a
+/// tab each for garden-api's session, its shell and the screen-only omp;
+/// WezTerm's with the site's session; and Ghostty's showing tmux, a tab for
+/// garden-api's session at work and one for the site's editor.
 Map<String, dynamic> demoState({DateTime? now, Map<String, Map<String, dynamic>> overrides = const {}}) => {
   'windows': [
-    {'key': 'kitty-1/3', 'title': 'omp', 'cwd': demoGarden, 'program': 'omp', 'app': 'kitty'},
-    {'key': 'wezterm-2', 'title': 'claude', 'cwd': demoSite, 'program': 'claude', 'app': 'wezterm'},
-    {'key': 'tmux-%4', 'title': 'omp', 'cwd': demoGarden, 'program': 'omp', 'app': 'tmux', 'via': 'Ghostty'},
-    {'key': 'kitty-1/1', 'title': 'zsh', 'cwd': demoGarden, 'program': 'zsh', 'app': 'kitty', 'focused': true},
-    {'key': 'tmux-%2', 'title': 'nvim README.md', 'cwd': demoSite, 'program': 'nvim', 'app': 'tmux', 'via': 'Ghostty'},
-    {'key': demoScreenOnly, 'title': 'omp', 'cwd': demoGarden, 'program': 'omp', 'app': 'kitty'},
+    {
+      'key': 'kitty-1/3',
+      'title': 'omp',
+      'cwd': demoGarden,
+      'program': 'omp',
+      'app': 'kitty',
+      'osWindow': 'kitty-1/os1',
+      'tabId': 'kitty-1/t1',
+    },
+    {
+      'key': 'wezterm-2',
+      'title': 'claude',
+      'cwd': demoSite,
+      'program': 'claude',
+      'app': 'wezterm',
+      'osWindow': 'wezterm-os1',
+      'tabId': 'wezterm-t1',
+    },
+    {
+      'key': 'tmux-%4',
+      'title': 'omp',
+      'cwd': demoGarden,
+      'program': 'omp',
+      'app': 'tmux',
+      'via': 'Ghostty',
+      'osWindow': 'ghostty-os1',
+      'tabId': 'ghostty-t1',
+    },
+    {
+      'key': 'kitty-1/1',
+      'title': 'zsh',
+      'cwd': demoGarden,
+      'program': 'zsh',
+      'app': 'kitty',
+      'focused': true,
+      'osWindow': 'kitty-1/os1',
+      'tabId': 'kitty-1/t2',
+    },
+    {
+      'key': 'tmux-%2',
+      'title': 'nvim README.md',
+      'cwd': demoSite,
+      'program': 'nvim',
+      'app': 'tmux',
+      'via': 'Ghostty',
+      'osWindow': 'ghostty-os1',
+      'tabId': 'ghostty-t2',
+    },
+    {
+      'key': demoScreenOnly,
+      'title': 'omp',
+      'cwd': demoGarden,
+      'program': 'omp',
+      'app': 'kitty',
+      'osWindow': 'kitty-1/os1',
+      'tabId': 'kitty-1/t3',
+    },
   ],
   'sessions': _sessions(now ?? DateTime.now(), overrides),
   'projects': [demoGarden, demoSite],
@@ -101,6 +155,7 @@ Map<String, dynamic> demoState({DateTime? now, Map<String, Map<String, dynamic>>
   'agent': 'omp',
   'agents': {'omp': 'installed', 'claude': 'installed'},
   'opensIn': 'kitty',
+  'placement': 'projectWindow',
 };
 
 LiveItem _item(int order, ItemKind kind, {String text = '', String tool = '', String title = '', String output = ''}) =>

@@ -789,9 +789,27 @@ class _SettingsPageState extends State<SettingsPage> {
 
   List<_Cell> _terminalsTab() => [
     _wide(_card(title: 'New sessions open in', sub: _opensInSub, trailing: _terminalAppChoice())),
+    _wide(_card(title: 'Place them', sub: _placementSub, trailing: _placementChoice())),
     for (final s in _terminals ?? const <TermStatus>[])
       if (s.state != TermState.missing || s.id == 'tmux' || s.fix != null) _half(_terminalCard(s)),
   ];
+
+  String get _placementSub => switch (app.placement) {
+    Placement.projectWindow =>
+      'A new tab in the window that already has the project’s tabs; a new window when none does. '
+          'Sessions in your home folder (General) share a window too.',
+    Placement.newWindow => 'A new window for every session.',
+  };
+
+  Widget _placementChoice() => _choice<Placement>(
+    key: const ValueKey('settings-placement'),
+    value: app.placement,
+    items: const [
+      DropdownMenuItem(value: Placement.projectWindow, child: Text('Tab in the project’s window')),
+      DropdownMenuItem(value: Placement.newWindow, child: Text('New window')),
+    ],
+    onChanged: (p) => unawaited(app.setPlacement(p)),
+  );
 
   /// Where a session from the phone opens, and what tmux adds there.
   String get _opensInSub {
@@ -812,33 +830,46 @@ class _SettingsPageState extends State<SettingsPage> {
       for (final h in app.terminals.apps)
         if (h.id == chosen || (_terminals?.any((s) => s.id == h.id && s.state != TermState.missing) ?? false)) h,
     ];
-    return Container(
-      padding: const EdgeInsets.only(left: 10, right: 4),
-      decoration: BoxDecoration(
-        color: C.win,
-        borderRadius: C.round(7),
-        border: Border.all(color: C.line2, width: C.border),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          key: const ValueKey('settings-terminal-app'),
-          value: chosen == 'auto' || apps.any((h) => h.id == chosen) ? chosen : 'auto',
-          isDense: true,
-          focusColor: Colors.transparent,
-          dropdownColor: C.bar,
-          borderRadius: C.round(8),
-          iconSize: 18,
-          // The page's font: a style here replaces the theme's whole.
-          style: DefaultTextStyle.of(context).style.copyWith(fontSize: 12.5, color: C.text),
-          items: [
-            const DropdownMenuItem(value: 'auto', child: Text('Auto')),
-            for (final h in apps) DropdownMenuItem(value: h.id, child: Text(h.label)),
-          ],
-          onChanged: (id) => unawaited(app.setTerminalApp(id!)),
-        ),
-      ),
+    return _choice<String>(
+      key: const ValueKey('settings-terminal-app'),
+      value: chosen == 'auto' || apps.any((h) => h.id == chosen) ? chosen : 'auto',
+      items: [
+        const DropdownMenuItem(value: 'auto', child: Text('Auto')),
+        for (final h in apps) DropdownMenuItem(value: h.id, child: Text(h.label)),
+      ],
+      onChanged: (id) => unawaited(app.setTerminalApp(id)),
     );
   }
+
+  /// A setting's dropdown, at the end of its card.
+  Widget _choice<T>({
+    required Key key,
+    required T value,
+    required List<DropdownMenuItem<T>> items,
+    required ValueChanged<T> onChanged,
+  }) => Container(
+    padding: const EdgeInsets.only(left: 10, right: 4),
+    decoration: BoxDecoration(
+      color: C.win,
+      borderRadius: C.round(7),
+      border: Border.all(color: C.line2, width: C.border),
+    ),
+    child: DropdownButtonHideUnderline(
+      child: DropdownButton<T>(
+        key: key,
+        value: value,
+        isDense: true,
+        focusColor: Colors.transparent,
+        dropdownColor: C.bar,
+        borderRadius: C.round(8),
+        iconSize: 18,
+        // The page's font: a style here replaces the theme's whole.
+        style: DefaultTextStyle.of(context).style.copyWith(fontSize: 12.5, color: C.text),
+        items: items,
+        onChanged: (v) => onChanged(v as T),
+      ),
+    ),
+  );
 
   /// A terminal's card: how it stands, and its one-click fix if it has one.
   Widget _terminalCard(TermStatus s) {

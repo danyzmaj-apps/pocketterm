@@ -13,7 +13,8 @@ import 'package:pocketterm_core/terminal.dart';
 /// and stay behind. It has no tty to tell and no way to read a screen but
 /// through the clipboard or a file it opens, so its windows can't be read;
 /// the phone's sessions there run in tmux when it's installed. Window keys:
-/// `ghostty:<terminal UUID>`.
+/// `ghostty:<terminal UUID>`; its window `ghostty:w<window id>` and its tab
+/// `ghostty:t<tab id>`, the stable ids Ghostty's AppleScript gives them.
 class Ghostty extends TerminalHost {
   /// [appleScript]: the osascript runner; the terminals' shared one if null.
   Ghostty({this.appPath = '/Applications/Ghostty.app', this._appleScript});
@@ -95,7 +96,7 @@ tell application "Ghostty"
   repeat with w in windows
     repeat with b in tabs of w
       repeat with t in terminals of b
-        set out to out & (id of t) & sep & (name of t) & sep & (working directory of t) & sep & (name of b) & sep & ((id of t) is focusedId) & eol
+        set out to out & (id of t) & sep & (name of t) & sep & (working directory of t) & sep & (name of b) & sep & ((id of t) is focusedId) & sep & (id of w) & sep & (id of b) & eol
       end repeat
     end repeat
   end repeat
@@ -151,6 +152,8 @@ return out''';
             app: w.app,
             caps: w.caps,
             tty: tty,
+            osWindow: w.osWindow,
+            tabId: w.tabId,
           )
         else
           w,
@@ -228,15 +231,13 @@ return out''';
     }
   }, app: bundleId);
 
-  /// The id of the Ghostty window PocketTerm opened last.
-  String? _window;
-
-  /// A new tab in [cwd] in the Ghostty window PocketTerm opened last, or a new
-  /// window (it stays behind the app in front) if that one is gone, running
-  /// the shell, or [command] in place of it. Ghostty comes to the front for
-  /// a new window (the app that was in front gets it back), not for a tab.
+  /// With [into] (`ghostty:w<id>`), a new tab in [cwd] in that window;
+  /// otherwise, or if that window is gone, a new window (it stays behind the
+  /// app in front); running the shell, or [command] in place of it. Ghostty
+  /// comes to the front for a new window (the app that was in front gets it
+  /// back), not for a tab.
   @override
-  Future<String> launch(String cwd, {List<String>? command}) async {
+  Future<String> launch(String cwd, {List<String>? command, String? into}) async {
     if (!Directory(cwd).existsSync()) throw TerminalException('No such folder: $cwd');
     final before = surfaceTtys(await Procs.snapshot());
     final out = await keepFront(
@@ -251,20 +252,22 @@ on run argv
     repeat with w in windows
       if (id of w) is (item 3 of argv) then
         set b to new tab in w with configuration cfg
-        return (item 3 of argv) & sep & (id of focused terminal of b)
+        return id of focused terminal of b
       end if
     end repeat
     set w to new window with configuration cfg
-    return (id of w) & sep & (id of focused terminal of selected tab of w)
+    return id of focused terminal of selected tab of w
   end tell
 end run''',
-        [cwd, if (command != null) command.map(shellQuote).join(' ') else '', _window ?? ''],
+        [
+          cwd,
+          if (command != null) command.map(shellQuote).join(' ') else '',
+          if (into != null && into.startsWith('ghostty:w')) into.substring('ghostty:w'.length) else '',
+        ],
       ),
       app: bundleId,
     );
-    final [window, id] = out.split('\t');
-    _window = window;
-    final key = 'ghostty:$id';
+    final key = 'ghostty:$out';
     // Its tty: the one new among Ghostty's terminals (not known as another
     // window's) whose processes are in [cwd]; another window starting
     // meanwhile adds one too.
@@ -388,16 +391,19 @@ String? ghosttyNewTty(Set<String> ttys, Procs procs, Map<int, String> cwds, Stri
 }
 
 /// The listing script's output: a record per terminal (id, title, folder,
-/// tab title, focused; apart by US, each ended by RS and a line break),
-/// then `front<US>true|false`.
+/// tab title, focused, window id, tab id; apart by US, each ended by RS and
+/// a line break), then `front<US>true|false`.
 List<TermWindow> parseGhosttyList(String out) {
   final records = [for (final r in out.split('\x1e')) r.replaceFirst(RegExp(r'^(\r\n|\n|\r)'), '').trimRight()];
   final front = records.any((r) => r == 'front\x1ftrue');
   return [
     for (final r in records)
-      if (r.split('\x1f') case [final id, final title, final cwd, final tab, final focused] when id != 'front')
+      if (r.split('\x1f') case [final id, final title, final cwd, final tab, final focused, final window, final tabId]
+          when id != 'front')
         TermWindow(
           key: 'ghostty:$id',
+          osWindow: 'ghostty:w$window',
+          tabId: 'ghostty:t$tabId',
           title: cleanTitle(title),
           tab: cleanTitle(tab),
           cwd: cwd,

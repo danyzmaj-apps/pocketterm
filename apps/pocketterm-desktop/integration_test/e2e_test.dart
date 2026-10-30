@@ -361,13 +361,24 @@ class _Run {
     final running = backend == 'Running';
     final started = running || backend == 'NeedsLogin' || backend == 'NeedsMachineAuth';
     final certs = (json['CertDomains'] as List?)?.isNotEmpty ?? false;
+    // Port 443 free: Tailscale serves nothing there yet (the person's own PocketTerm may already).
+    final serve = running
+        ? await Process.run('/Applications/Tailscale.app/Contents/MacOS/Tailscale', ['serve', 'status', '--json'])
+        : null;
+    final serveFree = serve != null && !'${serve.stdout}'.contains(':443"');
     final expected = [
       (key: 'check-installed', done: installed, yes: 'Tailscale is installed', no: 'Install Tailscale'),
       (key: 'check-running', done: started, yes: 'Tailscale is running', no: 'Start Tailscale'),
       (key: 'check-signed-in', done: running, yes: 'Signed in to Tailscale', no: 'Sign in to Tailscale'),
       (key: 'check-https', done: running && certs, yes: 'HTTPS certificates are on', no: 'Turn on HTTPS certificates'),
+      (
+        key: 'check-serve-free',
+        done: running && certs && serveFree,
+        yes: 'Tailscale’s HTTPS port is free for PocketTerm',
+        no: running && certs ? 'Free Tailscale’s HTTPS port (443)' : 'Tailscale’s HTTPS port (443) for PocketTerm',
+      ),
     ];
-    report.log('tailscale: $backend, certs $certs');
+    report.log('tailscale: $backend, certs $certs, 443 free $serveFree');
     // Steps after the first one not done read "to do" whatever they are.
     final firstTodo = expected.indexWhere((e) => !e.done);
     await until('Tailscale checklist read', () async {
@@ -611,6 +622,10 @@ class _Run {
   Future<void> _getReady() async {
     await report.step('get ready: omp gets PocketTerm', () async {
       final ext = File(p.join(c.home, '.omp', 'agent', 'extensions', 'pocketterm-live.ts'));
+      // Nothing goes in on its own (0.1.6): Install, read why, then confirm.
+      expect(ext.existsSync(), isFalse, reason: 'installed before it was asked for');
+      await _tap(find.descendant(of: _key('get-ready-agents'), matching: find.text('Install')).first);
+      await _tap(_key('confirm-install-go'));
       await until('extension installed', ext.existsSync);
       await _see(find.descendant(of: _key('get-ready-agents'), matching: find.textContaining('omp')));
     });
@@ -815,6 +830,8 @@ class _Run {
         'terminalId': t,
         'computer': app.device,
         'terminal': app.terminals.describe(host),
+        // How the phone heads that app's windows: "kitty window 1", "Ghostty window 1" (tmux inside it).
+        'terminalApp': host.label,
         'sessions': [
           for (final w in ['chat', 'approve', 'endme'])
             {
@@ -1014,6 +1031,11 @@ class _Run {
     await act('close a shell window', () => r.close(windowOf('closeme').key));
     await act('new shell', () async {
       report.log('phone opened ${await r.launch(dir('newshell'), startAgent: false)}');
+    });
+    await act('a second shell in that project', () async {
+      final opened = await r.launch(dir('newshell'), startAgent: false);
+      report.log('phone opened $opened');
+      expect(opened.where, startsWith('a new tab in the '), reason: 'where the computer said it went');
     });
     await act('new project', () async {
       final root = (r.roots ?? const <String>[]).firstWhere((x) => x == c.projects);
@@ -1220,6 +1242,15 @@ class _Run {
       expect(w.key.startsWith(_opensWith), isTrue, reason: 'opened in ${w.key}, expected $_opensWith…');
       expect(w.agent, isNull, reason: 'a plain shell: ${_ws([w])}');
       expect(app.live.sessions.where((s) => s.window == w.key || s.cwd == dir('newshell')), isEmpty);
+    });
+    await report.step('phone: a second shell in a project opens as a tab of its window', () async {
+      final ws = await until('two windows in ${name('newshell')}', () async {
+        final ws = (await app.terminals.windows()).where((w) => w.cwd == dir('newshell')).toList();
+        return ws.length >= 2 ? ws : null;
+      }, timeout: const Duration(seconds: 40));
+      expect(ws.map((w) => w.osWindow).toSet(), hasLength(1), reason: 'one app window: ${_ws(ws)}');
+      expect(ws.first.osWindow, isNotEmpty, reason: _ws(ws));
+      expect(ws.map((w) => w.tabId).toSet(), hasLength(ws.length), reason: 'a tab each: ${_ws(ws)}');
     });
     await report.step('phone: new project made in the project folder', () async {
       final made = dir('made');

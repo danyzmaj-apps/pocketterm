@@ -12,11 +12,11 @@ appId: com.danyzmaj.pocketterm
 - assertVisible: "Start omp\nOff: just a shell(\n.*)?"
 - tapOn: "Start omp\n.*"
 - takeScreenshot: shell-only
-# The run's projects aren't under its home, so the sheet lists their full paths.
+# A project's tile: its name, then its full path (the run's projects aren't under its home).
 - scrollUntilVisible:
-    element: ".*/${PROJECT}"
+    element: "${PROJECT}\n.*/${PROJECT}"
     timeout: 20000
-- tapOn: ".*/${PROJECT}"
+- tapOn: "${PROJECT}\n.*/${PROJECT}"
 # Below Android 9 the field's hint isn't read: there its Send.
 - extendedWaitUntil:
     visible: "(Type a line…|\nSend \\(types it, then Enter\\))"

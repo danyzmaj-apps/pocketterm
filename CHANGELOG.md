@@ -2,6 +2,21 @@
 
 What each PocketTerm release brings.
 
+## 0.1.8
+
+Servers and the push relay need no update. An older phone still opens sessions on a newer computer, and a newer phone on an older computer, without the windows and tabs.
+
+### Desktop app
+
+- **A session from the phone opens in its project's window.** It goes in as a new tab of the terminal window that already holds that project's tabs, and gets a window of its own when none does, so each project can keep one window. **Settings → Terminals → Place them** switches to a new window for every session.
+
+### Phone app
+
+- **See your computer's windows and tabs.** Above your projects, **3 windows · 7 tabs** opens a list of each terminal window with its tabs, which project each is in and the session running there; tap a tab to open it. Long-press a row to see which window and tab it's in.
+- **You know where a new session went.** After it opens, the phone says where: "Opened in a new tab in the kitty window with wrkly".
+- **Pick a project by name.** **New session** lists projects by name with their path under it, instead of full paths.
+- **Ask about anything.** **General** at the top of **New session** starts one in your home folder, no project needed; such sessions are grouped under **General**.
+
 ## 0.1.7
 
 Servers and the push relay need no update. To have omp and Claude Code in iTerm2 found as their window, click **Update** for them in PocketTerm on the computer.

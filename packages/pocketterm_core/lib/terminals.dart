@@ -195,27 +195,63 @@ class Terminals {
 
   /// [lists] (one per host of [hosts]) as one list: a window whose tty is a
   /// tmux client's in [clients] (tty → pane key), or which [shows] a pane,
-  /// gives way to that pane, which gets its app's label as `via`.
+  /// gives way to that pane's tmux session: its panes take the window's
+  /// place in the list, its app window and tab ([TermWindow.osWindow],
+  /// [TermWindow.tabId]: where they are on screen) and its app's label as
+  /// `via`. A session two windows show goes where the first one is.
   static List<TermWindow> merge(
     List<TerminalHost> hosts,
     List<List<TermWindow>> lists,
     Map<String, String> clients,
     Map<String, String> shows,
   ) {
-    final via = <String, String>{};
-    final kept = <TermWindow>[];
+    final tmuxAt = hosts.indexWhere((h) => h.id == 'tmux');
+    final panes = tmuxAt < 0 ? const <TermWindow>[] : lists[tmuxAt];
+    final paneByKey = {for (final w in panes) w.key: w};
+    // A pane's tmux session (its osWindow) when tmux tells it, else just the pane.
+    String session(TermWindow pane) => pane.osWindow.isEmpty ? pane.key : pane.osWindow;
+    // Each session's panes, in tmux's order.
+    final bySession = <String, List<TermWindow>>{};
+    for (final w in panes) {
+      (bySession[session(w)] ??= []).add(w);
+    }
+    String? shown(int host, TermWindow w) =>
+        hosts[host].id == 'tmux' ? null : (shows[w.key] ?? (w.tty.isEmpty ? null : clients[w.tty]));
+    // The sessions an app window shows: their panes go there, not where tmux lists them.
+    final shownSessions = {
+      for (final (i, list) in lists.indexed)
+        for (final w in list)
+          if (shown(i, w) case final pane? when paneByKey.containsKey(pane)) session(paneByKey[pane]!),
+    };
+    final out = <TermWindow>[];
+    final placed = <String>{};
     for (final (i, list) in lists.indexed) {
       final host = hosts[i];
       for (final w in list) {
-        final pane = host.id == 'tmux' ? null : (shows[w.key] ?? (w.tty.isEmpty ? null : clients[w.tty]));
-        if (pane != null) {
-          via[pane] = host.label;
+        if (i == tmuxAt) {
+          if (!shownSessions.contains(session(w))) out.add(w);
           continue;
         }
-        kept.add(w);
+        final pane = shown(i, w);
+        if (pane == null) {
+          out.add(w);
+          continue;
+        }
+        // Its pane gone from tmux's list meanwhile: neither shows.
+        final p = paneByKey[pane];
+        if (p == null || !placed.add(session(p))) continue;
+        for (final s in bySession[session(p)]!) {
+          out.add(
+            s.copyWith(
+              via: host.label,
+              osWindow: w.osWindow.isEmpty ? null : w.osWindow,
+              tabId: w.tabId.isEmpty ? null : w.tabId,
+            ),
+          );
+        }
       }
     }
-    return [for (final w in kept) w.copyWith(via: via[w.key])];
+    return out;
   }
 
   /// How each installed terminal stands, for Settings and the phone. A
@@ -362,26 +398,70 @@ class Terminals {
   String describe(TerminalHost host) => viaTmux(host) ? '${host.label} (in tmux)' : host.label;
 
   /// A new window in [cwd] in [host] running the login shell, which then
-  /// starts [agent] if given; its key (the tmux pane's, where [viaTmux]).
-  Future<String> launch(String cwd, {required TerminalHost host, Agent? agent}) async {
+  /// starts [agent] if given: with [Placement.projectWindow] a tab in
+  /// [host]'s window that holds [cwd]'s tabs ([projectWindow]). Its key (the
+  /// tmux pane's, where [viaTmux]) and where it went, as the phone says it.
+  Future<Opened> launch(
+    String cwd, {
+    required TerminalHost host,
+    Agent? agent,
+    Placement placement = Placement.projectWindow,
+  }) async {
     if (!Directory(cwd).existsSync()) throw TerminalException('No such folder: $cwd');
+    final into = placement == Placement.projectWindow ? projectWindow(await windows(), host, cwd, home: home) : null;
     final String key;
     if (viaTmux(host)) {
       final tmux = this.tmux!;
       key = await tmux.launch(cwd);
       try {
-        final gui = await host.launch(cwd, command: tmux.attach(tmux.lastSession!));
+        final gui = await host.launch(cwd, command: tmux.attach(tmux.lastSession!), into: into);
         _shows[gui] = key;
       } on Object {
         await tmux.close(key);
         rethrow;
       }
     } else {
-      key = await host.launch(cwd);
+      key = await host.launch(cwd, into: into);
     }
     // The shell reads it once it's up: the terminal holds what's typed.
     if (agent != null) await send(key, agent.command, enter: true);
-    return key;
+    final where = into == null
+        ? 'a new ${host.label} window'
+        : 'a new tab in the ${host.label} window with ${projectName(cwd, home: home)}';
+    return (window: key, where: where);
+  }
+
+  /// How a project folder is named to the person: its folder's name, and
+  /// General for the home folder (where a session about nothing in
+  /// particular starts).
+  static String projectName(String cwd, {required String home}) => _sameFolder(cwd, home) ? 'General' : p.basename(cwd);
+
+  /// The window of [host] (its [TermWindow.osWindow]) whose tabs are most
+  /// in [cwd] (in it or under it; the home folder only itself, as nearly
+  /// everything is under it), of [windows]; the first such in the list on a
+  /// tie; null when no tab of [host]'s is there. A tmux pane counts for the
+  /// app window showing it.
+  static String? projectWindow(List<TermWindow> windows, TerminalHost host, String cwd, {required String home}) {
+    bool inProject(String dir) => _sameFolder(dir, cwd) || _under(dir, cwd, home);
+    final tabs = <String, Set<String>>{};
+    for (final w in windows) {
+      final mine = w.via.isEmpty ? w.app == host.id : w.via == host.label;
+      if (!mine || w.osWindow.isEmpty || !inProject(w.cwd)) continue;
+      (tabs[w.osWindow] ??= {}).add(w.tabId.isEmpty ? w.key : w.tabId);
+    }
+    String? best;
+    for (final MapEntry(key: window, value: t) in tabs.entries) {
+      if (best == null || t.length > tabs[best]!.length) best = window;
+    }
+    return best;
+  }
+
+  /// Whether [dir] is somewhere under [project] (not the home folder [home]).
+  static bool _under(String dir, String project, String home) {
+    if (_sameFolder(project, home) || dir.isEmpty || project.isEmpty) return false;
+    String bare(String d) => d.startsWith('/private/') ? d.substring('/private'.length) : d;
+    final root = bare(project).endsWith('/') ? bare(project) : '${bare(project)}/';
+    return bare(dir).startsWith(root);
   }
 
   /// Git repositories up to three levels under [roots] (the Mac's Project
@@ -460,9 +540,10 @@ class Terminals {
   }
 
   /// The phone's New project: [createProject], then a window in it as
-  /// [launch]. Should no window open, the folder goes again (while still
-  /// empty), so trying again with the same name works.
-  Future<String> launchNewProject(
+  /// [launch] (a window of its own: no tab is in a folder just made).
+  /// Should no window open, the folder goes again (while still empty), so
+  /// trying again with the same name works.
+  Future<Opened> launchNewProject(
     String root,
     String name, {
     required List<String> roots,
@@ -471,7 +552,7 @@ class Terminals {
   }) async {
     final cwd = createProject(root, name, roots: roots);
     try {
-      return await launch(cwd, host: host, agent: agent);
+      return await launch(cwd, host: host, agent: agent, placement: Placement.newWindow);
     } on Object {
       try {
         Directory(cwd).deleteSync();

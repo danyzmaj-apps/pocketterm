@@ -46,8 +46,8 @@ void main() {
       addTearDown(sleep.kill);
       const other = '0A1C3C37-F3DC-4313-86DA-23419F1086CE';
       String list({required bool front}) =>
-          "printf '$_id\\037π > chat\\037chat (omp)\\037/dev/ttys099\\037/elsewhere\\037true\\036\\n"
-          "$other\\037~\\037~ (-zsh)\\037/dev/ttys098\\037/Users/me\\037false\\036\\nfront\\037$front'";
+          "printf '$_id\\037π > chat\\037chat (omp)\\037/dev/ttys099\\037/elsewhere\\037true\\03712\\0372\\036\\n"
+          "$other\\037~\\037~ (-zsh)\\037/dev/ttys098\\037/Users/me\\037false\\03712\\0371\\036\\nfront\\037$front'";
       final i = iterm(['0'], [list(front: true), list(front: false)]);
       final procs = Procs([
         running(),
@@ -66,6 +66,7 @@ void main() {
         (w.key, w.title, w.tab, w.program, w.tty, w.focused),
         (_key, 'π > chat', 'chat (omp)', 'sleep', 'ttys099', true),
       );
+      expect((w.osWindow, w.tabId, shell.tabId), ('iterm:w12', 'iterm:w12/t2', 'iterm:w12/t1'));
       expect(w.cwd, dir.resolveSymbolicLinksSync(), reason: "the program's, over iTerm2's");
       expect(
         (shell.cwd, shell.program, shell.focused),
@@ -76,6 +77,22 @@ void main() {
       expect((await i.windows(procs)).first.focused, isFalse, reason: 'iTerm2 in the background');
     },
   );
+
+  test('a new session goes into the window it is asked into, by its id; with none asked, a new window', () async {
+    // iTerm2 runs, as far as a process list tells.
+    final exe = Link('${app.path}/Contents/MacOS/iTerm2')..createSync('/bin/sleep', recursive: true);
+    final iTerm = await Process.start(exe.path, ['30']);
+    addTearDown(iTerm.kill);
+    // The script opens a tab in that window when it still has it, else a window.
+    final i = iterm(['0'], ["printf '12\\t$_id\\t'"]);
+    expect(await i.launch(app.path, into: 'iterm:w12'), _key);
+    expect(await i.launch(app.path), _key);
+    expect(argvs.map((a) => (a[1], a[2])), [('12', ''), ('', '')]);
+    // What iTerm2 would have run (it removes itself).
+    for (final a in argvs) {
+      File(a[0].substring('/bin/sh '.length)).deleteSync();
+    }
+  });
 
   test("the screen is contents' last rows (a cleared screen's lines went to the scrollback above it)", () async {
     // rows, then contents, every row ended by a line break (and osascript's own after it): two lines of scrollback,

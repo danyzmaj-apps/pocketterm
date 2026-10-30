@@ -1,0 +1,22 @@
+# + on the list with Start omp off, in the project new-shell opened a window
+# in: this one goes in as a new tab of that project's window (the computer's
+# default placement), and the phone says so as it opens the screen.
+#   env: PROJECT (regex)
+appId: com.danyzmaj.pocketterm
+---
+- runFlow: sub/home.yaml
+- tapOn: "\n?New session"
+- extendedWaitUntil:
+    visible: "Start omp\n.*"
+    timeout: 10000
+- tapOn: "Start omp\n.*"
+- assertVisible: "Start omp\nOff: just a shell(\n.*)?"
+- scrollUntilVisible:
+    element: "${PROJECT}\n.*/${PROJECT}"
+    timeout: 20000
+- tapOn: "${PROJECT}\n.*/${PROJECT}"
+- extendedWaitUntil:
+    visible: "Opened in a new tab in the .* window with ${PROJECT}"
+    timeout: 45000
+- takeScreenshot: opened
+- runFlow: sub/back.yaml

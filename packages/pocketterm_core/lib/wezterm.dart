@@ -1,14 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/terminal.dart';
 
 /// WezTerm, through `wezterm cli` against each running GUI's socket
 /// (`~/.local/share/wezterm/gui-sock-<pid>`, on Windows too). Window keys:
-/// `wezterm:<gui pid>/<pane id>`.
+/// `wezterm:<gui pid>/<pane id>`; its window `wezterm:<gui pid>/w<window id>`
+/// and its tab `wezterm:<gui pid>/t<tab id>`, as `cli list` tells them.
 class WezTerm extends TerminalHost {
   /// [clock]: the time, for when a socket that stopped answering is asked again.
   /// [windowsPath]: on Windows, the PATH a new login would have
@@ -248,6 +248,8 @@ class WezTerm extends TerminalHost {
             app: w.app,
             caps: w.caps,
             tty: w.tty,
+            osWindow: w.osWindow,
+            tabId: w.tabId,
           )
         else
           w,
@@ -302,12 +304,13 @@ class WezTerm extends TerminalHost {
     await _cli(socket, ['kill-pane', '--pane-id', pane]);
   }
 
-  /// A new tab in WezTerm's newest window (a new window would take the
-  /// focus), or a new window if it has none. A WezTerm not running is
-  /// started in the background (on Windows, its GUI in [cwd]), and its first
-  /// window is the new one.
+  /// With [into] (`wezterm:<gui pid>/w<id>`), a new tab in that window;
+  /// otherwise, or if that window is gone, a new window (WezTerm comes to
+  /// the front for it, and the app that was in front gets it back). A
+  /// WezTerm not running is started in the background (on Windows, its GUI
+  /// in [cwd]), and its first window is the new one.
   @override
-  Future<String> launch(String cwd, {List<String>? command}) async {
+  Future<String> launch(String cwd, {List<String>? command, String? into}) async {
     if (!Directory(cwd).existsSync()) throw TerminalException('No such folder: $cwd');
     var sockets = _sockets(await Procs.snapshot(windows: _windows));
     final fresh = sockets.isEmpty;
@@ -331,7 +334,12 @@ class WezTerm extends TerminalHost {
       }
       if (sockets.isEmpty) throw const TerminalException("WezTerm didn't start.");
     }
-    final MapEntry(key: pid, value: socket) = sockets.entries.last;
+    // The GUI holding [into], else the newest one.
+    final target = RegExp(r'^wezterm:(\d+)/w(\d+)$').firstMatch(into ?? '');
+    final MapEntry(key: pid, value: socket) = sockets.entries.lastWhere(
+      (e) => e.key == target?[1],
+      orElse: () => sockets.entries.last,
+    );
     final panes = [
       for (final p in jsonDecode(await _cli(socket, ['list', '--format', 'json'])) as List) p as Map,
     ];
@@ -341,15 +349,17 @@ class WezTerm extends TerminalHost {
       if (!_windows) await type(key, ' cd -- ${shellQuote(cwd)} && clear\r');
       return key;
     }
-    final newest = panes.isEmpty ? null : panes.map((p) => p['window_id'] as int).reduce(max);
+    final window = target != null && target[1] == pid && panes.any((p) => '${p['window_id']}' == target[2])
+        ? target[2]
+        : null;
     Future<String> spawn() => _cli(socket, [
       'spawn',
-      if (newest != null) ...['--window-id', '$newest'] else '--new-window',
+      if (window != null) ...['--window-id', window] else '--new-window',
       '--cwd',
       cwd,
       if (command != null) ...['--', ...command],
     ]);
-    final pane = (newest != null ? await spawn() : await keepFront(spawn, app: bundleId, windows: _windows)).trim();
+    final pane = (window != null ? await spawn() : await keepFront(spawn, app: bundleId, windows: _windows)).trim();
     return 'wezterm:$pid/$pane';
   }
 }
@@ -368,6 +378,8 @@ List<TermWindow> parseWezTermList(String pid, String json, {Procs? procs, bool w
       final cwd = Uri.tryParse((pane['cwd'] as String? ?? '').replaceAll(RegExp('%(?![0-9A-Fa-f]{2})'), '%25'));
       return TermWindow(
         key: 'wezterm:$pid/${pane['pane_id']}',
+        osWindow: 'wezterm:$pid/w${pane['window_id']}',
+        tabId: 'wezterm:$pid/t${pane['tab_id']}',
         title: title,
         tab: cleanTitle(pane['tab_title'] as String? ?? ''),
         cwd: cwd != null && cwd.scheme == 'file' ? cwdOfUri(cwd, windows: windows, localHost: localHost) : '',

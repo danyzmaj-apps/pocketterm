@@ -34,7 +34,8 @@ class TerminalBridge {
     this._roots, {
     this._agents,
     this._onPhone,
-  });
+    Placement Function()? placement,
+  }) : _placement = placement ?? (() => Placement.projectWindow);
 
   final Server _server;
 
@@ -54,6 +55,9 @@ class TerminalBridge {
 
   /// The terminal app it opens in: an app's id or `auto` (this computer's setting).
   final String Function() _app;
+
+  /// Whether that is a tab in the project's window or a window of its own (this computer's setting).
+  final Placement Function() _placement;
 
   /// This computer's Project folders setting.
   final List<String> Function() _roots;
@@ -378,6 +382,7 @@ class TerminalBridge {
         'home': _terms.home,
         'agent': _agent().name,
         'opensIn': ?_opensIn,
+        'placement': _placement().name,
         'terminals': [for (final s in phoneTerminals(_statuses)) s.toJson()],
         'error': ?_termError,
         if (_agentsNow case final a?) 'agents': AgentIntegration.toJsonAll(a),
@@ -638,6 +643,7 @@ class TerminalBridge {
     if (id == null || !_runs.start(id, (ran) => _send('ran', ran))) return;
     String? error;
     String? window;
+    String? where;
     bool? busy;
     String? queued;
     try {
@@ -667,9 +673,14 @@ class TerminalBridge {
           // An older phone says `omp` for "start the coding agent".
           final start = p['agent'] == true || p['omp'] == true;
           final host = await _terms.opensIn(_app());
-          window = await _terms.launch(p['cwd'] as String, host: host, agent: start ? _agent() : null);
+          (:window, :where) = await _terms.launch(
+            p['cwd'] as String,
+            host: host,
+            agent: start ? _agent() : null,
+            placement: _placement(),
+          );
         case 'create':
-          window = await _terms.launchNewProject(
+          (:window, :where) = await _terms.launchNewProject(
             p['root'] as String,
             p['name'] as String? ?? '',
             roots: _roots(),
@@ -696,7 +707,7 @@ class TerminalBridge {
     } on Object catch (e) {
       error = 'The computer could not do that: $e';
     }
-    final ran = {'id': id, 'error': ?error, 'window': ?window, 'busy': ?busy, 'queued': ?queued};
+    final ran = {'id': id, 'error': ?error, 'window': ?window, 'where': ?where, 'busy': ?busy, 'queued': ?queued};
     _runs.done(id, ran);
     _send('ran', ran);
     unawaited(_poll(windows: const {'launch', 'create', 'close', 'switch'}.contains(p['op'])));

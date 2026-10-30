@@ -15,7 +15,7 @@ void main() {
   late TerminalRemote remote;
 
   /// What the sheet pops, once [pumpSheet] opened it.
-  late Future<({String window, bool agent})?> popped;
+  late Future<({String window, String where, bool agent})?> popped;
 
   setUp(() {
     dir = Directory.systemTemp.createTempSync('pocketterm_new_session');
@@ -64,7 +64,7 @@ void main() {
         home: Scaffold(
           body: Builder(
             builder: (context) => TextButton(
-              onPressed: () => popped = showModalBottomSheet<({String window, bool agent})>(
+              onPressed: () => popped = showModalBottomSheet<({String window, String where, bool agent})>(
                 context: context,
                 isScrollControlled: true,
                 builder: (_) => NewSessionSheet(remote: remote),
@@ -127,9 +127,9 @@ void main() {
     // No going back while it's under way.
     expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'Back')).onPressed, isNull);
 
-    remote.handle('ran', {'id': run['id'], 'window': 'kitty-1/9'});
+    remote.handle('ran', {'id': run['id'], 'window': 'kitty-1/9', 'where': 'a new kitty window'});
     await tester.pumpAndSettle();
-    expect(await popped, (window: 'kitty-1/9', agent: true));
+    expect(await popped, (window: 'kitty-1/9', where: 'a new kitty window', agent: true));
     remote.flush();
   });
 
@@ -200,6 +200,106 @@ void main() {
     remote.handle('state', listed([]));
     await tester.pump();
     expect(find.text('This window has closed.'), findsOneWidget, reason: 'listed once, then gone: closed');
+    remote.flush();
+  });
+
+  testWidgets('General comes first and starts in the home folder; a search for a project hides it', (tester) async {
+    remote.handle('state', {
+      'windows': <Object>[],
+      'sessions': <Object>[],
+      'projects': ['/Users/me/Dev/wrkly'],
+      'home': '/Users/me',
+    });
+    await pumpSheet(tester);
+    final general = find.byKey(const ValueKey('place-general'));
+    final project = find.byKey(const ValueKey('place-/Users/me/Dev/wrkly'));
+    expect(find.descendant(of: general, matching: find.text('General')), findsOneWidget);
+    expect(find.descendant(of: general, matching: find.text('~')), findsOneWidget);
+    // A project reads by its name, its path small under it.
+    expect(find.descendant(of: project, matching: find.text('wrkly')), findsOneWidget);
+    expect(find.descendant(of: project, matching: find.text('~/Dev/wrkly')), findsOneWidget);
+    expect(tester.getTopLeft(general).dy, lessThan(tester.getTopLeft(project).dy));
+
+    await tester.enterText(find.byKey(const ValueKey('session-folder')), 'wrk');
+    await tester.pump();
+    expect(general, findsNothing);
+    expect(project, findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('session-folder')), 'gen');
+    await tester.pump();
+    expect(general, findsOneWidget);
+    expect(project, findsNothing);
+    // "~" is General itself, not a second row for the same folder.
+    await tester.enterText(find.byKey(const ValueKey('session-folder')), '~');
+    await tester.pump();
+    expect(general, findsOneWidget);
+    expect(find.byKey(const ValueKey('place-/Users/me')), findsNothing);
+
+    await tester.tap(general);
+    final run = await lastRun(tester);
+    expect(run, allOf(containsPair('op', 'launch'), containsPair('cwd', '/Users/me')));
+    remote.handle('ran', {'id': run['id'], 'window': 'kitty-1/9'});
+    await tester.pumpAndSettle();
+    expect(await popped, (window: 'kitty-1/9', where: '', agent: true));
+    remote.flush();
+  });
+
+  testWidgets("where it opens follows the computer's setting, when it says", (tester) async {
+    Map<String, dynamic> state({String? placement}) => {
+      'windows': <Object>[],
+      'sessions': <Object>[],
+      'home': '/Users/me',
+      'opensIn': 'kitty',
+      'placement': ?placement,
+    };
+    remote.handle('state', state(placement: 'projectWindow'));
+    await pumpSheet(tester);
+    expect(find.text("Opens in kitty, as a tab in the project's window"), findsOneWidget);
+    remote.handle('state', state(placement: 'newWindow'));
+    await tester.pump();
+    expect(find.text('Opens in kitty, in a new window'), findsOneWidget);
+    remote.handle('state', state());
+    await tester.pump();
+    expect(find.text('Opens in kitty'), findsOneWidget, reason: 'a computer that does not say');
+    remote.flush();
+  });
+
+  testWidgets('the page a new session opens on says where on the computer it went', (tester) async {
+    remote.handle('state', {
+      'windows': <Object>[],
+      'sessions': <Object>[],
+      'projects': ['/Users/me/wrkly'],
+      'home': '/Users/me',
+    });
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) =>
+                TextButton(onPressed: () => unawaited(openNewSession(context, remote)), child: const Text('open')),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('start-agent')));
+    await tester.pump();
+    await tester.tap(find.text('wrkly'));
+    final run = await lastRun(tester);
+    remote.handle('ran', {'id': run['id'], 'window': 'kitty-1/9', 'where': 'a new tab in the kitty window with wrkly'});
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(TerminalPage), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(TerminalPage),
+        matching: find.text('Opened in a new tab in the kitty window with wrkly'),
+      ),
+      findsOneWidget,
+    );
     remote.flush();
   });
 }

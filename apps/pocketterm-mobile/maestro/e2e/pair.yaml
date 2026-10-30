@@ -38,10 +38,18 @@ appId: com.danyzmaj.pocketterm
       true: ${PUSH == 'accept'}
     commands:
       - tapOn: "Turn on notifications"
-      # iOS asks once per install; Android 13+ asks too.
-      - tapOn:
-          text: "Allow"
+      # iOS asks once per install; Android 13+ asks too. Tapped only while the
+      # system's prompt shows: an optional tap with none there could land on
+      # the session list behind it, opening a session.
+      - extendedWaitUntil:
+          visible: "Allow"
+          timeout: 5000
           optional: true
+      - runFlow:
+          when:
+            visible: "Allow"
+          commands:
+            - tapOn: "Allow"
 - runFlow:
     when:
       true: ${PUSH != 'accept'}

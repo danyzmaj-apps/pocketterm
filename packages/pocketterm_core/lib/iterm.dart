@@ -106,12 +106,16 @@ end run''',
   }
 
   /// A session a record, ended by RS and a newline, its fields apart by US
-  /// (a title may hold a tab or a line break): id, title (iTerm2's name for
-  /// it, as its tab shows it), tab title, tty, focused; then
-  /// `front<US>true|false`. Each property of every session comes in one
-  /// Apple Event and the records are made outside the `tell` ([_on] says
-  /// why); a window opened or closed between those events leaves them out
-  /// of step, and they're read again.
+  /// (a title or a folder's name may hold a tab or a line break): id, title
+  /// (the one its program set, `session.terminalWindowName`; empty if none),
+  /// name (iTerm2's, as its tab shows it), tab title, tty, folder (iTerm2's
+  /// `session.path`), focused; then `front<US>true|false`. Each property of
+  /// every session comes in one Apple Event and the records are made outside
+  /// the `tell` ([_on] says why); a variable can't be asked of many sessions
+  /// at once, so the title and the folder take an event per session, each
+  /// addressed by its window's place and its own. A window opened, closed or
+  /// brought to the front between those events leaves them out of step, and
+  /// they're read again.
   static const _list = '''
 set sep to ASCII character 31
 set eol to (ASCII character 30) & linefeed
@@ -126,7 +130,6 @@ repeat 3 times
     set ttys to tty of sessions of tabs of windows
     set tts to title of tabs of windows
     set isFront to frontmost
-    set ids2 to id of sessions of tabs of windows
   end tell
   try
     set out to ""
@@ -139,10 +142,25 @@ repeat 3 times
         set bty to item ti of item wi of ttys
         if (count of bid) is not (count of bnm) or (count of bid) is not (count of bty) then error "out of step"
         repeat with si from 1 to count of bid
-          set out to out & (item si of bid) & sep & (item si of bnm) & sep & (item ti of item wi of tts) & sep & (item si of bty) & sep & ((item si of bid) is focusedId) & eol
+          set ttl to missing value
+          set cwd to missing value
+          tell application id "com.googlecode.iterm2"
+            tell session si of tab ti of window wi
+              try
+                set ttl to (variable named "session.terminalWindowName")
+              end try
+              try
+                set cwd to (variable named "session.path")
+              end try
+            end tell
+          end tell
+          if ttl is missing value then set ttl to ""
+          if cwd is missing value then set cwd to ""
+          set out to out & (item si of bid) & sep & ttl & sep & (item si of bnm) & sep & (item ti of item wi of tts) & sep & (item si of bty) & sep & cwd & sep & ((item si of bid) is focusedId) & eol
         end repeat
       end repeat
     end repeat
+    tell application id "com.googlecode.iterm2" to set ids2 to id of sessions of tabs of windows
     if ids2 is ids and (count of ids) is (count of nms) and (count of ids) is (count of ttys) and (count of ids) is (count of tts) then
       return out & "front" & sep & isFront
     end if
@@ -166,30 +184,29 @@ error "iTerm2's windows kept changing while they were read."''';
     }
   }
 
-  /// Its sessions, with their foreground program and that program's folder;
-  /// a title without the ` (program)` iTerm2 adds to it by default.
+  /// Its sessions, with their foreground program and that program's folder
+  /// (iTerm2's own idea of the folder where it has none).
   @override
   Future<List<TermWindow>> windows(Procs procs) async {
     if (!_running(procs)) return const [];
-    final all = parseITermList(await _osa(_list));
+    final all = parseITermList(await _osa(_list), program: (tty) => procs.foreground(tty)?.program ?? '');
     final cwds = await Procs.cwds([
       for (final w in all)
         if (procs.foreground(w.tty) case final p?) p.pid,
     ]);
     return [
       for (final w in all)
-        if (procs.foreground(w.tty) case final fg)
-          TermWindow(
-            key: w.key,
-            title: fg == null ? w.title : itermTitle(w.title, fg.program),
-            tab: fg == null ? w.tab : itermTitle(w.tab, fg.program),
-            cwd: cwds[fg?.pid] ?? '',
-            program: fg?.program ?? '',
-            focused: w.focused,
-            app: w.app,
-            caps: w.caps,
-            tty: w.tty,
-          ),
+        TermWindow(
+          key: w.key,
+          title: w.title,
+          tab: w.tab,
+          cwd: cwds[procs.foreground(w.tty)?.pid] ?? w.cwd,
+          program: procs.foreground(w.tty)?.program ?? '',
+          focused: w.focused,
+          app: w.app,
+          caps: w.caps,
+          tty: w.tty,
+        ),
     ];
   }
 
@@ -351,30 +368,39 @@ end run''',
 }
 
 /// The listing script's output (see [ITerm2]) as windows, without their
-/// program and folder ([ITerm2.windows] adds them).
-List<TermWindow> parseITermList(String out) {
+/// program ([ITerm2.windows] adds it). A session's title is the one its
+/// program set, else iTerm2's name for it; that name and the tab's title
+/// lose the ` (job)` iTerm2 adds when the job is [program] (of a tty).
+List<TermWindow> parseITermList(String out, {String Function(String tty)? program}) {
   final records = [for (final r in out.split('\x1e')) r.replaceFirst(RegExp(r'^(\r\n|\n|\r)'), '').trimRight()];
   final front = records.any((r) => r == 'front\x1ftrue');
-  return [
-    for (final r in records)
-      if (r.split('\x1f') case [final id, final title, final tab, final tty, final focused]
-          when RegExp(r'^[0-9A-Fa-f-]{36}$').hasMatch(id))
+  final windows = <TermWindow>[];
+  for (final r in records) {
+    if (r.split('\x1f') case [final id, final title, final name, final tab, final dev, final cwd, final focused]
+        when RegExp(r'^[0-9A-Fa-f-]{36}$').hasMatch(id)) {
+      final tty = dev.replaceFirst('/dev/', '');
+      final job = program?.call(tty) ?? '';
+      final set = cleanTitle(title);
+      windows.add(
         TermWindow(
           key: 'iterm:$id',
-          title: cleanTitle(title),
-          tab: cleanTitle(tab),
-          cwd: '',
+          title: set.isNotEmpty ? set : itermTitle(cleanTitle(name), job),
+          tab: itermTitle(cleanTitle(tab), job),
+          cwd: cwd,
           program: '',
           focused: front && focused == 'true',
           app: 'iterm',
           caps: const {TermCap.read, TermCap.type, TermCap.line, TermCap.keys, TermCap.close},
-          tty: tty.replaceFirst('/dev/', ''),
+          tty: tty,
         ),
-  ];
+      );
+    }
+  }
+  return windows;
 }
 
-/// [title] as iTerm2 shows it, without the ` (job)` it adds by default when
-/// that's [program] (a login shell's `-zsh` too): what the program set.
+/// iTerm2's name for a session or tab, [title], without the ` (job)` it adds
+/// by default when that's [program] (a login shell's `-zsh` too).
 String itermTitle(String title, String program) {
   if (program.isEmpty) return title;
   final m = RegExp(' \\(-?${RegExp.escape(program)}\\)\$').firstMatch(title);

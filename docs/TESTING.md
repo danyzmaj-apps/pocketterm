@@ -139,7 +139,7 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 | kitty adapter | `kitty_test.dart`; e2e `--terminal kitty` | none |
 | Ghostty adapter (no screen, tmux, one row per window in tmux, config line upgrade) | `ghostty_test.dart`, `ghostty_surface_test.dart`, `terminals_test.dart`, `ghostty_config_test.dart`; e2e `--terminal ghostty` | none |
 | WezTerm adapter | `wezterm_test.dart`; e2e `--terminal wezterm` | Windows: unit only |
-| iTerm2 adapter (screen vs scrollback, gone windows, colors, titles, `ITERM_SESSION_ID`, one Apple Event per property) | `iterm_test.dart`, `terminal_test.dart`; e2e `--terminal iterm` | none |
+| iTerm2 adapter (screen vs scrollback, gone windows, colors, titles the program set or iTerm2's name, `ITERM_SESSION_ID`, one Apple Event per property and per session variable) | `iterm_test.dart`, `terminal_test.dart`; e2e `--terminal iterm` | none |
 | tmux adapter | `tmux_test.dart`; Ghostty's tmux windows in the e2e | none |
 
 ## Per terminal

@@ -27,8 +27,6 @@ Servers and the push relay need no update. To have omp and Claude Code in iTerm2
 
 - **Ask about your sessions.** A bar beside the + on the Terminal list says what the orchestrator is up to; tap it for a screen-high chat with it. With none running, the first message starts it on the computer. Hold the microphone to talk: the sheet lights up while it listens, and letting go puts what it heard into the field for you to check and send. The orchestrator stays out of the project list.
 
-### Phone app
-
 - **Voice prompts in Croatian.** The microphone now listens in Croatian as well as English, still recognized on the phone itself. **Auto** (the default) checks what the phone has: Croatian when it comes before English in the phone's languages and the phone can recognize it, otherwise English, so it never stops at a missing language. Pick one yourself in the account sheet's **Voice prompt language**, which shows for each language whether it's **On this phone**, can be downloaded (**Download**), turned on (**Open Settings**: on an iPhone, Dictation in that language) or is **Not supported on this phone** (then it can't be picked). Or tap the language at the top of the voice screen to switch, even while talking: what you've said stays and listening goes on in the other language. On iOS 26 a language Apple's new recognizer lacks falls back to the older one when that has it on the device.
 
 ## 0.1.6

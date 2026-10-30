@@ -63,20 +63,21 @@ enum Agent {
 /// Whether [name] is a name omp takes for a profile (`omp --profile <name>`).
 bool isOmpProfile(String name) => RegExp(r'^[a-z0-9][a-z0-9._-]{0,63}$').hasMatch(name) && !name.endsWith('.');
 
-/// The omp profile a command line [args] runs in, from its `--profile=<name>` or `--profile <name>`;
-/// '' for none, and for a name omp wouldn't take.
+/// The omp profile a command line [args] runs in, from its `--profile=<name>` or `--profile <name>` as omp reads
+/// them: the last one before `--`, `default` being none; '' for none, and for a name omp wouldn't take.
 String ompProfileOfArgs(String args) {
   final words = args.split(RegExp(r'\s+'));
+  String? found;
   for (var i = 0; i < words.length; i++) {
     final w = words[i];
-    final name = w.startsWith('--profile=')
-        ? w.substring('--profile='.length)
-        : w == '--profile' && i + 1 < words.length
-        ? words[i + 1]
-        : null;
-    if (name != null) return isOmpProfile(name) ? name : '';
+    if (w == '--') break;
+    if (w.startsWith('--profile=')) {
+      found = w.substring('--profile='.length);
+    } else if (w == '--profile' && i + 1 < words.length) {
+      found = words[++i];
+    }
   }
-  return '';
+  return found != null && found != 'default' && isOmpProfile(found) ? found : '';
 }
 
 /// Where PocketTerm stands in a coding agent found on a computer, as the

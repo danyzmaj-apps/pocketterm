@@ -667,7 +667,10 @@ class TerminalBridge {
           // As the windows are now: it may have closed since the phone's list.
           final shown = (await _terms.windows()).where((w) => w.key == at).firstOrNull;
           if (shown == null) throw const TerminalException('That window has closed.');
-          await switchToConversation(_terms, at, agent, tty: shown.tty, profile: shown.profile);
+          // Typed into a shell: only a profile this computer has (else the default's conversation).
+          final known = _ompProfiles?.call() ?? const <String>[];
+          final profile = known.contains(shown.profile) ? shown.profile : '';
+          await switchToConversation(_terms, at, agent, tty: shown.tty, profile: profile);
         case 'launch':
           // An older phone says `omp` for "start the coding agent".
           final start = p['agent'] == true || p['omp'] == true;

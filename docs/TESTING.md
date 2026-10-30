@@ -50,7 +50,7 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 | Phone tab: Reset key… | step "phone tab: Reset key"; `channel_keys_test.dart`, `settings_test.dart` | none |
 | Phone tab: project folders (remove, Add folder…) | step "settings: project folders remove and add"; `settings_test.dart` | none |
 | Coding agents tab (state, Install/Update, Default, Make default) | step "settings: coding agents tab"; `settings_agent_test.dart` | Make default with two agents installed: unit only (the e2e has no Claude Code) |
-| Coding agents tab: omp profiles (Profiles: line; Install puts PocketTerm in the default profile and each one) | step "profiles: Settings lists them, Install puts PocketTerm in each"; `integrations_test.dart`, `settings_agent_test.dart` | none |
+| Coding agents tab: omp profiles (Profiles: line; Install puts PocketTerm in the default profile and each one) | step "profiles: Settings lists them, Install puts PocketTerm in each"; `integrations_test.dart` | the Profiles: line: e2e only |
 | Sessions carry their omp profile (the extension's hello, a window's `omp --profile` command line) | steps "profiles: omp in a profile reports it; its window says so", "real omp: a profile loads PocketTerm from its own folder and says so"; core `live_test.dart`, `terminals_test.dart`, `agent_test.dart` | none |
 | Notifications name an omp profile (`omp · <profile> finished · <project>`) | step "profiles: a finished run is notified as omp · personal finished" (the title the app sends) | delivery: manual |
 | Terminals tab: New sessions open in | step "settings: new sessions open in <terminal>" | none |

@@ -9,6 +9,9 @@ void main() {
     expect(ompProfileOfArgs('omp --profile'), '');
     expect(ompProfileOfArgs('omp --resume /x.jsonl'), '');
     expect(ompProfileOfArgs('omp'), '');
+    expect(ompProfileOfArgs('omp --profile=work --profile personal'), 'personal', reason: 'the last one, as omp');
+    expect(ompProfileOfArgs('omp --profile=work -- --profile x'), 'work', reason: 'nothing after --');
+    expect(ompProfileOfArgs('omp --profile=default'), '');
   });
 
   test('profile names as omp takes them', () {

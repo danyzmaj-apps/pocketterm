@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketterm_core/agent.dart';
 import 'package:pocketterm_core/e2e.dart';
+import 'package:pocketterm_core/terminal.dart';
 import 'package:pocketterm_core/terminal_remote.dart';
 import 'package:pocketterm_core/ui.dart';
 import 'package:pocketterm_mobile/mobile.dart';
@@ -491,6 +492,206 @@ void main() {
     expect(find.byType(SessionPage), findsOneWidget);
     expect(tester.widget<SessionPage>(find.byType(SessionPage)).sessionKey, 'kitty-1/9');
     remote.flush();
+  });
+
+  testWidgets('sessions in the home folder go under General, by name in its place', (tester) async {
+    Map<String, dynamic> summary(String key, String cwd) => {'key': key, 'id': key, 'agent': 'omp', 'cwd': cwd};
+    remote.handle('state', {
+      'windows': <Object>[],
+      'sessions': [summary('pid:1', _z), summary('pid:2', '/Users/me'), summary('pid:3', _a)],
+      'home': '/Users/me',
+      'agent': 'omp',
+    });
+    await pumpList(tester);
+    expect(heading(tester, '/Users/me'), 'GENERAL');
+    expect(top(tester, _a), lessThan(top(tester, '/Users/me')));
+    expect(top(tester, '/Users/me'), lessThan(top(tester, _z)));
+    remote.flush();
+  });
+
+  group('where terminals sit on the computer', () {
+    /// kitty's first window: a's session in tab 1, a split tab 2 in the home folder (htop focused); kitty's second
+    /// window: a shell in b; Ghostty showing tmux: nvim in b.
+    void laidOut() {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      Map<String, dynamic> window(
+        String key,
+        String cwd,
+        String program,
+        String osWindow,
+        String tabId, {
+        String tab = '',
+        bool focused = false,
+        String app = 'kitty',
+        String via = '',
+      }) => {
+        'key': key,
+        'title': program,
+        'tab': tab,
+        'cwd': cwd,
+        'program': program,
+        'app': app,
+        'via': via,
+        'focused': focused,
+        'osWindow': osWindow,
+        'tabId': tabId,
+      };
+      remote.handle('state', {
+        'windows': [
+          window('kitty-1/1', _a, 'omp', 'kitty-1/os1', 'kitty-1/t1'),
+          window('kitty-1/2', '/Users/me', 'zsh', 'kitty-1/os1', 'kitty-1/t2', tab: 'scratch'),
+          window('kitty-1/3', '/Users/me', 'htop', 'kitty-1/os1', 'kitty-1/t2', tab: 'scratch', focused: true),
+          window('kitty-1/4', _b, 'zsh', 'kitty-1/os2', 'kitty-1/t3'),
+          window('tmux-%1', _b, 'nvim', 'ghostty-os1', 'ghostty-t1', app: 'tmux', via: 'Ghostty'),
+        ],
+        'sessions': [
+          {
+            'key': 'kitty-1/1',
+            'id': 's1',
+            'agent': 'omp',
+            'window': 'kitty-1/1',
+            'title': 'Fixing a',
+            'cwd': _a,
+            'at': now - 600000,
+          },
+        ],
+        'home': '/Users/me',
+        'agent': 'omp',
+      });
+    }
+
+    Finder inSheet(Finder f) => find.descendant(of: find.byKey(const ValueKey('layout-sheet')), matching: f);
+
+    Future<void> openLayout(WidgetTester tester) async {
+      await tester.tap(find.byKey(const ValueKey('layout-summary')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a computer that says counts its windows and tabs; an older one shows no count', (tester) async {
+      macState();
+      await pumpList(tester);
+      expect(find.byKey(const ValueKey('layout-summary')), findsNothing);
+
+      laidOut();
+      await tester.pump();
+      expect(find.text('3 windows · 4 tabs'), findsOneWidget);
+      remote.flush();
+    });
+
+    testWidgets('the overview lists each window in list order, its projects, and one row per tab', (tester) async {
+      laidOut();
+      await pumpList(tester);
+      await openLayout(tester);
+
+      final headings = ['kitty-1/os1', 'kitty-1/os2', 'ghostty-os1'].map((id) => ValueKey('layout-window-$id'));
+      final tops = [for (final k in headings) tester.getTopLeft(inSheet(find.byKey(k))).dy];
+      expect(tops, orderedEquals([...tops]..sort()), reason: 'in the order the computer lists them');
+      Finder under(String id, String text) =>
+          find.descendant(of: find.byKey(ValueKey('layout-window-$id')), matching: find.text(text));
+      expect(under('kitty-1/os1', 'kitty window 1'), findsOneWidget);
+      expect(under('kitty-1/os1', 'a, General'), findsOneWidget);
+      expect(under('kitty-1/os2', 'kitty window 2'), findsOneWidget);
+      expect(under('ghostty-os1', 'Ghostty window 1'), findsOneWidget, reason: "tmux shown in Ghostty is Ghostty's");
+
+      // A split tab is one row; a tab with a session shows the session.
+      expect(inSheet(find.byType(ListTile)), findsNWidgets(4));
+      Finder tab(String id, String text) =>
+          find.descendant(of: find.byKey(ValueKey('layout-tab-$id')), matching: find.text(text));
+      expect(tab('kitty-1/t1', 'Fixing a'), findsOneWidget);
+      expect(tab('kitty-1/t1', '10 min ago · ~/a'), findsOneWidget);
+      expect(tab('kitty-1/t2', 'scratch'), findsOneWidget);
+      expect(tab('kitty-1/t2', 'htop · ~'), findsOneWidget, reason: 'its focused pane');
+      expect(tab('kitty-1/t3', 'zsh'), findsOneWidget);
+      remote.flush();
+    });
+
+    testWidgets("a tab opens its session if one runs there, else its focused pane's screen", (tester) async {
+      laidOut();
+      await pumpList(tester);
+      await openLayout(tester);
+      await tester.tap(find.byKey(const ValueKey('layout-tab-kitty-1/t1')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.widget<SessionPage>(find.byType(SessionPage)).sessionKey, 'kitty-1/1');
+      Navigator.of(tester.element(find.byType(SessionPage))).pop();
+      await tester.pumpAndSettle();
+
+      await openLayout(tester);
+      await tester.tap(find.byKey(const ValueKey('layout-tab-kitty-1/t2')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(SessionPage), findsNothing);
+      expect(tester.widget<TerminalPage>(find.byType(TerminalPage)).window, 'kitty-1/3');
+      remote.flush();
+    });
+
+    testWidgets("a row's long press says where it sits, numbered as the overview", (tester) async {
+      laidOut();
+      await pumpList(tester);
+      Future<String?> place(Finder row) async {
+        await tester.ensureVisible(row);
+        await tester.longPress(row);
+        await tester.pumpAndSettle();
+        final text = find.descendant(of: find.byKey(const ValueKey('row-menu-place')), matching: find.byType(Text));
+        final read = text.evaluate().isEmpty ? null : tester.widget<Text>(text).data;
+        Navigator.of(tester.element(find.byKey(const ValueKey('row-menu-rename')))).pop();
+        await tester.pumpAndSettle();
+        return read;
+      }
+
+      expect(await place(session('kitty-1/1')), 'kitty window 1 · tab 1');
+      expect(await place(find.byKey(const ValueKey('term-kitty-1/2'))), 'kitty window 1 · tab 2');
+      expect(await place(find.byKey(const ValueKey('term-kitty-1/4'))), 'kitty window 2 · tab 1');
+      expect(await place(find.byKey(const ValueKey('term-tmux-%1'))), 'Ghostty window 1 · tab 1');
+      remote.flush();
+    });
+
+    test('windows count per app and tabs per window, in list order; panes share their tab', () {
+      TermWindow pane(String key, String osWindow, String tabId, {String app = 'kitty', String via = ''}) => TermWindow(
+        key: key,
+        title: '',
+        tab: '',
+        cwd: '',
+        program: 'zsh',
+        app: app,
+        via: via,
+        osWindow: osWindow,
+        tabId: tabId,
+      );
+      final windows = [
+        pane('tmux-%1', 'ghostty-w1', 'ghostty-t1', app: 'tmux', via: 'Ghostty'),
+        pane('kitty-1/1', 'kitty-1/w1', 'kitty-1/t1'),
+        pane('kitty-1/2', 'kitty-1/w2', 'kitty-1/t2'),
+        pane('ghostty-1', 'ghostty-w1', 'ghostty-t2', app: 'ghostty'),
+        pane('kitty-1/3', 'kitty-1/w1', 'kitty-1/t1'),
+        // An older computer's: where it sits is unknown.
+        pane('kitty-2/1', '', ''),
+        // Its window known, not its tab: a tab of its own.
+        pane('kitty-1/4', 'kitty-1/w1', ''),
+      ];
+      final layout = macLayout(windows);
+      expect(
+        [for (final w in layout) (w.id, w.app, w.number)],
+        [('ghostty-w1', 'Ghostty', 1), ('kitty-1/w1', 'kitty', 1), ('kitty-1/w2', 'kitty', 2)],
+      );
+      expect(
+        [
+          for (final t in layout[1].tabs) (t.number, [for (final p in t.panes) p.key].join(' ')),
+        ],
+        [(1, 'kitty-1/1 kitty-1/3'), (2, 'kitty-1/4')],
+      );
+      expect(macPlaces(layout), {
+        'tmux-%1': 'Ghostty window 1 · tab 1',
+        'ghostty-1': 'Ghostty window 1 · tab 2',
+        'kitty-1/1': 'kitty window 1 · tab 1',
+        'kitty-1/3': 'kitty window 1 · tab 1',
+        'kitty-1/4': 'kitty window 1 · tab 2',
+        'kitty-1/2': 'kitty window 2 · tab 1',
+      });
+      expect(layoutCount(layout), '3 windows · 5 tabs');
+      // The computer's name for its terminal app wins over the phone's.
+      expect(macLayout(windows, terminals: const [TermStatus('kitty', 'Kitty', TermState.ready)])[1].app, 'Kitty');
+    });
   });
 
   testWidgets('a folded project shows one summary row that still says what needs you, and stays folded next time', (

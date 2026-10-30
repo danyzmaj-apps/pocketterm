@@ -129,7 +129,6 @@ class Gen {
     'pane_id',
     'tab_id',
     'window_id',
-    'user_vars',
     'pocketterm',
     'TERM_PROGRAM',
     'KITTY_WINDOW_ID',
@@ -228,7 +227,7 @@ void main() {
       final json = jsonEncode(g.json());
       parseKittyLs('kitty-1', json);
       parseWezTermList('1', json);
-      pocketTermTabSpot(json);
+      kittyTabSpot(json, g.r.nextInt(10));
       lastInOsWindow(json, g.r.nextInt(10));
     });
 

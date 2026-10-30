@@ -62,6 +62,7 @@ v = {
   "COMPUTER": e.get("computer", ""),
   "LOCKED_COMPUTER": e.get("lockedComputer", ""),
   "TERMINAL": e.get("terminal", ""),
+  "TERMINAL_APP": e.get("terminalApp", ""),
   "TERMINAL_ID": e.get("terminalId", ""),
   "PROMPT": e.get("prompt", ""),
   "SESSION_COUNT": str(len(s)),
@@ -426,6 +427,10 @@ case $PHASE in
     flow session-screen session_screen.yaml -e SESSION="$ASK_SESSION_RE"
     flow screen-keys screen_keys.yaml -e WINDOW="$SCREEN_WINDOW_RE" -e SCREEN="$SCREEN"
     flow new-shell new_shell.yaml -e PROJECT="$NEW_SHELL_PROJECT_RE"
+    # A second shell there goes in as a tab of the window new-shell opened;
+    # then the windows and tabs list, and where a row sits.
+    flow new-tab new_tab.yaml -e PROJECT="$NEW_SHELL_PROJECT_RE"
+    flow windows windows.yaml -e PROJECT="$NEW_SHELL_PROJECT_RE" -e TERMINAL_RE="$TERMINAL_APP_RE"
     flow new-project new_project.yaml -e NAME="$NEW_PROJECT_NAME" -e NAME_RE="$NEW_PROJECT_NAME_RE"
     flow project-list project_list.yaml -e PROJECT="$PROJECT_0_RE"
     flow close-window close_window.yaml -e WINDOW="$CLOSE_WINDOW_RE"

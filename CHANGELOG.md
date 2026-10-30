@@ -4,15 +4,20 @@ What each PocketTerm release brings.
 
 ## Unreleased
 
-Servers and the push relay need no update. To have sessions from your omp profiles reach the phone, click **Install** or **Update** for omp in PocketTerm on the computer.
+Servers and the push relay need no update. To have sessions from your omp profiles reach the phone, click **Install** or **Update** for omp in PocketTerm on the computer. An older phone still opens sessions on a newer computer, and a newer phone on an older computer, without the windows and tabs.
 
 ### Desktop app
 
 - **omp profiles.** PocketTerm's extension goes into every omp profile (`omp --profile <name>`) as well as the default, and **Settings → Coding agents** lists them; a profile made later asks for **Install** again. A session started from the phone in a profile runs `omp --profile=<name>`, switching a screen-only window to its conversation resumes it in its own profile, and notifications name the profile (`omp · personal finished · garden`).
+- **A session from the phone opens in its project's window.** It goes in as a new tab of the terminal window that already holds that project's tabs, and gets a window of its own when none does, so each project can keep one window. **Settings → Terminals → Place them** switches to a new window for every session.
 
 ### Phone app
 
 - **omp profiles.** A session from an omp profile other than the default says so in its row and its header (`Idle · 4m · personal · Sonnet 4.5`), a filter above the projects shows one profile's sessions, and **New session** picks the profile the new omp starts in, remembered per computer.
+- **See your computer's windows and tabs.** Above your projects, **3 windows · 7 tabs** opens a list of each terminal window with its tabs, which project each is in and the session running there; tap a tab to open it. Long-press a row to see which window and tab it's in.
+- **You know where a new session went.** After it opens, the phone says where: "Opened in a new tab in the kitty window with wrkly".
+- **Pick a project by name.** **New session** lists projects by name with their path under it, instead of full paths.
+- **Ask about anything.** **General** at the top of **New session** starts one in your home folder, no project needed; such sessions are grouped under **General**.
 
 ## 0.1.7
 

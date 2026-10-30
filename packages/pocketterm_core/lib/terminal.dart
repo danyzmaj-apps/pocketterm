@@ -43,7 +43,8 @@ enum TermCap {
 const Set<TermCap> allCaps = {TermCap.read, TermCap.ansi, TermCap.type, TermCap.line, TermCap.keys, TermCap.close};
 
 /// One terminal window (a tab, a pane, a split: whatever the app calls the
-/// thing a shell runs in), as the phone sees it.
+/// thing a shell runs in), as the phone sees it. [osWindow] and [tabId] say
+/// where it sits on the Mac: the app's window (Cmd+N) and the tab in it.
 class TermWindow {
   const TermWindow({
     required this.key,
@@ -56,6 +57,8 @@ class TermWindow {
     this.caps = allCaps,
     this.via = '',
     this.tty = '',
+    this.osWindow = '',
+    this.tabId = '',
     this.profile = '',
   });
 
@@ -70,6 +73,8 @@ class TermWindow {
     app: j['app'] as String? ?? 'kitty',
     caps: j['caps'] is List ? {for (final c in j['caps'] as List) ?TermCap.values.asNameMap()[c]} : allCaps,
     via: j['via'] as String? ?? '',
+    osWindow: j['osWindow'] as String? ?? '',
+    tabId: j['tabId'] as String? ?? '',
     profile: j['profile'] as String? ?? '',
   );
 
@@ -99,6 +104,16 @@ class TermWindow {
   /// Its tty (`ttys012`), when the app says; the Mac's own business.
   final String tty;
 
+  /// The app window it is in (what Cmd+N opens), unique across apps and
+  /// starting with the app's key prefix (`kitty-123/os2`); empty when the
+  /// app doesn't tell (an older Mac). A tmux pane a terminal app shows
+  /// carries that app's window; a pane no app shows, its tmux session's.
+  final String osWindow;
+
+  /// The tab it is in, unique across apps like [osWindow]; empty when
+  /// unknown. Panes split in one tab share it.
+  final String tabId;
+
   /// The omp profile its foreground omp runs, from its command line; '' for the default, for anything else, or where
   /// no tty tells.
   final String profile;
@@ -108,19 +123,22 @@ class TermWindow {
 
   bool can(TermCap cap) => caps.contains(cap);
 
-  TermWindow copyWith({String? via, Set<TermCap>? caps, String? profile}) => TermWindow(
-    key: key,
-    title: title,
-    tab: tab,
-    cwd: cwd,
-    program: program,
-    focused: focused,
-    app: app,
-    caps: caps ?? this.caps,
-    via: via ?? this.via,
-    tty: tty,
-    profile: profile ?? this.profile,
-  );
+  TermWindow copyWith({String? via, Set<TermCap>? caps, String? osWindow, String? tabId, String? profile}) =>
+      TermWindow(
+        key: key,
+        title: title,
+        tab: tab,
+        cwd: cwd,
+        program: program,
+        focused: focused,
+        app: app,
+        caps: caps ?? this.caps,
+        via: via ?? this.via,
+        tty: tty,
+        osWindow: osWindow ?? this.osWindow,
+        tabId: tabId ?? this.tabId,
+        profile: profile ?? this.profile,
+      );
 
   Map<String, dynamic> toJson() => {
     'key': key,
@@ -135,9 +153,32 @@ class TermWindow {
         if (caps.contains(c)) c.name,
     ],
     if (via.isNotEmpty) 'via': via,
+    if (osWindow.isNotEmpty) 'osWindow': osWindow,
+    if (tabId.isNotEmpty) 'tabId': tabId,
     if (profile.isNotEmpty) 'profile': profile,
   };
 }
+
+/// Where a session the phone starts opens on the Mac (the Mac's setting).
+enum Placement {
+  /// A new tab in the app window that holds the project's tabs (the most
+  /// of them); a new window when none does.
+  projectWindow,
+
+  /// A new app window each time.
+  newWindow;
+
+  /// As the phone shows it after "Opens in kitty": "as a tab in the project's window".
+  String get describe => switch (this) {
+    projectWindow => "as a tab in the project's window",
+    newWindow => 'in a new window',
+  };
+}
+
+/// A window the phone had opened: its `window` key, and `where` it went on
+/// the Mac as the phone says it ("a new tab in the kitty window with
+/// wrkly"); empty from a Mac that doesn't say.
+typedef Opened = ({String window, String where});
 
 /// Something a terminal couldn't do, said the way the phone shows it.
 class TerminalException implements Exception {
@@ -267,10 +308,11 @@ abstract class TerminalHost {
   /// Closes the window and what runs in it.
   Future<void> close(String key) => throw TerminalException("$label can't close its windows.");
 
-  /// A new window (or a tab of its newest window, where a new window would
-  /// take the focus) in [cwd] running the login shell, or [command] (argv)
-  /// instead; its key. Never takes the focus where the app allows.
-  Future<String> launch(String cwd, {List<String>? command});
+  /// A new window in [cwd] running the login shell, or [command] (argv)
+  /// instead; or, with [into] (one of this app's [TermWindow.osWindow]s), a
+  /// new tab in that window, and a new window when that one is gone. Its
+  /// key. Never takes the focus where the app allows.
+  Future<String> launch(String cwd, {List<String>? command, String? into});
 }
 
 // ------------------------------------------------------------ keys

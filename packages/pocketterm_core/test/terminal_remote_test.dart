@@ -288,8 +288,8 @@ void main() {
     final run = sent.lastWhere((s) => s.$1 == 'run').$2;
     expect(run['op'], 'launch');
     // tmux numbers its panes from %0 again: the Mac answers with the same key.
-    r.handle('ran', {'id': run['id'], 'window': 'kitty-1/1'});
-    expect(await launched, 'kitty-1/1');
+    r.handle('ran', {'id': run['id'], 'window': 'kitty-1/1', 'where': 'a new kitty window'});
+    expect(await launched, (window: 'kitty-1/1', where: 'a new kitty window'));
 
     expect(r.view('kitty-1/1'), isNull);
     r.flush();
@@ -343,7 +343,7 @@ void main() {
       ),
     );
     r.handle('ran', {'id': run['id'], 'window': 'kitty-1/2'});
-    expect(await made, 'kitty-1/2');
+    expect(await made, (window: 'kitty-1/2', where: ''), reason: "an older Mac doesn't say where");
   });
 
   test("probe asks whether a window's screen changes and takes the answer; switch names the agent", () async {

@@ -11,7 +11,11 @@ import 'package:pocketterm_core/terminal.dart';
 /// as a paste); `contents` is a session's whole text, scrollback then
 /// screen, plain. A new tab doesn't take the focus, a new window does.
 /// Window keys: `iterm:<session UUID>`, the UUID that ends the
-/// `ITERM_SESSION_ID` (`w0t1p0:<UUID>`) of what runs in it.
+/// `ITERM_SESSION_ID` (`w0t1p0:<UUID>`) of what runs in it. Its window is
+/// `iterm:w<window id>` (AppleScript's window id, stable while it's open)
+/// and its tab `iterm:w<window id>/t<n>`, the tab's place in that window
+/// from 1: AppleScript gives a tab no id, so a tab's id changes when one
+/// before it closes or it's dragged elsewhere.
 class ITerm2 extends TerminalHost {
   /// [appleScript]: the osascript runner; the terminals' shared one if null.
   ITerm2({this.appPath = '/Applications/iTerm.app', this._appleScript});
@@ -109,14 +113,15 @@ end run''',
   /// (a title or a folder's name may hold a tab or a line break): id, title
   /// (the one its program set, `session.terminalWindowName`; empty if none),
   /// name (iTerm2's, as its tab shows it), tab title, tty, folder (iTerm2's
-  /// `session.path`), focused; then `front<US>true|false`. Each property of
-  /// every session comes in one Apple Event and the records are made outside
-  /// the `tell` ([_on] says why); a variable can't be asked of many sessions
-  /// at once, so the title and the folder take an event per session, each
-  /// addressed by its window's place and its own. A window opened, closed or
-  /// brought to the front between those events leaves them out of step, and
-  /// they're read again. Nothing when iTerm2 isn't running: it quit since the
-  /// process snapshot that said it was, and a `tell` would start it again.
+  /// `session.path`), focused, window id, tab number in that window (from
+  /// 1); then `front<US>true|false`. Each property of every session comes in
+  /// one Apple Event and the records are made outside the `tell` ([_on] says
+  /// why); a variable can't be asked of many sessions at once, so the title
+  /// and the folder take an event per session, each addressed by its
+  /// window's place and its own. A window opened, closed or brought to the
+  /// front between those events leaves them out of step, and they're read
+  /// again. Nothing when iTerm2 isn't running: it quit since the process
+  /// snapshot that said it was, and a `tell` would start it again.
   static const _list = '''
 if application id "com.googlecode.iterm2" is not running then return ""
 set sep to ASCII character 31
@@ -128,6 +133,7 @@ repeat 3 times
       set focusedId to id of current session of current window
     end try
     set ids to id of sessions of tabs of windows
+    set wids to id of windows
     set nms to name of sessions of tabs of windows
     set ttys to tty of sessions of tabs of windows
     set tts to title of tabs of windows
@@ -158,12 +164,15 @@ repeat 3 times
           end tell
           if ttl is missing value then set ttl to ""
           if cwd is missing value then set cwd to ""
-          set out to out & (item si of bid) & sep & ttl & sep & (item si of bnm) & sep & (item ti of item wi of tts) & sep & (item si of bty) & sep & cwd & sep & ((item si of bid) is focusedId) & eol
+          set out to out & (item si of bid) & sep & ttl & sep & (item si of bnm) & sep & (item ti of item wi of tts) & sep & (item si of bty) & sep & cwd & sep & ((item si of bid) is focusedId) & sep & (item wi of wids) & sep & ti & eol
         end repeat
       end repeat
     end repeat
-    tell application id "com.googlecode.iterm2" to set ids2 to id of sessions of tabs of windows
-    if ids2 is ids and (count of ids) is (count of nms) and (count of ids) is (count of ttys) and (count of ids) is (count of tts) then
+    tell application id "com.googlecode.iterm2"
+      set ids2 to id of sessions of tabs of windows
+      set wids2 to id of windows
+    end tell
+    if ids2 is ids and wids2 is wids and (count of ids) is (count of wids) and (count of ids) is (count of nms) and (count of ids) is (count of ttys) and (count of ids) is (count of tts) then
       return out & "front" & sep & isFront
     end if
   end try
@@ -208,6 +217,8 @@ error "iTerm2's windows kept changing while they were read."''';
           app: w.app,
           caps: w.caps,
           tty: w.tty,
+          osWindow: w.osWindow,
+          tabId: w.tabId,
         ),
     ];
   }
@@ -278,14 +289,11 @@ error "iTerm2's windows kept changing while they were read."''';
   @override
   Future<void> close(String key) => _on(key, '            close s');
 
-  /// The id of the iTerm2 window PocketTerm opened (or used) last.
-  String? _window;
-
-  /// A new tab in [cwd] in the iTerm2 window PocketTerm opened last, or a new
-  /// window if that one is gone (iTerm2 comes to the front for it, and the
-  /// app that was in front gets it back), running the login shell, or
-  /// [command] in place of it. An iTerm2 that wasn't running is started in
-  /// the background, and the one window it opens with is used.
+  /// With [into] (`iterm:w<id>`), a new tab in [cwd] in that window;
+  /// otherwise, or if that window is gone, a new window (iTerm2 comes to the
+  /// front for it, and the app that was in front gets it back); running the
+  /// login shell, or [command] in place of it. An iTerm2 that wasn't running
+  /// is started in the background, and the one window it opens with is used.
   ///
   /// iTerm2 splits a session's command into words itself, and gets quotes
   /// wrong, so the shell line runs from a script of its own that removes
@@ -293,7 +301,7 @@ error "iTerm2's windows kept changing while they were read."''';
   /// folder: a session that ends at once has iTerm2 stop everything for a
   /// warning until someone clicks it away.
   @override
-  Future<String> launch(String cwd, {List<String>? command}) async {
+  Future<String> launch(String cwd, {List<String>? command, String? into}) async {
     if (!Directory(cwd).existsSync()) throw TerminalException('No such folder: $cwd');
     final fresh = !_running(await Procs.snapshot());
     final script = _launcher(cwd, command);
@@ -334,15 +342,18 @@ on run argv
     return ((id of w) as text) & sep & (id of current session of w) & sep
   end tell
 end run''',
-          ['/bin/sh ${script.path}', _window ?? '', if (fresh && command == null) 'reuse' else ''],
+          [
+            '/bin/sh ${script.path}',
+            RegExp(r'^iterm:w(\d+)$').firstMatch(into ?? '')?[1] ?? '',
+            if (fresh && command == null) 'reuse' else '',
+          ],
         );
       }, app: bundleId);
     } on Object {
       if (script.existsSync()) script.deleteSync();
       rethrow;
     }
-    final [window, session, how] = out.split('\t');
-    _window = window;
+    final [_, session, how] = out.split('\t');
     final key = 'iterm:$session';
     if (how == 'reused') {
       script.deleteSync();
@@ -378,7 +389,18 @@ List<TermWindow> parseITermList(String out, {String Function(String tty)? progra
   final front = records.any((r) => r == 'front\x1ftrue');
   final windows = <TermWindow>[];
   for (final r in records) {
-    if (r.split('\x1f') case [final id, final title, final name, final tab, final dev, final cwd, final focused]
+    if (r.split('\x1f')
+        case [
+          final id,
+          final title,
+          final name,
+          final tab,
+          final dev,
+          final cwd,
+          final focused,
+          final window,
+          final tabNumber,
+        ]
         when RegExp(r'^[0-9A-Fa-f-]{36}$').hasMatch(id)) {
       final tty = dev.replaceFirst('/dev/', '');
       final job = program?.call(tty) ?? '';
@@ -386,6 +408,8 @@ List<TermWindow> parseITermList(String out, {String Function(String tty)? progra
       windows.add(
         TermWindow(
           key: 'iterm:$id',
+          osWindow: 'iterm:w$window',
+          tabId: 'iterm:w$window/t$tabNumber',
           title: set.isNotEmpty ? set : itermTitle(cleanTitle(name), job),
           tab: itermTitle(cleanTitle(tab), job),
           cwd: cwd,

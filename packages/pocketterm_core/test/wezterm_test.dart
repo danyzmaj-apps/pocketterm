@@ -94,5 +94,36 @@ void main() {
     final w = parseWezTermList('1', _list).single;
     expect(w.cwd, "/private/tmp/ptw/sp ace'q 漢字 100%");
     expect(w.title, 'bashx');
+    expect((w.osWindow, w.tabId), ('wezterm:1/w0', 'wezterm:1/t0'));
+  });
+
+  group('a new session', () {
+    /// A WezTerm (GUI pid 1) with windows 0 and 3 whose `spawn` makes pane 9
+    /// and writes its arguments to `spawned`.
+    WezTerm two() => fake(
+      // Its arguments: cli --no-auto-start <command> ...
+      'case "\$1 \$3" in\n'
+      '"cli list") echo \'[{"window_id":0,"tab_id":0,"pane_id":0},{"window_id":3,"tab_id":4,"pane_id":5}]\';;\n'
+      '"cli spawn") shift 3; echo "\$*" > ${dir.path}/spawned; echo 9;;\n'
+      'esac',
+    );
+    String spawned() => File('${dir.path}/spawned').readAsStringSync().trim();
+
+    test('asked into a window, a tab in it', () async {
+      expect(await two().launch(dir.path, into: 'wezterm:1/w3'), 'wezterm:1/9');
+      expect(spawned(), '--window-id 3 --cwd ${dir.path}');
+    });
+
+    test('asked into a window that is gone (or of a GUI that is), a new window', () async {
+      for (final into in ['wezterm:1/w7', 'wezterm:2/w3']) {
+        expect(await two().launch(dir.path, into: into), 'wezterm:1/9');
+        expect(spawned(), '--new-window --cwd ${dir.path}');
+      }
+    });
+
+    test('asked into no window, a new window, even with windows open', () async {
+      expect(await two().launch(dir.path, command: ['omp']), 'wezterm:1/9');
+      expect(spawned(), '--new-window --cwd ${dir.path} -- omp');
+    });
   });
 }

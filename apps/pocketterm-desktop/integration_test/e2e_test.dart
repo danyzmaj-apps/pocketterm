@@ -1483,11 +1483,8 @@ class _Run {
       final before = app.phoneNotices.length;
       await app.terminals.send(s.window!, 'e2e notify $t', enter: true);
       final want = '${Agent.omp.label} \u00b7 $_profile finished \u00b7 ${app.live.projectName(s)}';
-      final titles = await until('its notification', () {
-        final titles = [for (final n in app.phoneNotices.skip(before)) n.title];
-        return titles.any((t) => t.contains('finished')) ? titles : null;
-      });
-      expect(titles, contains(want));
+      // Another profile session's run (profswitch's continue) may finish meanwhile: wait for this one's.
+      await until('its notification: $want', () => app.phoneNotices.skip(before).any((n) => n.title == want));
     });
   }
 

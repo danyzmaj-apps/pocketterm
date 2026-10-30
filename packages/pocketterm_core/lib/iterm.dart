@@ -66,10 +66,15 @@ class ITerm2 extends TerminalHost {
         '''
 on run argv
   if application id "com.googlecode.iterm2" is not running then error "iTerm2 isn't running." number -600
-  tell application id "com.googlecode.iterm2"
-    set wids to id of windows
-    set ids to id of sessions of tabs of windows
-  end tell
+  repeat 3 times
+    tell application id "com.googlecode.iterm2"
+      set wids to id of windows
+      set ids to id of sessions of tabs of windows
+      set wids2 to id of windows
+    end tell
+    -- Paired by place: a window brought to the front in between reorders them, so read again.
+    if wids is wids2 then exit repeat
+  end repeat
   set found to missing value
   repeat with wi from 1 to count of ids
     set tw to item wi of ids
@@ -121,6 +126,7 @@ repeat 3 times
     set ttys to tty of sessions of tabs of windows
     set tts to title of tabs of windows
     set isFront to frontmost
+    set ids2 to id of sessions of tabs of windows
   end tell
   try
     set out to ""
@@ -137,7 +143,7 @@ repeat 3 times
         end repeat
       end repeat
     end repeat
-    if (count of ids) is (count of nms) and (count of ids) is (count of ttys) and (count of ids) is (count of tts) then
+    if ids2 is ids and (count of ids) is (count of nms) and (count of ids) is (count of ttys) and (count of ids) is (count of tts) then
       return out & "front" & sep & isFront
     end if
   end try

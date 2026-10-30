@@ -593,7 +593,9 @@ class GhosttyThrowaway extends Throwaway {
 /// is written to its preferences): no question on quit, no update check, no
 /// windows restored. Refuses to start while another iTerm2 runs, as
 /// AppleScript can't tell two instances apart. Its sessions get the throwaway
-/// home from its own environment.
+/// home from its own environment, and so does iTerm2 itself
+/// (CFFIXED_USER_HOME: Foundation ignores HOME), so its saved windows and
+/// preferences are the run's, never the person's.
 class ITermThrowaway extends Throwaway {
   ITermThrowaway(super.c, super.owned);
 
@@ -618,6 +620,7 @@ class ITermThrowaway extends Throwaway {
       '-na',
       app,
       for (final k in ['HOME', 'TMUX_TMPDIR', 'ZDOTDIR', 'LANG', 'PATH']) ...['--env', '$k=${env[k]}'],
+      ...['--env', 'CFFIXED_USER_HOME=${env['HOME']}'],
       '--args',
       for (final (k, v) in const [
         ('PromptOnQuit', '0'),

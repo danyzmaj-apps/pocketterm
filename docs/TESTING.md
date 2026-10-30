@@ -18,6 +18,7 @@ Don't run the whole e2e suite for every change: test what you changed and what i
 3. **Run only those**, on the cheapest target that covers them:
    - phone flows: `tool/e2e/run.sh --terminal kitty --phone-only <flow>,… [--phone-from-tree]` (add `fresh,pair-accept` first when the flow needs a paired phone), on the platform the change affects (`--platform android --avd <avd>` for Android code); the desktop then checks only what those flows did;
    - desktop steps: `--desktop-only <text>,…` keeps the steps whose name contains one of the texts (besides setup, Get ready, the windows, pairing and the hand-off, which every run needs), e.g. `tool/e2e/run.sh --terminal kitty --phone-only fresh,pair-accept,profiles --desktop-only profile`; `--no-phone` runs the desktop with the stand-in phone; or a smoke scenario (`tool/smoke/scenario.sh <scenario>`);
+   - runs side by side (another checkout's run while yours goes): give each its own Simulator or emulator with `--device <udid or serial>` (`xcrun simctl create "PocketTerm E2E 2" com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro <runtime>`); without it every run takes the Simulator "PocketTerm E2E", and one run's `fresh` wipes the app under the other's flows (Maestro then reports the device unreachable or the app stopped);
    - another terminal or server only when the change is about that terminal or server.
 4. **New behaviour gets a test** in the same change (a flow, step, scenario or unit test) and a row here, so the next change can find it.
 

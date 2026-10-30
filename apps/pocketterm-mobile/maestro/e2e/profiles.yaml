@@ -168,6 +168,12 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     notVisible: "Opens in ${TERMINAL_RE}"
     timeout: 5000
+# From the top: the list may be scrolled past the project (by name or by activity, it can be anywhere).
+- scrollUntilVisible:
+    element:
+      id: "profile-filter"
+    direction: UP
+    timeout: 20000
 - scrollUntilVisible:
     element: "${PROJECT}"
     timeout: 20000

@@ -4,8 +4,8 @@
 /// themselves, each started with a config of its own and stopped by pid.
 ///
 /// Never touches what it didn't start: kitty listens in a socket folder of
-/// its own, WezTerm keeps its socket under the throwaway home, Ghostty starts
-/// as a new instance with only the throwaway config, tmux runs its own
+/// its own, WezTerm keeps its socket under the throwaway home, Ghostty and
+/// iTerm2 start as a new instance with only the throwaway config, tmux runs its own
 /// server, and every process started is written down ([Owned]) to be
 /// stopped at the end, even when the run fails.
 library;
@@ -17,7 +17,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 /// The terminals the run covers, by the desktop's ids.
-const terminalIds = ['kitty', 'ghostty', 'wezterm'];
+const terminalIds = ['kitty', 'ghostty', 'wezterm', 'iterm'];
 
 /// One terminal's run: everything the desktop side needs, as JSON in
 /// `<artifacts>/config.json`.
@@ -53,7 +53,7 @@ class E2eConfig {
   factory E2eConfig.read(String path) =>
       E2eConfig.fromJson(jsonDecode(File(path).readAsStringSync()) as Map<String, dynamic>);
 
-  /// kitty, ghostty or wezterm.
+  /// kitty, ghostty, wezterm or iterm.
   final String terminal;
 
   /// Where logs, screenshots, results and the phone's hand-off files go
@@ -236,9 +236,9 @@ class Owned {
         }
       } else if (e['pid'] case final int pid) {
         if (_alive(pid)) {
-          // A killed Ghostty is reopened by macOS with its windows (and the
-          // default config): it's asked to quit first, as Quit would.
-          if (e['what'] == 'ghostty') await _quitApp(pid);
+          // A killed Ghostty or iTerm2 is reopened by macOS with its windows
+          // (and the default config): it's asked to quit first, as Quit would.
+          if (e['what'] == 'ghostty' || e['what'] == 'iterm') await _quitApp(pid);
           if (_alive(pid)) {
             Process.killPid(pid);
             if (e['what'] == 'ghostty') ghosttyKilled = true;
@@ -455,6 +455,7 @@ abstract class Throwaway {
     'kitty' => KittyThrowaway(c, owned),
     'wezterm' => WezTermThrowaway(c, owned),
     'ghostty' => GhosttyThrowaway(c, owned),
+    'iterm' => ITermThrowaway(c, owned),
     _ => throw ArgumentError('Unknown terminal: $terminal'),
   };
 }
@@ -605,6 +606,80 @@ class GhosttyThrowaway extends Throwaway {
   /// Ghostty's windows come from the desktop app's Ghostty host (AppleScript).
   @override
   Future<void> open(String cwd) => throw UnsupportedError('Open Ghostty windows with the app’s Ghostty host.');
+}
+
+/// iTerm2 as a new instance that opens no window by itself, with its
+/// settings for this run given on its command line (NSArgumentDomain: none
+/// of them is written to its preferences): no question on quit, no update
+/// check, no windows restored. Refuses to start while another iTerm2 runs,
+/// as AppleScript can't tell two instances apart. Its sessions get the
+/// throwaway home from its own environment, and so does iTerm2's Application
+/// Support (CFFIXED_USER_HOME: Foundation ignores HOME), so its saved windows
+/// are the run's, never the person's. Its preferences stay the person's
+/// (cfprefsd ignores both): iTerm2 records window places and a launch count
+/// there.
+class ITermThrowaway extends Throwaway {
+  ITermThrowaway(super.c, super.owned);
+
+  static const app = '/Applications/iTerm.app';
+
+  @override
+  String get id => 'iterm';
+
+  static Future<Set<int>> running() async {
+    final r = await Process.run('/usr/bin/pgrep', ['-f', '$app/Contents/MacOS/iTerm2']);
+    return {for (final w in '${r.stdout}'.split(RegExp(r'\s+'))) ?int.tryParse(w)};
+  }
+
+  @override
+  Future<void> start(String cwd) async {
+    final before = await running();
+    if (before.isNotEmpty) {
+      throw StateError('Another iTerm2 is running (pid ${before.join(', ')}): quit it to run the iTerm2 matrix.');
+    }
+    final env = c.terminalEnv();
+    final r = await Process.run('/usr/bin/open', [
+      '-na',
+      app,
+      for (final k in ['HOME', 'TMUX_TMPDIR', 'ZDOTDIR', 'LANG', 'PATH']) ...['--env', '$k=${env[k]}'],
+      ...['--env', 'CFFIXED_USER_HOME=${env['HOME']}'],
+      '--args',
+      for (final (k, v) in const [
+        ('PromptOnQuit', '0'),
+        ('OnlyWhenMoreTabs', '0'),
+        ('OpenNoWindowsAtStartup', '1'),
+        ('NSQuitAlwaysKeepsWindows', '0'),
+        ('QuitWhenAllWindowsClosed', '0'),
+        ('SUEnableAutomaticChecks', '0'),
+        ('SUAutomaticallyUpdate', '0'),
+      ]) ...['-$k', v],
+    ], environment: cleanEnv());
+    if (r.exitCode != 0) throw StateError('open iTerm2: ${r.stderr}');
+    final pid = await until('iTerm2 started', () async {
+      final now = (await running()).difference(before);
+      return now.isEmpty ? null : now.first;
+    });
+    owned.pid(pid, 'iterm');
+    await open(cwd);
+  }
+
+  /// A new window, as the person's ⌘N would make it, whose shell starts in
+  /// [cwd] (a script of its own: iTerm2 splits a command line itself).
+  @override
+  Future<void> open(String cwd) async {
+    final script = File(p.join(c.work, 'iterm-${DateTime.now().microsecondsSinceEpoch}.sh'))
+      ..writeAsStringSync("cd -- '${cwd.replaceAll("'", r"'\''")}'\nexec /bin/zsh -l\n");
+    const newWindow = '''
+on run argv
+  tell application id "com.googlecode.iterm2" to create window with default profile command (item 1 of argv)
+end run''';
+    final r = await Process.run('/usr/bin/osascript', [
+      '-e',
+      newWindow,
+      '/bin/sh ${script.path}',
+    ], environment: cleanEnv());
+    if (r.exitCode != 0) throw StateError('iTerm2 window: ${r.stderr}');
+  }
 }
 
 /// The run's own tmux server (on [E2eConfig.tmuxSocket], where the desktop

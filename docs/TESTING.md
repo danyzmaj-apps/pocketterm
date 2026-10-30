@@ -3,11 +3,11 @@
 Every user-facing feature, and what tests it. Four layers:
 
 - **Unit and widget tests**: `fvm flutter test` (or `fvm dart test`) in each package and app; `deno test` in `apps/pocketterm-relay`; `claude plugin test .` in the Claude Code plugin (`apps/pocketterm-desktop/integrations/claude/plugins/pocketterm`, its tests in `tests/`). The core client tests also run against PocketTerm on a local Supabase (`POCKETTERM_SUPABASE=1 fvm flutter test -j 1 test/server_client_test.dart test/session_test.dart`, after `tool/supabase-local.sh start`); CI doesn't run those.
-- **End-to-end run**: `tool/e2e/run.sh` (see `tool/e2e/bin/run.dart`). For each terminal (kitty, Ghostty, WezTerm): a server (`--server local`; `builtin`, over Tailscale; `supabase`, on a local Supabase in Docker; `supabase-cloud`, a new project on supabase.com made by the desktop's setup and deleted after; or a server's URL), the real desktop app under `apps/pocketterm-desktop/integration_test/e2e_test.dart` with throwaway terminals running a fake omp (`tool/e2e/bin/fake_omp.dart`), and the phone app in the iPhone Simulator or an Android emulator driven by Maestro (`apps/pocketterm-mobile/maestro/e2e/run.sh`, phases in order `main`, `profiles`, `computer-off`, `server-down`, `server-restart`, `desktop-restart`, `real-omp`, `revoke`; `supabase-cloud` has no server restart; the phone app is built from HEAD, or from the working tree as it is with `--phone-from-tree`). Below, *flow* `x` is `apps/pocketterm-mobile/maestro/e2e/x.yaml` and *step* "y" is a `report.step` in the desktop test.
+- **End-to-end run**: `tool/e2e/run.sh` (see `tool/e2e/bin/run.dart`). For each terminal (kitty, Ghostty, WezTerm, iTerm2): a server (`--server local`; `builtin`, over Tailscale; `supabase`, on a local Supabase in Docker; `supabase-cloud`, a new project on supabase.com made by the desktop's setup and deleted after; or a server's URL), the real desktop app under `apps/pocketterm-desktop/integration_test/e2e_test.dart` with throwaway terminals running a fake omp (`tool/e2e/bin/fake_omp.dart`), and the phone app in the iPhone Simulator or an Android emulator driven by Maestro (`apps/pocketterm-mobile/maestro/e2e/run.sh`, phases in order `main`, `profiles`, `computer-off`, `server-down`, `server-restart`, `desktop-restart`, `real-omp`, `revoke`; `supabase-cloud` has no server restart; the phone app is built from HEAD, or from the working tree as it is with `--phone-from-tree`). Below, *flow* `x` is `apps/pocketterm-mobile/maestro/e2e/x.yaml` and *step* "y" is a `report.step` in the desktop test.
 - **Installed-app smoke**: `tool/smoke/run.sh` and `tool/smoke/scenario.sh`: a release build copied to a throwaway place, opened as from Finder, driven through accessibility (scenarios `wizard`, `getready`, `settings`, `theme`, `menubar`, `quit`).
 - **Manual**: what needs a camera, real push delivery, a real right click, Windows, or the owner's own accounts.
 
-Run the e2e suite on a quiet Mac: it opens throwaway terminal windows and refuses to start Ghostty while another Ghostty runs.
+Run the e2e suite on a quiet Mac: it opens throwaway terminal windows and refuses to start Ghostty or iTerm2 while another of it runs.
 
 ## What to run for a change
 
@@ -18,7 +18,7 @@ Don't run the whole e2e suite for every change: test what you changed and what i
 3. **Run only those**, on the cheapest target that covers them:
    - phone flows: `tool/e2e/run.sh --terminal kitty --phone-only <flow>,… [--phone-from-tree]` (add `fresh,pair-accept` first when the flow needs a paired phone), on the platform the change affects (`--platform android --avd <avd>` for Android code); the desktop then checks only what those flows did;
    - desktop steps: `--desktop-only <text>,…` keeps the steps whose name contains one of the texts (besides setup, Get ready, the windows, pairing and the hand-off, which every run needs), e.g. `tool/e2e/run.sh --terminal kitty --phone-only fresh,pair-accept,profiles --desktop-only profile`; `--no-phone` runs the desktop with the stand-in phone; or a smoke scenario (`tool/smoke/scenario.sh <scenario>`);
-   - runs side by side (another checkout's run while yours goes): give each its own Simulator or emulator with `--device <udid or serial>` (`xcrun simctl create "PocketTerm E2E 2" com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro <runtime>`); without it every run takes the Simulator "PocketTerm E2E", and one run's `fresh` wipes the app under the other's flows (Maestro then reports the device unreachable or the app stopped);
+   - runs side by side (another checkout's run while yours goes): phone runs on the iPhone Simulator can't overlap, even on separate Simulators, as every `maestro test` drives its own iOS driver through one fixed port on the Mac (Maestro then reports the device unreachable or the app stopped): run them one after another. `--device <udid or serial>` picks the Simulator or emulator a run uses (`xcrun simctl create "PocketTerm E2E 2" com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro <runtime>`; a shut-down one is booted); without it every run takes the Simulator "PocketTerm E2E";
    - another terminal or server only when the change is about that terminal or server.
 4. **New behaviour gets a test** in the same change (a flow, step, scenario or unit test) and a row here, so the next change can find it.
 
@@ -151,7 +151,7 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 | kitty adapter | `kitty_test.dart`; e2e `--terminal kitty` | none |
 | Ghostty adapter (no screen, tmux, one row per window in tmux, config line upgrade) | `ghostty_test.dart`, `ghostty_surface_test.dart`, `terminals_test.dart`, `ghostty_config_test.dart`; e2e `--terminal ghostty` | none |
 | WezTerm adapter | `wezterm_test.dart`; e2e `--terminal wezterm` | Windows: unit only |
-| iTerm2 adapter (screen vs scrollback, gone windows, colors, `ITERM_SESSION_ID`) | `iterm_test.dart`, `terminal_test.dart` | e2e: none; launching, typing, keys, closing and finding an agent's window run by hand against a real iTerm2 |
+| iTerm2 adapter (screen vs scrollback, gone windows, colors, titles the program set or iTerm2's name, `ITERM_SESSION_ID`, one Apple Event per property and per session variable) | `iterm_test.dart`, `terminal_test.dart`; e2e `--terminal iterm` | none |
 | tmux adapter | `tmux_test.dart`; Ghostty's tmux windows in the e2e | none |
 
 ## Per terminal
@@ -159,7 +159,7 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 The e2e runs every phone flow on each terminal. Where a terminal can't do something, the run checks what the phone says instead:
 
 - **Ghostty** can't share its screen: `screen` checks the phone says so; `approval` checks the phone is told to answer on the computer (the desktop then answers). Sessions the phone starts open in tmux inside Ghostty, which can: `question`, `plan`, `menu_model`, `menu_resume`, `steer_queue` and `stop` run on that session for every terminal.
-- **kitty** and **WezTerm**: everything, screens included.
+- **kitty**, **WezTerm** and **iTerm2**: everything, screens included (iTerm2's without colors). The iTerm2 run starts its own instance, which opens no window by itself, with its settings for the run on its command line only and its saved windows in the throwaway home (the person's are never restored or erased); iTerm2 itself still records its windows' places and a launch count in the person's iTerm2 preferences. Like Ghostty's, it refuses to start while another iTerm2 runs.
 
 ## What ran end to end for 0.1.0 (build 14)
 

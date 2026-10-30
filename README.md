@@ -150,7 +150,7 @@ fvm dart format -l 120 lib test && fvm dart analyze --fatal-infos && fvm dart te
 deno fmt --check && deno check main.ts tests/*.ts && deno task test
 ```
 
-End to end on a Mac (a server, the desktop app, kitty, Ghostty and WezTerm, the phone in the iOS Simulator or an Android emulator; results in `build/e2e/`). `--server` picks a local server (the default), the built-in one over Tailscale, Supabase (local or a new project on supabase.com) or a server elsewhere. Run only what covers your change and the features around it; how to pick and what each covers: [docs/TESTING.md](docs/TESTING.md#what-to-run-for-a-change).
+End to end on a Mac (a server, the desktop app, kitty, Ghostty, WezTerm and iTerm2, the phone in the iOS Simulator or an Android emulator; results in `build/e2e/`). `--server` picks a local server (the default), the built-in one over Tailscale, Supabase (local or a new project on supabase.com) or a server elsewhere. Run only what covers your change and the features around it; how to pick and what each covers: [docs/TESTING.md](docs/TESTING.md#what-to-run-for-a-change).
 
 ```sh
 tool/e2e/run.sh --terminal kitty --phone-only fresh,pair-accept,theme   # e.g. a change to the phone's theme picker

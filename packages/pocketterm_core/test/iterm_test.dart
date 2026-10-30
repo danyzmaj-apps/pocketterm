@@ -38,45 +38,66 @@ void main() {
   Proc running() =>
       Proc(pid: 1, ppid: 0, pgid: 1, tpgid: -1, tty: '', stat: 'S', args: '${app.path}/Contents/MacOS/iTerm2');
 
-  test(
-    "a session's program and folder are its tty's foreground program's; focused only while iTerm2 is in front",
-    () async {
-      final dir = Directory('${app.path}/project')..createSync();
-      final sleep = await Process.start('/bin/sleep', ['30'], workingDirectory: dir.path);
-      addTearDown(sleep.kill);
-      const other = '0A1C3C37-F3DC-4313-86DA-23419F1086CE';
-      String list({required bool front}) =>
-          "printf '$_id\\037π > chat\\037chat (omp)\\037/dev/ttys099\\037/elsewhere\\037true\\03712\\0372\\036\\n"
-          "$other\\037~\\037~ (-zsh)\\037/dev/ttys098\\037/Users/me\\037false\\03712\\0371\\036\\nfront\\037$front'";
-      final i = iterm(['0'], [list(front: true), list(front: false)]);
-      final procs = Procs([
-        running(),
-        Proc(
-          pid: sleep.pid,
-          ppid: 9,
-          pgid: sleep.pid,
-          tpgid: sleep.pid,
-          tty: 'ttys099',
-          stat: 'S+',
-          args: '/bin/sleep 30',
-        ),
-      ]);
-      final [w, shell] = await i.windows(procs);
-      expect(
-        (w.key, w.title, w.tab, w.program, w.tty, w.focused),
-        (_key, 'π > chat', 'chat (omp)', 'sleep', 'ttys099', true),
-      );
-      expect((w.osWindow, w.tabId, shell.tabId), ('iterm:w12', 'iterm:w12/t2', 'iterm:w12/t1'));
-      expect(w.cwd, dir.resolveSymbolicLinksSync(), reason: "the program's, over iTerm2's");
-      expect(
-        (shell.cwd, shell.program, shell.focused),
-        ('/Users/me', '', false),
-        reason: "nothing on its tty: iTerm2's folder",
-      );
-      expect(w.can(TermCap.read) && w.can(TermCap.keys) && !w.can(TermCap.ansi), isTrue);
-      expect((await i.windows(procs)).first.focused, isFalse, reason: 'iTerm2 in the background');
-    },
-  );
+  test("a session's program and folder are its tty's foreground program's; focused only while iTerm2 is in front", () async {
+    final dir = Directory('${app.path}/project')..createSync();
+    final sleep = await Process.start('/bin/sleep', ['30'], workingDirectory: dir.path);
+    addTearDown(sleep.kill);
+    const other = '0A1C3C37-F3DC-4313-86DA-23419F1086CE';
+    // id, the title its program set, iTerm2's name, tab title, tty, iTerm2's folder, focused, window id, tab number.
+    String list({required bool front}) =>
+        "printf '$_id\\037π > chat\\037sleep\\037chat (sleep)\\037/dev/ttys099\\037/elsewhere\\037true\\03712\\0372\\036\\n"
+        "$other\\037\\037build (make)\\037~ (-zsh)\\037/dev/ttys098\\037/Users/me\\037false\\03712\\0371\\036\\nfront\\037$front'";
+    final i = iterm(['0'], [list(front: true), list(front: false)]);
+    final procs = Procs([
+      running(),
+      Proc(
+        pid: sleep.pid,
+        ppid: 9,
+        pgid: sleep.pid,
+        tpgid: sleep.pid,
+        tty: 'ttys099',
+        stat: 'S+',
+        args: '/bin/sleep 30',
+      ),
+    ]);
+    final [w, unknown] = await i.windows(procs);
+    expect((w.key, w.title, w.tab, w.program, w.tty, w.focused), (_key, 'π > chat', 'chat', 'sleep', 'ttys099', true));
+    expect((w.osWindow, w.tabId, unknown.tabId), ('iterm:w12', 'iterm:w12/t2', 'iterm:w12/t1'));
+    expect(w.cwd, dir.resolveSymbolicLinksSync(), reason: "the program's, over iTerm2's");
+    expect(
+      (unknown.title, unknown.cwd, unknown.program, unknown.focused),
+      ('build (make)', '/Users/me', '', false),
+      reason: "nothing known on its tty: iTerm2's name and folder as they are",
+    );
+    expect(w.can(TermCap.read) && w.can(TermCap.keys) && !w.can(TermCap.ansi), isTrue);
+    expect((await i.windows(procs)).first.focused, isFalse, reason: 'iTerm2 in the background');
+  });
+
+  test("a title is the one its program set, else iTerm2's name; iTerm2's names lose their ` (job)` only where the job is the program", () {
+    const ids = ['4E0BF942-D30A-4EDD-BD3A-616CCAED64D0', '4E0BF942-D30A-4EDD-BD3A-616CCAED64D1'];
+    List<(String, String)> titles(List<(String, String, String)> sessions, String program) => [
+      for (final w in parseITermList(
+        [
+          for (final (n, (set, name, tab)) in sessions.indexed)
+            [ids[n], set, name, tab, '/dev/ttys00$n', '', 'false', '7', '${n + 1}'].join('\x1f'),
+          'front\x1ffalse',
+        ].join('\x1e\n'),
+        program: (tty) => program,
+      ))
+        (w.title, w.tab),
+    ];
+    expect(titles([('π idle name', 'omp', 'omp'), ('', '~ (-zsh)', '~ (-zsh)')], 'zsh'), [
+      ('π idle name', 'omp'),
+      ('~', '~'),
+    ]);
+    expect(titles([('watch (sleep)', 'sleep', 'sleep')], 'sleep'), [
+      ('watch (sleep)', 'sleep'),
+    ], reason: 'what the program set is kept whole, its parentheses too');
+    expect(titles([('', 'build (make)', 'build (make)')], 'make'), [('build', 'build')]);
+    expect(titles([('', 'notes (draft)', 'notes (draft)')], 'nvim'), [('notes (draft)', 'notes (draft)')]);
+    expect(titles([('', '(omp)', '(omp)')], 'omp'), [('(omp)', '(omp)')], reason: 'nothing but the job: kept');
+    expect(titles([('', 'zsh', 'zsh')], ''), [('zsh', 'zsh')], reason: 'nothing known on its tty');
+  });
 
   test('a new session goes into the window it is asked into, by its id; with none asked, a new window', () async {
     // iTerm2 runs, as far as a process list tells.

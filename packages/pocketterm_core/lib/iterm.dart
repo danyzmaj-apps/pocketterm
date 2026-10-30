@@ -58,27 +58,44 @@ class ITerm2 extends TerminalHost {
   }
 
   /// Runs [body] on the session of [key], with `s` set to it; what [body]
-  /// returns, else empty. An iTerm2 that has quit isn't started again for a
-  /// window it no longer has.
+  /// returns, else empty. Every session's id comes in one Apple Event and is
+  /// looked through here, outside the `tell` (inside it, each `item` and
+  /// `count` goes to iTerm2 as an event of its own: seconds with a dozen
+  /// sessions open); the session is then addressed by its window's id and
+  /// its place there, and checked once more by its id. An iTerm2 that has
+  /// quit isn't started again for a window it no longer has.
   Future<String> _on(String key, String body, [List<String> args = const []]) async {
     try {
       return await _osa(
         '''
 on run argv
   if application id "com.googlecode.iterm2" is not running then error "iTerm2 isn't running." number -600
-  tell application id "com.googlecode.iterm2"
-    repeat with w in windows
-      repeat with b in tabs of w
-        repeat with s in sessions of b
-          if (id of s) is (item 1 of argv) then
-$body
-            return ""
-          end if
-        end repeat
+  repeat 3 times
+    tell application id "com.googlecode.iterm2"
+      set wids to id of windows
+      set ids to id of sessions of tabs of windows
+      set wids2 to id of windows
+    end tell
+    -- Paired by place: a window brought to the front in between reorders them, so read again.
+    if wids is wids2 then exit repeat
+  end repeat
+  set found to missing value
+  repeat with wi from 1 to count of ids
+    set tw to item wi of ids
+    repeat with ti from 1 to count of tw
+      set tt to item ti of tw
+      repeat with si from 1 to count of tt
+        if (item si of tt) is (item 1 of argv) then set found to {item wi of wids, ti, si}
       end repeat
     end repeat
+  end repeat
+  if found is missing value then error "That window is gone." number -1728
+  tell application id "com.googlecode.iterm2"
+    set s to session (item 3 of found) of tab (item 2 of found) of window id (item 1 of found)
+    if (id of s) is not (item 1 of argv) then error "That window is gone." number -1728
+$body
   end tell
-  error "That window is gone." number -1728
+  return ""
 end run''',
         [_session(key), ...args],
       );
@@ -94,40 +111,73 @@ end run''',
 
   /// A session a record, ended by RS and a newline, its fields apart by US
   /// (a title or a folder's name may hold a tab or a line break): id, title
-  /// (the one its program set, else iTerm2's name for it), tab title, tty,
-  /// folder (iTerm2's `session.path`), focused, window id, tab number in
-  /// that window; then `front<US>true|false`.
+  /// (the one its program set, `session.terminalWindowName`; empty if none),
+  /// name (iTerm2's, as its tab shows it), tab title, tty, folder (iTerm2's
+  /// `session.path`), focused, window id, tab number in that window (from
+  /// 1); then `front<US>true|false`. Each property of every session comes in
+  /// one Apple Event and the records are made outside the `tell` ([_on] says
+  /// why); a variable can't be asked of many sessions at once, so the title
+  /// and the folder take an event per session, each addressed by its
+  /// window's place and its own. A window opened, closed or brought to the
+  /// front between those events leaves them out of step, and they're read
+  /// again. Nothing when iTerm2 isn't running: it quit since the process
+  /// snapshot that said it was, and a `tell` would start it again.
   static const _list = '''
+if application id "com.googlecode.iterm2" is not running then return ""
 set sep to ASCII character 31
 set eol to (ASCII character 30) & linefeed
-set out to ""
-tell application id "com.googlecode.iterm2"
-  set focusedId to ""
+repeat 3 times
+  tell application id "com.googlecode.iterm2"
+    set focusedId to ""
+    try
+      set focusedId to id of current session of current window
+    end try
+    set ids to id of sessions of tabs of windows
+    set wids to id of windows
+    set nms to name of sessions of tabs of windows
+    set ttys to tty of sessions of tabs of windows
+    set tts to title of tabs of windows
+    set isFront to frontmost
+  end tell
   try
-    set focusedId to id of current session of current window
-  end try
-  repeat with w in windows
-    set n to 0
-    repeat with b in tabs of w
-      set n to n + 1
-      repeat with s in sessions of b
-        set ttl to missing value
-        set cwd to missing value
-        try
-          tell s to set ttl to (variable named "session.terminalWindowName")
-        end try
-        try
-          tell s to set cwd to (variable named "session.path")
-        end try
-        if ttl is missing value or ttl is "" then set ttl to name of s
-        if cwd is missing value then set cwd to ""
-        set out to out & (id of s) & sep & ttl & sep & (title of b) & sep & (tty of s) & sep & cwd & sep & ((id of s) is focusedId) & sep & (id of w) & sep & n & eol
+    set out to ""
+    repeat with wi from 1 to count of ids
+      set wid to item wi of ids
+      if (count of wid) is not (count of item wi of tts) then error "out of step"
+      repeat with ti from 1 to count of wid
+        set bid to item ti of wid
+        set bnm to item ti of item wi of nms
+        set bty to item ti of item wi of ttys
+        if (count of bid) is not (count of bnm) or (count of bid) is not (count of bty) then error "out of step"
+        repeat with si from 1 to count of bid
+          set ttl to missing value
+          set cwd to missing value
+          tell application id "com.googlecode.iterm2"
+            tell session si of tab ti of window wi
+              try
+                set ttl to (variable named "session.terminalWindowName")
+              end try
+              try
+                set cwd to (variable named "session.path")
+              end try
+            end tell
+          end tell
+          if ttl is missing value then set ttl to ""
+          if cwd is missing value then set cwd to ""
+          set out to out & (item si of bid) & sep & ttl & sep & (item si of bnm) & sep & (item ti of item wi of tts) & sep & (item si of bty) & sep & cwd & sep & ((item si of bid) is focusedId) & sep & (item wi of wids) & sep & ti & eol
+        end repeat
       end repeat
     end repeat
-  end repeat
-  set out to out & "front" & sep & frontmost
-end tell
-return out''';
+    tell application id "com.googlecode.iterm2"
+      set ids2 to id of sessions of tabs of windows
+      set wids2 to id of windows
+    end tell
+    if ids2 is ids and wids2 is wids and (count of ids) is (count of wids) and (count of ids) is (count of nms) and (count of ids) is (count of ttys) and (count of ids) is (count of tts) then
+      return out & "front" & sep & isFront
+    end if
+  end try
+end repeat
+error "iTerm2's windows kept changing while they were read."''';
 
   @override
   Future<TermStatus> status(Procs procs) async {
@@ -150,7 +200,7 @@ return out''';
   @override
   Future<List<TermWindow>> windows(Procs procs) async {
     if (!_running(procs)) return const [];
-    final all = parseITermList(await _osa(_list));
+    final all = parseITermList(await _osa(_list), program: (tty) => procs.foreground(tty)?.program ?? '');
     final cwds = await Procs.cwds([
       for (final w in all)
         if (procs.foreground(w.tty) case final p?) p.pid,
@@ -331,29 +381,56 @@ end run''',
 }
 
 /// The listing script's output (see [ITerm2]) as windows, without their
-/// program ([ITerm2.windows] adds it).
-List<TermWindow> parseITermList(String out) {
+/// program ([ITerm2.windows] adds it). A session's title is the one its
+/// program set, else iTerm2's name for it; that name and the tab's title
+/// lose the ` (job)` iTerm2 adds when the job is [program] (of a tty).
+List<TermWindow> parseITermList(String out, {String Function(String tty)? program}) {
   final records = [for (final r in out.split('\x1e')) r.replaceFirst(RegExp(r'^(\r\n|\n|\r)'), '').trimRight()];
   final front = records.any((r) => r == 'front\x1ftrue');
-  return [
-    for (final r in records)
-      if (r.split('\x1f')
-          case [final id, final title, final tab, final tty, final cwd, final focused, final window, final tabNumber]
-          when RegExp(r'^[0-9A-Fa-f-]{36}$').hasMatch(id))
+  final windows = <TermWindow>[];
+  for (final r in records) {
+    if (r.split('\x1f')
+        case [
+          final id,
+          final title,
+          final name,
+          final tab,
+          final dev,
+          final cwd,
+          final focused,
+          final window,
+          final tabNumber,
+        ]
+        when RegExp(r'^[0-9A-Fa-f-]{36}$').hasMatch(id)) {
+      final tty = dev.replaceFirst('/dev/', '');
+      final job = program?.call(tty) ?? '';
+      final set = cleanTitle(title);
+      windows.add(
         TermWindow(
           key: 'iterm:$id',
           osWindow: 'iterm:w$window',
           tabId: 'iterm:w$window/t$tabNumber',
-          title: cleanTitle(title),
-          tab: cleanTitle(tab),
+          title: set.isNotEmpty ? set : itermTitle(cleanTitle(name), job),
+          tab: itermTitle(cleanTitle(tab), job),
           cwd: cwd,
           program: '',
           focused: front && focused == 'true',
           app: 'iterm',
           caps: const {TermCap.read, TermCap.type, TermCap.line, TermCap.keys, TermCap.close},
-          tty: tty.replaceFirst('/dev/', ''),
+          tty: tty,
         ),
-  ];
+      );
+    }
+  }
+  return windows;
+}
+
+/// iTerm2's name for a session or tab, [title], without the ` (job)` it adds
+/// by default when that's [program] (a login shell's `-zsh` too).
+String itermTitle(String title, String program) {
+  if (program.isEmpty) return title;
+  final m = RegExp(' \\(-?${RegExp.escape(program)}\\)\$').firstMatch(title);
+  return m == null || m.start == 0 ? title : title.substring(0, m.start);
 }
 
 /// The colors script's output (a line `r,g,b` of 16-bit channels each:

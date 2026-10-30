@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/ghostty.dart';
+import 'package:pocketterm_core/iterm.dart';
 import 'package:pocketterm_core/kitty.dart';
 import 'package:pocketterm_core/terminals.dart';
 import 'package:pocketterm_core/tmux.dart';
@@ -45,6 +46,7 @@ class E2eApp extends AppController {
     kitty: Kitty(socketDir: e2e.kittyDir, home: e2e.home),
     tmux: Tmux(socketDirs: [p.dirname(e2e.tmuxSocket)]),
     wezterm: WezTerm(home: e2e.home),
+    iterm: ITerm2(),
     ghostty: Ghostty(),
   );
 

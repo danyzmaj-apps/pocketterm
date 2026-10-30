@@ -111,6 +111,7 @@ class _Run {
   bool ours(String key) => switch (t) {
     'kitty' => key.startsWith('kitty'),
     'wezterm' => key.startsWith('wezterm:'),
+    'iterm' => key.startsWith('iterm:'),
     _ => key.startsWith('ghostty:') || key.startsWith('tmux:'),
   };
 
@@ -397,7 +398,8 @@ class _Run {
       await _frames(1);
       for (final (i, e) in expected.indexed) {
         final done = e.done && (firstTodo < 0 || i < firstTodo);
-        final f = find.descendant(of: _key(e.key), matching: find.text(done ? e.yes : e.no));
+        final text = done ? e.yes : e.no;
+        final f = find.descendant(of: _key(e.key), matching: find.text(text));
         if (f.evaluate().isEmpty) return false;
       }
       return true;
@@ -956,6 +958,11 @@ class _Run {
       await r.prompt(chat, 'what is in this image $t', images: [_png]);
     });
     await act('file', () async {
+      // At rest after the image's turn, not before it began (a prompt then steers the turn instead).
+      await until(
+        'the image answered',
+        () => r.view(chat)?.items.any((i) => i.text.contains('fake reply: what is in this image')) ?? false,
+      );
       await until('chat at rest', () => r.session(chat)?.busy == false);
       await r.prompt(chat, 'what is in this file $t', files: [(name: _docName, mime: 'text/plain', bytes: _doc)]);
     });
@@ -1018,11 +1025,18 @@ class _Run {
       await atRest();
       await until('the queue held', () => r.session(key)?.paused ?? false);
       expect(r.session(key)!.queue.map((q) => q.text), ['after stop $t']);
+      final watching = r.watchSession(key);
       await r.pauseQueue(key, paused: false);
       await until(
         'the held prompt ran on Resume',
         () => fakeOmpLog(dir('newsess')).any((e) => e['event'] == 'prompt' && '${e['text']}'.contains('after stop')),
       );
+      // Its turn over, not just begun (the next prompt would steer it).
+      await until(
+        'the held prompt answered',
+        () => r.view(key)?.items.any((i) => i.text.contains('fake reply: after stop')) ?? false,
+      );
+      watching();
       await atRest();
     });
     await act('question', () async {
@@ -1582,7 +1596,12 @@ class _Run {
 
   /// Where a window the phone opens goes: the terminal's own windows, tmux
   /// for Ghostty (whose windows can't be read).
-  String get _opensWith => t == 'ghostty' ? 'tmux:' : (t == 'kitty' ? 'kitty' : 'wezterm:');
+  String get _opensWith => switch (t) {
+    'ghostty' => 'tmux:',
+    'kitty' => 'kitty',
+    'iterm' => 'iterm:',
+    _ => 'wezterm:',
+  };
 
   /// Settings → Phone → Terminal from phone off: the phone finds the computer
   /// not answering (phase computer-off) and asks for it back on (rpc

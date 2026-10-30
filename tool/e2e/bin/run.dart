@@ -4,7 +4,7 @@
 // Simulator, phase by phase. Prints a pass/fail table; everything it saw is
 // in build/e2e/<stamp>/.
 //
-//   dart run tool/e2e/bin/run.dart [--terminal kitty|ghostty|wezterm|all]
+//   dart run tool/e2e/bin/run.dart [--terminal kitty|ghostty|wezterm|iterm|all]
 //       [--server local|builtin|supabase|supabase-cloud --supabase-token-file <file>|<https url> (--setup-link <link> |
 //        --setup-link-file <file>) [--server-stop-cmd <sh> --server-start-cmd <sh>]
 //        [--server-ca <pem>]]
@@ -691,7 +691,8 @@ void _keepLogs(String work, String artifacts) {
   if (!w.existsSync()) return;
   final keep = p.join(artifacts, 'work');
   for (final e in w.listSync(recursive: true, followLinks: false)) {
-    if (e is! File) continue;
+    // Regular files only: iTerm2 leaves a socket in the throwaway home's ~/.config.
+    if (e is! File || e.statSync().type != FileSystemEntityType.file) continue;
     final rel = p.relative(e.path, from: work);
     final wanted =
         rel.contains('.fake_omp${p.separator}') ||

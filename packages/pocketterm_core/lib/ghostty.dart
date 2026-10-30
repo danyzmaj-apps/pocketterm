@@ -83,8 +83,11 @@ end run''',
   }
 
   /// A terminal a record, ended by RS and a newline, its fields apart by US:
-  /// a title or a folder's name may hold a tab or a line break.
+  /// a title or a folder's name may hold a tab or a line break. Nothing when
+  /// Ghostty isn't running: it quit since the process snapshot that said it
+  /// was, and a `tell` would start it again, with no window.
   static const _list = '''
+if application id "com.mitchellh.ghostty" is not running then return ""
 set sep to ASCII character 31
 set eol to (ASCII character 30) & linefeed
 set out to ""

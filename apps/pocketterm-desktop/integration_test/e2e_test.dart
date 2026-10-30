@@ -172,7 +172,8 @@ class _Run {
     }
     await report.step('restart: desktop app', _desktopRestart);
     if (File(_omp).existsSync()) {
-      await report.step('real omp: /new from the phone starts a fresh session in place', _realOmp);
+      // The phone sends the /new: only when its flow runs (--phone-only may leave it out).
+      await _after('real-omp', 'real omp: /new from the phone starts a fresh session in place', _realOmp);
       await report.step('real omp: a profile loads PocketTerm from its own folder and says so', _realOmpProfile);
     } else {
       report
@@ -638,7 +639,7 @@ class _Run {
   }
 
   Future<void> _getReady() async {
-    await report.step('get ready: omp gets PocketTerm', () async {
+    await report.step('get ready: omp gets PocketTerm once confirmed', () async {
       final ext = File(p.join(c.home, '.omp', 'agent', 'extensions', 'pocketterm-live.ts'));
       // Nothing goes in on its own: omp's Install (listed first), then the popup's Install once read
       // (confirmAgentInstall).
@@ -1788,10 +1789,19 @@ class _Run {
       final key = await until('the phone lists real omp', () => r.sessions.where((x) => here(x.cwd)).firstOrNull?.key);
       await r.prompt(key, '/new');
     }
-    final after = await until('real omp on a new session', () {
-      final now = app.live.sessions.where((x) => here(x.cwd)).toList();
-      return now.length == 1 && now.single.id != before ? now.single : null;
-    });
+    final LiveSession after;
+    try {
+      after = await until('real omp on a new session', () {
+        final now = app.live.sessions.where((x) => here(x.cwd)).toList();
+        return now.length == 1 && now.single.id != before ? now.single : null;
+      });
+    } on TimeoutException {
+      report.log('real omp: before /new $before');
+      for (final x in app.live.sessions.where((x) => here(x.cwd))) {
+        report.log('real omp: live ${x.key} id=${x.id} window=${x.window} items=${x.log.items.length}');
+      }
+      rethrow;
+    }
     expect(after.key, s.key, reason: 'the same window, the same session key');
     expect(after.log.items.any((i) => '${i.args}${i.output}${i.text}'.contains('e2e-real')), isFalse);
   }

@@ -38,7 +38,7 @@ Full matrix runs (every terminal, server and phone platform, below and in [RELEA
 | Setup, Supabase: Paste a setup link | the `--server supabase` run signs in with the local project's link (step "setup: own server, paste link"); `supabase_setup_test.dart` (the Supabase branch's paste screen) | none |
 | Sign-in when the Keychain refuses (locked, missing): message and Try again | core `session_test.dart`; `setup_page_test.dart`, `hosting_test.dart` | a real locked Keychain: manual |
 | First sign-in turns Terminal from phone on, adds no login item | steps "setup: …" assert both | none |
-| Get ready: omp gets PocketTerm | step "get ready: omp gets PocketTerm" (Install, confirmed); `get_ready_test.dart`, `integrations_test.dart` | Claude Code install: plugin tests and `integrations_test.dart` only (the e2e never touches the owner's Claude Code) |
+| Get ready: omp gets PocketTerm (Install, confirmed) | step "get ready: omp gets PocketTerm once confirmed"; `get_ready_test.dart`, `integrations_test.dart` | Claude Code install: plugin tests and `integrations_test.dart` only (the e2e never touches the owner's Claude Code) |
 | Get ready: sessions already open (unreported) | step "get ready: sessions already open are listed" | none |
 | Get ready: terminals row | step "get ready: terminals"; `terminals_card_test.dart` | none |
 | Get ready: project folders, Choose folder… | step "get ready: project folders" | none |

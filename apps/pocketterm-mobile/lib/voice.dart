@@ -12,10 +12,218 @@ import 'package:pocketterm_mobile/chrome.dart';
 import 'package:pocketterm_mobile/corona.dart';
 import 'package:pocketterm_mobile/e2e_hooks.dart';
 import 'package:pocketterm_mobile/motion.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Where the voice sheet hears from: the phone's on-device recognizer, or in an E2E build (no microphone in the
 /// Simulator) a made-up speaker that says [ScriptedSpeech.words]. Tests put a fake here.
 SpeechSource voiceSource = e2eBuild ? ScriptedSpeech() : const NativeSpeech();
+
+/// The language the voice sheet listens in, per phone: chosen in Settings or on the sheet, else Auto
+/// ([VoiceLanguage.auto]).
+final voiceLanguage = VoiceLanguage();
+
+/// [voiceLanguage]: kept as the preference `voiceLanguage`, a [SpeechLanguage]'s name; none is Auto.
+class VoiceLanguage extends ChangeNotifier {
+  static const prefsKey = 'voiceLanguage';
+
+  SharedPreferences? _prefs;
+  SpeechLanguage? _choice;
+
+  /// Languages Auto listened in and the phone then said it has none of (Android 12 can't tell before listening):
+  /// Auto passes over them until a language is chosen again.
+  final _missing = <SpeechLanguage>{};
+
+  /// What was chosen; null for Auto.
+  SpeechLanguage? get choice => _choice;
+
+  /// Auto's first guess, before asking the phone: its first language PocketTerm can listen for.
+  SpeechLanguage get guess => SpeechLanguage.byLocales(WidgetsBinding.instance.platformDispatcher.locales).first;
+
+  /// What it listens in: the choice, else [auto].
+  Future<SpeechLanguage> resolve(SpeechSource source) async => _choice ?? await auto(source);
+
+  /// Auto: of the phone's languages PocketTerm can listen for (in the phone's order, then English), the first the
+  /// phone has for on-device recognition; when none is there yet, the first it can get (a download, a setting);
+  /// English when it can get none.
+  Future<SpeechLanguage> auto(SpeechSource source) async {
+    final candidates = [
+      for (final l in SpeechLanguage.byLocales(WidgetsBinding.instance.platformDispatcher.locales))
+        if (!_missing.contains(l)) l,
+    ];
+    final found = <SpeechLanguage, SpeechCheck>{};
+    for (final l in candidates) {
+      final s = found[l] = await supportOf(source, l);
+      if (s.ready) return l;
+    }
+    return candidates.where((l) => !found[l]!.unsupported).firstOrNull ?? SpeechLanguage.english;
+  }
+
+  /// [SpeechSource.support], ready when the phone can't say (listening finds out).
+  static Future<SpeechCheck> supportOf(SpeechSource source, SpeechLanguage language) async {
+    try {
+      return await source.support(language);
+    } on Object {
+      return const SpeechCheck(SpeechStatus.ready);
+    }
+  }
+
+  /// Auto's [language] turned out missing once listening began.
+  void missed(SpeechLanguage language) => _missing.add(language);
+
+  void load(SharedPreferences prefs) {
+    _prefs = prefs;
+    _choice = SpeechLanguage.values.asNameMap()[prefs.getString(prefsKey)];
+    notifyListeners();
+  }
+
+  /// Keeps [choice] for this phone; null goes back to Auto.
+  Future<void> choose(SpeechLanguage? choice) async {
+    _missing.clear();
+    if (choice == _choice) return;
+    _choice = choice;
+    notifyListeners();
+    final prefs = _prefs;
+    if (prefs == null) return;
+    await (choice == null ? prefs.remove(prefsKey) : prefs.setString(prefsKey, choice.name));
+  }
+}
+
+/// Auto and each language, with what this phone has of it, asked on opening and on coming back to the app: on the
+/// phone; to download (Download); to add in the phone's settings (Open Settings); or not supported, which can't be
+/// picked. A tap keeps the choice for this phone.
+class VoiceLanguagePicker extends StatefulWidget {
+  const VoiceLanguagePicker({required this.source, super.key});
+  final SpeechSource source;
+
+  @override
+  State<VoiceLanguagePicker> createState() => _VoiceLanguagePickerState();
+}
+
+class _VoiceLanguagePickerState extends State<VoiceLanguagePicker> with WidgetsBindingObserver {
+  final _support = <SpeechLanguage, SpeechCheck>{};
+  final _fixing = <SpeechLanguage>{};
+  SpeechLanguage? _auto;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    voiceLanguage.addListener(_changed);
+    unawaited(_refresh());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    voiceLanguage.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() => setState(() {});
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Back from the phone's settings or its download: what it has may have changed.
+    if (state == AppLifecycleState.resumed) unawaited(_refresh());
+  }
+
+  Future<void> _refresh() async {
+    final found = {for (final l in SpeechLanguage.values) l: await VoiceLanguage.supportOf(widget.source, l)};
+    final auto = await voiceLanguage.auto(widget.source);
+    if (!mounted) return;
+    setState(() {
+      _support
+        ..clear()
+        ..addAll(found);
+      _auto = auto;
+    });
+  }
+
+  Future<void> _fix(SpeechLanguage l, SpeechFix fix) async {
+    setState(() {
+      _fixing.add(l);
+      _error = null;
+    });
+    try {
+      await widget.source.fix(fix, l);
+    } on Object catch (e) {
+      if (mounted) setState(() => _error = e is PlatformException ? e.message : '$e');
+    }
+    if (!mounted) return;
+    setState(() => _fixing.remove(l));
+    await _refresh();
+  }
+
+  /// What the phone has of [l], and the button that gets it.
+  (String?, Widget?) _state(SpeechLanguage l) {
+    final s = _support[l];
+    if (s == null) return (null, null);
+    if (_fixing.contains(l)) {
+      return ('Downloading…', const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)));
+    }
+    Widget button(String label, SpeechFix fix) => TextButton(
+      key: ValueKey('voice-language-${l.name}-${fix.name}'),
+      onPressed: () => unawaited(_fix(l, fix)),
+      child: Text(C.label(label)),
+    );
+    return switch ((s.status, s.fix)) {
+      (SpeechStatus.ready, _) => ('On this phone', null),
+      (SpeechStatus.downloading, _) => ('Downloading…', null),
+      (SpeechStatus.noLanguage, SpeechFix.download) => ('Not downloaded yet', button('Download', SpeechFix.download)),
+      (SpeechStatus.noLanguage, final SpeechFix fix?) => (
+        isIos
+            ? 'Turn on Dictation in ${l.title}: Settings → General → Keyboard'
+            : 'Add it in the phone’s speech settings',
+        button('Open Settings', fix),
+      ),
+      _ => ('Not supported on this phone', null),
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final choice = voiceLanguage.choice;
+    Widget mark({required bool on}) => SizedBox(width: 24, child: on ? Icon(Icons.check, color: C.accent) : null);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListTile(
+          key: const ValueKey('voice-language-auto'),
+          leading: mark(on: choice == null),
+          title: const Text('Auto'),
+          subtitle: Text(
+            'The phone’s language when it has it, else English${_auto == null ? '' : ': now ${_auto!.label}'}',
+            style: TextStyle(color: C.dim),
+          ),
+          onTap: () => unawaited(voiceLanguage.choose(null)),
+        ),
+        for (final l in SpeechLanguage.values)
+          Builder(
+            builder: (context) {
+              final (note, action) = _state(l);
+              final unsupported = _support[l]?.unsupported ?? false;
+              return ListTile(
+                key: ValueKey('voice-language-${l.name}'),
+                enabled: !unsupported,
+                leading: mark(on: choice == l),
+                title: Text(l.label),
+                subtitle: note == null ? null : Text(note, style: TextStyle(color: unsupported ? C.dim2 : C.dim)),
+                trailing: action,
+                onTap: () => unawaited(voiceLanguage.choose(l)),
+              );
+            },
+          ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+            child: Text(_error!, style: TextStyle(fontSize: 14, color: C.warn)),
+          ),
+      ],
+    );
+  }
+}
 
 /// What the person did with what they said: [send] it as the composer would, or insert it into the composer.
 class VoiceResult {
@@ -427,9 +635,12 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
       final orb = _rectOf(_Mark.orb);
       _orbLink.assemble(orb == null || gatherFrom == null ? null : [for (final p in gatherFrom) p - orb.topLeft]);
     });
+    final language = await voiceLanguage.resolve(widget.source);
+    if (!mounted) return;
+    setState(() => _language = language);
     SpeechCheck check;
     try {
-      check = await widget.source.check();
+      check = await widget.source.check(language);
     } on Object {
       check = const SpeechCheck(SpeechStatus.unavailable);
     }
@@ -439,11 +650,13 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
       return _go(_Phase.problem);
     }
     unawaited(HapticFeedback.mediumImpact());
-    _sub = widget.source.listen().listen(
-      _on,
-      onError: (Object e) => _ended(SpeechEnd.error, message: e is PlatformException ? e.message : '$e'),
-      onDone: () => _ended(SpeechEnd.stopped),
-    );
+    _sub = widget.source
+        .listen(_language)
+        .listen(
+          _on,
+          onError: (Object e) => _ended(SpeechEnd.error, message: e is PlatformException ? e.message : '$e'),
+          onDone: () => _ended(SpeechEnd.stopped),
+        );
     _go(_Phase.listening);
   }
 
@@ -459,7 +672,14 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
         if (status != null && status != SpeechStatus.ready && _heard.trim().isEmpty) {
           unawaited(_sub?.cancel());
           _sub = null;
-          _problem = SpeechCheck(status, fix: status == SpeechStatus.noEnglish ? SpeechFix.speechSettings : null);
+          // Auto's pick turned out missing only now: it listens in the next language Auto has, without asking.
+          if (status == SpeechStatus.noLanguage &&
+              voiceLanguage.choice == null &&
+              _language != SpeechLanguage.english) {
+            voiceLanguage.missed(_language);
+            return unawaited(_start());
+          }
+          _problem = SpeechCheck(status, fix: status == SpeechStatus.noLanguage ? SpeechFix.speechSettings : null);
           return _go(_Phase.problem);
         }
         _ended(why, message: message);
@@ -547,14 +767,38 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
     unawaited(_start(gatherFrom: from));
   }
 
+  /// What it listens in: until Auto has asked the phone, its first guess.
+  late SpeechLanguage _language = voiceLanguage.choice ?? voiceLanguage.guess;
+
+  /// Listens in the other language from now on, and keeps it for this phone. Mid-listening, the words so far stay
+  /// and listening goes on in the new one; a problem is checked again for it.
+  void _switchLanguage() {
+    final next = SpeechLanguage.values[(_language.index + 1) % SpeechLanguage.values.length];
+    _language = next;
+    unawaited(voiceLanguage.choose(next));
+    switch (_phase) {
+      case _Phase.listening:
+        unawaited(_sub?.cancel());
+        _sub = null;
+        _before = _heard.trim();
+        _heard = _before;
+        unawaited(_start());
+      case _Phase.problem:
+        _note = null;
+        unawaited(_start());
+      case _Phase.review || _Phase.checking || _Phase.stopping || _Phase.downloading:
+        setState(() {});
+    }
+  }
+
   Future<void> _fix(SpeechFix fix) async {
-    if (fix != SpeechFix.download) return await widget.source.fix(fix);
+    if (fix != SpeechFix.download) return await widget.source.fix(fix, _language);
     _go(_Phase.downloading);
     try {
-      await widget.source.fix(fix);
+      await widget.source.fix(fix, _language);
     } on Object catch (e) {
       if (!mounted) return;
-      _problem = const SpeechCheck(SpeechStatus.noEnglish, fix: SpeechFix.download);
+      _problem = const SpeechCheck(SpeechStatus.noLanguage, fix: SpeechFix.download);
       _note = e is PlatformException ? e.message : '$e';
       return _go(_Phase.problem);
     }
@@ -568,25 +812,28 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
     Navigator.of(context).pop(VoiceResult(text, send: send));
   }
 
-  static String problemText(SpeechCheck c) => switch ((c.status, c.fix)) {
-    (SpeechStatus.denied, _) =>
-      isIos
-          ? 'PocketTerm isn’t allowed to use the microphone or speech recognition. Allow them in Settings.'
-          : 'PocketTerm isn’t allowed to use the microphone. Allow it in Settings.',
-    (SpeechStatus.restricted, _) => 'Speech recognition is turned off on this phone.',
-    (SpeechStatus.noEnglish, SpeechFix.download) =>
-      'English for speech recognition isn’t on this phone yet. Download it once; what you say stays on the phone.',
-    (SpeechStatus.noEnglish, SpeechFix.speechSettings) =>
-      'This phone has no English for speech recognition on the device. Add it in the phone’s speech settings.',
-    (SpeechStatus.noEnglish, _) =>
-      isIos
-          ? 'This iPhone can’t recognize English on the device yet. Turn on Dictation in Settings → General → '
-                'Keyboard, and English downloads.'
-          : 'This phone can’t recognize English on the device.',
-    (SpeechStatus.downloading, _) => 'English for speech recognition is downloading. Try again when it’s done.',
-    (SpeechStatus.unavailable || SpeechStatus.ready, _) =>
-      'This phone can’t recognize speech on the device, so voice prompts are off here.',
-  };
+  static String problemText(SpeechCheck c, SpeechLanguage language) {
+    final lang = language.title;
+    return switch ((c.status, c.fix)) {
+      (SpeechStatus.denied, _) =>
+        isIos
+            ? 'PocketTerm isn’t allowed to use the microphone or speech recognition. Allow them in Settings.'
+            : 'PocketTerm isn’t allowed to use the microphone. Allow it in Settings.',
+      (SpeechStatus.restricted, _) => 'Speech recognition is turned off on this phone.',
+      (SpeechStatus.noLanguage, SpeechFix.download) =>
+        '$lang for speech recognition isn’t on this phone yet. Download it once; what you say stays on the phone.',
+      (SpeechStatus.noLanguage, SpeechFix.speechSettings) =>
+        isIos
+            ? 'This iPhone can’t recognize $lang on the device yet. Turn on Dictation in $lang in Settings → General '
+                  '→ Keyboard, and it downloads.'
+            : 'This phone has no $lang for speech recognition on the device. Add it in the phone’s speech settings.',
+      (SpeechStatus.noLanguage, _) =>
+        '$lang isn’t supported for speech recognition on this phone. Tap the language above to pick another.',
+      (SpeechStatus.downloading, _) => '$lang for speech recognition is downloading. Try again when it’s done.',
+      (SpeechStatus.unavailable || SpeechStatus.ready, _) =>
+        'This phone can’t recognize speech on the device, so voice prompts are off here.',
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -600,6 +847,7 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _languageChip(),
             Expanded(
               child: LayoutBuilder(
                 builder: (context, box) => SingleChildScrollView(
@@ -649,14 +897,17 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
   List<Widget> _body() => switch (_phase) {
     _Phase.problem => [
       Text(
-        problemText(_problem),
+        problemText(_problem, _language),
         key: const ValueKey('voice-problem'),
         style: TextStyle(fontSize: 18, height: 1.4, color: C.text),
       ),
       if (_note != null) ...[const SizedBox(height: 8), Text(_note!, style: TextStyle(fontSize: 14, color: C.dim))],
     ],
     _Phase.downloading => [
-      Text('Downloading English for speech recognition…', style: TextStyle(fontSize: 18, height: 1.4, color: C.dim)),
+      Text(
+        'Downloading ${_language.title} for speech recognition…',
+        style: TextStyle(fontSize: 18, height: 1.4, color: C.dim),
+      ),
     ],
     _Phase.checking ||
     _Phase.listening ||
@@ -686,6 +937,33 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
       ],
     ],
   };
+
+  /// The language it listens in, at the top; a tap switches to the other one. Not while it's starting, stopping or
+  /// downloading, nor while held (the finger is on the microphone).
+  Widget _languageChip() {
+    final can = !_held && (_phase == _Phase.listening || _phase == _Phase.problem || _phase == _Phase.review);
+    final language = _language;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+      child: Align(
+        alignment: AlignmentDirectional.centerEnd,
+        child: Semantics(
+          identifier: 'voice-language',
+          label: 'Language: ${language.title}. Switch',
+          excludeSemantics: true,
+          button: true,
+          enabled: can,
+          child: TextButton.icon(
+            key: const ValueKey('voice-language'),
+            style: TextButton.styleFrom(foregroundColor: C.dim, visualDensity: VisualDensity.compact),
+            onPressed: can ? _switchLanguage : null,
+            icon: const Icon(Icons.translate_rounded, size: 16),
+            label: Text(language.label),
+          ),
+        ),
+      ),
+    );
+  }
 
   /// The controls under what's said: the orb becomes Keep talking, Insert and Send by motes flying from one to
   /// the other (and a problem's buttons come and go) by a cross-fade, the room they take changing with it.
@@ -1146,10 +1424,10 @@ class _FlockPainter extends CustomPainter {
   bool shouldRepaint(_FlockPainter old) => old.flock != flock;
 }
 
-/// An E2E build's speaker (no microphone in the Simulator): says [words] one by one, a loudness swinging with
-/// each, then goes quiet until stopped.
+/// An E2E build's speaker (no microphone in the Simulator): says [words] (else a sentence in the language it
+/// listens in) one by one, a loudness swinging with each, then goes quiet until stopped.
 class ScriptedSpeech implements SpeechSource {
-  ScriptedSpeech({this.words = _sentence});
+  ScriptedSpeech({this.words});
 
   static const _sentence = [
     'Add',
@@ -1169,18 +1447,24 @@ class ScriptedSpeech implements SpeechSource {
     'it.',
   ];
 
-  final List<String> words;
+  static const _croatian = ['Dodaj', 'tamni', 'način', 'rada', 'u', 'postavke', 'i', 'napiši', 'test', 'za', 'to.'];
+
+  final List<String>? words;
   StreamController<SpeechEvent>? _out;
   Timer? _timer;
   String _said = '';
 
   @override
-  Future<SpeechCheck> check() async => const SpeechCheck(SpeechStatus.ready);
+  Future<SpeechCheck> check(SpeechLanguage language) async => const SpeechCheck(SpeechStatus.ready);
 
   @override
-  Stream<SpeechEvent> listen() {
+  Future<SpeechCheck> support(SpeechLanguage language) async => const SpeechCheck(SpeechStatus.ready);
+
+  @override
+  Stream<SpeechEvent> listen(SpeechLanguage language) {
     _timer?.cancel();
     _said = '';
+    final words = this.words ?? (language == SpeechLanguage.croatian ? _croatian : _sentence);
     var tick = 0;
     final out = _out = StreamController<SpeechEvent>(onCancel: () => _timer?.cancel());
     _timer = Timer.periodic(const Duration(milliseconds: 120), (_) {
@@ -1207,5 +1491,5 @@ class ScriptedSpeech implements SpeechSource {
   }
 
   @override
-  Future<void> fix(SpeechFix fix) async {}
+  Future<void> fix(SpeechFix fix, SpeechLanguage language) async {}
 }

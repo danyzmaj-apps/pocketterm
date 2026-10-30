@@ -1,8 +1,31 @@
 import 'dart:async';
 
+import 'dart:ui' show Locale;
+
 import 'package:flutter/services.dart';
 
-/// Whether the phone can listen now, in English, on the device.
+/// What the phone listens for. [code] is the BCP 47 language the native recognizers take (`en`: British or
+/// American by the phone's region; `hr`: hr-HR).
+enum SpeechLanguage {
+  english('en', 'English', 'English'),
+  croatian('hr', 'Croatian', 'Hrvatski');
+
+  const SpeechLanguage(this.code, this.title, this.label);
+  final String code;
+
+  /// Its name in the app's own English, for sentences ("Croatian for speech recognition…").
+  final String title;
+
+  /// Its own name, as the voice sheet and Settings offer it.
+  final String label;
+
+  /// The languages PocketTerm can listen for in the order the phone's [locales] list them, then English if they
+  /// don't: Auto's candidates, the first the phone can recognize winning.
+  static List<SpeechLanguage> byLocales(Iterable<Locale> locales) =>
+      {...locales.map((l) => values.where((s) => s.code == l.languageCode).firstOrNull).nonNulls, english}.toList();
+}
+
+/// Whether the phone can listen now, in the chosen [SpeechLanguage], on the device.
 enum SpeechStatus {
   ready,
 
@@ -12,10 +35,11 @@ enum SpeechStatus {
   /// Turned off for this phone (Screen Time, a device profile).
   restricted,
 
-  /// No English for recognition on the device; [SpeechCheck.fix] says whether it can be fetched.
-  noEnglish,
+  /// The language isn't on the device for recognition; [SpeechCheck.fix] says whether it can be fetched or added,
+  /// and none means this phone can't recognize it at all.
+  noLanguage,
 
-  /// English for the device is on its way.
+  /// The language for the device is on its way.
   downloading,
 
   /// This phone can't recognize speech on the device at all.
@@ -27,11 +51,11 @@ enum SpeechFix {
   /// PocketTerm's page in the phone's Settings (its permissions).
   appSettings,
 
-  /// Fetch the English model for on-device recognition (iOS 26's speech assets, Android 13's on-device
+  /// Fetch the language's model for on-device recognition (iOS 26's speech assets, Android 13's on-device
   /// recognizer). Recognition itself still never leaves the phone.
   download,
 
-  /// The phone's own speech settings, where English for on-device recognition is turned on.
+  /// The phone's own speech settings, where a language for on-device recognition is turned on.
   speechSettings,
 }
 
@@ -41,6 +65,9 @@ class SpeechCheck {
   final SpeechFix? fix;
 
   bool get ready => status == SpeechStatus.ready;
+
+  /// This phone can't listen in the language, whatever the person does.
+  bool get unsupported => status == SpeechStatus.unavailable || (status == SpeechStatus.noLanguage && fix == null);
 }
 
 /// What a listening session reports, in order, the last one [SpeechEnded].
@@ -76,30 +103,38 @@ class SpeechEnded extends SpeechEvent {
   final SpeechEnd why;
   final String? message;
 
-  /// When the failure is one [SpeechSource.check] would have found (Android 12 learns there's no English only
+  /// When the failure is one [SpeechSource.check] would have found (Android 12 learns the language is missing only
   /// when it starts).
   final SpeechStatus? status;
 }
 
-/// Speech to text on the phone, English only and on the device only.
+/// Speech to text on the phone, in one [SpeechLanguage] and on the device only.
 abstract class SpeechSource {
-  /// Whether it can listen; asks for the permissions it needs the first time.
-  Future<SpeechCheck> check();
+  /// Whether it can listen in [language]; asks for the permissions it needs the first time.
+  Future<SpeechCheck> check(SpeechLanguage language);
 
-  /// Starts listening. Cancelling the subscription discards what was heard and stops at once; [stop] ends it
-  /// with the last words settled instead. The stream closes after [SpeechEnded].
-  Stream<SpeechEvent> listen();
+  /// Whether the phone has [language] for on-device recognition, asking for no permission: ready, downloading, or
+  /// [SpeechStatus.noLanguage] with its fix (none: not supported), or [SpeechStatus.unavailable]. Ready when it
+  /// can't tell (Android 12 and older); listening finds out.
+  Future<SpeechCheck> support(SpeechLanguage language);
+
+  /// Starts listening in [language]. Cancelling the subscription discards what was heard and stops at once; [stop]
+  /// ends it with the last words settled instead. The stream closes after [SpeechEnded].
+  Stream<SpeechEvent> listen(SpeechLanguage language);
 
   /// Stops listening: the last [SpeechHeard], then [SpeechEnded] with [SpeechEnd.stopped].
   Future<void> stop();
 
-  /// Does [fix]; for [SpeechFix.download], returns once the download is done or handed to the system.
-  Future<void> fix(SpeechFix fix);
+  /// Does [fix] for [language]; for [SpeechFix.download], returns once the download is done or handed to the
+  /// system.
+  Future<void> fix(SpeechFix fix, SpeechLanguage language);
 }
 
-/// The phone's own recognizer, through `pocketterm/native` (methods `speechCheck`, `speechStop`, `speechFix`)
-/// and the `pocketterm/speech` event channel: apps/pocketterm-mobile/ios/Runner/Dictation.swift and
-/// android/…/Dictation.kt. Events are maps: `{type: heard, text}`, `{type: level, level}`,
+/// The phone's own recognizer, through `pocketterm/native` (methods `speechCheck {language}`,
+/// `speechSupport {language}`, `speechStop`,
+/// `speechFix {fix, language}`) and the `pocketterm/speech` event channel, listened to with `{language}`:
+/// apps/pocketterm-mobile/ios/Runner/Dictation.swift and android/…/Dictation.kt. `language` is a
+/// [SpeechLanguage.code]. Events are maps: `{type: heard, text}`, `{type: level, level}`,
 /// `{type: ended, why: stopped|interrupted|error, message?, status?}`.
 class NativeSpeech implements SpeechSource {
   const NativeSpeech();
@@ -108,30 +143,38 @@ class NativeSpeech implements SpeechSource {
   static const _events = EventChannel('pocketterm/speech');
 
   @override
-  Future<SpeechCheck> check() async {
-    final m = await _channel.invokeMapMethod<String, Object?>('speechCheck') ?? const {};
+  Future<SpeechCheck> check(SpeechLanguage language) async {
+    final m = await _channel.invokeMapMethod<String, Object?>('speechCheck', {'language': language.code}) ?? const {};
+    return SpeechCheck(_status(m['status']) ?? SpeechStatus.unavailable, fix: SpeechFix.values.asNameMap()[m['fix']]);
+  }
+
+  @override
+  Future<SpeechCheck> support(SpeechLanguage language) async {
+    final m = await _channel.invokeMapMethod<String, Object?>('speechSupport', {'language': language.code}) ?? const {};
     return SpeechCheck(_status(m['status']) ?? SpeechStatus.unavailable, fix: SpeechFix.values.asNameMap()[m['fix']]);
   }
 
   static SpeechStatus? _status(Object? name) => SpeechStatus.values.asNameMap()[name];
 
   @override
-  Stream<SpeechEvent> listen() => _events.receiveBroadcastStream().map((raw) {
-    final m = raw as Map<Object?, Object?>;
-    return switch (m['type']) {
-      'heard' => SpeechHeard(m['text'] as String? ?? ''),
-      'level' => SpeechLevel(((m['level'] as num?) ?? 0).toDouble().clamp(0, 1)),
-      _ => SpeechEnded(
-        SpeechEnd.values.asNameMap()[m['why']] ?? SpeechEnd.error,
-        message: m['message'] as String?,
-        status: _status(m['status']),
-      ),
-    };
-  });
+  Stream<SpeechEvent> listen(SpeechLanguage language) =>
+      _events.receiveBroadcastStream({'language': language.code}).map((raw) {
+        final m = raw as Map<Object?, Object?>;
+        return switch (m['type']) {
+          'heard' => SpeechHeard(m['text'] as String? ?? ''),
+          'level' => SpeechLevel(((m['level'] as num?) ?? 0).toDouble().clamp(0, 1)),
+          _ => SpeechEnded(
+            SpeechEnd.values.asNameMap()[m['why']] ?? SpeechEnd.error,
+            message: m['message'] as String?,
+            status: _status(m['status']),
+          ),
+        };
+      });
 
   @override
   Future<void> stop() => _channel.invokeMethod('speechStop');
 
   @override
-  Future<void> fix(SpeechFix fix) => _channel.invokeMethod('speechFix', {'fix': fix.name});
+  Future<void> fix(SpeechFix fix, SpeechLanguage language) =>
+      _channel.invokeMethod('speechFix', {'fix': fix.name, 'language': language.code});
 }

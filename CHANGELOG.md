@@ -10,6 +10,10 @@ Servers and the push relay need no update. To have omp and Claude Code in iTerm2
 
 - **iTerm2 works with PocketTerm.** Its tabs and split panes show on the phone with their screens (without colors) and take typing, keys and closing; sessions you start from the phone can open in iTerm2 as a new tab, and **Settings → Terminals** lists it (macOS asks once whether PocketTerm may control iTerm2). omp and Claude Code running in iTerm2 are tied to their window.
 
+### Phone app
+
+- **Voice prompts in Croatian.** The microphone now listens in Croatian as well as English, still recognized on the phone itself. **Auto** (the default) checks what the phone has: Croatian when it comes before English in the phone's languages and the phone can recognize it, otherwise English, so it never stops at a missing language. Pick one yourself in the account sheet's **Voice prompt language**, which shows for each language whether it's **On this phone**, can be downloaded (**Download**), turned on (**Open Settings**: on an iPhone, Dictation in that language) or is **Not supported on this phone** (then it can't be picked). Or tap the language at the top of the voice screen to switch, even while talking: what you've said stays and listening goes on in the other language. On iOS 26 a language Apple's new recognizer lacks falls back to the older one when that has it on the device.
+
 ## 0.1.6
 
 Servers and the push relay need no update. To see what a session has cost on the phone, click **Update** for omp and Claude Code in PocketTerm on the computer.

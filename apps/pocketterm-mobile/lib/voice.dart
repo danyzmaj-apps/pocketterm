@@ -29,6 +29,10 @@ class VoiceLanguage extends ChangeNotifier {
   SharedPreferences? _prefs;
   SpeechLanguage? _choice;
 
+  /// Languages Auto listened in and the phone then said it has none of (Android 12 can't tell before listening):
+  /// Auto passes over them until a language is chosen again.
+  final _missing = <SpeechLanguage>{};
+
   /// What was chosen; null for Auto.
   SpeechLanguage? get choice => _choice;
 
@@ -42,7 +46,10 @@ class VoiceLanguage extends ChangeNotifier {
   /// phone has for on-device recognition; when none is there yet, the first it can get (a download, a setting);
   /// English when it can get none.
   Future<SpeechLanguage> auto(SpeechSource source) async {
-    final candidates = SpeechLanguage.byLocales(WidgetsBinding.instance.platformDispatcher.locales);
+    final candidates = [
+      for (final l in SpeechLanguage.byLocales(WidgetsBinding.instance.platformDispatcher.locales))
+        if (!_missing.contains(l)) l,
+    ];
     final found = <SpeechLanguage, SpeechCheck>{};
     for (final l in candidates) {
       final s = found[l] = await supportOf(source, l);
@@ -60,6 +67,9 @@ class VoiceLanguage extends ChangeNotifier {
     }
   }
 
+  /// Auto's [language] turned out missing once listening began.
+  void missed(SpeechLanguage language) => _missing.add(language);
+
   void load(SharedPreferences prefs) {
     _prefs = prefs;
     _choice = SpeechLanguage.values.asNameMap()[prefs.getString(prefsKey)];
@@ -68,6 +78,7 @@ class VoiceLanguage extends ChangeNotifier {
 
   /// Keeps [choice] for this phone; null goes back to Auto.
   Future<void> choose(SpeechLanguage? choice) async {
+    _missing.clear();
     if (choice == _choice) return;
     _choice = choice;
     notifyListeners();
@@ -661,6 +672,13 @@ class _VoiceSheetState extends State<VoiceSheet> with WidgetsBindingObserver, Si
         if (status != null && status != SpeechStatus.ready && _heard.trim().isEmpty) {
           unawaited(_sub?.cancel());
           _sub = null;
+          // Auto's pick turned out missing only now: it listens in the next language Auto has, without asking.
+          if (status == SpeechStatus.noLanguage &&
+              voiceLanguage.choice == null &&
+              _language != SpeechLanguage.english) {
+            voiceLanguage.missed(_language);
+            return unawaited(_start());
+          }
           _problem = SpeechCheck(status, fix: status == SpeechStatus.noLanguage ? SpeechFix.speechSettings : null);
           return _go(_Phase.problem);
         }

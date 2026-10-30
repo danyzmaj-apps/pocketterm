@@ -554,6 +554,20 @@ void main() {
     expect(voiceLanguage.choice, isNull, reason: 'still Auto');
   });
 
+  testWidgets('Auto’s Croatian found missing only when listening starts goes on in English', (tester) async {
+    tester.platformDispatcher.localesTestValue = const [Locale('hr', 'HR'), Locale('en', 'US')];
+    addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+    await open(tester);
+    await tapOpen(tester, mic);
+    expect(speech.listened, [SpeechLanguage.croatian]);
+    await speech.end(SpeechEnd.error, message: 'no Croatian', status: SpeechStatus.noLanguage);
+    await settle(tester);
+    expect(find.byKey(const ValueKey('voice-problem')), findsNothing);
+    expect(speech.listened, [SpeechLanguage.croatian, SpeechLanguage.english]);
+    expect(speech.listening, isTrue);
+    expect(voiceLanguage.choice, isNull, reason: 'still Auto');
+  });
+
   testWidgets('Croatian picked on a phone that can’t recognize it says it isn’t supported', (tester) async {
     await voiceLanguage.choose(SpeechLanguage.croatian);
     speech.unsupported.add(SpeechLanguage.croatian);

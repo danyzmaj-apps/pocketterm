@@ -44,6 +44,8 @@ class FakeApp extends AppController {
          tailscale: tailscale ?? FakeTailscale().tailscale,
          serverDir: () async => serverDir ?? Directory('/nonexistent-pocketterm-test/server'),
          commands: commands ?? FakeCommands().commands,
+         // Its built-in server apart from the other test files' (run side by side): no 47900 and up.
+         hostingPort: 0,
        );
 
   /// [terminals] stand in for the computer's; none found by default.

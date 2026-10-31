@@ -37,6 +37,7 @@ class AppController extends Session {
     Tailscale? tailscale,
     Future<Directory> Function()? serverDir,
     Commands? commands,
+    this.hostingPort = 47900,
   }) : integrations = integrations ?? Integrations(),
        _keys = ChannelKeys(secrets ?? SystemSecrets()),
        deviceTokens = SecretDeviceTokens(secrets ?? SystemSecrets()),
@@ -450,6 +451,12 @@ class AppController extends Session {
   /// The port it listened on last, tried first next time.
   static const _hostingPortKey = 'hosting_port';
 
+  /// Where the built-in server listens on its first start (the next free
+  /// port above it when taken). Tests give 0, a port the system picks: test
+  /// files run side by side, and one's server must not land on the port
+  /// another just closed and checks is closed.
+  final int hostingPort;
+
   /// The Tailscale CLI, which publishes the built-in server.
   final Tailscale tailscale;
 
@@ -503,7 +510,7 @@ class AppController extends Session {
     final h = BuiltInServer(dataDir: await _serverDir(), tailscale: tailscale);
     try {
       final last = _prefs.getInt(_hostingPortKey);
-      await h.start(port: last ?? 47900, earlier: last);
+      await h.start(port: last ?? hostingPort, earlier: last);
     } on Object {
       h.dispose();
       rethrow;

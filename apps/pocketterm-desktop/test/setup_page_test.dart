@@ -249,6 +249,7 @@ void main() {
       await finish(tester, app);
     });
 
+    // A Mac's install: sudo's password script is made executable with /bin/chmod.
     testWidgets('with Homebrew, Install Tailscale shows its command and runs it only after Run', (tester) async {
       fake.installed = false;
       final brew = FakeCommands(brew: '/opt/homebrew/bin/brew')
@@ -294,7 +295,7 @@ void main() {
       expect(brew.calls, hasLength(2));
       expect(check(tester, 'check-running'), CheckState.now);
       expect(File(brew.envs.last['SUDO_ASKPASS']!).parent.existsSync(), isFalse);
-    });
+    }, tags: 'posix');
 
     testWidgets('on Windows, winget installs Tailscale after Run; Download instead is Windows’ page', (tester) async {
       fake.installed = false;

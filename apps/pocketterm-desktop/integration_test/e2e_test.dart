@@ -928,6 +928,18 @@ class _Run {
       }
     }
 
+    // A turn over by the agent's own word (the fake omp logs `idle` as it goes at rest): [prompt]'s (a prompt
+    // starting so), else the last one heard. Not the phone's busy alone: that comes with the state, a batch apart
+    // from the turn's items, and can still say at rest when the turn has begun; a prompt then steers that turn.
+    bool over(String w, [String? prompt]) {
+      final l = fakeOmpLog(dir(w));
+      final at = l.lastIndexWhere(
+        (e) => e['event'] == 'prompt' && (prompt == null || '${e['text']}'.startsWith(prompt)),
+      );
+      if (at < 0) return prompt == null;
+      return l.skip(at + 1).any((e) => e['event'] == 'idle');
+    }
+
     await act('list', () async => expect(r.sessions.where((s) => s.cwd == dir('chat')).length, 1));
     await act('prompt', () async {
       await r.prompt(chat, 'hello from phone $t');
@@ -954,16 +966,12 @@ class _Run {
       await r.press(shell.key, 'down');
     });
     await act('image', () async {
-      await until('chat at rest', () => r.session(chat)?.busy == false);
+      await until('chat at rest', () => r.session(chat)?.busy == false && over('chat'));
       await r.prompt(chat, 'what is in this image $t', images: [_png]);
     });
     await act('file', () async {
-      // At rest after the image's turn, not before it began (a prompt then steers the turn instead).
-      await until(
-        'the image answered',
-        () => r.view(chat)?.items.any((i) => i.text.contains('fake reply: what is in this image')) ?? false,
-      );
-      await until('chat at rest', () => r.session(chat)?.busy == false);
+      await until('the image answered', () => over('chat', 'what is in this image'));
+      await until('chat at rest', () => r.session(chat)?.busy == false && over('chat'));
       await r.prompt(chat, 'what is in this file $t', files: [(name: _docName, mime: 'text/plain', bytes: _doc)]);
     });
     await act('new session', () async {
@@ -980,7 +988,7 @@ class _Run {
       final key = await newsess();
       await until(
         '${name('newsess')} at rest',
-        () => r.session(key)?.busy == false,
+        () => r.session(key)?.busy == false && over('newsess'),
         timeout: const Duration(seconds: 60),
       );
       return key;
@@ -1025,18 +1033,12 @@ class _Run {
       await atRest();
       await until('the queue held', () => r.session(key)?.paused ?? false);
       expect(r.session(key)!.queue.map((q) => q.text), ['after stop $t']);
-      final watching = r.watchSession(key);
       await r.pauseQueue(key, paused: false);
       await until(
         'the held prompt ran on Resume',
         () => fakeOmpLog(dir('newsess')).any((e) => e['event'] == 'prompt' && '${e['text']}'.contains('after stop')),
       );
       // Its turn over, not just begun (the next prompt would steer it).
-      await until(
-        'the held prompt answered',
-        () => r.view(key)?.items.any((i) => i.text.contains('fake reply: after stop')) ?? false,
-      );
-      watching();
       await atRest();
     });
     await act('question', () async {
@@ -1122,7 +1124,7 @@ class _Run {
     });
     await act('just restart', () => r.switchToConversation(windowOf('switchstop').key, Agent.omp));
     await act('/new', () async {
-      await until('chat at rest', () => r.session(chat)?.busy == false);
+      await until('chat at rest', () => r.session(chat)?.busy == false && over('chat'));
       await r.prompt(chat, '/new');
     });
     await act('close', () => r.close(r.sessions.firstWhere((s) => s.cwd == dir('endme')).window!));
@@ -1747,7 +1749,12 @@ class _Run {
     }
     final r = phone!.remote;
     await until('phone back online', () => r.online, timeout: const Duration(seconds: 60));
-    final chat = r.sessions.firstWhere((s) => s.cwd == dir('chat')).key;
+    // Online at once after a desktop restart (it heard the one before); the new one's sessions come as they report.
+    final chat = await until(
+      'chat on the phone',
+      () => r.sessions.where((s) => s.cwd == dir('chat')).firstOrNull?.key,
+      timeout: const Duration(seconds: 60),
+    );
     await r.prompt(chat, prompt);
     await until(
       '$prompt heard',

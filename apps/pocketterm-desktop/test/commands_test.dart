@@ -16,6 +16,7 @@ void main() {
     expect(result.output, contains('winget'));
   });
 
+  // The script is made executable with /bin/chmod: a Mac's only.
   test("sudo's password script is there while the command runs and gone after, also when it throws", () async {
     final seen = <String>[];
     var fail = false;
@@ -38,5 +39,5 @@ void main() {
     for (final path in seen) {
       expect(File(path).parent.existsSync(), isFalse);
     }
-  });
+  }, tags: 'posix');
 }

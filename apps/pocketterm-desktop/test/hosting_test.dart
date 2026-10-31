@@ -35,7 +35,11 @@ void main() {
     test('found in the Mac app first, then on the PATH or in Homebrew; Windows has its own', () {
       bool only(Set<String> files, String path) => files.contains(path);
       expect(
-        Tailscale.findCli(env: {'PATH': '/usr/bin'}, exists: (f) => only({Tailscale.macCli, '/usr/bin/tailscale'}, f)),
+        Tailscale.findCli(
+          env: {'PATH': '/usr/bin'},
+          exists: (f) => only({Tailscale.macCli, '/usr/bin/tailscale'}, f),
+          windows: false,
+        ),
         Tailscale.macCli,
       );
       expect(
@@ -43,7 +47,11 @@ void main() {
         '/bin/tailscale',
       );
       expect(
-        Tailscale.findCli(env: {'PATH': '/usr/bin'}, exists: (f) => only({'/opt/homebrew/bin/tailscale'}, f)),
+        Tailscale.findCli(
+          env: {'PATH': '/usr/bin'},
+          exists: (f) => only({'/opt/homebrew/bin/tailscale'}, f),
+          windows: false,
+        ),
         '/opt/homebrew/bin/tailscale',
       );
       const programs = r'C:\Program Files';
@@ -74,7 +82,11 @@ void main() {
 
     test('a build not made for tool/smoke (as released) ignores POCKETTERM_TAILSCALE', () {
       expect(
-        Tailscale.findCli(env: {'POCKETTERM_TAILSCALE': '/tmp/fake-tailscale'}, exists: (f) => f == Tailscale.macCli),
+        Tailscale.findCli(
+          env: {'POCKETTERM_TAILSCALE': '/tmp/fake-tailscale'},
+          exists: (f) => f == Tailscale.macCli,
+          windows: false,
+        ),
         Tailscale.macCli,
       );
     }, skip: testBuild);

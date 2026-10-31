@@ -130,11 +130,17 @@ void main() {
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
 
-    final port = app.hosting!.port;
+    final server = app.hosting!;
+    final port = server.port;
+    // Signing out lets go of the sign-in first, then stops the server: it's over when the server says it stopped
+    // (its last word, once its port closed and Tailscale took it off), not when the sign-in is gone.
+    var stopped = false;
+    server.addListener(() => stopped = !server.running);
     await tester.tap(find.byKey(const ValueKey('settings-sign-out')));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(TextButton, 'Sign out'));
-    await until(tester, () => app.backend == null);
+    await until(tester, () => stopped);
+    expect(app.backend, isNull);
     expect(app.hosting, isNull);
     expect(fake.calls.last, 'serve --https=443 off');
     final refused = await tester.runAsync(() async {

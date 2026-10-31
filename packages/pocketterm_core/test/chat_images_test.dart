@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/chat_images.dart';
 
 Future<Uint8List> png(int w, int h) async {
@@ -64,8 +65,9 @@ void main() {
     expect(sniffImageType(Uint8List.fromList([0x49, 0x49, 0x2A, 0x00])), isNull, reason: 'TIFF gets re-encoded');
   });
 
+  // dart:io's XFile ignores a given name: it is the path's last part, cut at this platform's separator.
   XFile picked(String name, List<int> bytes, {int? length}) =>
-      XFile.fromData(Uint8List.fromList(bytes), path: '/picked/$name', length: length);
+      XFile.fromData(Uint8List.fromList(bytes), path: p.join('picked', name), length: length);
 
   testWidgets('a picked document goes as a file, a picked picture as an image, in the order they came', (tester) async {
     await tester.runAsync(() async {

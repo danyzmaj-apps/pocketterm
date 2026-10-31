@@ -44,6 +44,8 @@ class FakeApp extends AppController {
          tailscale: tailscale ?? FakeTailscale().tailscale,
          serverDir: () async => serverDir ?? Directory('/nonexistent-pocketterm-test/server'),
          commands: commands ?? FakeCommands().commands,
+         // Its built-in server apart from the other test files' (run side by side): no 47900 and up.
+         hostingPort: 0,
        );
 
   /// [terminals] stand in for the computer's; none found by default.
@@ -383,7 +385,12 @@ class FakeTailscale {
   /// `serve` processes still running (one that asks for HTTPS waits until killed).
   final running = <FakeProcess>[];
 
-  late final tailscale = Tailscale(start: _start, locate: () => installed ? '/fake/bin/tailscale' : null);
+  /// A Mac's on any computer: Open Tailscale runs `open -a Tailscale`, whatever runs the tests.
+  late final tailscale = Tailscale(
+    start: _start,
+    locate: () => installed ? '/fake/bin/tailscale' : null,
+    windows: false,
+  );
 
   Future<Process> _start(String exe, List<String> args) async {
     calls.add(args.join(' '));

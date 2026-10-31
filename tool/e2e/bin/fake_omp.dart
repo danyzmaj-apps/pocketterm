@@ -41,7 +41,9 @@
 // $HOME/.omp/profiles/<name>/agent/extensions for another. Its hello names a
 // profile other than the default, as the extension does (OMP_PROFILE).
 // Everything it hears and does goes to .fake_omp/log.jsonl in its folder, one
-// JSON object a line, for the harness.
+// JSON object a line, for the harness; `idle` each time it goes at rest (a
+// run over or stopped), which says when a phone prompt starts a run of its
+// own instead of steering one.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -321,6 +323,7 @@ class FakeOmp {
 
   void _setBusy(bool busy, {String? summary, bool stopped = false}) {
     _busy = busy;
+    if (!busy) log('idle', {if (stopped) 'stopped': true});
     _spin?.cancel();
     _spin = busy ? Timer.periodic(const Duration(milliseconds: 150), (_) => _render(spin: true)) : null;
     _send({

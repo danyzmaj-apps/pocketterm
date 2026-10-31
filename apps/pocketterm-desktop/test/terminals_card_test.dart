@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:pocketterm_core/ghostty.dart';
 import 'package:pocketterm_core/ghostty_config.dart';
 import 'package:pocketterm_core/kitty.dart';
@@ -100,6 +101,7 @@ void main() {
     expect(find.text('Restart kitty'), findsOneWidget);
   });
 
+  // kitty is a Mac's here: it finds its sockets by this user's uid (getuid), which Windows hasn't.
   testWidgets('a kitty Set up that fails says why and stays to try again', (tester) async {
     final home = Directory.systemTemp.createTempSync('pocketterm-kitty').resolveSymbolicLinksSync();
     addTearDown(() => Directory(home).deleteSync(recursive: true));
@@ -113,12 +115,16 @@ void main() {
     await pump(tester, mac);
 
     await tester.runAsync(() => tester.tap(find.text('Set up')));
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    // The fix's file work in real time, as long as it takes (a fixed 50 ms is overrun on a busy computer).
+    for (var i = 0; i < 250 && find.textContaining("Couldn't change kitty.conf").evaluate().isEmpty; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
     await tester.pump(const Duration(milliseconds: 150));
     await tester.pump();
     expect(find.textContaining("Couldn't change kitty.conf"), findsOneWidget);
     expect(find.text('Set up'), findsOneWidget);
-  });
+  }, tags: 'posix');
 
   testWidgets('with Homebrew, tmux installs from the card: the command shown first, run only on Run', (tester) async {
     final brew = FakeCommands(brew: '/opt/homebrew/bin/brew')..result = (code: 1, output: 'Error: no network\n');
@@ -205,7 +211,8 @@ void main() {
         const TermStatus('tmux', 'tmux', TermState.ready),
       ],
       home: home,
-      tmux: Tmux(executable: '/opt/homebrew/bin/tmux', socketDirs: const []),
+      // A tmux of its own: Homebrew's needn't be on this computer (nor any on Windows).
+      tmux: Tmux(executable: (File(p.join(home, 'tmux'))..createSync()).path, socketDirs: const []),
       ghostty: Ghostty(appPath: '$home/Ghostty.app'),
     );
     await pump(tester, mac, poll: const Duration(hours: 1));

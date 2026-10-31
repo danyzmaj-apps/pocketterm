@@ -115,7 +115,11 @@ void main() {
     await pump(tester, mac);
 
     await tester.runAsync(() => tester.tap(find.text('Set up')));
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    // The fix's file work in real time, as long as it takes (a fixed 50 ms is overrun on a busy computer).
+    for (var i = 0; i < 250 && find.textContaining("Couldn't change kitty.conf").evaluate().isEmpty; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
     await tester.pump(const Duration(milliseconds: 150));
     await tester.pump();
     expect(find.textContaining("Couldn't change kitty.conf"), findsOneWidget);

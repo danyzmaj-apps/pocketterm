@@ -103,6 +103,16 @@ void main() {
 
   Finder dot(String tab) => find.byKey(ValueKey('settings-tab-dot-$tab'));
 
+  /// Gives real file work (the fix writing kitty.conf) real time, until [text] shows: as long as it takes, not a
+  /// fixed 50 ms, which a busy computer overruns.
+  Future<void> settle(WidgetTester tester, String text) async {
+    for (var i = 0; i < 250 && find.textContaining(text).evaluate().isEmpty; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('a dot marks the tab whose items need attention, and goes once they are done', (tester) async {
     await pumpSettings(tester);
     // No coding agent and no project folders; a phone has signed in.
@@ -196,8 +206,7 @@ void main() {
     expect(setUp, findsOneWidget);
 
     await tester.runAsync(() => tester.tap(setUp));
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
-    await tester.pumpAndSettle();
+    await settle(tester, "Couldn't change kitty.conf");
     expect(find.textContaining("Couldn't change kitty.conf"), findsOneWidget);
     expect(setUp, findsOneWidget, reason: 'a failed fix can be tried again');
     expect(dot('terminals'), findsOneWidget);
@@ -205,8 +214,7 @@ void main() {
     // Tried again once kitty.conf can be written: done, and the note goes once kitty no longer needs the fix.
     File('$home/.config').deleteSync();
     await tester.runAsync(() => tester.tap(setUp));
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
-    await tester.pumpAndSettle();
+    await settle(tester, 'Added to kitty.conf');
     expect(File('$home/.config/kitty/kitty.conf').existsSync(), isTrue);
     expect(find.textContaining('Added to kitty.conf'), findsOneWidget);
     expect(setUp, findsNothing);

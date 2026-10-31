@@ -99,9 +99,11 @@ final class ServingUnknown extends Serving {
 /// `tailscale serve`, which publishes the built-in server at
 /// `https://<this computer>.<tailnet>.ts.net` to the tailnet only.
 class Tailscale {
-  Tailscale({StartProcess? start, String? Function()? locate})
+  /// [windows]: Windows' Tailscale ([open]); this computer's by default.
+  Tailscale({StartProcess? start, String? Function()? locate, bool? windows})
     : _start = start ?? _startCli,
-      _locate = locate ?? findCli;
+      _locate = locate ?? findCli,
+      _windows = windows ?? Platform.isWindows;
 
   /// The Mac app's binary is the CLI only when started from a terminal; started
   /// by an app (no TERM), it tries to open its window and prints nothing.
@@ -114,6 +116,7 @@ class Tailscale {
 
   final StartProcess _start;
   final String? Function() _locate;
+  final bool _windows;
 
   /// Where to get Tailscale.
   static final Uri download = Uri.parse('https://tailscale.com/download');
@@ -386,7 +389,7 @@ class Tailscale {
   /// Shows Tailscale's app, to start it or sign in.
   Future<void> open() async {
     try {
-      final process = Platform.isWindows
+      final process = _windows
           ? await _start(windowsApp(), const [])
           : await _start('/usr/bin/open', ['-a', 'Tailscale']);
       unawaited(process.exitCode);

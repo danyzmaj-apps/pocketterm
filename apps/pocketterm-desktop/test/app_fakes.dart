@@ -383,7 +383,12 @@ class FakeTailscale {
   /// `serve` processes still running (one that asks for HTTPS waits until killed).
   final running = <FakeProcess>[];
 
-  late final tailscale = Tailscale(start: _start, locate: () => installed ? '/fake/bin/tailscale' : null);
+  /// A Mac's on any computer: Open Tailscale runs `open -a Tailscale`, whatever runs the tests.
+  late final tailscale = Tailscale(
+    start: _start,
+    locate: () => installed ? '/fake/bin/tailscale' : null,
+    windows: false,
+  );
 
   Future<Process> _start(String exe, List<String> args) async {
     calls.add(args.join(' '));

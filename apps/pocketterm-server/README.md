@@ -205,4 +205,4 @@ docker build -f apps/pocketterm-server/Dockerfile -t pocketterm-server .
 ```
 
 Release tags (`v*`) publish `ghcr.io/danyzmaj-apps/pocketterm-server` for amd64 and arm64
-(`.github/workflows/server-image.yml`).
+(Baker's *Server image* workflow, running `tool/server-image.sh`).

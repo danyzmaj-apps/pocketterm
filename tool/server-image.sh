@@ -6,7 +6,8 @@
 #
 #   tool/server-image.sh [<tag>] [--dry-run]
 #
-# <tag> defaults to the tag on HEAD. --dry-run builds both platforms and pushes nothing. Pushing logs in to
+# <tag> defaults to BAKER_REF (the tag a Baker pipeline runs for: Baker fetches without tags), else the tag on
+# HEAD. --dry-run builds both platforms and pushes nothing. Pushing logs in to
 # ghcr.io with the gh CLI's token, which needs the write:packages scope (gh auth refresh -s write:packages).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -21,6 +22,7 @@ for a in "$@"; do
     *) TAG=$a ;;
   esac
 done
+[ -n "$TAG" ] || TAG=${BAKER_REF:-}
 [ -n "$TAG" ] || TAG=$(git describe --tags --exact-match HEAD 2>/dev/null) ||
   { echo "HEAD has no tag: give one (v1.2.3)" >&2; exit 2; }
 [[ $TAG =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z.-]+)?$ ]] ||

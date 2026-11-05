@@ -322,9 +322,27 @@ class DesktopRun {
   Future<void> _open(String what, {String? autorun}) async {
     final d = makeProject(c, name(what), autorun: autorun);
     if (t == 'ghostty') {
-      await app.call('ghostty-launch', args: {'dir': d});
+      await _ghosttyLaunch(d);
     } else {
       await term.open(d);
+    }
+  }
+
+  /// Ghostty's window through the app. A test build is a new app to macOS: the first run asks a person
+  /// whether it may control Ghostty, and the app says so at once; the run waits up to 3 minutes for them.
+  Future<void> _ghosttyLaunch(String dir) async {
+    final deadline = DateTime.now().add(const Duration(minutes: 3));
+    var told = false;
+    while (true) {
+      try {
+        await app.call('ghostty-launch', args: {'dir': dir});
+        return;
+      } on AppError catch (e) {
+        if (!'$e'.contains('is asking whether') || DateTime.now().isAfter(deadline)) rethrow;
+        if (!told) report.log('waiting for a person to allow PocketTerm E2E to control Ghostty (System Settings › Privacy & Security › Automation)');
+        told = true;
+        await Future<void>.delayed(const Duration(seconds: 3));
+      }
     }
   }
 
@@ -1599,7 +1617,7 @@ class DesktopRun {
     ]);
     report.log('reload_config: ${reload.exitCode} ${reload.stderr}');
     final d = makeProject(c, name('tmuxwin'), autorun: 'omp');
-    await app.call('ghostty-launch', args: {'dir': d});
+    await _ghosttyLaunch(d);
     final s = await until('a session from the tmux window', () async {
       return (await _sessions()).where((s) => s['cwd'] == d && s['window'] != null).firstOrNull;
     }, timeout: const Duration(seconds: 40));

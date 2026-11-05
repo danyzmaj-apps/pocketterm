@@ -21,6 +21,7 @@ Every app is rewritten in its platform's own toolkit (formerly one Flutter app f
 
 - **omp profiles.** PocketTerm's extension goes into every omp profile (`omp --profile <name>`) as well as the default, and **Settings → Coding agents** lists them; a profile made later asks for **Install** again. A session started from the phone in a profile runs `omp --profile=<name>`, switching a screen-only window to its conversation resumes it in its own profile, and notifications name the profile (`omp · personal finished · garden`).
 - **A session from the phone opens in its project's window.** It goes in as a new tab of the terminal window that already holds that project's tabs, and gets a window of its own when none does, so each project can keep one window. **Settings → Terminals → Place them** switches to a new window for every session.
+- **Fixed: tmux sessions could vanish from the phone.** With `TMUX_TMPDIR` set and an old tmux socket left in `/tmp`, PocketTerm looked at the dead one and missed the live server: sessions from the phone in Ghostty (which run in tmux) opened but never showed up.
 
 ### Phone app
 

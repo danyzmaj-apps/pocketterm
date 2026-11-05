@@ -65,6 +65,12 @@ appId: com.danyzmaj.pocketterm
       - extendedWaitUntil:
           visible: ".*(Photo|Photos|Select|images).*"
           timeout: 15000
+      # Google Photos' banner over the grid would push the tenth photo under
+      # the bar that comes with the first pick (a tap there is "View
+      # selected", a preview): dismissed first.
+      - tapOn:
+          id: "com.google.android.providers.media.module:id/dismiss_button"
+          optional: true
       # The system photo picker, newest first; its button counts the picks,
       # "Add (10)".
       - tapOn:

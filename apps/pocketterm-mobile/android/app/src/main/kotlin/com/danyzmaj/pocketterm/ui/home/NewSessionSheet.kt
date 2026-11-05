@@ -2,6 +2,7 @@ package com.danyzmaj.pocketterm.ui.home
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -138,7 +139,8 @@ fun NewSessionSheet(remote: TerminalRemote, cwd: String?, onDismiss: () -> Unit)
                 )
             }
             ListItem(
-                modifier = Modifier.tag("start-agent").clickable(role = Role.Switch) { agent = !agent },
+                modifier = Modifier.toggleable(agent, role = Role.Switch) { agent = it }
+                    .tag("start-agent", "Start ${remote.agent.label}\nOff: just a shell"),
                 colors = sheetItemColors(),
                 headlineContent = { Text("Start ${remote.agent.label}") },
                 supportingContent = { Text("Off: just a shell") },
@@ -338,7 +340,9 @@ private fun Place(
 ) {
     val enabled = remote.online
     ListItem(
-        modifier = Modifier.tag(tagId).clickable(enabled = enabled) { onLaunch(path) },
+        // One node reading "name\npath", as the iPhone's rows.
+        modifier = Modifier.clickable(enabled = enabled) { onLaunch(path) }
+            .tag(tagId, "${name ?: baseName(path)}\n${shortPath(remote, path)}"),
         colors = sheetItemColors(),
         leadingContent = { Icon(if (open) Icons.Outlined.Terminal else Icons.Outlined.Folder, null, tint = dimmed(enabled)) },
         headlineContent = {

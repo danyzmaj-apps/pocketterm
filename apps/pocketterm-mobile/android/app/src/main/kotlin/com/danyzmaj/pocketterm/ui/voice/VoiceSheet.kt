@@ -81,6 +81,8 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.testTag
+import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -300,6 +302,7 @@ private fun LiveWords(text: String, modifier: Modifier) {
 }
 
 /** The language it listens in; a tap switches to the other one. Not while starting, stopping, downloading or held. */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun LanguageChip(m: VoiceSheetModel) {
     val can = !m.held && (m.phase == Phase.listening || m.phase == Phase.problem || m.phase == Phase.review)
@@ -309,6 +312,8 @@ private fun LanguageChip(m: VoiceSheetModel) {
         enabled = can,
         colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
         modifier = Modifier.clearAndSetSemantics {
+            // Its id as the view's resource id too ([com.danyzmaj.pocketterm.ui.common.tag]): the sheet is a window of its own.
+            testTagsAsResourceId = true
             testTag = "voice-language"
             contentDescription = "Language: ${language.title}. Switch"
             role = Role.Button

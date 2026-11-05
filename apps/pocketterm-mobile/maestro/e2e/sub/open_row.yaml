@@ -58,3 +58,24 @@ appId: com.danyzmaj.pocketterm
           text: "${ROW}(\n.*)*"
           id: "(session|term)-.*"
 - waitForAnimationToEnd
+# Android: Maestro's "above" compares tops, so a row whose middle sits under
+# the floating orchestrator bar passes the check above, and the tap opens the
+# orchestrator. Then it's closed, the list nudged up and the row tapped again.
+- runFlow:
+    when:
+      platform: Android
+      visible:
+        id: "orchestrator-sheet"
+    commands:
+      - tapOn:
+          id: "orchestrator-close"
+      - swipe:
+          start: 50%, 60%
+          end: 50%, 40%
+          duration: 600
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - tapOn:
+          text: "${ROW}(\n.*)*"
+          id: "(session|term)-.*"
+      - waitForAnimationToEnd

@@ -18,8 +18,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.testTag
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.danyzmaj.pocketterm.core.Agent
@@ -27,7 +33,6 @@ import com.danyzmaj.pocketterm.core.AgentIntegration
 import com.danyzmaj.pocketterm.core.TerminalRemote
 import com.danyzmaj.pocketterm.ui.LocalNav
 import com.danyzmaj.pocketterm.ui.common.observe
-import com.danyzmaj.pocketterm.ui.common.tag
 import com.danyzmaj.pocketterm.ui.theme.LocalStatus
 
 // The computer's orchestrator (LiveSummary.orchestrator): an omp session the computer starts in
@@ -40,6 +45,7 @@ private const val ASK = "Ask about your sessions…"
  * The bar at the bottom of the home list: what the orchestrator is up to; a tap opens it. Shown once
  * the computer's omp can run one (PocketTerm installed in it), or one runs; nothing otherwise.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun OrchestratorBar(remote: TerminalRemote, modifier: Modifier = Modifier) {
     remote.observe()
@@ -64,9 +70,18 @@ fun OrchestratorBar(remote: TerminalRemote, modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
-            .tag("orchestrator-bar")
-            // Read as the iPhone's: Orchestrator, then what it says (tests find it by both).
-            .semantics(mergeDescendants = true) { contentDescription = "Orchestrator\n$text" },
+            // Read as the iPhone's: Orchestrator, then what it says, on one line as the bar shows it (tests find
+            // it by its id and words on one node). The Surface's own click sits inside this, which clears it: said again.
+            .clearAndSetSemantics {
+                testTagsAsResourceId = true
+                testTag = "orchestrator-bar"
+                contentDescription = "Orchestrator\n${text.replace(Regex("\\s+"), " ").trim()}"
+                role = Role.Button
+                onClick {
+                    nav.openOrchestrator()
+                    true
+                }
+            },
     ) {
         Row(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = c.primary, modifier = Modifier.size(20.dp))

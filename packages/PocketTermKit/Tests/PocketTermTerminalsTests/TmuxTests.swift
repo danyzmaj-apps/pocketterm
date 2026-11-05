@@ -134,6 +134,24 @@ final class TmuxTests: XCTestCase {
     await assertMessage(gone) { try await tmux.type(key, "x") }
   }
 
+  /// `$TMUX_TMPDIR`'s server and a `default` left behind in `/private/tmp`:
+  /// the live one, looked in first, is the one listed and typed into.
+  func testASocketLeftBehindLaterUnderTheSameNameDoesntHideTheLiveServer() async throws {
+    let exe = try realTmux()
+    let later = realPathOf(FileManager.default.temporaryDirectoryForTests("ptm"))
+    defer { try? FileManager.default.removeItem(atPath: later) }
+    let left = try server("default", ["sleep", "60"], at: later)
+    let pid = Int32(runSync(exe, ["-S", left, "display", "-p", "#{pid}"]).out.trimmingCharacters(in: .whitespacesAndNewlines))!
+    kill(pid, SIGKILL)
+    await until { kill(pid, 0) != 0 }
+    XCTAssertEqual(fileKind(left), .socket)
+    try server("default", ["sleep", "60"], cwd: dir)
+    let tmux = Tmux(socketDirs: [dir, later])
+    let panes = try await tmux.windows(Procs([]))
+    XCTAssertEqual(panes.map(\.cwd), [dir])
+    try await tmux.type(panes.single!.key, "x")
+  }
+
   /// tmux as an app started from Finder or the Dock runs it: without the
   /// LANG and LC_ALL of the terminal these tests run in (LC_CTYPE only as
   /// PocketTerm hands it over), its default server in `dir`.

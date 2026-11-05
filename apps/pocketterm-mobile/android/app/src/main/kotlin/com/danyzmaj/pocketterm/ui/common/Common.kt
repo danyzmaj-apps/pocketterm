@@ -66,11 +66,12 @@ fun ChangeNotifier.revisionState(): State<Long> = revision.collectAsState()
 fun Modifier.tag(id: String): Modifier = semantics { testTagsAsResourceId = true }.testTag(id)
 
 /**
- * [tag] with [label] as the node's description, on the same node: a row read as one line (TalkBack),
- * and found by tests by its id and its words together, as on the iPhone.
+ * [tag] with [label] as what the node reads, its children's words dropped: a row read as one line
+ * (TalkBack), and found by tests by its id and its words on one node, as on the iPhone. (A merging
+ * node that kept its children would put the label on a stand-in child node of its own.)
  */
 @OptIn(ExperimentalComposeUiApi::class)
-fun Modifier.tag(id: String, label: String): Modifier = semantics {
+fun Modifier.tag(id: String, label: String): Modifier = clearAndSetSemantics {
     testTagsAsResourceId = true
     testTag = id
     contentDescription = label

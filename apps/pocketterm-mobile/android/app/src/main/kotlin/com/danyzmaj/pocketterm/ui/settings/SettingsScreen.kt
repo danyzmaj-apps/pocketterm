@@ -103,7 +103,9 @@ fun SettingsScreen() {
     val home = LocalHome.current
     val toaster = LocalToaster.current
     val session = graph.session.observe()
-    val voice = graph.voiceLanguage.observe()
+    // Read here, not in the list's items: an item's content captures only what it's given, and the same
+    // VoiceLanguage object doesn't make it compose again when its choice changes.
+    val voiceLabel = graph.voiceLanguage.observe().choice?.label ?: "Auto"
     val theme by graph.appearance.choice.collectAsState()
     var pickingTheme by remember { mutableStateOf(false) }
     var pickingVoice by remember { mutableStateOf(false) }
@@ -166,17 +168,19 @@ fun SettingsScreen() {
             item(key = "appearance") { Column {
                 Section("Appearance")
                 ListItem(
-                    modifier = Modifier.tag("theme").clickable { pickingTheme = true },
+                    // Rows read as one line, "title\nvalue", as the iPhone's.
+                    modifier = Modifier.clickable { pickingTheme = true }.tag("theme", "Theme\n${theme.label}"),
                     leadingContent = { ThemeSwatch(theme) },
                     headlineContent = { Text("Theme") },
                     supportingContent = { Text(theme.label) },
                     trailingContent = { Icon(Icons.Rounded.ChevronRight, null) },
                 )
                 ListItem(
-                    modifier = Modifier.tag("voice-language-setting").clickable { pickingVoice = true },
+                    modifier = Modifier.clickable { pickingVoice = true }
+                        .tag("voice-language-setting", "Voice prompt language\n$voiceLabel"),
                     leadingContent = { Icon(Icons.Rounded.Translate, null) },
                     headlineContent = { Text("Voice prompt language") },
-                    supportingContent = { Text(voice.choice?.label ?: "Auto") },
+                    supportingContent = { Text(voiceLabel) },
                     trailingContent = { Icon(Icons.Rounded.ChevronRight, null) },
                 )
             } }

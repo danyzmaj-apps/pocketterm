@@ -8,11 +8,14 @@ appId: com.danyzmaj.pocketterm
 - tapOn:
     id: "account"
 - extendedWaitUntil:
-    visible:
-      id: "leave-server"
+    visible: "(.*, )?Signed in with your computer’s code"
     timeout: 5000
-- assertVisible: "(.*, )?Signed in with your computer’s code"
 - assertVisible: "Notifications((, |\n).*)?"
+# Android's Settings is a full page: the rows below are further down.
+- scrollUntilVisible:
+    element:
+      id: "leave-server"
+    timeout: 20000
 - assertVisible: "Show tips again"
 - assertVisible: "PocketTerm is open source: GitHub"
 - takeScreenshot: account

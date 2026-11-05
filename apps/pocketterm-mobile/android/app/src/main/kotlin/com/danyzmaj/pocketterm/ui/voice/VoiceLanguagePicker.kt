@@ -27,6 +27,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -101,7 +103,11 @@ fun VoiceLanguagePicker() {
 
     Column(Modifier.fillMaxWidth()) {
         ListItem(
-            modifier = Modifier.tag("voice-language-auto").clickable { voice.choose(null) },
+            // Rows read as one line, "title\nnote", as the iPhone's.
+            modifier = Modifier.semantics { selected = choice == null }.clickable { voice.choose(null) }.tag(
+                "voice-language-auto",
+                "Auto\nThe phone’s language when it has it, else English${auto?.let { ": now ${it.label}" } ?: ""}",
+            ),
             leadingContent = { mark(choice == null) },
             headlineContent = { Text("Auto") },
             supportingContent = {
@@ -143,9 +149,17 @@ fun VoiceLanguagePicker() {
             }
             ListItem(
                 modifier = Modifier
-                    .tag("voice-language-${l.name}")
+                    .semantics { selected = choice == l }
                     .clickable(enabled = !unsupported) { voice.choose(l) }
-                    .alpha(if (unsupported) .5f else 1f),
+                    .alpha(if (unsupported) .5f else 1f)
+                    // A row with a button keeps it reachable: its words stay apart.
+                    .then(
+                        if (action == null) {
+                            Modifier.tag("voice-language-${l.name}", listOfNotNull(l.label, note).joinToString("\n"))
+                        } else {
+                            Modifier.tag("voice-language-${l.name}")
+                        },
+                    ),
                 leadingContent = { mark(choice == l) },
                 headlineContent = { Text(l.label) },
                 supportingContent = note?.let { { Text(it) } },

@@ -72,10 +72,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.testTag
+import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
@@ -288,7 +295,7 @@ fun TerminalList(remote: TerminalRemote, computer: String?, modifier: Modifier =
                                         label = { ChipLabel(profileLabel(current)) },
                                         leadingIcon = { Icon(Icons.Outlined.FilterList, null, Modifier.size(18.dp)) },
                                         trailingIcon = { Icon(Icons.Rounded.ArrowDropDown, null, Modifier.size(18.dp)) },
-                                        modifier = Modifier.tag("profile-filter"),
+                                        modifier = chipLabel("profile-filter", profileLabel(current)) { profileMenu = true },
                                     )
                                 }
                                 // A tap switches to the other order (there are only two), no menu.
@@ -297,7 +304,9 @@ fun TerminalList(remote: TerminalRemote, computer: String?, modifier: Modifier =
                                         onClick = { setSort(if (sort == ProjectSort.byName) ProjectSort.activity else ProjectSort.byName) },
                                         label = { ChipLabel(sort.label) },
                                         leadingIcon = { Icon(Icons.Outlined.SwapVert, null, Modifier.size(18.dp)) },
-                                        modifier = Modifier.tag("project-sort"),
+                                        modifier = chipLabel("project-sort", sort.label) {
+                                            setSort(if (sort == ProjectSort.byName) ProjectSort.activity else ProjectSort.byName)
+                                        },
                                     )
                                 }
                             }
@@ -507,10 +516,28 @@ private fun Tipped(tip: Tip?, content: @Composable () -> Unit) {
     if (tip == null) content() else TipAnchor(tip) { content() }
 }
 
-/** A pill's label, cross-fading to a new one so the switch reads as one. */
+/**
+ * A pill's label, cross-fading to a new one so the switch reads as one. It's silent: the chip says it
+ * ([chipLabel]), so its id and words are one node.
+ */
 @Composable
 private fun ChipLabel(text: String) {
-    AnimatedContent(text, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "chip") { Text(it, maxLines = 1) }
+    AnimatedContent(text, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "chip") {
+        Text(it, maxLines = 1, modifier = Modifier.clearAndSetSemantics {})
+    }
+}
+
+/**
+ * A chip's id, the words its [ChipLabel] shows and its tap on one node. The chip's own click sits
+ * inside this modifier, which clears it: [onClick] says it again for TalkBack.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+private fun chipLabel(id: String, text: String, onClick: () -> Unit): Modifier = Modifier.clearAndSetSemantics {
+    testTagsAsResourceId = true
+    testTag = id
+    contentDescription = text
+    role = Role.Button
+    onClick { onClick(); true }
 }
 
 /** A small explanation between rows. */
@@ -550,13 +577,13 @@ private fun ProjectHeader(cwd: String, name: String, folded: Boolean, launching:
         Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
-            // Read (and found by tests) as the project's name, not the capitals drawn.
-            .tag("project-$cwd", label = name)
             .combinedClickable(onClickLabel = if (folded) "Unfold" else "Fold", onLongClickLabel = "Project menu", onLongClick = onLongPress, onClick = onTap)
             .semantics {
                 heading()
                 stateDescription = if (folded) "Folded" else "Unfolded"
             }
+            // Read (and found by tests) as the project's name, not the capitals drawn; after the click, which it'd clear.
+            .tag("project-$cwd", label = name)
             .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -686,9 +713,13 @@ private fun SessionRow(s: LiveSummary, w: TermWindow?, look: TileLook, own: Stri
     ListItem(
         modifier = Modifier
             .then(rowBackground(look, flash = s.ask != null && look.color == null))
+            .combinedClickable(onLongClickLabel = "Row menu", onLongClick = onLongPress, onClick = onTap)
             // One label for the row, as the iPhone's: its name, then how it stands (TalkBack, and tests find it by both).
-            .tag("session-${s.key}", label = "$title\n${listOf(sessionState(s), sessionFacts(s)).filter { it.isNotEmpty() }.joinToString(", ")}")
-            .combinedClickable(onLongClickLabel = "Row menu", onLongClick = onLongPress, onClick = onTap),
+            .tag(
+                "session-${s.key}",
+                label = "$title\n" + listOf(if (tileState(s) == TileState.done) "Finished" else "", sessionState(s), sessionFacts(s))
+                    .filter { it.isNotEmpty() }.joinToString(", "),
+            ),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         leadingContent = { StateIcon(tileState(s)) },
         headlineContent = {
@@ -732,9 +763,9 @@ private fun WindowRow(remote: TerminalRemote, w: TermWindow, look: TileLook, own
     ListItem(
         modifier = Modifier
             .then(rowBackground(look, flash = false))
+            .combinedClickable(onLongClickLabel = "Row menu", onLongClick = onLongPress, onClick = onTap)
             // One label for the row, as the iPhone's: its name, then what runs where.
-            .tag("term-${w.key}", label = "$title\n${listOfNotNull(if (w.agent != null) "Screen only" else null, detail).joinToString(", ")}")
-            .combinedClickable(onLongClickLabel = "Row menu", onLongClick = onLongPress, onClick = onTap),
+            .tag("term-${w.key}", label = "$title\n${listOfNotNull(if (w.agent != null) "Screen only" else null, detail).joinToString(", ")}"),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         leadingContent = {
             Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {

@@ -90,9 +90,35 @@ There is no XCUITest target: XCUITest needs UI automation mode allowed by `sudo`
 1. The unit tests of every package and app you touched.
 2. A protocol, crypto or envelope change: the vectors (all three cores) and an interop run.
 3. A Mac UI change: the smoke scenario for that screen, and the e2e desktop steps that touch it: `tool/e2e/run.sh --terminal kitty --no-phone --desktop-only <step text>`.
-4. A phone UI change: its flows on the platform you changed: `tool/e2e/run.sh --terminal kitty --platform ios|android --phone-only fresh,pair-accept,<flow> --phone-from-tree` (or `--hold` and run the flows by hand).
+4. A phone UI change: its flows on the platform you changed: `tool/e2e/run.sh --terminal kitty --platform ios|android --phone-only fresh,pair-accept,<flow> --phone-from-tree` (or `--hold` and run the flows by hand). Some flows need an earlier one: `conversation-1` talks to the session the fake omp stops for approval, so it needs `approval` before it, and `deep-link-server-restart`/`deep-link-desktop-restart` check `conversation-1`'s reply.
 5. A terminal adapter change: a full run on that terminal.
 6. Big cross-cutting changes (protocol, routing, the bridge): the whole run on iOS and Android, kitty and Ghostty at least.
+
+## What ran end to end for this build (native apps, 2026-11-05)
+
+Commit 69a6486 plus the uncommitted app, flow and harness fixes of that day (`--phone-from-tree`), server `--server local`, Android emulator API 35 (`pocketterm_api35` on `-port 5584`, `--device emulator-5584`) and the iPhone Simulator (iOS 26.5).
+
+**This was not one unattended run.** It was per-flow verification: one full iOS run early on, then a held Android run with flows re-run one by one, then `--phone-only` runs of what changed or had failed. The Mac was under heavy load from other work (load averages up to 600), and the emulator's app hit ANRs from CPU starvation; a flow that failed only on an ANR was re-run.
+
+| Phone | Run | Command / how | Result |
+| --- | --- | --- | --- |
+| iPhone, kitty | `build/e2e/20261105-113429` | full unattended run, every phase | Every phone flow (59) passed; every desktop step passed except the orchestrator's prompt check (fixed since, see the next rows) |
+| iPhone, kitty | `build/e2e/20261105-175223` | `--platform ios --phone-only fresh,pair-accept,new-session,orchestrator,theme,account-sheet --desktop-only orchestrator` | ALL PASSED: the flows changed since the full run (`theme`, `orchestrator`, `account-sheet`) and the desktop's "the orchestrator starts in kitty and steers a session" with its prompt check |
+| Android, kitty | held run `build/e2e/20261105-135149`, flows re-run with `maestro/e2e/run.sh --only` | phase `main` | All 46 flows passed at least once: fresh, pair-accept, tips, sign-out, fresh-again, demo, pair-decline, push-toggle, computers, approval, conversation-0/1/2, slash-new, screen, image, file, new-session, steer-queue, stop, question, plan, menu-model, menu-resume, follow, session-screen, screen-keys, new-shell, new-tab, windows, new-project, project-list, close-window, attach-limit, too-large, account-sheet, theme, voice-language, switch-continue, switch-restart, end-session, cold-start, away-60s, resume-60s, deep-link-cold, push-tap-cold |
+| Android, kitty | `build/e2e/20261105-165730` | `--phone-only fresh,pair-accept,new-session,orchestrator --desktop-only orchestrator` | ALL PASSED, the desktop's orchestrator step (prompt check included) too |
+| Android, kitty | `build/e2e/20261105-170103` | the later phases, `--phone-only …,real-omp,revoked,unreachable,offline,retry` | Passed: real-omp, revoked, unreachable (server-down), offline and retry (computer-off), conversation-0; desktop: real omp, revoke, computer off, profiles' Settings and reporting. Failed, re-run below: profiles (an ANR under load), conversation-1 and the two deep-link restarts |
+| Android, kitty | `build/e2e/20261105-174040` | `--platform android --device emulator-5584 --phone-only fresh,pair-accept,approval,conversation-0,conversation-1,profiles,deep-link-server-restart,deep-link-desktop-restart,reconnect --desktop-only 'profiles,restart'` | ALL PASSED: every flow listed (reconnect in both server-down and desktop-restart), the desktop's profiles steps, restart: server and restart: desktop app |
+| iPhone, Ghostty 1.3.1 (phone sessions in tmux) | `build/e2e/20261105-182754` | `--terminal ghostty --platform ios --phone-from-tree --phone-only fresh,pair-accept,screen,screen-keys,new-shell,new-tab,windows` (every desktop step) | ALL PASSED: those 7 phone flows and all 38 desktop steps that ran, "ghostty: Start new windows in tmux" and "Remove takes tmux out" included |
+
+What the failures were:
+
+- Android `conversation-1` (and so the deep-link restarts) in `20261105-170103`: not an app bug. Its session is the one the fake omp stops for approval ("Approve bash? echo e2e"), and that run left `approval` out of `--phone-only`, so no reply could come. With `approval` before it, it passes.
+- Android `profiles` in `20261105-170103`: an ANR dialog ("PocketTerm isn't responding") over the list while the Mac was at a load average in the hundreds; passes on the re-run.
+- `build/e2e/20261105-172709`: the harness's accessibility helper (`tool/smoke/ax.swift`) crashed with a stack overflow walking the setup window: its tree briefly held a cycle. `walk` now skips elements it has seen and stops at depth 256.
+- Ghostty, `build/e2e/20261105-175912` and `-180159`: stopped at "terminals: throwaway windows open". macOS asked whether the test build (`com.danyzmaj.pocketterm.e2e`) may control Ghostty, a one-time Automation permission a person has to allow. The harness now waits up to 3 minutes for that answer, and says so, instead of failing at once.
+- Ghostty, `build/e2e/20261105-180253`: new-shell, new-tab and windows failed, and so did "ghostty: Start new windows in tmux". An app bug, also in the Dart code: the phone's session opened in a tmux session (attached in a new Ghostty window), yet no window list showed it. `Tmux.sockets()` found the run's server in `$TMUX_TMPDIR/tmux-501/default`, then let `/private/tmp/tmux-501/default` (a socket left behind by a server long gone) replace it because the names matched, so tmux showed no panes and Ghostty's window gave way to a pane that wasn't listed. A name found twice now keeps its first path (a learnt socket, then `$TMUX_TMPDIR`'s, then `/private/tmp`'s); `TmuxTests.testASocketLeftBehindLaterUnderTheSameNameDoesntHideTheLiveServer` covers it. Passes in `20261105-182754`.
+
+Nothing is failing. Not run for this build: WezTerm, iTerm2, Supabase and the built-in server; the Ghostty flows on Android.
 
 ## Manual only
 

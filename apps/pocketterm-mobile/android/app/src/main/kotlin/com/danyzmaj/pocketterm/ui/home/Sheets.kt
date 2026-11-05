@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -127,17 +128,28 @@ fun ComputerRows(
         }
         for (d in desktops.all) {
             val locked = session.computerKey(d.id) == null
+            val state = when {
+                locked -> "Locked: scan its code"
+                d.online -> "Online"
+                else -> "Seen ${ago(d.seenAt.toEpochMilli())}"
+            }
             ListItem(
-                modifier = Modifier.tag("desktop-${d.id}").clickable { onPick(d) },
+                // One node reading "name\nstatus", as the iPhone's rows: the selected one says so.
+                modifier = Modifier.semantics { selected = d.id == desktops.selected?.id }
+                    .clickable { onPick(d) }
+                    .tag("desktop-${d.id}", "${d.name}\n$state"),
                 colors = colors,
                 leadingContent = { Icon(if (d.windows) Icons.Rounded.DesktopWindows else Icons.Rounded.LaptopMac, null) },
                 headlineContent = { Text(d.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 supportingContent = {
-                    when {
-                        locked -> Text("Locked: scan its code", color = status.needs)
-                        d.online -> Text("Online", color = MaterialTheme.colorScheme.primary)
-                        else -> Text("Seen ${ago(d.seenAt.toEpochMilli())}")
-                    }
+                    Text(
+                        state,
+                        color = when {
+                            locked -> status.needs
+                            d.online -> MaterialTheme.colorScheme.primary
+                            else -> Color.Unspecified
+                        },
+                    )
                 },
                 trailingContent = if (d.id == desktops.selected?.id) {
                     { Icon(Icons.Filled.Check, "Selected", tint = MaterialTheme.colorScheme.primary) }
@@ -365,7 +377,8 @@ fun LayoutSheet(remote: TerminalRemote, onPick: (session: String?, window: Strin
     remote.observe()
     val layout = macLayout(remote.windows, remote.terminals)
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.tag("layout-sheet")) {
+        // Above the navigation bar: a row half scrolled in isn't left under the gesture area, where a tap goes home.
+        Column(Modifier.navigationBarsPadding().tag("layout-sheet")) {
             SheetTitle("Windows and tabs", "${layoutCount(layout)} on ${remote.desktopName ?: "the computer"}")
             LazyColumn(Modifier.fillMaxWidth()) {
                 for (w in layout) {
@@ -409,7 +422,9 @@ private fun LayoutTab(remote: TerminalRemote, t: MacTab, onPick: (String?, Strin
     val detail = if (s != null) sessionState(s) else lead.program
     val status = LocalStatus.current
     ListItem(
-        modifier = Modifier.tag("layout-tab-${t.id}").clickable { onDismiss(); onPick(s?.key, lead.key) },
+        // One label, as the iPhone's: its title, then how it stands and where (tests find it by both).
+        modifier = Modifier.clickable { onDismiss(); onPick(s?.key, lead.key) }
+            .tag("layout-tab-${t.id}", label = "$title\n${listOf(detail, cwd).filter { it.isNotEmpty() }.joinToString(" · ")}"),
         colors = sheetItemColors(),
         leadingContent = {
             if (s != null) {

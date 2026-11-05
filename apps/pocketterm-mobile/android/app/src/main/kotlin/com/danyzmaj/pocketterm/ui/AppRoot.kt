@@ -96,6 +96,13 @@ fun AppRoot(graph: AppGraph) {
                 )
             }
         }
+        // Pages and sheets over one root go with it (signed out here or by the computer, the demo left).
+        // Done at once, before the new home gets its ui below: a coroutine (LaunchedEffect) would run after
+        // the activity resumed and so take away the session page a link that launched the app just opened.
+        DisposableEffect(root) {
+            nav.popToRoot()
+            onDispose {}
+        }
         DisposableEffect(home) {
             home?.ui = object : HomeController.Ui {
                 override fun openSession(remote: TerminalRemote, key: String) = nav.openSession(key)
@@ -109,8 +116,6 @@ fun AppRoot(graph: AppGraph) {
             }
             onDispose { home?.dispose() }
         }
-        // Pages and sheets over one root go with it (signed out here or by the computer, the demo left).
-        LaunchedEffect(root) { nav.popToRoot() }
 
         val lifecycle = LocalLifecycleOwner.current.lifecycle
         DisposableEffect(lifecycle, home) {

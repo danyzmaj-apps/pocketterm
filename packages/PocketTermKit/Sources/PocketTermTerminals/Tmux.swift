@@ -123,13 +123,17 @@ open class Tmux: TerminalHost, @unchecked Sendable {
 
   /// Socket name → path, in the order found, for every live-looking socket we
   /// may open (a learnt one only while it's there: its server may have gone).
+  /// A name found twice keeps its first path: a learnt one, then
+  /// `$TMUX_TMPDIR`'s (where tmux itself looks), then `/private/tmp`'s. Its
+  /// `default` is often a socket left behind by a server long gone, and
+  /// letting it win hid the live server of the same name.
   private func sockets() -> [(name: String, path: String)] {
     var out = state.with { s in
       s.known.removeAll { fileKind($0.path) != .socket }
       return s.known
     }
     func put(_ name: String, _ path: String) {
-      if let i = out.firstIndex(where: { $0.name == name }) { out[i].path = path } else { out.append((name, path)) }
+      if !out.contains(where: { $0.name == name }) { out.append((name, path)) }
     }
     for dir in dirs where directoryExists(dir) {
       for name in listNames(dir) ?? [] {

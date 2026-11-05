@@ -87,10 +87,14 @@ func actions(_ e: AXUIElement) -> [String] {
 
 func children(_ e: AXUIElement) -> [AXUIElement] { (attr(e, kAXChildrenAttribute) as? [AXUIElement]) ?? [] }
 
-/// [root] and everything in it, depth first, with its depth.
+/// [root] and everything in it, depth first, with its depth. An element seen
+/// before is skipped: while SwiftUI rebuilds a window its tree can briefly
+/// hold a cycle, and following it overflowed the stack.
 func walk(_ root: AXUIElement, _ depth: Int = 0) -> [(AXUIElement, Int)] {
   var out: [(AXUIElement, Int)] = []
+  var seen = Set<AXUIElement>()
   func go(_ e: AXUIElement, _ d: Int) {
+    guard d < 256, seen.insert(e).inserted else { return }
     out.append((e, d))
     for c in children(e) { go(c, d + 1) }
   }

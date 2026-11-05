@@ -8,6 +8,10 @@ appId: com.danyzmaj.pocketterm
 - assertVisible: "Signed in with your computer’s code"
 - assertVisible: ".*Encrypted, through the push relay.*"
 - takeScreenshot: account
+# Android's Settings is a full page: the row is further down.
+- scrollUntilVisible:
+    element: "Leave this server"
+    timeout: 20000
 - tapOn: "Leave this server"
 - tapOn: "Leave"
 - extendedWaitUntil:

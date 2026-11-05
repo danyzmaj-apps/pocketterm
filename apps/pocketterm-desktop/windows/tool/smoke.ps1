@@ -101,14 +101,16 @@ function Press($element) {
   throw "$($element.Current.AutomationId) can't be pressed"
 }
 
-# The button named $name (a dialog's own buttons have no id of ours).
+# The button named $name that isn't one of ours (a dialog's own buttons have no id of ours; the page behind it may
+# have a button of the same name).
 function FindButton($name) {
   $w = Window $pt.Id
   if (-not $w) { return $null }
   $byName = New-Object System.Windows.Automation.PropertyCondition ($UIA::NameProperty), $name
   $isButton = New-Object System.Windows.Automation.PropertyCondition ($UIA::ControlTypeProperty), ([System.Windows.Automation.ControlType]::Button)
   $cond = [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.Condition[]]@($byName, $isButton))
-  $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+  $w.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond) |
+    Where-Object { -not $_.Current.AutomationId.StartsWith('settings-') } | Select-Object -First 1
 }
 
 # (Not "Type": that's Get-Content's alias, and an alias beats a function.)
@@ -232,9 +234,9 @@ try {
   $phoneRow = Until 'the phone on the account' { FindPrefixed 'settings-phone-sign-out-' | Select-Object -First 1 }
   Shot 'account-with-phone'
   Press $phoneRow
-  Wait 'PrimaryButton' | Out-Null
+  $confirm = Until 'the confirm dialog' { FindButton 'Sign out' }
   Shot 'phone-sign-out-dialog'
-  Press (Find 'PrimaryButton')
+  Press $confirm
   Until 'the phone to go' { -not (FindPrefixed 'settings-phone-sign-out-') } | Out-Null
   Press (Wait 'settings-sign-out')
   Wait 'sign-in-other-server' | Out-Null

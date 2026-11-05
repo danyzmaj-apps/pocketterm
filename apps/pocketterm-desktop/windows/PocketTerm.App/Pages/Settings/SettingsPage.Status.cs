@@ -135,7 +135,7 @@ internal sealed partial class SettingsPage
                 () => Ui.Button("Add a phone…", () =>
                 {
                     _app.Hosting?.RenameSeen();
-                    Run(() => PairingDialog.ShowAsync(_app));
+                    Run(AddPhoneAsync);
                 }, "attention-add-phone-renamed")));
         }
         if (_app.PhoneSignedIn == false)
@@ -145,7 +145,7 @@ internal sealed partial class SettingsPage
                 "No phone yet",
                 "No phone signed in yet",
                 "add-phone",
-                () => Ui.Button("Add a phone…", () => Run(() => PairingDialog.ShowAsync(_app)), "attention-add-phone")));
+                () => Ui.Button("Add a phone…", () => Run(AddPhoneAsync), "attention-add-phone")));
         }
         if (_app.ProjectRoots.Count == 0)
         {

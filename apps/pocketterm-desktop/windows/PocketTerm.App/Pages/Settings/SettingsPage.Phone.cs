@@ -41,7 +41,7 @@ internal sealed partial class SettingsPage
             icon: Ui.Glyph.Phone,
             body: Ui.Row(
                 8,
-                Ui.Button("Add a phone…", () => Run(() => PairingDialog.ShowAsync(_app)), "settings-add-phone"),
+                Ui.Button("Add a phone…", () => Run(AddPhoneAsync), "settings-add-phone"),
                 Ui.Button("Reset key…", () => Run(ResetKeyAsync), "settings-reset-key")));
         OnRefresh(() =>
         {
@@ -94,6 +94,15 @@ internal sealed partial class SettingsPage
             if (p.StartsWith(home + sep, StringComparison.Ordinal)) return "~" + p[home.Length..];
         }
         return p;
+    }
+
+    /// <summary>The pairing code; a phone may have signed in with it meanwhile, so the phones and the server's devices
+    /// are looked at again once it closes (Flutter's list waited for the window's next showing).</summary>
+    private async Task AddPhoneAsync()
+    {
+        await PairingDialog.ShowAsync(_app);
+        await _app.CheckPhoneAsync();
+        await CheckDevicesAsync();
     }
 
     /// <summary>A new channel key (after losing a phone): every phone must scan again.</summary>

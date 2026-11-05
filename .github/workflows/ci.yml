@@ -89,6 +89,28 @@ jobs:
           name: PocketTerm-windows-installer
           path: apps/pocketterm-desktop/build/windows/installer/*.exe
           if-no-files-found: error
+      # Installs it as a person would (per-user, silently), checks what went where, and uninstalls it again.
+      - name: Install and uninstall
+        working-directory: apps/pocketterm-desktop
+        run: |
+          $setup = (Get-ChildItem build/windows/installer/*-setup.exe | Select-Object -First 1).FullName
+          $p = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+          if ($p.ExitCode) { throw "setup exited with $($p.ExitCode)" }
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\PocketTerm'
+          foreach ($f in 'PocketTerm.exe', 'PocketTerm.pri', 'pocketterm-server.exe', 'integrations\omp\pocketterm-live.ts',
+                   'integrations\claude\plugins\pocketterm\hooks\pocketterm.ts', 'supabase\migrations', 'supabase\functions\pocketterm\index.ts',
+                   'assets\tray.ico', 'assets\icon\windows-dawn.ico') {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "not installed: $f" }
+          }
+          $open = (Get-ItemProperty 'HKCU:\Software\Classes\pocketterm\shell\open\command').'(default)'
+          if ($open -ne "`"$dir\PocketTerm.exe`" `"%1`"") { throw "pocketterm:// opens $open" }
+          $p = Start-Process (Join-Path $dir 'unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+          if ($p.ExitCode) { throw "uninstall exited with $($p.ExitCode)" }
+          # The uninstaller hands over to a copy of itself and returns before it's done.
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Test-Path (Join-Path $dir 'PocketTerm.exe')) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          if (Test-Path (Join-Path $dir 'PocketTerm.exe')) { throw 'PocketTerm.exe is still there after uninstalling' }
+          if (Test-Path 'HKCU:\Software\Classes\pocketterm') { throw 'pocketterm:// is still registered after uninstalling' }
       # The same app with the test hooks (TestHooks.cs, App.Hooks), driven by tool/smoke.ps1.
       - name: Publish (smoke build)
         run: dotnet publish $env:APP -c Release -p:Platform=x64 -p:PocketTermE2E=true -o build/smoke-app

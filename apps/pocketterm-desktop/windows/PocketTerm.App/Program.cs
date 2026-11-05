@@ -19,6 +19,8 @@ public static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        App.Hooks(PocketTerm.Desktop.TestHooks.Env());
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => PocketTerm.Core.Log.Print($"PocketTerm: crashed: {e.ExceptionObject}");
         WinRT.ComWrappersSupport.InitializeComWrappers();
         var me = AppInstance.FindOrRegisterForKey(InstanceKey);
         if (!me.IsCurrent)

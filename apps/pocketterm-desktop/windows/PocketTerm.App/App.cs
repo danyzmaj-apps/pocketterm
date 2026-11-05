@@ -43,8 +43,16 @@ internal sealed partial class App : Application, IXamlMetadataProvider
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        Resources.MergedDictionaries.Add(new XamlControlsResources());
-        Ui.LoadStyles(this);
+        try
+        {
+            Resources.MergedDictionaries.Add(new XamlControlsResources());
+            Ui.LoadStyles(this);
+        }
+        catch (Exception e)
+        {
+            Log.Print($"PocketTerm: couldn't load the app's resources: {e}");
+            throw;
+        }
         // PocketTerm lives in the tray: no window open is no reason to stop.
         DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
         _ = StartAsync();
@@ -55,7 +63,6 @@ internal sealed partial class App : Application, IXamlMetadataProvider
         try
         {
             var env = TestHooks.Env();
-            Hooks(env);
             var secrets = SystemSecrets.Create(env);
             var prefs = new JsonPreferenceStore();
             // Once: a Flutter 0.1.x install's preferences and secrets become the native app's.
@@ -122,8 +129,9 @@ internal sealed partial class App : Application, IXamlMetadataProvider
     /// The smoke and end-to-end builds' own hooks, besides Desktop.Core's (<see cref="TestHooks"/>):
     /// <c>POCKETTERM_DATA</c>, a throwaway support folder instead of <c>%APPDATA%\Danijel Lovric\PocketTerm</c>,
     /// and <c>POCKETTERM_LOG</c>, a file the log lines go to. A released build has an empty <paramref name="env"/>.
+    /// Set first thing in <c>Main</c>, so the log has what goes wrong from the start.
     /// </summary>
-    private static void Hooks(IReadOnlyDictionary<string, string> env)
+    public static void Hooks(IReadOnlyDictionary<string, string> env)
     {
         if (env.TryGetValue("POCKETTERM_DATA", out var data) && data.Length > 0) AppPaths.SupportDir = data;
         if (env.TryGetValue("POCKETTERM_LOG", out var file) && file.Length > 0)

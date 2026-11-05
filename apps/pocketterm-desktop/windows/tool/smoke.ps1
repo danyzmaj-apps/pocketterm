@@ -17,6 +17,8 @@ $ErrorActionPreference = 'Stop'
 $exe = Join-Path (Resolve-Path $App) 'PocketTerm.exe'
 if (-not (Test-Path $exe)) { throw "no PocketTerm.exe in $App" }
 New-Item -ItemType Directory -Force -Path $Artifacts | Out-Null
+$Artifacts = (Resolve-Path $Artifacts).Path
+$started = Get-Date
 $root = Join-Path ([IO.Path]::GetTempPath()) ("pocketterm-smoke-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Force -Path $root | Out-Null
 $cli = Join-Path $root 'cli.json'
@@ -114,6 +116,11 @@ try {
 }
 catch {
   Shot 'failed'
+  if ($pt) { Write-Host "PocketTerm $($pt.Id): $(if ($pt.HasExited) { "exited with $($pt.ExitCode)" } else { 'running' })" }
+  # A crash before the log is open shows in the Application event log (.NET Runtime, Application Error).
+  Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $started } -ErrorAction SilentlyContinue |
+    Where-Object { $_.ProviderName -in '.NET Runtime', 'Application Error', 'Windows Error Reporting' } |
+    ForEach-Object { Write-Host "--- $($_.ProviderName) $($_.TimeCreated)"; Write-Host $_.Message }
   throw
 }
 finally {

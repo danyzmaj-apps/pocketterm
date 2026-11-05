@@ -1,8 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <!-- Release builds: the launcher shows the icon alias AppIcons.kt picks (IconDefault until a theme's is
-         chosen) instead of MainActivity itself, which debug and profile builds keep as the launcher entry for
-         `flutter run` (it only starts an <activity>, never an alias). -->
+         chosen) instead of MainActivity itself, which debug builds keep as the launcher entry (Android Studio
+         and `adb shell am start` start an <activity>, never an alias). -->
     <application>
         <activity android:name=".MainActivity">
             <intent-filter tools:node="remove">

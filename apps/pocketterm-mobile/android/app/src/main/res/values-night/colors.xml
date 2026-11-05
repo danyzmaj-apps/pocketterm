@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The splash backgrounds in dark mode (values/colors.xml): System's, Rosé Pine's, Tokyo Night's. -->
+    <color name="pocketterm_win">#FF1E1E1E</color>
+    <color name="pocketterm_dawn">#FF191724</color>
+    <color name="pocketterm_tokyo_night">#FF1A1B26</color>
+</resources>

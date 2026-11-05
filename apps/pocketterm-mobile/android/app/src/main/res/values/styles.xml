@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The launch screen and the window behind Flutter: the plain background (colors.xml) the intro starts on. -->
-    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <item name="android:windowBackground">@color/pocketterm_win</item>
+    <!-- The system splash (core-splashscreen, also before Android 12): the app icon on the System theme's
+         background, light or dark (pocketterm_win); a chosen icon's follows on Android 13+ (AppIcons.splashTheme). -->
+    <style name="Theme.PocketTerm.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/pocketterm_win</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.PocketTerm</item>
     </style>
-    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <item name="android:windowBackground">@color/pocketterm_win</item>
+    <!-- Behind Compose: the system's light or dark background (Compose draws everything else). -->
+    <style name="Theme.PocketTerm" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>

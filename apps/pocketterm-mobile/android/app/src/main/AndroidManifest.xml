@@ -1,53 +1,48 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- The user's own server (Supabase: Realtime, edge functions) and FCM. -->
+    <!-- The user's own server and FCM. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Terminal pushes and followed sessions; asked for at runtime on Android 13+. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Scanning the setup code the computer shows (mobile_scanner); asked for when the scanner opens. -->
+    <!-- Scanning the setup code the computer shows (CameraX + ML Kit); asked for when the scanner opens. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- A device without a camera can still try the demo. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <!-- Voice prompts, recognized on the phone; asked for the first time the composer's microphone is used. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <!-- Haptic feedback on taps that change something. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- No backup and no device-to-device transfer (dataExtractionRules, Android 12+, where
          allowBackup alone doesn't stop the transfer): the computers' channel keys and the
-         session stay on this phone. -->
+         session stay on this phone. Cleartext is allowed because the server is the person's own and
+         may be plain http on their network or tailnet (the Flutter app's HTTP client allowed it too);
+         everything about the sessions goes end-to-end sealed either way. -->
     <application
+        android:name=".PocketTermApp"
         android:label="PocketTerm"
-        android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
-        android:dataExtractionRules="@xml/data_extraction_rules">
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:enableOnBackInvokedCallback="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.PocketTerm">
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""
-            android:theme="@style/LaunchTheme"
+            android:theme="@style/Theme.PocketTerm.Starting"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-            android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
-            <!-- Specifies an Android theme to apply to this Activity as soon as
-                 the Android process has started. This theme is visible to the user
-                 while the Flutter UI initializes. After that, this theme continues
-                 to determine the Window background behind the Flutter UI. -->
-            <meta-data
-              android:name="io.flutter.embedding.android.NormalTheme"
-              android:resource="@style/NormalTheme"
-              />
-            <!-- pocketterm:// links are handled by app_links (lib/mobile.dart); Flutter's own
-                 deep linking would also push them as a route, stacking a second home. -->
-            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
-            <!-- The launcher entry in debug and profile builds, which `flutter run` starts; release builds
-                 take it out (src/release/AndroidManifest.xml) for the icon aliases below. -->
+            <!-- The launcher entry in debug builds; release builds take it out (src/release/AndroidManifest.xml)
+                 for the icon aliases below. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
             <!-- Setup links with the computer's sign-in code (pocketterm://setup?…&code=…), and
-                 followed sessions' links. -->
+                 followed sessions' links (pocketterm://session?key=…). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -56,19 +51,16 @@
             </intent-filter>
         </activity>
 
-        <!-- The launcher icons (packages/pocketterm_core/lib/app_icon.dart; drawn by
-             apps/pocketterm-desktop/tool/make_icon.swift): IconDefault, the app's own (Catppuccin Mocha's), and one
-             per other theme. Release builds enable IconDefault; AppIcons.kt enables the chosen theme's and disables
-             the rest. Each repeats MainActivity's meta-data, which Flutter reads from the component it was started
-             through. -->
+        <!-- The launcher icons (core AppIcon.kt; drawn by apps/pocketterm-desktop/tool/make_icon.swift):
+             IconDefault, the app's own (Catppuccin Mocha's), and one per other theme. Release builds enable
+             IconDefault; AppIcons.kt enables the chosen theme's and disables the rest. The names are the Flutter
+             app's, so a phone that upgrades keeps the icon it had. -->
         <activity-alias
             android:name=".IconDefault"
             android:targetActivity=".MainActivity"
             android:icon="@mipmap/ic_launcher"
             android:enabled="false"
             android:exported="true">
-            <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
-            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -83,8 +75,6 @@
             android:icon="@mipmap/ic_launcher"
             android:enabled="false"
             android:exported="true">
-            <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
-            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -96,8 +86,6 @@
             android:icon="@mipmap/ic_launcher_dawn"
             android:enabled="false"
             android:exported="true">
-            <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
-            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -109,21 +97,20 @@
             android:icon="@mipmap/ic_launcher_tokyo_night"
             android:enabled="false"
             android:exported="true">
-            <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
-            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity-alias>
+        <!-- Retired: 0.1.7's Gruvbox icon; Gruvbox is gone and its people moved to Catppuccin, whose icon is
+             IconDefault's. Kept, with that icon, for the same reason as IconMocha: a phone that had picked it starts
+             the app through this one until AppIcons.kt moves it to IconDefault. -->
         <activity-alias
             android:name=".IconGruvbox"
             android:targetActivity=".MainActivity"
-            android:icon="@mipmap/ic_launcher_gruvbox"
+            android:icon="@mipmap/ic_launcher"
             android:enabled="false"
             android:exported="true">
-            <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
-            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -140,24 +127,9 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
-
-        <!-- Don't delete the meta-data below.
-             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
-        <meta-data
-            android:name="flutterEmbedding"
-            android:value="2" />
     </application>
-    <!-- Required to query activities that can process text, see:
-         https://developer.android.com/training/package-visibility and
-         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
-
-         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT"/>
-            <data android:mimeType="text/plain"/>
-        </intent>
-        <!-- url_launcher: links in answers open in the browser. -->
+        <!-- Links in answers and the GitHub/download links open in the browser. -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />

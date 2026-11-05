@@ -1,0 +1,75 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The Windows app: WinUI 3 (Windows App SDK), unpackaged and self-contained, so the installer's folder is
+       all it needs. Its screens are built in C# (no .xaml files): see README.md "The app". -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>PocketTerm.App</RootNamespace>
+    <AssemblyName>PocketTerm</AssemblyName>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <!-- Program.cs is the entry point: one PocketTerm per user, before any window. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <!-- No XAML compiler: Ui/Styles.xaml is loaded at run time (XamlReader), the rest is C#. -->
+    <EnableDefaultPageItems>false</EnableDefaultPageItems>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+    <!-- The release scripts pass the tag's version (-p:Version=x.y.z); UpdateCheck compares GitHub's latest to it. -->
+    <Version Condition="'$(Version)' == ''">0.1.7</Version>
+    <!-- Where tool/server-sidecar.ps1 puts the built-in server; a build without it runs, minus "On this computer". -->
+    <PocketTermSidecar Condition="'$(PocketTermSidecar)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\build\server-sidecar\windows-x64\pocketterm-server.exe</PocketTermSidecar>
+  </PropertyGroup>
+  <!-- Test hooks (Desktop.Core TestHooks.cs): Debug builds and the smoke/e2e builds (-p:PocketTermE2E=true). -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug' Or '$(PocketTermE2E)' == 'true'">
+    <DefineConstants>$(DefineConstants);E2E</DefineConstants>
+  </PropertyGroup>
+  <!-- Off Windows (the Mac the libraries are developed on) the app only compiles, as a type check: the Windows
+       SDK's manifest and resource tools (mt.exe, makepri.exe) are Windows programs. -->
+  <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('Windows'))">
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <AppxGeneratePriEnabled>false</AppxGeneratePriEnabled>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260921001" />
+    <!-- The tray item. -->
+    <PackageReference Include="H.NotifyIcon.WinUI" Version="2.3.2" />
+    <!-- The phone's pairing code. -->
+    <PackageReference Include="QRCoder" Version="1.8.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PocketTerm.Core\PocketTerm.Core.csproj" />
+    <ProjectReference Include="..\PocketTerm.Desktop.Core\PocketTerm.Desktop.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Views\Styles.xaml" LogicalName="PocketTerm.App.Views.Styles.xaml" />
+  </ItemGroup>
+  <!-- Bundled next to PocketTerm.exe (AppPaths.BaseDir): the theme icons, the coding agents' integrations, the
+       Supabase setup's migrations and function, and the built-in server. -->
+  <PropertyGroup>
+    <DesktopDir>$(MSBuildThisFileDirectory)..\..\</DesktopDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="Assets\app.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(DesktopDir)assets\tray.ico" Link="assets\tray.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(DesktopDir)assets\icon\*.ico" Link="assets\icon\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(DesktopDir)integrations\omp\pocketterm-live.ts" Link="integrations\omp\pocketterm-live.ts" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(DesktopDir)integrations\claude\.claude-plugin\*" Link="integrations\claude\.claude-plugin\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(DesktopDir)integrations\claude\plugins\pocketterm\.claude-plugin\*" Link="integrations\claude\plugins\pocketterm\.claude-plugin\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(DesktopDir)integrations\claude\plugins\pocketterm\hooks\*" Link="integrations\claude\plugins\pocketterm\hooks\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(DesktopDir)supabase\migrations\*.sql" Link="supabase\migrations\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(DesktopDir)supabase\functions\**\*" Link="supabase\functions\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(PocketTermSidecar)" Link="pocketterm-server.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('$(PocketTermSidecar)')" />
+  </ItemGroup>
+  <!-- A release (-p:PocketTermRelease=true) without the built-in server is a broken one. -->
+  <Target Name="PocketTermNeedsSidecar" BeforeTargets="Build" Condition="'$(PocketTermRelease)' == 'true' And !Exists('$(PocketTermSidecar)')">
+    <Error Text="The built-in server isn't built: run tool/server-sidecar.ps1 first (looked for $(PocketTermSidecar))." />
+  </Target>
+</Project>

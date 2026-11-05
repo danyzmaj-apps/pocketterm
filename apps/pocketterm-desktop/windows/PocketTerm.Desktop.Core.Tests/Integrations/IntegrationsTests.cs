@@ -250,7 +250,8 @@ public sealed class IntegrationsTests : IDisposable
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(10));
     }
 
-    [Fact]
+    // The login shell answers with POSIX paths ('/…'), which a Windows test folder isn't.
+    [StorePosixFact]
     public async Task ClaudeFoundOnlyByTheLoginShellsPathIsUsed()
     {
         var (claude, _, _) = Claude();
@@ -261,7 +262,7 @@ public sealed class IntegrationsTests : IDisposable
         Assert.Equal(["--version", "plugin list --json"], onPath.Calls);
     }
 
-    [Fact]
+    [StorePosixFact]
     public async Task AProfileThatPrintsSomethingBeforeTheShellsAnswerDoesntHideClaude()
     {
         var (claude, _, _) = Claude();

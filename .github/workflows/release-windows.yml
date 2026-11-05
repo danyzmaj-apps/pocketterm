@@ -1,7 +1,8 @@
 name: Release (Windows)
 
-# Adds the Windows installer to a published GitHub release (the Mac's
-# tool/release.sh creates the release; this attaches PocketTerm-<v>-setup.exe).
+# Adds the Windows installer to a published GitHub release (the Mac's tool/release.sh creates the release; this
+# attaches PocketTerm-<v>-setup.exe): the native app (apps/pocketterm-desktop/windows) published self-contained with
+# the built-in server bundled, wrapped by Inno Setup.
 on:
   release:
     types: [published]
@@ -23,26 +24,32 @@ jobs:
     env:
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DOTNET_NOLOGO: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ env.TAG }}
+      - id: version
+        run: |
+          # v<version>, or a prerelease of it (v<version>-rc.1) to try the pipeline before the real release.
+          if ($env:TAG -notmatch '^v([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.]+)?$') { throw "$env:TAG isn't v<x.y.z>[-prerelease]" }
+          echo "version=$($Matches[1])" >> $env:GITHUB_OUTPUT
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: apps/pocketterm-desktop/windows/global.json
       - id: fvm
         run: echo "flutter=$((Get-Content .fvmrc | ConvertFrom-Json).flutter)" >> $env:GITHUB_OUTPUT
+      # Dart, for the built-in server the app bundles.
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ steps.fvm.outputs.flutter }}
           cache: true
-      - run: flutter pub get
-      - working-directory: apps/pocketterm-desktop
-        run: flutter build windows --release
-      - id: version
-        working-directory: apps/pocketterm-desktop
-        run: |
-          $v = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
-          # v<version>, or a prerelease of it (v<version>-rc.1) to try the pipeline before the real release.
-          if ($env:TAG -notmatch "^v$([regex]::Escape($v))(-[0-9A-Za-z.]+)?$") { throw "pubspec.yaml is at $v but the release is $env:TAG" }
-          echo "version=$v" >> $env:GITHUB_OUTPUT
+      - run: pwsh tool/server-sidecar.ps1
+      - run: >-
+          dotnet publish apps/pocketterm-desktop/windows/PocketTerm.App/PocketTerm.App.csproj -c Release -p:Platform=x64
+          -p:Version=${{ steps.version.outputs.version }} -p:PocketTermRelease=true
+          -o apps/pocketterm-desktop/build/windows/publish
       - working-directory: apps/pocketterm-desktop
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"

@@ -64,8 +64,21 @@ public sealed class LocalApiCliJsonTests : IDisposable
             if (!OperatingSystem.IsWindows()) Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(file));
             // A debug build that has quit since.
             File.WriteAllText(file, """{"port":1,"token":"dead","pid":999999}""");
-            await Task.Delay(TimeSpan.FromSeconds(6));
-            Assert.Equal(written, File.ReadAllText(file));
+            // The next look (every 5 s) finds nothing at port 1; on Windows a refused loopback connection takes
+            // about 2 s more to say so. A read while it's being moved in place doesn't count.
+            await Wait.Until(
+                () =>
+                {
+                    try
+                    {
+                        return File.ReadAllText(file) == written;
+                    }
+                    catch (IOException)
+                    {
+                        return false;
+                    }
+                },
+                seconds: 10);
         }
         finally
         {

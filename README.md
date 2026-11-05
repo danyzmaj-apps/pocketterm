@@ -123,27 +123,31 @@ The first two setups are self-hosted; the third runs on your own Supabase projec
 
 ## Development
 
-One Dart pub workspace, Flutter pinned in `.fvmrc`.
+Native apps, one per platform, sharing a protocol core per language and talking to the Dart server.
 
 | Path | What |
 | --- | --- |
-| [`apps/pocketterm-desktop`](apps/pocketterm-desktop) | Desktop app for macOS and Windows, with the built-in server, the Supabase setup ([`supabase/`](apps/pocketterm-desktop/supabase)), the omp extension and Claude Code plugin |
-| [`apps/pocketterm-mobile`](apps/pocketterm-mobile) | Phone app for iPhone and Android |
-| [`packages/pocketterm_core`](packages/pocketterm_core) | Shared code: server client, end-to-end encryption, terminal protocol and hosts |
-| [`packages/pocketterm_server`](packages/pocketterm_server) | The server: HTTP and WebSocket API ([PROTOCOL.md](packages/pocketterm_server/PROTOCOL.md)), storage, relay client |
+| [`apps/pocketterm-desktop/macos`](apps/pocketterm-desktop/macos) | Mac app: Swift, SwiftUI on AppKit, menu-bar item, Sparkle |
+| [`apps/pocketterm-desktop/windows`](apps/pocketterm-desktop/windows) | Windows app: C#, .NET 8, WinUI 3, tray item, Inno Setup installer |
+| [`apps/pocketterm-mobile/ios`](apps/pocketterm-mobile/ios) | iPhone app: Swift, SwiftUI, Live Activity and push extension |
+| [`apps/pocketterm-mobile/android`](apps/pocketterm-mobile/android) | Android app: Kotlin, Jetpack Compose, Material 3; its protocol core in `:core` |
+| [`packages/PocketTermKit`](packages/PocketTermKit) | Swift package for the Mac and iPhone apps: the protocol core, the Mac's terminal hosts and desktop services |
+| [`apps/pocketterm-desktop`](apps/pocketterm-desktop) | What both desktop apps bundle: the Supabase setup ([`supabase/`](apps/pocketterm-desktop/supabase)), the omp extension and Claude Code plugin ([`integrations/`](apps/pocketterm-desktop/integrations)), the icons |
+| [`packages/pocketterm_server`](packages/pocketterm_server) | The server (Dart): HTTP and WebSocket API ([PROTOCOL.md](packages/pocketterm_server/PROTOCOL.md)), storage, relay client; bundled into the desktop apps as a sidecar binary |
 | [`apps/pocketterm-server`](apps/pocketterm-server) | Server command, Docker image and compose file |
 | [`apps/pocketterm-relay`](apps/pocketterm-relay) | Push relay (Deno) to APNs and FCM |
+| [`tool/vectors`](tool/vectors) | The frozen wire vectors every core's tests check against |
 | [`tool/e2e`](tool/e2e), [`tool/smoke`](tool/smoke) | End-to-end harness; installed-app smoke |
 | [`docs`](docs) | [Architecture](docs/ARCHITECTURE.md), [building](docs/BUILDING.md), [testing](docs/TESTING.md), [releasing](docs/RELEASING.md), [self-hosting](docs/SELF_HOSTING.md) |
 
 ```sh
-fvm install && fvm flutter pub get                 # repo root
+fvm install && fvm dart pub get                     # repo root: Dart for the server and the harness
 
-fvm flutter run -d macos                           # apps/pocketterm-desktop (-d windows on Windows)
-fvm flutter run -d <device>                        # apps/pocketterm-mobile
-
-# packages/pocketterm_core, apps/pocketterm-desktop, apps/pocketterm-mobile
-fvm dart format -l 120 lib test && fvm flutter analyze && fvm flutter test
+(cd packages/PocketTermKit && swift test)
+(cd apps/pocketterm-desktop/macos && xcodegen generate && xcodebuild -scheme PocketTerm build test)
+(cd apps/pocketterm-mobile/ios && xcodegen generate && open PocketTerm.xcodeproj)
+(cd apps/pocketterm-mobile/android && ./gradlew :core:test :app:testDebugUnitTest :app:installDebug)   # JDK 17
+dotnet test apps/pocketterm-desktop/windows/PocketTerm.Libraries.slnf    # the whole app builds on Windows
 # packages/pocketterm_server
 fvm dart format -l 120 lib test && fvm dart analyze --fatal-infos && fvm dart test
 # apps/pocketterm-relay

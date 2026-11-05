@@ -2,7 +2,7 @@
 
 PocketTerm is a personal project. Maintainer notes for shipping its four builds: the Mac app (notarized DMG on GitHub Releases, updated through Sparkle), the Windows app (unsigned installer on the same GitHub release), the iPhone app (TestFlight) and the Android app (Google Play open testing). The phone apps are not published on the App Store or in Google Play's production track. Plus the push relay the phones depend on.
 
-Every app's version is the `version:` line of its own `pubspec.yaml` (`apps/pocketterm-desktop/pubspec.yaml`, `apps/pocketterm-mobile/pubspec.yaml`), as `<name>+<build>`. The build number must grow with every upload to any store; keep both apps on the same version name. The Mac and Windows apps are one Flutter app, so they always share a version. Baker numbers phone builds itself ([below](#each-release-1)), so TestFlight and Play build numbers don't match the pubspec's.
+Versions: the Mac app's is `MARKETING_VERSION` (the version name) and `CURRENT_PROJECT_VERSION` (the build number) in `apps/pocketterm-desktop/macos/project.yml`; the Windows app takes the release tag's (`-p:Version=<version>`, the csproj's `<Version>` being only the default for local builds); the iPhone app's is `MARKETING_VERSION` in `apps/pocketterm-mobile/ios/project.yml`, the Android app's `versionName` in `apps/pocketterm-mobile/android/app/build.gradle.kts`. Keep every app on the same version name. Baker numbers phone builds itself ([below](#each-release-1)) and passes the version name and number to the build scripts, so TestFlight and Play build numbers don't match the files' defaults.
 
 Keys and certificates never go in the repo: keep them in the maintainer's keys folder (mode 600), passwords in the Keychain.
 
@@ -10,7 +10,7 @@ Keys and certificates never go in the repo: keep them in the maintainer's keys f
 
 The wizard's VPS commands fetch `docker-compose.yml` from the tag `v<version>` and run the image `ghcr.io/danyzmaj-apps/pocketterm-server:<version>`. Neither exists until the release is out, so a desktop build of a new version can't set up a VPS before both are published. Release in this order:
 
-1. **Bump the version** in `apps/pocketterm-desktop/pubspec.yaml`, `apps/pocketterm-mobile/pubspec.yaml` and the `POCKETTERM_VERSION` default in `apps/pocketterm-server/docker-compose.yml` (details in [Mac → Each release](#each-release)). Commit and push to `main`.
+1. **Bump the version** in `apps/pocketterm-desktop/macos/project.yml`, the phone apps' defaults (above) and the `POCKETTERM_VERSION` default in `apps/pocketterm-server/docker-compose.yml` (details in [Mac → Each release](#each-release)). Commit and push to `main`.
 2. **Push the tag.** `tool/release.sh` creates the GitHub release `v<version>`, and with it the tag.
 3. **The server image publishes.** The tag starts Baker's *Server image* workflow (project `pocketterm-mobile`, trigger: tag `v*`), which runs [tool/server-image.sh](../tool/server-image.sh) on the Mac: it pushes `:<version>`, `:<major>.<minor>` and `:latest` (a prerelease tag only its own version) to ghcr for amd64 and arm64, logged in with the Mac's `gh` token (it needs `write:packages`). Wait for it to go green before telling anyone about the release; Baker → *Server image* → *Ship* runs it again, and `tool/server-image.sh v<version>` does the same by hand.
 4. **Desktop and phone builds** go out after that: the Windows installer (built from the same release) and the phone builds from Baker.
@@ -76,7 +76,7 @@ Every PocketTerm server sends to `PUSH_RELAY_URL` (default `https://push.danyzma
 
 ## Mac
 
-Each release is a notarized DMG on GitHub Releases, plus an `appcast.xml` that installed copies check through Sparkle (`SUFeedURL` in `apps/pocketterm-desktop/macos/Runner/Info.plist`: `https://github.com/danyzmaj-apps/pocketterm/releases/latest/download/appcast.xml`). `tool/release.sh` does all of it.
+Each release is a notarized DMG of the native Mac app (`apps/pocketterm-desktop/macos`) on GitHub Releases, plus an `appcast.xml` that installed copies check through Sparkle (`SUFeedURL` in `apps/pocketterm-desktop/macos/PocketTerm/Info.plist`: `https://github.com/danyzmaj-apps/pocketterm/releases/latest/download/appcast.xml`). `tool/release.sh` does all of it. The app is universal (Apple silicon and Intel), and so is the built-in server it bundles: `tool/server-sidecar.sh` needs `DART_X64` pointing at an Intel Dart SDK's `dart` (it runs under Rosetta) to build the Intel half, and `release.sh` refuses a real release without it.
 
 ### One-time setup (maintainer's Mac)
 
@@ -85,38 +85,45 @@ Each release is a notarized DMG on GitHub Releases, plus an `appcast.xml` that i
    ```sh
    xcrun notarytool store-credentials pocketterm-notary --apple-id <you@example.com> --team-id <TEAM>
    ```
-3. **Sparkle signing key**, stored in the login keychain under the account `pocketterm`. In `apps/pocketterm-desktop`, after `pod install` in `macos/`:
+3. **Sparkle signing key**, stored in the login keychain under the account `pocketterm`. Sparkle comes as a Swift package; its tools are in the package's artifacts once Xcode has resolved it (any build of the app, e.g. `release.sh --dry-run`, which leaves them in `build/release/dd/SourcePackages/artifacts/sparkle/Sparkle/bin`). In `apps/pocketterm-desktop`:
    ```sh
-   macos/Pods/Sparkle/bin/generate_keys --account pocketterm      # makes it once, prints the public half
-   macos/Pods/Sparkle/bin/generate_keys --account pocketterm -p   # prints the public half again
+   SPARKLE=build/release/dd/SourcePackages/artifacts/sparkle/Sparkle/bin
+   $SPARKLE/generate_keys --account pocketterm      # makes it once, prints the public half
+   $SPARKLE/generate_keys --account pocketterm -p   # prints the public half again
    ```
-   The public half is `SUPublicEDKey` in `macos/Runner/Info.plist`. **Back up the private half**: without it, installed copies won't accept new updates.
+   The public half is `SUPublicEDKey` in `macos/PocketTerm/Info.plist`. **Back up the private half**: without it, installed copies won't accept new updates.
    ```sh
-   macos/Pods/Sparkle/bin/generate_keys --account pocketterm -x <keys>/pocketterm-sparkle-private-key && chmod 600 <keys>/pocketterm-sparkle-private-key
+   $SPARKLE/generate_keys --account pocketterm -x <keys>/pocketterm-sparkle-private-key && chmod 600 <keys>/pocketterm-sparkle-private-key
    ```
-4. `gh auth login`, with push access to the repo; and fvm.
+4. `gh auth login`, with push access to the repo; xcodegen (`brew install xcodegen`); fvm (the built-in server is Dart); an Intel Dart SDK for `DART_X64` (above), of the same Dart version as `fvm dart --version`, unzipped user-locally; it runs under Rosetta (`softwareupdate --install-rosetta` if `arch -x86_64 /usr/bin/true` fails):
+   ```sh
+   mkdir -p ~/.local/share/dart-x64 && cd ~/.local/share/dart-x64
+   curl -fsSLO https://storage.googleapis.com/dart-archive/channels/stable/release/<dart-version>/sdk/dartsdk-macos-x64-release.zip
+   unzip -q dartsdk-macos-x64-release.zip && rm dartsdk-macos-x64-release.zip
+   arch -x86_64 dart-sdk/bin/dart --version   # … on "macos_x64"
+   ```
 
 **A fork shipping its own Mac app** makes its own Sparkle key the same way, puts its public half in `SUPublicEDKey` and its own feed in `SUFeedURL` (`https://github.com/<owner>/<repo>/releases/latest/download/appcast.xml`), and runs `release.sh` with `REPO=<owner>/<repo>`. Otherwise its copies would look for updates from upstream and refuse them. Its team and bundle id come from `config/Local.xcconfig` ([BUILDING.md](BUILDING.md#your-signing-identity)), its push relay from `PUSH_RELAY_URL` ([SELF_HOSTING.md](SELF_HOSTING.md#your-own-app-id-and-relay)).
 
 ### Each release
 
-1. Bump `version:` in `apps/pocketterm-desktop/pubspec.yaml` (`<version>+<build>`), and set the same version name in `apps/pocketterm-desktop/integrations/claude/plugins/pocketterm/.claude-plugin/plugin.json`: Claude Code updates a plugin only to a new version, so installed copies would keep their old hooks (`release.sh` refuses a mismatch). Set the same version as the `POCKETTERM_VERSION` default in `apps/pocketterm-server/docker-compose.yml`: the VPS setup fetches that file from the release tag and runs the image it names (`release.sh` refuses a mismatch here too). Set it as `VERSION` in `apps/pocketterm-desktop/supabase/functions/pocketterm/index.ts` too, what a Supabase project reports in `GET /v1/health` (`release.sh` doesn't check this one).
+1. Bump `MARKETING_VERSION` (the version) and `CURRENT_PROJECT_VERSION` (the build number, always higher than the last release's: Sparkle compares it) in `apps/pocketterm-desktop/macos/project.yml` and set the same version name in `apps/pocketterm-desktop/integrations/claude/plugins/pocketterm/.claude-plugin/plugin.json`: Claude Code updates a plugin only to a new version, so installed copies would keep their old hooks (`release.sh` refuses a mismatch). Set the same version as the `POCKETTERM_VERSION` default in `apps/pocketterm-server/docker-compose.yml`: the VPS setup fetches that file from the release tag and runs the image it names (`release.sh` refuses a mismatch here too). Set it as `VERSION` in `apps/pocketterm-desktop/supabase/functions/pocketterm/index.ts` too, what a Supabase project reports in `GET /v1/health` (`release.sh` doesn't check this one).
 2. Add a `## <version>` section at the top of `CHANGELOG.md` with the user-visible changes; `release.sh` refuses to run without it and uses that section as the release notes. Say whether servers must be updated (VPS: `docker compose pull`; Supabase: **Update that project**) and whether the relay must be redeployed.
 3. Point the download links in `README.md` (**Getting started**) at the new version's DMG and installer.
 4. Commit and push to `main`, then (in `apps/pocketterm-desktop`):
    ```sh
-   tool/release.sh
+   DART_X64=~/.local/share/dart-x64/dart-sdk/bin/dart tool/release.sh
    ```
 
-The script checks the prerequisites above (a clean tree, no `v<version>` tag yet, HEAD on `origin/main`, the certificate, the notary profile, the Sparkle key), builds and archives the app, and exports it with Developer ID signing. It notarizes and staples the app, builds the DMG, signs it with the team's Developer ID certificate, and notarizes and staples that too. Then it writes the appcast (keeping older entries from the previous release's `appcast.xml`) and creates the GitHub release `v<version>` with `PocketTerm-<version>.dmg` and `appcast.xml`; the release creates the tag on GitHub at HEAD, so a failed upload leaves no tag behind and a rerun just works.
+The script checks the prerequisites above (a clean tree, no `v<version>` tag yet, HEAD on `origin/main`, the certificate, the notary profile, the Sparkle key, `DART_X64`), builds the universal server, archives the app with it (`Contents/Helpers/pocketterm-server`, signed with the hardened runtime and `macos/scripts/server.entitlements`) and exports it with Developer ID signing, then checks the export: both architectures, the team, and the server signed with the Developer ID, the hardened runtime and its entitlement. It notarizes and staples the app, builds the DMG, signs it with the team's Developer ID certificate, and notarizes and staples that too. Then it writes the appcast (keeping older entries from the previous release's `appcast.xml`) and creates the GitHub release `v<version>` with `PocketTerm-<version>.dmg` and `appcast.xml`; the release creates the tag on GitHub at HEAD, so a failed upload leaves no tag behind and a rerun just works.
 
 `release.sh` doesn't look at CI: a red run on the release commit doesn't stop it, so check CI yourself first.
 
-`tool/release.sh --dry-run` runs the same build with development signing, without notarizing or publishing, and leaves `build/release/PocketTerm-<version>.dmg` (in `apps/pocketterm-desktop`).
+`tool/release.sh --dry-run` runs the same build, Developer ID signed and with a signed appcast entry, but prints the notarytool/stapler commands instead of running them and publishes nothing (without `DART_X64` it bundles an arm64-only server and says so). It leaves `build/release/PocketTerm-<version>.dmg` and `build/release/appcast/appcast.xml` (in `apps/pocketterm-desktop`); `spctl -a -vv` on its app says "Unnotarized Developer ID". The Sparkle key is read from `SPARKLE_KEY_FILE` (default `/Users/danyzmaj/Dev/keys/pocketterm-sparkle-private-key`, the backup above) when that file exists, else from the keychain, which may ask for access.
 
 ## Windows
 
-Nothing to do by hand: publishing the GitHub release (which `release.sh` does) starts [.github/workflows/release-windows.yml](../.github/workflows/release-windows.yml). On `windows-latest` it checks out the release's tag, installs the Flutter version from `.fvmrc`, runs `flutter build windows --release` in `apps/pocketterm-desktop`, checks that the pubspec version matches the tag (`v<version>`), builds the installer with Inno Setup (`windows/installer.iss`) and uploads `PocketTerm-<version>-setup.exe` to the same release.
+Nothing to do by hand: publishing the GitHub release (which `release.sh` does) starts [.github/workflows/release-windows.yml](../.github/workflows/release-windows.yml). On `windows-latest` it checks out the release's tag (`v<version>`, or a prerelease of it), installs Dart (`dart-lang/setup-dart`) and compiles the built-in server with `tool/server-sidecar.ps1`, publishes the native app self-contained (`dotnet publish … -p:Version=<version> -p:PocketTermRelease=true`), builds the installer with Inno Setup (`windows/installer.iss`) and uploads `PocketTerm-<version>-setup.exe` to the same release. Every pull request already builds, tests, installs and smoke-runs the same installer (`.github/workflows/ci.yml`, job `dotnet-windows`).
 
 - If the job fails, fix it and run the workflow again by hand (Actions → Release (Windows) → **Run workflow**, with the tag `v<version>`); it replaces an earlier upload.
 - The installer and the app are not code-signed, so SmartScreen warns on first run. Windows copies don't update themselves: at start and once a day, the app asks GitHub for the latest release and, when it's newer than itself, shows a download link in Settings and **Update available…** in the tray menu, both opening the release page. That check reads `https://api.github.com/repos/danyzmaj-apps/pocketterm/releases/latest`, so a release only counts once it's published (not a draft or prerelease).
@@ -136,7 +143,7 @@ iPhone:
 
 Android:
 
-1. A **Google Play Console** app with package `com.danyzmaj.pocketterm`, with the **Internal testing** track and its testers' list. Internal testing needs no review. Play only accepts API uploads once one build was uploaded by hand: build `fvm flutter build appbundle --release` once and upload `build/app/outputs/bundle/release/app-release.aab` to Internal testing in the console.
+1. A **Google Play Console** app with package `com.danyzmaj.pocketterm`, with the **Internal testing** track and its testers' list. Internal testing needs no review. Play only accepts API uploads once one build was uploaded by hand: run `tool/build-aab.sh` (in `apps/pocketterm-mobile`) once and upload `build/app/outputs/bundle/release/app-release.aab` to Internal testing in the console.
 2. **Play App Signing** (the default): Google holds the app signing key; uploads are signed with the upload key `pocketterm-upload.jks` (alias `upload`) in the maintainer's keys folder, its password in the Keychain item `pocketterm-upload`. `apps/pocketterm-mobile/android/key.properties` (git-ignored, from `key.properties.example`) points at it. If it is lost, request an upload key reset in Play Console.
 3. `apps/pocketterm-mobile/android/app/google-services.json` (git-ignored) from the Firebase project `pocketterm-cf6de8`, whose service account the relay holds. A release build stops without it (it would have no push).
 4. A Play service account (`shipyard-play-uploader@holdup-signup.iam.gserviceaccount.com`), its JSON in the keys folder, set as the project's Play JSON in Baker. Invite it in Play Console → **Users and permissions** with release access to the app; until then uploads fail with a permission error.
@@ -145,6 +152,23 @@ Baker: add `apps/pocketterm-mobile` as a project, set its App Store Connect key 
 
 ### Each release
 
-Set the version name in `apps/pocketterm-mobile/pubspec.yaml`, then ship from Baker to TestFlight and Google Play (**Ship both**). Baker's workflow uses the git commit count as the build number (`autoBuildNumber`), so it grows with every commit and the `+<build>` in the pubspec is ignored; ship from a new commit each time. For a build by hand: `fvm flutter build ipa --release --build-number <n>` (check `codesign -dv build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app` shows `TeamIdentifier=5SSZ6TYMF5`) and `fvm flutter build appbundle --release --build-number <n>`, with `<n>` above the last uploaded build.
+Set the version name (`MARKETING_VERSION` in `ios/project.yml`, `versionName` in `android/app/build.gradle.kts`), then ship from Baker to TestFlight and Google Play (**Ship both**). Baker's workflow uses the git commit count as the build number (`autoBuildNumber`), so it grows with every commit; ship from a new commit each time. For a build by hand, in `apps/pocketterm-mobile`: `tool/build-ipa.sh --build-name <version> --build-number <n>` (check `codesign -dv` on the app in the archive shows `TeamIdentifier=5SSZ6TYMF5`) and `tool/build-aab.sh --build-name <version> --build-number <n>`, with `<n>` above the last uploaded build.
+
+### Phone builds (Baker)
+
+Baker runs the build command in `apps/pocketterm-mobile`, appends `--build-name <version> --build-number <n>`, and uploads the newest `.aab` under `build/app/outputs/bundle/` and `.ipa` under `build/ios/ipa/`. Build commands:
+
+- Android: `tool/build-aab.sh` (Gradle `:app:bundleRelease`, signed with `android/key.properties`; writes `build/app/outputs/bundle/release/app-release.aab`)
+- iPhone: `tool/build-ipa.sh` (xcodegen, archive and App Store Connect export with the team from `config/PocketTerm.xcconfig`; writes `build/ios/ipa/PocketTerm.ipa`, no upload)
+
+Check commands (from the repo root):
+
+```sh
+cd packages/PocketTermKit && swift test
+cd apps/pocketterm-mobile/ios && xcodegen generate && xcodebuild -scheme PocketTerm -destination 'generic/platform=iOS Simulator' build
+cd apps/pocketterm-mobile/android && ./gradlew :core:test :app:testDebugUnitTest :app:lintDebug
+cd apps/pocketterm-desktop/macos && xcodegen generate && xcodebuild -scheme PocketTerm build test
+~/.dotnet/dotnet test apps/pocketterm-desktop/windows/PocketTerm.Libraries.slnf
+```
 
 TestFlight builds use APNs production; the relay handles both production and sandbox tokens.

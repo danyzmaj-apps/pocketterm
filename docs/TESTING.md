@@ -1,187 +1,104 @@
 # Testing PocketTerm
 
-Every user-facing feature, and what tests it. Four layers:
+Five layers, cheapest first:
 
-- **Unit and widget tests**: `fvm flutter test` (or `fvm dart test`) in each package and app; `deno test` in `apps/pocketterm-relay`; `claude plugin test .` in the Claude Code plugin (`apps/pocketterm-desktop/integrations/claude/plugins/pocketterm`, its tests in `tests/`). The core client tests also run against PocketTerm on a local Supabase (`POCKETTERM_SUPABASE=1 fvm flutter test -j 1 test/server_client_test.dart test/session_test.dart`, after `tool/supabase-local.sh start`); CI doesn't run those.
-- **End-to-end run**: `tool/e2e/run.sh` (see `tool/e2e/bin/run.dart`). For each terminal (kitty, Ghostty, WezTerm, iTerm2): a server (`--server local`; `builtin`, over Tailscale; `supabase`, on a local Supabase in Docker; `supabase-cloud`, a new project on supabase.com made by the desktop's setup and deleted after; or a server's URL), the real desktop app under `apps/pocketterm-desktop/integration_test/e2e_test.dart` with throwaway terminals running a fake omp (`tool/e2e/bin/fake_omp.dart`), and the phone app in the iPhone Simulator or an Android emulator driven by Maestro (`apps/pocketterm-mobile/maestro/e2e/run.sh`, phases in order `main`, `profiles`, `computer-off`, `server-down`, `server-restart`, `desktop-restart`, `real-omp`, `revoke`; `supabase-cloud` has no server restart; the phone app is built from HEAD, or from the working tree as it is with `--phone-from-tree`). Below, *flow* `x` is `apps/pocketterm-mobile/maestro/e2e/x.yaml` and *step* "y" is a `report.step` in the desktop test.
-- **Installed-app smoke**: `tool/smoke/run.sh` and `tool/smoke/scenario.sh`: a release build copied to a throwaway place, opened as from Finder, driven through accessibility (scenarios `wizard`, `getready`, `settings`, `theme`, `menubar`, `quit`).
-- **Manual**: what needs a camera, real push delivery, a real right click, Windows, or the owner's own accounts.
+- **Unit tests**, per platform (below). CI runs them all.
+- **Wire vectors and interop**: every core reads `tool/vectors/vectors.json` (frozen, made from the Dart code) in its unit tests; opt-in interop tests talk to the real Dart server.
+- **Installed-app smoke** (macOS): `tool/smoke/run.sh` + `tool/smoke/scenario.sh`, the native app as a person opens it, driven through accessibility.
+- **End-to-end run**: `tool/e2e/run.sh`: a server, the native Mac app, throwaway terminals with a fake omp, and the phone app (iOS Simulator or Android emulator) driven by Maestro.
+- **Manual**: what needs a camera, real push delivery, a real right click, Windows hardware, or the owner's own accounts (end of this file).
 
-Run the e2e suite on a quiet Mac: it opens throwaway terminal windows and refuses to start Ghostty or iTerm2 while another of it runs.
+## Unit tests
+
+| What | Command |
+| --- | --- |
+| Swift core (`PocketTermKit`, `PocketTermTerminals`, `PocketTermDesktop`) | `cd packages/PocketTermKit && swift test` |
+| Mac app | `cd apps/pocketterm-desktop/macos && xcodegen generate && xcodebuild -project PocketTerm.xcodeproj -scheme PocketTerm test` |
+| iPhone app | `cd apps/pocketterm-mobile/ios && xcodegen generate && xcodebuild -project PocketTerm.xcodeproj -scheme PocketTerm -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test` |
+| Android core and app | `cd apps/pocketterm-mobile/android && ./gradlew :core:test :app:testDebugUnitTest` (JDK 17) |
+| Windows cores (`PocketTerm.Core`, `PocketTerm.Desktop.Core`) | `~/.dotnet/dotnet test apps/pocketterm-desktop/windows/PocketTerm.sln` (the cross-platform parts run on macOS; the WinUI app builds in CI on `windows-latest`) |
+| Dart server | `fvm dart test` in `packages/pocketterm_server` |
+| Relay | `deno test` in `apps/pocketterm-relay` |
+| Claude Code plugin | `claude plugin test .` in `apps/pocketterm-desktop/integrations/claude/plugins/pocketterm` |
+
+**Vectors.** `tool/vectors/vectors.json` holds sealed frames, AAD strings, base64 variants, ping proofs and envelopes made by the Dart implementation. The Swift, Kotlin and C# cores' unit tests decode and re-encode every one: a core that drifts from the wire format fails there first. The file is frozen; regenerate it only with a deliberate protocol change.
+
+**Interop.** Each core has an opt-in test against the real server. Start one (`fvm dart run apps/pocketterm-server/bin/pocketterm_server.dart serve --data <tmp> --address 127.0.0.1 --port 0`), make a setup link (`… setup-link --data <tmp> --public-url <url>`), then run the core's tests with `POCKETTERM_INTEROP_SERVER=http://127.0.0.1:<port>` and the link in the environment (each core's README names the variable): setup, pairing, a topic, sealed frames both ways, a blob up and down.
+
+## Installed-app smoke (macOS)
+
+`tool/smoke/run.sh prepare` builds a Release app with `-D POCKETTERM_SMOKE`, copies it as `com.danyzmaj.pocketterm.smoke` with a throwaway home, Keychain and tmux; `tool/smoke/scenario.sh wizard getready settings theme menubar quit` walks it through accessibility (`tool/smoke/ax.swift`). Needs Accessibility and Screen Recording for the terminal it runs in. The Windows app's smoke is CI's build and its unit tests; the app itself is checked by hand on Windows.
+
+## Maestro flows on the demo
+
+`apps/pocketterm-mobile/maestro/{demo,queue,voice,tips,orchestrator}.yaml` run on the phone's demo, no computer needed: `~/.maestro/bin/maestro test apps/pocketterm-mobile/maestro/queue.yaml`. On iOS they need a Debug build launched with `POCKETTERM_E2E` (the flows pass it).
+
+## The end-to-end run
+
+```
+tool/e2e/run.sh [--terminal kitty|ghostty|wezterm|iterm|all]
+                [--server local|builtin|supabase|supabase-cloud --supabase-token-file <f>|<https url> --setup-link-file <f>]
+                [--no-phone] [--platform ios|android [--avd <name>]] [--device <id>]
+                [--phone-only <flow>,…] [--phone-from-tree] [--desktop-only <text>,…] [--hold] [--from-head]
+```
+
+`tool/e2e/bin/run.dart` documents every option. For each terminal:
+
+1. **Server**: `local` (the compiled Dart server on a free port), `builtin` (the app's own "On this computer" server, published by the real `tailscale serve`), `supabase` (`tool/supabase-local.sh`), `supabase-cloud` (the app's setup makes a project on supabase.com with the token; the run deletes it, or any project the account didn't have before, whatever happened), or a server elsewhere with its setup link in a file (and `--server-stop-cmd`/`--server-start-cmd` for the restart).
+2. **Desktop**: the native Mac app, built as a test build of its own (`com.danyzmaj.pocketterm.e2e`, Debug, into `apps/pocketterm-desktop/macos/build/e2e`), opened by Launch Services as from Finder (launchd's PATH, no TERM, no locale) with a throwaway home. `tool/e2e/lib/desktop.dart` drives it two ways (`tool/e2e/lib/mac_app.dart`): accessibility through `ax.swift`'s `serve` mode (the screens' identifiers), and the app's test hooks (`apps/pocketterm-desktop/macos/PocketTerm/App/E2E.swift`, compiled into test builds only, switched on by `POCKETTERM_E2E_DIR`): requests in a folder answered with what the controller, the terminals and the server say; secrets in a file of the run's (never the Keychain), launch at login in memory, the folder picker answering with the run's projects folder, omp found at the fake, the pairing links and phone notifications recorded.
+3. **Terminals**: throwaway kitty / Ghostty / WezTerm / iTerm2 windows and the run's own tmux server, each with only the run's config, the fake omp (`tool/e2e/bin/fake_omp.dart`) first on the PATH and a shell that logs every command and key.
+4. **Phone**: `apps/pocketterm-mobile/maestro/e2e/run.sh` builds the native E2E build (iOS: `xcodebuild` Debug for the Simulator "PocketTerm E2E", made when missing, the flows launching it with `POCKETTERM_E2E`; Android: `./gradlew :app:assembleDebug -PpockettermE2e=true`, the emulator `pocketterm_api35` cold-booted when none runs, `adb reverse` for the server's port) and runs the flows of each phase: `main`, `profiles`, `computer-off`, `server-down`, `server-restart`, `desktop-restart`, `real-omp`, `revoke`. The desktop hands it `phone-link.txt`, `phone-link-2.txt` and `expect.json`, answers its rpc requests (`approve-on-computer`, `terminal-on`) and checks on the computer what each flow did.
+
+Everything a run saw is in `build/e2e/<stamp>/`: `summary.txt` (the pass/fail table), `summary.json`, `junit.xml`, per terminal `results.jsonl`, `desktop-e2e.log`, `desktop-<n>.log` (the app's own output), `server.log`, `screenshots/` (a failure adds `fail-<step>.png` and `fail-<step>.ax.txt`, what accessibility read), `phone/<platform>/<phase>/<flow>/` (Maestro's log, screenshots, report) and `work/` (the fake omp's logs, the shells' typed logs, the throwaway configs).
+
+`--no-phone` runs the desktop alone; the checks of what the phone did are then skipped (the Flutter era's in-process stand-in phone is gone with the Dart core). `--hold` stops after the hand-off so you can run phone flows one by one against the live desktop (`run.sh --run-dir <run>/<terminal> --phase main --only <flow> --no-build`), then `rm <run>/<terminal>/hold` to go on.
+
+Run it on a quiet Mac: it opens terminal windows, and refuses to start Ghostty or iTerm2 while another of it runs. The terminal it runs in needs Accessibility and Screen Recording. Phone runs on the iOS Simulator can't overlap (Maestro's iOS driver uses one port).
+
+### The Flutter desktop test, step by step
+
+`apps/pocketterm-desktop/integration_test/e2e_test.dart` drove the Flutter app in-process; `tool/e2e/lib/desktop.dart` keeps every step under the same name:
+
+| Flutter step (`e2e_test.dart`) | Native check (`desktop.dart`) |
+| --- | --- |
+| desktop: runs as from Finder | the app's own environment from its hooks (`state.env`): no Homebrew on the PATH, no TERM/locale, the run's HOME |
+| terminals: throwaway windows open | unchanged (`e2e.dart` throwaways; Ghostty's through the app's Ghostty host via `ghostty-launch`) |
+| setup: On this computer shows Tailscale as it is / …starts its server | AX: `setup-this-computer`, each `check-*` row's text against the real Tailscale CLI, `setup-start-server` enabled state; builtin: Start, hooks' `hosting.publicUrl`, `/v1/health` through it |
+| setup: Not yet shows the server guide | AX: `setup-address` set, `setup-address-error` text, `203-0-113-7.sslip.io`, `setup-command-0` |
+| setup: link problems are explained | AX: `setup-link` set, `setup-error` per bad link, no `setup-link-health`, Connect signs nothing in (hooks' `state.backend`) |
+| setup: own server, paste link | AX: `setup-own-server`, `setup-have-server`, `setup-link`, "answers" in `setup-link-health`, `setup-connect`; then signed in, Terminal from phone on, no login item |
+| setup: Supabase, set up a new project | AX through the Supabase screens (`supabase-token`, `supabase-org`, `supabase-region`, `supabase-error`/`supabase-retry`); the project's ref from the signed-in backend |
+| get ready: omp / sessions already open / terminals / project folders / phone code / Done | AX: Install → `confirm-install` text → `confirm-install-go`, extension file; `get-ready-open-sessions`, `get-ready-unreported-<key>`; hooks' `statuses`; `get-ready-choose-folder`; `pairing-qr` and a recorded pairing link; `get-ready-done` |
+| windows: sessions in their own windows / plain shell is a screen | hooks' `sessions`, `windows`, `unreported` |
+| settings: status bar, coding agents tab, data protection, launch at login, new sessions open in | AX: `settings-status`, `settings-open-checklist`; `settings-agent-omp`/`-claude`, `settings-default-omp`; `settings-data-protection`, `data-protection-done`; `settings-launch-at-login` value and the hooks' in-memory login item; `settings-terminal-app` picked |
+| add a phone: two pairing links / hand-off files | AX: `settings-add-phone` twice, the sheet's Done; links from the hooks; the spare computer signed in by the hooks (`spare`) |
+| phone: … (every `_verifyMain` check) | unchanged: the fake omp's and the shells' logs, hooks' `sessions`/`windows` |
+| profiles: … | AX: `settings-omp-profiles`, Install in `settings-agent-omp`, `confirm-install` paths; hooks' sessions, windows and recorded notifications |
+| phone: computer off, then Retry | AX: `settings-terminal-from-phone` off, on again on the phone's rpc |
+| restart: server / desktop app | the harness's server (or the hooks' `hosting-stop`/`hosting-start`); the desktop really quits and starts again, still signed in |
+| real omp: … | unchanged, through the hooks' `send` and `live` |
+| revoke | hooks' `server-devices`, `revoke` |
+| ghostty: Start new windows in tmux / Remove | AX: `settings-ghostty-tmux` |
+| settings: project folders remove and add | AX: `settings-folder-<path>`, `settings-add-folder` |
+| account: Add a computer / Reset key / Erase / sign out | AX: `settings-add-computer` + `add-computer-link`; `settings-reset-key` + the alert's Reset key, a new channel key; `settings-erase` + Erase, the spare signed out; `settings-sign-out` (+ the alert when hosting), `sign-in-other-server`, back on the setup window |
+| stand-in phone (`--no-phone`) | removed: the Dart client it was made of is gone; `--no-phone` skips the phone checks |
+
+There is no XCUITest target: XCUITest needs UI automation mode allowed by `sudo`, the AX driver doesn't.
 
 ## What to run for a change
 
-Don't run the whole e2e suite for every change: test what you changed and what it touches, so you know nothing near it broke.
-
-1. **Unit and widget tests** of every package and app you touched (CI runs them all anyway).
-2. **Find the rows** in the tables below for the features you changed *and* the features that share their code or screens (a sheet you made taller, a shared widget, a native file, a setting both apps read). Their *How it's tested* column names the e2e step, phone flow, smoke scenario or test file.
-3. **Run only those**, on the cheapest target that covers them:
-   - phone flows: `tool/e2e/run.sh --terminal kitty --phone-only <flow>,… [--phone-from-tree]` (add `fresh,pair-accept` first when the flow needs a paired phone), on the platform the change affects (`--platform android --avd <avd>` for Android code); the desktop then checks only what those flows did;
-   - desktop steps: `--desktop-only <text>,…` keeps the steps whose name contains one of the texts (besides setup, Get ready, the windows, pairing and the hand-off, which every run needs), e.g. `tool/e2e/run.sh --terminal kitty --phone-only fresh,pair-accept,profiles --desktop-only profile`; `--no-phone` runs the desktop with the stand-in phone; or a smoke scenario (`tool/smoke/scenario.sh <scenario>`);
-   - runs side by side (another checkout's run while yours goes): phone runs on the iPhone Simulator can't overlap, even on separate Simulators, as every `maestro test` drives its own iOS driver through one fixed port on the Mac (Maestro then reports the device unreachable or the app stopped): run them one after another. `--device <udid or serial>` picks the Simulator or emulator a run uses (`xcrun simctl create "PocketTerm E2E 2" com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro <runtime>`; a shut-down one is booted); without it every run takes the Simulator "PocketTerm E2E";
-   - another terminal or server only when the change is about that terminal or server.
-4. **New behaviour gets a test** in the same change (a flow, step, scenario or unit test) and a row here, so the next change can find it.
-
-Full matrix runs (every terminal, server and phone platform, below and in [RELEASING.md](RELEASING.md#before-a-release-end-to-end)) are for big cross-cutting changes (protocol, encryption, session routing) or when a targeted run finds something it can't explain.
-
-## Desktop
-
-| Feature | How it's tested | Gap |
-| --- | --- | --- |
-| Setup: choose On this computer / On my own server / Supabase | step "setup: On this computer shows Tailscale as it is" / "…starts its server, Tailscale serves it" (`--server builtin`); step "setup: Supabase, set up a new project (real Management API)" (`--server supabase-cloud`); `setup_page_test.dart`; smoke `wizard` | none |
-| Setup, On this computer: Tailscale checklist (installed, running, signed in, HTTPS, port 443 free) and each row's button | step reads the real Tailscale state and checks every row and that Start is on only when all are done; smoke `wizard` walks Stopped, NeedsLogin, HTTPS off and serve taken with a stand-in CLI; `setup_page_test.dart` "On this computer" | Install Tailscale (brew/winget) and Turn on HTTPS open other apps: unit only |
-| Setup, On this computer: Start, the server runs and Tailscale serves it | step (builtin); smoke `wizard` (stand-in Tailscale) | none |
-| Setup, own server: I have one, paste link, Connect | step "setup: own server, paste link" | none |
-| Setup link problems (not a link, no setup token, server not answering, phone link) | step "setup: link problems are explained"; `setup_page_test.dart` | none |
-| Setup, own server: Not yet (server guide, address check, commands, DNS/HTTPS/health checks) | step "setup: Not yet shows the server guide" (address check, commands); `setup_page_test.dart` "not yet" | DNS/HTTPS/health against a real new VPS: manual |
-| Setup, Supabase: Set up a project (token, organization, region, Create, the step checklist, sign-in) | steps "setup: Supabase, set up a new project (real Management API)" and "setup: Supabase set up with no Retry" (`--server supabase-cloud`, a project made and deleted on supabase.com); `supabase_setup_test.dart` | Update that project on an existing one: unit only (the cloud run lists only the project it makes) |
-| Setup, Supabase: Paste a setup link | the `--server supabase` run signs in with the local project's link (step "setup: own server, paste link"); `supabase_setup_test.dart` (the Supabase branch's paste screen) | none |
-| Sign-in when the Keychain refuses (locked, missing): message and Try again | core `session_test.dart`; `setup_page_test.dart`, `hosting_test.dart` | a real locked Keychain: manual |
-| First sign-in turns Terminal from phone on, adds no login item | steps "setup: …" assert both | none |
-| Get ready: omp gets PocketTerm (Install, confirmed) | step "get ready: omp gets PocketTerm once confirmed"; `get_ready_test.dart`, `integrations_test.dart` | Claude Code install: plugin tests and `integrations_test.dart` only (the e2e never touches the owner's Claude Code) |
-| Get ready: sessions already open (unreported) | step "get ready: sessions already open are listed" | none |
-| Get ready: terminals row | step "get ready: terminals"; `terminals_card_test.dart` | none |
-| Get ready: project folders, Choose folder… | step "get ready: project folders" | none |
-| Get ready: phone code (QR, expiry, Retry) | step "get ready: phone code"; `pair_test.dart` | the code running out after 10 minutes: unit only |
-| Get ready: Done, Open setup checklist again | steps "get ready: Done", "settings: status bar and Open setup checklist"; smoke `getready` | none |
-| Settings status bar (All set / things need attention, Show) | step "settings: status bar and Open setup checklist"; `settings_test.dart`; smoke `settings` | none |
-| Phone tab: Terminal from phone switch | step "phone: computer off, then Retry brings it back" (+ phone phase `computer-off`); `settings_test.dart` | none |
-| Phone tab: Add a phone… | step "add a phone: two pairing links" | none |
-| Phone tab: Reset key… | step "phone tab: Reset key"; `channel_keys_test.dart`, `settings_test.dart` | none |
-| Phone tab: project folders (remove, Add folder…) | step "settings: project folders remove and add"; `settings_test.dart` | none |
-| Coding agents tab (state, Install/Update, Default, Make default) | step "settings: coding agents tab"; `settings_agent_test.dart` | Make default with two agents installed: unit only (the e2e has no Claude Code) |
-| Coding agents tab: omp profiles (Profiles: line; Install puts PocketTerm in the default profile and each one) | step "profiles: Settings lists them, Install puts PocketTerm in each"; `integrations_test.dart` | the Profiles: line: e2e only |
-| Sessions carry their omp profile (the extension's hello, a window's `omp --profile` command line) | steps "profiles: omp in a profile reports it; its window says so", "real omp: a profile loads PocketTerm from its own folder and says so"; core `live_test.dart`, `terminals_test.dart`, `agent_test.dart` | none |
-| Notifications name an omp profile (`omp · <profile> finished · <project>`) | step "profiles: a finished run is notified as omp · personal finished" (the title the app sends) | delivery: manual |
-| Terminals tab: New sessions open in | step "settings: new sessions open in <terminal>" | none |
-| Terminals tab: Place them (tab in the project's window, new window) | step "phone: a second shell in a project opens as a tab of its window" (the default); `terminals_test.dart` (`projectWindow`), `settings_test.dart` | New window on a real terminal: unit only |
-| Terminals tab: kitty Set up (remote control in kitty.conf) | `kitty_test.dart`, `terminals_card_test.dart` | e2e kitty already listens (its throwaway config); the Set up click: unit only |
-| Terminals tab: Allow… (Automation for Ghostty, iTerm2) | `ghostty_test.dart` | manual: a macOS permission prompt for the owner |
-| Terminals tab: Ghostty Start new windows in tmux / Remove / line upgrade | steps "ghostty: Start new windows in tmux", "ghostty: Remove takes tmux out"; `ghostty_config_test.dart`, `settings_test.dart` | none |
-| Terminals tab: tmux install (brew, MacPorts, no Homebrew) | `terminals_card_test.dart`, `commands_test.dart` | installing for real: manual |
-| WezTerm on Windows (install, PATH) | `wezterm_setup_test.dart`, `windows_test.dart` | manual: Windows hardware |
-| Account tab: Your server, Add a computer… | step "account: Add a computer" (built-in server); `settings_account_test.dart`, `hosting_test.dart` | Add a computer… on Supabase (`POST /v1/setup/new`): core client tests against the local Supabase only |
-| Account tab: phones signed in, Sign out… | `settings_account_test.dart`; step "revoke: phone removed on the server" revokes through the same API call (+ phone phase `revoke`) | the Sign out… button itself: unit only |
-| Account tab: Launch at login (off until turned on; Login Items hint) | step "settings: launch at login switch" (E2E host records it, no login item); `controller_test.dart`, `desktop_host_test.dart` | the real login item: manual (it changes the owner's login items) |
-| Account tab: Erase… | step "account: Erase" (built-in server); `settings_account_test.dart`; server `edge_test.dart` | none |
-| Account tab: Sign out | step "account: sign out"; `settings_account_test.dart` | none |
-| Account tab: How your data is protected | step "settings: data protection"; smoke `settings` | none |
-| Account tab: Theme (Catppuccin Mocha, the default, Rosé Pine Dawn, Tokyo Night, Gruvbox Material), kept in the preferences; every tab repainted | smoke `theme` (each kept as `flutter.theme`; Account, Phone, Coding agents and Terminals photographed in each; Mocha last); core `theme_test.dart`, `app_icon_test.dart` | the Dock icon per theme (the app's own for Mocha), the intro at the window's first showing and the colour under its first frame: manual; Windows' window and tray icons: manual (Windows hardware) |
-| Account tab: Quit PocketTerm | smoke `quit` | none |
-| Hosting states (no Tailscale, off, signed out, HTTPS off, failed, taken, renamed) | `hosting_test.dart`; smoke `wizard` (stand-in CLI) | none |
-| Menu bar icon: click opens the window | smoke `menubar` | none |
-| Menu bar right-click menu (Open, Settings…, Check for Updates…, Quit) | none automated | manual: needs a real right click; Sparkle's update check reaches the network |
-| Windows tray menu, update notice (Download) | `desktop_host_test.dart`, `update_check_test.dart` | manual: Windows hardware |
-| Runs as from Finder (launchd PATH, no TERM, no locale) | step "desktop: runs as from Finder"; smoke (`open -n`) | none |
-| Sessions placed in their own windows; plain shells as screens | steps "windows: sessions in their own windows", "windows: plain shell is a screen" | none |
-| Desktop restart keeps the sign-in and sessions | step "restart: desktop app" (+ phone phase `desktop-restart`) | none |
-| Real omp extension | steps "real omp: /new from the phone starts a fresh session in place", "real omp: a profile loads PocketTerm from its own folder and says so" (when omp is installed) | none |
-| Orchestrator: started in its folder with ORCHESTRATOR.md, one at a time; its tools (sessions, read, prompt, stop) for it alone | step "phone: the orchestrator starts in <terminal> and steers a session" (the fake omp in the orchestrator folder calls PocketTerm as the extension's tools would); `live_hub_test.dart` "the orchestrator" | the real extension's tool registration (`registerOrchestratorTools`): fake omp only in the e2e; checked by hand against real omp 18.4 |
-
-## Phone
-
-| Feature | How it's tested | Gap |
-| --- | --- | --- |
-| Fresh install, setup screen | flow `fresh`; `setup_page_test.dart` | none |
-| Scan the computer's code | flow `pair` (an E2E build pastes the code where the camera would read it); `scan_test.dart` | the camera itself: manual |
-| Bad or used code | `scan_test.dart`, `session_test.dart` | none |
-| Demo | flow `demo` (`maestro/demo.yaml`); `demo_test.dart` | none |
-| Tour prompt (New here? Show me / No thanks) | `coach_test.dart` | an E2E build starts it answered; release-build behavior: unit only |
-| First-use tips, Show tips again | flow `tips_home`; `coach_test.dart` | none |
-| Notifications consent (Turn on / Not now) | flow `pair` (both answers); `push_consent_test.dart` | none |
-| Notifications switch in the account sheet; why turning on failed (off in Settings, no address from Apple or Google) | flow `push_toggle`; `push_consent_test.dart` | no address from Apple or Google: unit only |
-| Tailscale Awaiting Approval help | `phone_edges_test.dart` | a tailnet with device approval: manual |
-| Account sheet rows, Leave this server (Cancel and Leave) | flows `account_sheet`, `signout`; `home_page_test.dart` | none |
-| Theme (account sheet → Theme: Catppuccin Mocha, the default, Rosé Pine Dawn, Tokyo Night, Gruvbox Material), kept after a restart; iOS's icon-change alert | flow `theme` (the theme sheet, the session list and a session photographed in each; Mocha last); core `theme_test.dart`, `app_icon_test.dart` | the Android launcher icon (switched in release builds only, once the app leaves the screen), the launch intro and the colour before Flutter's first frame: manual |
-| Motion (`lib/motion.dart`): the theme cross-fade, arrivals in a conversation and the session list, tool rows opening, the microphone turning into Send and growing while pressed, the voice sheet's words and buttons, queued prompts gliding to a new place; Reduce Motion / Remove animations; a mic press the system takes back | flows `demo`, `queue`, `voice`, `theme` walk through every one; `voice_test.dart` (the swap, a press taken back), `queue_strip_test.dart` (rows glide back after a refused move); the rest of the widget tests run with each animation | how it looks moving and with Reduce Motion on: manual (record the Simulator with `xcrun simctl io booted recordVideo` while a flow runs) |
-| Computer picker, locked computer | flow `computers`; `home_page_test.dart`, `phone_edges_test.dart` | scanning a locked computer's code: manual (camera) |
-| Project list: sort, fold, long-press menu | flow `project_list`; `terminal_list_test.dart` | none |
-| omp profiles in the list: the row and the session's header name the profile; the profile filter (a profile, one with no sessions, Show all) | flow `profiles` (phase `profiles`); `terminal_list_test.dart` | none |
-| Swipe left: End session | flow `end_session` | none |
-| Swipe left: Close window | flow `close_window`; step "phone: close a shell window from the window list" | none |
-| New session (+): agent in a project | flow `new_session`; step "phone: new session (+) opens in <terminal>" | none |
-| New session (+) and the project menu's New omp · <profile> session here, in an omp profile | flow `profiles`; steps "phone: New session in a profile types omp --profile=personal", "phone: a project’s New omp · personal session here starts in it"; `new_session_sheet_test.dart` | none |
-| New session (+): plain shell | flow `new_shell`; step "phone: new shell opens in <terminal> without an agent" | none |
-| New session (+): a second window in a project goes in as a tab of its window, and the phone says where | flow `new_tab`; step "phone: a second shell in a project opens as a tab of its window" | General (`~`): `new_session_sheet_test.dart` only (the e2e keeps out of the owner's home folder) |
-| Windows and tabs (the count above the projects, the list of windows and their tabs, a tab opening its screen; where a row sits on its long press) | flow `windows`; `terminal_list_test.dart` "where terminals sit on the computer" | none |
-| New session (+): New project… | flow `new_project`; step "phone: new project made in the project folder" | none |
-| Conversation: prompt and streamed reply | flows `conversation-*`; step "phone: prompt reaches the agent" | none |
-| Conversation: steer while it works, Queue | flow `steer_queue`; steps "phone: steer reaches the agent while it works", "phone: a queued prompt runs after the turn"; `live_hub_test.dart` "the queue" (edit, move, remove, Send now, limits, reconnect); `queue_strip_test.dart` | none |
-| Conversation: the whole queue (fullscreen: edit in place, drag, Move to top/bottom, Duplicate, Delete and Undo, Clear all, add at the end, Send now, Pause/Resume, Sent as it goes, offline read-only) | flow `queue` (`maestro/queue.yaml`, on the demo's queued session; `-e THEME=<name>` names its screenshots); `queue_screen_test.dart`, `queue_strip_test.dart` (the header opens it) | on a real computer: Clear all, Duplicate and Undo against LiveHub's queue (unit only; the e2e fake's queue drains too fast to hold one open) |
-| Conversation: voice prompt (the microphone where Send is while nothing is typed, a smaller one beside Send otherwise; tap listens until Stop, hold listens until lifted, sliding away cancels; edit in place, Send, Insert, Cancel; denied microphone, no language on the device and its download; English or Croatian, Auto by what the phone has, the picker's On this phone / Download / Open Settings / Not supported, switched on the sheet mid-listening; interruptions keep the text) | flow `voice-language` (`maestro/e2e/voice_language.yaml`: the picker, the choice kept over a restart, a Croatian prompt sent and answered through the computer, English switched to mid-listening); flow `voice` (`maestro/voice.yaml`, the demo in an E2E build, whose scripted speaker stands in for the microphone, in Croatian when switched; its header says how to set each theme, `-e NAME=<name>` names the screenshots); `voice_test.dart` (tap and hold flows, the swap, appending, denied, no English, no Croatian and switching, Croatian not supported, Auto's fallback to English, the picker, interrupted, leaving the app, steer and queue on Send, the sheet clear of the status bar); `core/test/speech_test.dart` (Auto's pick) | the recognizers themselves (iOS SpeechAnalyzer and SFSpeechRecognizer, Android's on-device SpeechRecognizer), their restarts over long dictation, the English and Croatian downloads, Croatian recognition quality and a real call interrupting: manual, on a real phone |
-| Conversation: Stop | flow `stop`; steps "phone: Stop interrupts the agent", "phone: Stop holds the queue; Resume sends what waits" | none |
-| Orchestrator bar and sheet (what it's up to, ask it, the first message starts it, hold to talk, Open conversation, Stop; closing mid-send still sends) | flow `orchestrator` (`maestro/e2e/orchestrator.yaml`); flow `maestro/orchestrator.yaml` on the demo; `orchestrator_test.dart` | none |
-| Conversation: Continue chip | flow `switch` (Just restart) | none |
-| Slash commands: / list, /new | flows `slash_new`, `real_omp`; step "phone: /new starts a fresh session in place" | none |
-| Slash command pickers: /model, /resume (search, Cancel) | flows `menu_model`, `menu_resume`; steps "phone: /model picker answered", "phone: /resume picker searched and answered"; `live_test.dart` (parseMenu) | none |
-| Approval (Approve) | flow `approval`; step "phone: approval answered" (Ghostty: left to the computer) | Deny: `live_test.dart`, demo; e2e answers Approve only |
-| Questions (choice, Other…); a picked answer filled with the theme's accent | flow `question`; step "phone: the agent’s question answered"; `live_test.dart` (answerKeys); core `ui_test.dart` (picked and unpicked chips in each theme) | typed Other and multiple choice: unit only |
-| Plan review | flow `plan`; step "phone: the plan review answered"; `live_test.dart` (parsePlanReview) | none |
-| Screen page: key bar (Esc, Tab, arrows, Enter, ^C), typing, wrap | flows `screen`, `screen_keys`; steps "phone: keys reach the window", "phone: screen keys Tab, Enter, Ctrl+C reach the window" | none |
-| Screen from a conversation | flow `session_screen` | none |
-| Switch to conversation: Restart and continue / Just restart | flows `switch-continue`, `switch-restart`; matching steps | none |
-| Switch to conversation in an omp profile (`omp --profile=<name> -c`) | flow `profiles`; step "phone: Switch to conversation resumes in the profile"; `terminal_bridge_test.dart` | omp started with only `OMP_PROFILE` set (no flag on its command line) resumes in the default profile: by design |
-| Images from Photos | flow `image`; step "phone: image arrives decrypted at the agent" | Paste image: unit only (no clipboard image in the Simulator) |
-| Files from Files | flow `file`; step "phone: a document arrives …" | none |
-| 10 attachments at most | flow `attach_limit`; `attachments_test.dart` | none |
-| Files over 20 MB refused | flow `too_large`; `attachments_test.dart`, server `server_test.dart` (blobs) | none |
-| Follow (Live Activity / Android ongoing notification) | flow `follow` (the switch and its state); `live_activity_test.dart` | what the Lock Screen or the notification shade shows, and its updates by push: manual (real device, real push) |
-| Notifications delivered for asks and finished runs | server `server_test.dart` push group, `edge_test.dart` relay; relay `tests` | manual: real APNs/FCM delivery to a real device |
-| Tapped notification opens its session | flow `deep_link` via `push-tap-cold` (Android, as the tap's intent) | iOS tap on a real notification: manual |
-| Deep link pocketterm://session cold start | flow `deep_link` (`deep-link-cold`, `deep-link-server-restart`, `deep-link-desktop-restart`) | none |
-| Cold start, background and back | flows `cold_start`, `background`/`foreground` | none |
-| Server unreachable, Retry | flow `unreachable` (phase `server-down`) | none |
-| Computer not answering / last seen, Retry | flows `offline`, `retry` (phase `computer-off`) | the clock-differs note: `phone_edges_test.dart` only |
-| Reconnect after server or desktop restart (nothing replayed) | flow `reconnect` (phases `server-restart`, `desktop-restart`); steps "restart: …" | none |
-| Signed out by the computer (revoked) | flow `revoked` (phase `revoke`); step "revoke: phone removed on the server" | none |
-
-## Server, relay, core
-
-| Feature | How it's tested | Gap |
-| --- | --- | --- |
-| Setup and pairing codes, throttle | `server_test.dart` (setup, pairing, auth); every e2e sign-in | none |
-| Devices list, revoke, erase | `server_test.dart`; steps "revoke: …", "account: Erase" | none |
-| Restart keeps state; state on disk | `edge_test.dart`; step "restart: server" | none |
-| Blobs (20 MB, download once, 1 h) | `server_test.dart`, `edge_test.dart`; flows `image`, `file`, `too_large` | none |
-| PocketTerm on Supabase (function, migrations, Realtime, blobs, push) | core `server_client_test.dart`, `session_test.dart` with `POCKETTERM_SUPABASE=1`; e2e `--server supabase` (local) and `--server supabase-cloud` | not in CI |
-| Live channel, reconnect, no replays | `terminal_channel_test.dart`, `terminal_remote_test.dart`; phases `server-restart`, `desktop-restart` | none |
-| Push forwarding, sealed to the relay | `server_test.dart` push, `edge_test.dart` relay and queue; relay `tests` | real delivery: manual |
-| omp extension | fake omp in the e2e (same protocol, `--profile` too), real omp phase | none |
-| Claude Code plugin | plugin `tests` (`pocketterm.test.ts`, `streaming.test.ts`) | never installed by the e2e (it would change the owner's Claude Code); manual |
-| kitty adapter | `kitty_test.dart`; e2e `--terminal kitty` | none |
-| Ghostty adapter (no screen, tmux, one row per window in tmux, config line upgrade) | `ghostty_test.dart`, `ghostty_surface_test.dart`, `terminals_test.dart`, `ghostty_config_test.dart`; e2e `--terminal ghostty` | none |
-| WezTerm adapter | `wezterm_test.dart`; e2e `--terminal wezterm` | Windows: unit only |
-| iTerm2 adapter (screen vs scrollback, gone windows, colors, titles the program set or iTerm2's name, `ITERM_SESSION_ID`, one Apple Event per property and per session variable) | `iterm_test.dart`, `terminal_test.dart`; e2e `--terminal iterm` | none |
-| tmux adapter | `tmux_test.dart`; Ghostty's tmux windows in the e2e | none |
-
-## Per terminal
-
-The e2e runs every phone flow on each terminal. Where a terminal can't do something, the run checks what the phone says instead:
-
-- **Ghostty** can't share its screen: `screen` checks the phone says so; `approval` checks the phone is told to answer on the computer (the desktop then answers). Sessions the phone starts open in tmux inside Ghostty, which can: `question`, `plan`, `menu_model`, `menu_resume`, `steer_queue` and `stop` run on that session for every terminal.
-- **kitty**, **WezTerm** and **iTerm2**: everything, screens included (iTerm2's without colors). The iTerm2 run starts its own instance, which opens no window by itself, with its settings for the run on its command line only and its saved windows in the throwaway home (the person's are never restored or erased); iTerm2 itself still records its windows' places and a launch count in the person's iTerm2 preferences. Like Ghostty's, it refuses to start while another iTerm2 runs.
-
-## What ran end to end for 0.1.0 (build 14)
-
-| Server | Phone | Terminals | Result |
-| --- | --- | --- | --- |
-| Local (`--server local`) | iPhone Simulator | kitty, Ghostty, WezTerm | Every desktop step and every phone phase passed, except `steer_queue` on all three (a harness timing, which passed after the fake's fix in a phone-only kitty run) and Ghostty's `resume-60s`, where Maestro's driver died taking a screenshot after every check had passed |
-| Local | Android emulator, API 35 | kitty, Ghostty, WezTerm | All passed |
-| Local | Android emulator, API 26 (Android 8) | kitty: `fresh`, `pair`, a prompt, `/new` | All passed |
-| Supabase in Docker (`--server supabase`) | iPhone Simulator | kitty, Ghostty, WezTerm | All passed |
-| Supabase in Docker | Android emulator, API 35 | kitty | All passed |
-| Supabase on supabase.com (`--server supabase-cloud`) | iPhone Simulator | kitty | All passed: the desktop's setup made the project on the real Management API, phone `main` (notifications and Follow through push.danyzmaj.com), `computer-off`, `desktop-restart`, `real-omp`, `revoke`; the project was deleted after |
-| The test server, pocketterm-test.danyzmaj.com (Docker image, behind a Cloudflare Tunnel) | iPhone Simulator | kitty, Ghostty, WezTerm | Every phone phase passed on all three, and every desktop step; kitty again in full after two harness fixes: all passed |
-| Built in, over Tailscale (`--server builtin`) | iPhone Simulator | kitty, Ghostty | Stopped before the end: kitty passed every desktop step it reached (51) and phone `main`; Ghostty passed 20 desktop steps and 10 phone flows. WezTerm didn't run |
-
-The installed-app smoke last ran on the 2026-10-22 build, walked by hand through `tool/smoke/run.sh`: On this computer with the stand-in Tailscale, Get this computer ready, Settings, sign out, the own-server branch, the real Tailscale's port-taken screen and the folder picker. The `scenario.sh` set (`wizard`, `getready`, `theme`, `settings`, `menubar`, `quit`) first ran on 2026-10-25 with the themes work: all passed except the wizard's four "Start is disabled" checks, where accessibility reports the greyed-out Start as enabled (commit 2e947ee, before the themes, fails them the same way).
+1. The unit tests of every package and app you touched.
+2. A protocol, crypto or envelope change: the vectors (all three cores) and an interop run.
+3. A Mac UI change: the smoke scenario for that screen, and the e2e desktop steps that touch it: `tool/e2e/run.sh --terminal kitty --no-phone --desktop-only <step text>`.
+4. A phone UI change: its flows on the platform you changed: `tool/e2e/run.sh --terminal kitty --platform ios|android --phone-only fresh,pair-accept,<flow> --phone-from-tree` (or `--hold` and run the flows by hand).
+5. A terminal adapter change: a full run on that terminal.
+6. Big cross-cutting changes (protocol, routing, the bridge): the whole run on iOS and Android, kitty and Ghostty at least.
 
 ## Manual only
 
-- Camera scanning of a code (the Simulator has no camera; E2E builds paste the code).
-- Real push delivery to a real device (APNs, FCM through the relay) and what a Live Activity or notification shows on a locked phone.
-- The menu bar icon's right-click menu and Check for Updates… (Sparkle).
-- Launch at login for real (it changes the person's login items), macOS Automation and Accessibility permission prompts, a locked Keychain.
-- Windows: WezTerm install and PATH, the tray menu, the update notice, start at login.
-- Installing Tailscale, tmux or WezTerm for real; a new VPS's DNS and HTTPS; a tailnet with device approval.
-- Updating an existing Supabase project (**Update that project**) and a paused free project.
+- Camera scanning of a code (the Simulator has no camera; E2E builds paste it).
+- Real push delivery to a real device and what a Live Activity or notification shows.
+- The menu-bar icon's right-click menu and Check for Updates… (Sparkle).
+- Launch at login for real, macOS Automation/Accessibility prompts, a locked Keychain.
+- The Windows app: WezTerm install and PATH, the tray menu, the update notice, start at login.
+- Installing Tailscale, tmux or WezTerm for real; a new VPS's DNS and HTTPS; a tailnet with device approval; updating an existing Supabase project.

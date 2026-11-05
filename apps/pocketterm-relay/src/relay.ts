@@ -286,7 +286,7 @@ export function relay(config: Config): Push {
     if (!(await tokenAllowed(body.token))) return tooMany();
     headers.authorization = `bearer ${await providerToken()}`;
 
-    // Release builds talk to production, ones run from Xcode / flutter run to
+    // Release builds talk to production, ones run from Xcode / Android Studio to
     // the sandbox; a token from the other one is a BadDeviceToken here.
     for (const host of ["api.push.apple.com", "api.sandbox.push.apple.com"]) {
       const res = await fetch(`https://${host}/3/device/${body.token}`, { method: "POST", headers, body: payload });

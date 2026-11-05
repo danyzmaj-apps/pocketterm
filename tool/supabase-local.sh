@@ -13,7 +13,7 @@
 # ports 55420-55429 (another project of this Mac uses Supabase's default 54321-54329), a throwaway ES256 key the
 # function signs Realtime tokens with, imported as the local Auth's signing key the way the desktop's setup
 # imports one into a cloud project. Pushes go to http://host.docker.internal:55429/relay, sealed to the key of
-# the test relay (seed 32 x 0x07; packages/pocketterm_core/test/supabase_server.dart), unless PUSH_RELAY_URL and
+# the test relay (seed 32 x 0x07; the end-to-end run's), unless PUSH_RELAY_URL and
 # PUSH_RELAY_KEY say otherwise. Docker: colima's socket unless DOCKER_HOST is set.
 set -euo pipefail
 

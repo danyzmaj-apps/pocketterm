@@ -160,12 +160,51 @@ It speaks plain HTTP: put it behind something that adds HTTPS, or reach it over 
 | Flag             | Environment              | Default                  |                                              |
 |------------------|--------------------------|--------------------------|----------------------------------------------|
 | `--data`         | `POCKETTERM_DATA`        | `./data` (`/data` image) | where everything is kept                     |
-| `--public-url`   | `POCKETTERM_PUBLIC_URL`  | required                 | the address put in setup links               |
-| `--port`         | `POCKETTERM_PORT`        | `47900`                  | the port to listen on                        |
+| `--public-url`   | `POCKETTERM_PUBLIC_URL`  | required; on a loopback `--address`, `http://<address>:<port>` | the address put in setup links |
+| `--port`         | `POCKETTERM_PORT`        | `47900`                  | the port to listen on; `0` lets the system pick a free one |
 | `--address`      | `POCKETTERM_ADDRESS`     | `0.0.0.0`                | the address to listen on (`::` for IPv6 and IPv4) |
 | `--relay`        | `PUSH_RELAY_URL`         | the publisher's relay    | where push notifications are sent            |
 | `--relay-key`    | `PUSH_RELAY_KEY`         | the publisher's relay's  | the relay's X25519 public key (base64); every push is sealed to it |
 | `--trust-proxy`  | `POCKETTERM_TRUST_PROXY` | off                      | rate limit by `X-Forwarded-For` (set to `1`) |
+| `--trust-loopback-proxy` | `POCKETTERM_TRUST_LOOPBACK_PROXY` | off   | the same, but only for connections from a loopback address (set to `1`) |
+| `--exit-with-stdin` |                       | off                      | stop when stdin closes                       |
+
+`--trust-proxy` believes `X-Forwarded-For` from every connection, so it is only safe when nothing but the reverse
+proxy can reach the server. `--trust-loopback-proxy` believes it only from connections that come from this machine
+(a proxy here, like `tailscale serve`); anyone else is counted by their own address, so a server that is also
+reachable directly can't be tricked into giving each forged address its own throttle.
+
+`serve` writes exactly one line to stdout, once it listens, `{"event":"listening","address":"127.0.0.1","port":47900}`;
+its log goes to stderr. It exits `0` when stopped (SIGINT/Ctrl+C, SIGTERM, closing the Windows console, or stdin
+closing with `--exit-with-stdin`), `98` when the port is taken, `64` on bad options and `1` when it didn't start
+otherwise. `setup-link` prints only the link, and works while a server runs on the same data folder.
+
+## Bundled in the desktop apps
+
+The macOS and Windows apps run their built-in server ("On this computer") as this binary, a child process:
+
+```sh
+pocketterm-server serve --data <app support>/pocketterm-server --address 127.0.0.1 --port <port> \
+  --exit-with-stdin --trust-loopback-proxy
+```
+
+`<port>` is the port the server had last time, else `0`. The app reads the listening line for the port, talks to it
+at `http://127.0.0.1:<port>`, and on exit code `98` starts it again with `--port 0`. It keeps the child's stdin open
+and closes it to stop the server, so the server also stops (and frees the data folder) when the app dies. Its own
+setup link, and the one Add a computer shows, come from
+`pocketterm-server setup-link --data <same folder> --public-url <http://127.0.0.1:<port> or the Tailscale address>`.
+Requests from `tailscale serve` arrive from 127.0.0.1 with the caller in `X-Forwarded-For`, hence
+`--trust-loopback-proxy`: each tailnet caller gets its own pairing throttle.
+
+Build the binary for this machine from the repository root:
+
+```sh
+tool/server-sidecar.sh [--out <dir>]          # build/server-sidecar/<os>-<arch>/pocketterm-server(.exe)
+pwsh tool/server-sidecar.ps1 [-Out <dir>]     # Windows runners: build/server-sidecar/windows-<arch>/pocketterm-server.exe
+```
+
+On macOS it builds arm64; with `DART_X64=/path/to/x86_64/dart` (an Intel Dart SDK, run under Rosetta) it also builds
+x86_64 and joins both into `build/server-sidecar/macos-universal/pocketterm-server` with `lipo`.
 
 ## What it keeps
 

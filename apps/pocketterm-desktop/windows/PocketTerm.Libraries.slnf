@@ -1,0 +1,11 @@
+{
+  "solution": {
+    "path": "PocketTerm.sln",
+    "projects": [
+      "PocketTerm.Core\\PocketTerm.Core.csproj",
+      "PocketTerm.Core.Tests\\PocketTerm.Core.Tests.csproj",
+      "PocketTerm.Desktop.Core\\PocketTerm.Desktop.Core.csproj",
+      "PocketTerm.Desktop.Core.Tests\\PocketTerm.Desktop.Core.Tests.csproj"
+    ]
+  }
+}

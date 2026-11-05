@@ -38,13 +38,10 @@ jobs:
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: apps/pocketterm-desktop/windows/global.json
-      - id: fvm
-        run: echo "flutter=$((Get-Content .fvmrc | ConvertFrom-Json).flutter)" >> $env:GITHUB_OUTPUT
-      # Dart, for the built-in server the app bundles.
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      # Dart, for the built-in server the app bundles; the version fvm's pinned Flutter ships (.fvmrc).
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         with:
-          flutter-version: ${{ steps.fvm.outputs.flutter }}
-          cache: true
+          sdk: 3.13.4
       - run: pwsh tool/server-sidecar.ps1
       - run: >-
           dotnet publish apps/pocketterm-desktop/windows/PocketTerm.App/PocketTerm.App.csproj -c Release -p:Platform=x64

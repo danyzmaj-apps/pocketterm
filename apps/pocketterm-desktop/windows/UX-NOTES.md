@@ -8,10 +8,11 @@ named after its ValueKeys. These are the deliberate differences, made so it look
 - **Windows' own look.** Mica window, the system title bar extended into the content, Segoe UI Variable, Segoe
   Fluent icons, WinUI controls (InfoBar, ContentDialog, Expander, ComboBox, ToggleSwitch, settings cards). The
   Flutter-drawn chrome (hover cards, gradients, custom chips, the drag strip) is gone.
-- **Light and dark follow Windows.** The four themes (Catppuccin Mocha, Rosé Pine Dawn, Tokyo Night, Gruvbox
-  Material) are terminal-and-accent themes: they color commands, links and paths shown as code, and the accent
-  (buttons, switches, links); they still switch the window's and tray's icon. The window itself is Windows' light or
-  dark.
+- **Light and dark follow Windows.** The themes, System (the default: Windows' own accent, code black on white or
+  light on near-black), Catppuccin (Latte / Mocha), Rosé Pine (Dawn / Rosé Pine) and Tokyo Night (Day / Night), each
+  have a light and a dark half that follows Windows' setting live. They color commands, links and paths shown as code,
+  and the accent (buttons, switches, links); Rosé Pine and Tokyo Night still switch the window's and tray's icon.
+  Gruvbox is gone (its people are on Catppuccin). The window itself is Windows' light or dark.
 - **No intro animation.** The window simply opens.
 - **Confirmations are ContentDialogs** with Cancel as the default button (Reset key, Sign out, sign a phone out,
   Erase, installs, commands). Toasts ("New key made", "Copied") are a short InfoBar at the bottom of the window.

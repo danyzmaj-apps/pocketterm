@@ -244,48 +244,113 @@ public class TermAnsiTests
 public class TermThemeTests
 {
     [Fact]
-    public void MochaUntilPickedThePickedOneKept()
+    public void SystemUntilPickedThePickedOneKept()
     {
         var prefs = new MemoryPreferenceStore();
         var first = new Appearance();
         first.Load(prefs);
-        Assert.Equal(ThemeChoice.Mocha, first.Choice);
-        Assert.Same(PtTheme.Mocha, first.Theme);
+        Assert.Equal(ThemeChoice.System, first.Choice);
+        Assert.Same(PtTheme.SystemLight, first.Theme);
+        Assert.Null(prefs.GetString(Appearance.PrefsKey));
         var changes = 0;
         first.PropertyChanged += (_, _) => changes++;
-        first.Choose(ThemeChoice.Gruvbox);
-        first.Choose(ThemeChoice.Gruvbox);
+        first.Choose(ThemeChoice.RosePine);
+        first.Choose(ThemeChoice.RosePine);
         Assert.Equal(1, changes);
-        Assert.Same(PtTheme.Gruvbox, first.Theme);
-        Assert.Equal("gruvbox", prefs.GetString(Appearance.PrefsKey));
+        Assert.Same(PtTheme.Dawn, first.Theme);
+        Assert.Equal("rosePine", prefs.GetString(Appearance.PrefsKey));
         var next = new Appearance();
         next.Load(prefs);
-        Assert.Equal(ThemeChoice.Gruvbox, next.Choice);
+        Assert.Equal(ThemeChoice.RosePine, next.Choice);
     }
 
     [Theory]
-    [InlineData("auto")]
-    [InlineData("solarized")]
-    public void AnUnknownKeptThemeReadsAsMocha(string kept)
+    [InlineData("mocha", ThemeChoice.Catppuccin)]
+    [InlineData("auto", ThemeChoice.Catppuccin)]
+    [InlineData("gruvbox", ThemeChoice.Catppuccin)]
+    [InlineData("dawn", ThemeChoice.RosePine)]
+    [InlineData("tokyoNight", ThemeChoice.TokyoNight)]
+    [InlineData("solarized", ThemeChoice.System)]
+    [InlineData("system", ThemeChoice.System)]
+    [InlineData("catppuccin", ThemeChoice.Catppuccin)]
+    public void AnEarlierVersionsNameMovesToItsFamilyAndIsKeptSo(string kept, ThemeChoice want)
     {
         var prefs = new MemoryPreferenceStore();
         prefs.SetString(Appearance.PrefsKey, kept);
         var a = new Appearance();
         a.Load(prefs);
-        Assert.Equal(ThemeChoice.Mocha, a.Choice);
+        Assert.Equal(want, a.Choice);
+        Assert.Equal(want.Name(), prefs.GetString(Appearance.PrefsKey));
     }
 
     [Fact]
-    public void ThemeData()
+    public void ThePaletteFollowsWindowsAppearance()
     {
-        Assert.Equal(["Catppuccin Mocha", "Rosé Pine Dawn", "Tokyo Night", "Gruvbox Material"], Enum.GetValues<ThemeChoice>().Select(c => c.Label()));
-        Assert.Equal("tokyoNight", ThemeChoice.TokyoNight.Name());
-        Assert.False(PtTheme.Dawn.Dark);
-        Assert.Equal(0x9945475Au, PtTheme.Mocha.Divider);
-        // Color.lerp(0xFF45475A, 0xFF71758C, .3).
-        Assert.Equal(0xFF525569u, PtTheme.Mocha.Line2);
-        Assert.Equal(6, PtTheme.TokyoNight.Shape.R(20));
-        Assert.Equal("ALL", PtTheme.Gruvbox.Shape.Label("All"));
+        var a = new Appearance();
+        a.Load(new MemoryPreferenceStore());
+        a.Choose(ThemeChoice.Catppuccin);
+        Assert.Same(PtTheme.Latte, a.Theme);
+        var changes = 0;
+        a.PropertyChanged += (_, _) => changes++;
+        a.Follow(dark: true);
+        a.Follow(dark: true);
+        Assert.Equal(1, changes);
+        Assert.Same(PtTheme.Mocha, a.Theme);
+        a.Choose(ThemeChoice.TokyoNight);
+        Assert.Same(PtTheme.TokyoNight, a.Theme);
+        a.Follow(dark: false);
+        Assert.Same(PtTheme.TokyoNightDay, a.Theme);
+    }
+
+    [Fact]
+    public void EveryFamilyHasALightAndADarkHalf()
+    {
+        Assert.Equal(["System", "Catppuccin", "Rosé Pine", "Tokyo Night"], Enum.GetValues<ThemeChoice>().Select(c => c.Label()));
+        Assert.Equal(["system", "catppuccin", "rosePine", "tokyoNight"], Enum.GetValues<ThemeChoice>().Select(c => c.Name()));
+        foreach (var c in Enum.GetValues<ThemeChoice>())
+        {
+            Assert.False(c.Light().Dark);
+            Assert.True(c.Dark().Dark);
+            Assert.Same(c.Dark(), c.Palette(dark: true));
+            Assert.Same(c.Light(), c.Palette(dark: false));
+            Assert.Equal(c == ThemeChoice.System, c.Light().PlatformAccent);
+            Assert.Equal(c == ThemeChoice.System, c.Dark().PlatformAccent);
+            Assert.Equal(16, c.Light().Ansi.Count);
+            Assert.Equal(16, c.Dark().Ansi.Count);
+        }
+    }
+
+    [Fact]
+    public void SystemIsBlackOnWhiteOrLightOnNearBlackWithXtermsColors()
+    {
+        Assert.Equal(0xFFFFFFFFu, PtTheme.SystemLight.Win);
+        Assert.Equal(0xFF000000u, PtTheme.SystemLight.Text);
+        Assert.Equal(0xFF1E1E1Eu, PtTheme.SystemDark.Win);
+        Assert.Equal(PtTheme.SystemLight.Ansi, PtTheme.SystemDark.Ansi);
+        Assert.Equal(0xFFCD0000u, PtTheme.SystemDark.Ansi[1]);
+        Assert.Equal(0xFF5C5CFFu, PtTheme.SystemDark.Ansi[12]);
+    }
+
+    [Fact]
+    public void OfficialPaletteSpotChecksTheSameAsTheSwiftAndKotlinCores()
+    {
+        Assert.Equal(0xFFEFF1F5u, PtTheme.Latte.Win);
+        Assert.Equal(0xFFCBA6F7u, PtTheme.Mocha.Accent);
+        Assert.Equal(0xFF575279u, PtTheme.Dawn.Text);
+        Assert.Equal(0xFF191724u, PtTheme.RosePine.Win);
+        Assert.Equal(0xFFE1E2E7u, PtTheme.TokyoNightDay.Win);
+        Assert.Equal(0xFFFF899Du, PtTheme.TokyoNight.Ansi[9]);
+    }
+
+    [Fact]
+    public void APalettesTerminalColors()
+    {
+        var colors = PtTheme.Mocha.TermColors;
+        Assert.Equal(PtTheme.Mocha.Text, colors.Foreground);
+        Assert.Equal(PtTheme.Mocha.Win, colors.Background);
+        Assert.Equal(256, colors.Palette.Count);
+        Assert.Equal(PtTheme.Mocha.Ansi, colors.Palette.Take(16));
+        Assert.Equal(TermColors.Fallback.Palette.Skip(16), colors.Palette.Skip(16));
     }
 
     [Fact]
@@ -298,19 +363,23 @@ public class TermThemeTests
         var applied = new List<string>();
         var stop = AppIcon.Follow(a, icon => { applied.Add(icon); return Task.CompletedTask; });
         Assert.Equal(["tokyoNight"], applied);
-        a.Choose(ThemeChoice.Mocha);
-        a.Choose(ThemeChoice.Gruvbox);
-        Assert.Equal(["tokyoNight", "default", "gruvbox"], applied);
+        a.Choose(ThemeChoice.Catppuccin);
+        // System shows the same icon as Catppuccin: nothing to change; an appearance change neither.
+        a.Choose(ThemeChoice.System);
+        a.Follow(dark: true);
+        a.Choose(ThemeChoice.RosePine);
+        Assert.Equal(["tokyoNight", "default", "dawn"], applied);
         stop();
-        a.Choose(ThemeChoice.Dawn);
+        a.Choose(ThemeChoice.TokyoNight);
         Assert.Equal(3, applied.Count);
+        Assert.Equal(["default", "default", "dawn", "tokyoNight"], Enum.GetValues<ThemeChoice>().Select(AppIcon.For));
 
         // A platform without the switch does not break the theme change.
         var b = new Appearance();
         b.Load(new MemoryPreferenceStore());
         AppIcon.Follow(b, _ => throw new NotSupportedException("no icons here"));
-        b.Choose(ThemeChoice.Dawn);
+        b.Choose(ThemeChoice.RosePine);
         await Task.Yield();
-        Assert.Same(PtTheme.Dawn, b.Theme);
+        Assert.Equal(ThemeChoice.RosePine, b.Choice);
     }
 }

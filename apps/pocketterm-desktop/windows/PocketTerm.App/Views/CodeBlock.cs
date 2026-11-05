@@ -54,7 +54,7 @@ internal sealed class CodeBlock : View
         _box.Background = new SolidColorBrush(Colorize(t.Win));
         _box.BorderBrush = new SolidColorBrush(Colorize(t.Line));
         _text.Foreground = new SolidColorBrush(Colorize(t.Text));
-        _text.SelectionHighlightColor = new SolidColorBrush(Colorize(t.Accent));
+        _text.SelectionHighlightColor = new SolidColorBrush(Accent.Of(t));
     }
 
     /// <summary>A theme's ARGB as a WinUI color.</summary>

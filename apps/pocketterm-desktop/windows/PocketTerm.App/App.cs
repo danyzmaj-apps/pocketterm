@@ -72,6 +72,8 @@ internal sealed partial class App : Application, IXamlMetadataProvider
                 SystemSecrets.IsThrowaway(env) ? null : secrets,
                 new DpapiProtector());
             Appearance.Shared.Load(prefs);
+            // Each theme has a light and a dark half: the one Windows shows.
+            Appearance.Shared.Follow(Accent.SystemDark());
             Accent.Apply(this, Appearance.Shared.Theme);
 
             var window = new MainWindow();
@@ -87,6 +89,18 @@ internal sealed partial class App : Application, IXamlMetadataProvider
                 Accent.Apply(this, Appearance.Shared.Theme);
                 if (window.Content is FrameworkElement root) Accent.Repaint(root);
             });
+            // Light or dark, or the accent, changed in Windows' settings.
+            Accent.OnSystemColorsChanged(() => window.DispatcherQueue.TryEnqueue(() =>
+            {
+                if (Appearance.Shared.Dark != Accent.SystemDark())
+                {
+                    Appearance.Shared.Follow(Accent.SystemDark());
+                    return;
+                }
+                if (!Appearance.Shared.Theme.PlatformAccent) return;
+                Accent.Apply(this, Appearance.Shared.Theme);
+                if (window.Content is FrameworkElement root) Accent.Repaint(root);
+            }));
             AppInstance.GetCurrent().Activated += (_, a) => window.DispatcherQueue.TryEnqueue(() => OnRedirected(app, host, a));
 
             var api = new LocalApi(app.Live);

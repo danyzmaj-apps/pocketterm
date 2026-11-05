@@ -14,6 +14,8 @@ preferences (see `PocketTerm.Desktop.Core/Storage/FlutterMigration.cs`).
 `PocketTerm.sln` has them all; `PocketTerm.Libraries.slnf` only the libraries and tests (fast, no Windows App SDK
 download).
 
+<p align="center"><img src="../../../docs/images/windows-settings-phone.png" width="70%" alt="Settings, Phone: what needs attention, Terminal from phone, your phones, project folders"></p>
+
 ## Building
 
 On Windows (Visual Studio 2022 17.10+ with the .NET desktop workload, or the .NET 8 SDK alone):

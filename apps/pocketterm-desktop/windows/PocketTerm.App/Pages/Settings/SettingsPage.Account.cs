@@ -108,7 +108,7 @@ internal sealed partial class SettingsPage
             var radio = new RadioButton
             {
                 GroupName = "settings-theme",
-                Content = Ui.Row(10, ThemePreview(c.Theme()), new TextBlock { Text = c.Label(), VerticalAlignment = VerticalAlignment.Center }),
+                Content = Ui.Row(10, ThemePreview(c), new TextBlock { Text = c.Label(), VerticalAlignment = VerticalAlignment.Center }),
             }.Id($"settings-theme-{c.Name()}", c.Label());
             radio.Checked += (_, _) => Appearance.Shared.Choose(c);
             radios[c] = radio;
@@ -135,33 +135,40 @@ internal sealed partial class SettingsPage
         return Cards(user, server, launch, erase, theme, data, about);
     }
 
-    /// <summary>A small picture of <paramref name="t"/>'s colors: its background with the accent across the top and
-    /// its ok, warning and error colors below (round, or square for a boxy theme).</summary>
-    private static Border ThemePreview(PtTheme t)
+    /// <summary>A small picture of <paramref name="choice"/>'s colors: its light half beside its dark half, each
+    /// its background with the accent across the top and its ok, warning and error colors below.</summary>
+    private static Border ThemePreview(ThemeChoice choice)
     {
         static SolidColorBrush Brush(uint argb) => new(CodeBlock.Colorize(argb));
-        var dots = Ui.Row(3);
-        foreach (var c in new[] { t.Ok, t.Warn, t.Error })
+        static Grid Half(PtTheme t)
         {
-            dots.Children.Add(t.Shape == ThemeShape.Boxy
-                ? new Rectangle { Width = 6, Height = 6, Fill = Brush(c) }
-                : new Ellipse { Width = 6, Height = 6, Fill = Brush(c) });
+            var dots = Ui.Row(3);
+            foreach (var c in new[] { t.Ok, t.Warn, t.Error })
+                dots.Children.Add(new Ellipse { Width = 6, Height = 6, Fill = Brush(c) });
+            var half = new Grid { Padding = new Thickness(5, 5, 5, 5), RowSpacing = 6, Background = Brush(t.Win) };
+            half.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            half.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            half.Children.Add(new Border { Height = 5, CornerRadius = new CornerRadius(2), Background = new SolidColorBrush(Accent.Of(t)) });
+            Grid.SetRow(dots, 1);
+            half.Children.Add(dots);
+            return half;
         }
-        var stack = new Grid { Padding = new Thickness(5, 5, 5, 5), RowSpacing = 6 };
-        stack.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        stack.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        stack.Children.Add(new Border { Height = 5, CornerRadius = new CornerRadius(2), Background = Brush(t.Accent) });
-        Grid.SetRow(dots, 1);
-        stack.Children.Add(dots);
+        var halves = new Grid { CornerRadius = new CornerRadius(3) };
+        halves.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        halves.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var light = Half(choice.Light());
+        var dark = Half(choice.Dark());
+        Grid.SetColumn(dark, 1);
+        halves.Children.Add(light);
+        halves.Children.Add(dark);
         return new Border
         {
-            Width = 52,
+            Width = 92,
             Height = 32,
             CornerRadius = new CornerRadius(4),
             BorderThickness = new Thickness(1),
-            BorderBrush = Brush(t.Line2),
-            Background = Brush(t.Win),
-            Child = stack,
+            BorderBrush = Brush(choice.Dark().Line),
+            Child = halves,
         };
     }
 

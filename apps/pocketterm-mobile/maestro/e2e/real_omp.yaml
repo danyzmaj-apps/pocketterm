@@ -12,22 +12,28 @@ appId: com.danyzmaj.pocketterm
     visible: ".*e2e-real.*"
     timeout: 30000
 - takeScreenshot: before
-- tapOn: "Prompt omp…"
+- runFlow: sub/prompt.yaml
 # The real omp lists dozens of commands: typed out, /new is the first.
 - inputText: "/new"
 - extendedWaitUntil:
-    visible: "/new .+"
+    visible:
+      id: "command-new"
     timeout: 10000
-- tapOn: "/new .+"
-- tapOn: "Send"
+- tapOn:
+    id: "command-new"
+- tapOn:
+    id: "session-send"
 - extendedWaitUntil:
     notVisible: ".*e2e-real.*"
     timeout: 60000
 - takeScreenshot: after
 - runFlow: sub/back.yaml
 - extendedWaitUntil:
-    visible: "${SESSION}\n.*"
+    visible:
+      text: "${SESSION}(\n.*)*"
+      id: "session-.*"
     timeout: 20000
 - assertNotVisible:
-    text: "${SESSION}\n.*"
+    text: "${SESSION}(\n.*)*"
+    id: "session-.*"
     index: 1

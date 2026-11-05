@@ -50,10 +50,10 @@ final _sessionKey = RegExp(r'^[\w.:/-]{1,64}$');
 final _routedKey = RegExp(r'^[a-z0-9]{8}/[\w.:/-]{1,55}$');
 final _fcmToken = RegExp(r'^[A-Za-z0-9_:\-]{100,4096}$');
 
-/// What a push names its computer by (pocketterm_core's pushTag): 8 bytes of an HMAC under its key, base64url.
+/// What a push names its computer by (the apps' pushTag): 8 bytes of an HMAC under its key, base64url.
 final _pushTag = RegExp(r'^[A-Za-z0-9_-]{11}$');
 
-/// What a push names a coding session by (pocketterm_core's sessionTag): 16 bytes of an HMAC, base64url.
+/// What a push names a coding session by (the apps' sessionTag): 16 bytes of an HMAC, base64url.
 final _sessionTag = RegExp(r'^[A-Za-z0-9_-]{22}$');
 
 /// The relay takes at most 3000 base64 characters (FCM's 4 KB of data in all).
@@ -104,7 +104,8 @@ class PocketTermServer {
   }
 
   /// Starts serving on [address]:[port] (0 picks a free port; see [port]). [publicUrl] is the address phones
-  /// and computers reach it at, put in setup links. [relay] is the push relay and [relayKey] its X25519 public
+  /// and computers reach it at, put in setup links; or [publicUrlFor] gives it from the bound port (exactly one
+  /// of the two). [relay] is the push relay and [relayKey] its X25519 public
   /// key, which every push is sealed to (default: the publisher's relay and key).
   /// With [trustProxy], the caller's address for rate limits is the last one in X-Forwarded-For (set it only
   /// behind a reverse proxy). With [trustLoopbackProxy], it is trusted only from a loopback peer: for a server on
@@ -118,7 +119,8 @@ class PocketTermServer {
     required Directory dataDir,
     required InternetAddress address,
     required int port,
-    required Uri publicUrl,
+    Uri? publicUrl,
+    Uri Function(int port)? publicUrlFor,
     Uri? relay,
     List<int>? relayKey,
     bool trustProxy = false,
@@ -129,6 +131,7 @@ class PocketTermServer {
     int deviceBlobQuota = maxDeviceBlobBytes,
     int blobQuota = maxTotalBlobBytes,
   }) async {
+    assert((publicUrl == null) != (publicUrlFor == null), 'give publicUrl or publicUrlFor');
     final store = Store.open(dataDir, log: log);
     final HttpServer http;
     try {
@@ -143,7 +146,7 @@ class PocketTermServer {
       dataDir,
       http,
       store,
-      publicUrl,
+      publicUrl ?? publicUrlFor!(http.port),
       clock ?? DateTime.now,
       trustProxy,
       trustLoopbackProxy,

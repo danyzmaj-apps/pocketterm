@@ -10,10 +10,13 @@
 #   tool/smoke/run.sh prepare                      release build with POCKETTERM_SMOKE + copy + throwaway home
 #   tool/smoke/run.sh launch [--real-tailscale]    start it; Tailscale is a stand-in (fake_tailscale.sh)
 #                                                  unless --real-tailscale (then never press Start while
-#                                                  `tailscale serve status` serves anything)
+#                                                  `tailscale serve status` serves anything);
+#                                                  POCKETTERM_APPEARANCE=light|dark sets its look
 #   tool/smoke/run.sh ax <command> [args…]         ax.swift on the running copy (dump, texts, has, enabled, press,
-#                                                  set, window, close, extras, press-extra)
+#                                                  set, window, close, extras, press-extra, panel, press-panel,
+#                                                  panel-window, has-id, press-id)
 #   tool/smoke/run.sh shot <name>                  screenshot of its window → $SHOTS/<name>.png
+#   tool/smoke/run.sh shot-panel <name>            screenshot of its menu-bar panel (open) → $SHOTS/<name>.png
 #   tool/smoke/run.sh quit                         quits it
 #   tool/smoke/run.sh clean                        quits it and removes everything it made
 #
@@ -36,10 +39,14 @@ pid() { /usr/bin/pgrep -f "^$app/Contents/MacOS/" | head -1; }
 
 case "${1:-}" in
   prepare)
-    # Only a build with POCKETTERM_SMOKE honours the stand-ins below (apps/pocketterm-desktop/lib/test_hooks.dart):
-    # a released PocketTerm ignores them and would use the person's Keychain and Tailscale.
-    (cd "$repo/apps/pocketterm-desktop" && fvm flutter build macos --release --dart-define=POCKETTERM_SMOKE=true)
-    src=$repo/apps/pocketterm-desktop/build/macos/Build/Products/Release/PocketTerm.app
+    # Only a build with POCKETTERM_SMOKE honours the stand-ins below (PocketTermDesktop's TestHooks.swift): a
+    # released PocketTerm ignores them and would use the person's Keychain and Tailscale. The flag goes on the
+    # command line so the PocketTermKit package's targets are built with it too.
+    mac=$repo/apps/pocketterm-desktop/macos
+    (cd "$mac" && /opt/homebrew/bin/xcodegen generate --quiet &&
+      /usr/bin/xcodebuild -quiet -project PocketTerm.xcodeproj -scheme PocketTerm -configuration Release \
+        -derivedDataPath build/smoke ONLY_ACTIVE_ARCH=YES OTHER_SWIFT_FLAGS='$(inherited) -D POCKETTERM_SMOKE' build)
+    src=$mac/build/smoke/Build/Products/Release/PocketTerm.app
     rm -rf "$SMOKE"
     mkdir -p "$SHOTS" "$SMOKE/t" "$SMOKE/k" "$home/.config" "$home/.local/bin" "$home/Projects/smoke é漢"
     chmod 700 "$SMOKE/t" "$SMOKE/k"
@@ -70,6 +77,8 @@ case "${1:-}" in
     if [ "${2:-}" != --real-tailscale ]; then
       env+=(--env "POCKETTERM_TAILSCALE=$SMOKE/tailscale" --env "FAKE_TAILSCALE_STATE=$SMOKE/serve.json")
     fi
+    # light or dark whatever this Mac uses, for screenshots of both (the copy is a test build).
+    if [ -n "${POCKETTERM_APPEARANCE:-}" ]; then env+=(--env "POCKETTERM_APPEARANCE=$POCKETTERM_APPEARANCE"); fi
     /usr/bin/open -n -a "$app" "${env[@]}"
     for _ in $(seq 1 100); do [ -n "$(pid)" ] && break; sleep 0.1; done
     p=$(pid)
@@ -82,8 +91,9 @@ case "${1:-}" in
     shift
     "$ax" "$(pid)" "$@"
     ;;
-  shot)
-    w=$("$ax" "$(pid)" window)
+  shot|shot-panel)
+    w=$("$ax" "$(pid)" "$([ "$1" = shot ] && echo window || echo panel-window)")
+    mkdir -p "$SHOTS"
     /usr/sbin/screencapture -x -o -l "$w" "$SHOTS/$2.png"
     echo "$SHOTS/$2.png"
     ;;
@@ -105,18 +115,22 @@ case "${1:-}" in
     if [ -f "$home/Library/Keychains/login.keychain-db" ]; then
       HOME="$home" /usr/bin/security delete-keychain "$home/Library/Keychains/login.keychain-db" || true
     fi
+    # The app's own domain and the profile's (a test build keeps a POCKETTERM_PROFILE's preferences in
+    # <bundle id>.<profile>).
     /usr/bin/defaults delete "$bundle" >/dev/null 2>&1 || true
+    /usr/bin/defaults delete "$bundle.smoke" >/dev/null 2>&1 || true
     # What macOS asked about it (Automation: controlling Ghostty).
     /usr/bin/tccutil reset All "$bundle" >/dev/null 2>&1 || true
     for h in "$home" "$HOME"; do
-      rm -rf "$h/Library/Preferences/$bundle.plist" "$h/Library/Application Support/$bundle" \
+      rm -rf "$h/Library/Preferences/$bundle.plist" "$h/Library/Preferences/$bundle.smoke.plist" \
+        "$h/Library/Application Support/$bundle" \
         "$h/Library/Caches/$bundle" "$h/Library/Saved Application State/$bundle.savedState" \
         "$h/Library/HTTPStorages/$bundle" "$h/Library/WebKit/$bundle"
     done
     rm -rf "$SMOKE"
     ;;
   *)
-    sed -n '2,24p' "$0"
+    sed -n '2,27p' "$0"
     exit 2
     ;;
 esac

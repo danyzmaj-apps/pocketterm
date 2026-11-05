@@ -1,20 +1,38 @@
 # After the server or the desktop app restarted: the computer is back online,
 # an earlier exchange shows once (nothing replayed), and a new prompt goes and
-# its reply comes back once.
+# its reply comes back once. The computer picked again from its menu (iOS: the
+# title's menu, whose items read the name alone; Android: the picker sheet,
+# its rows reading Online once it is).
 #   env: COMPUTER, SESSION, OLD_SESSION, OLD_PROMPT_RE (regexes), PROMPT, PROMPT_RE
 appId: com.danyzmaj.pocketterm
 ---
-- launchApp
+- launchApp:
+    arguments:
+      POCKETTERM_E2E: "true"
 - extendedWaitUntil:
-    visible: "New session"
+    visible: "\n?New session"
     timeout: 60000
 - tapOn: ${COMPUTER}
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: "Computers"
+          timeout: 10000
+      - tapOn: "${COMPUTER_RE}"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: "${COMPUTER_RE}(, |\n)Online"
+          timeout: 90000
+      - tapOn: "${COMPUTER_RE}(, |\n)Online"
 - extendedWaitUntil:
-    visible: "${COMPUTER_RE}\nOnline"
-    timeout: 90000
-- tapOn: "${COMPUTER_RE}\nOnline"
-- extendedWaitUntil:
-    visible: "${OLD_SESSION}\n.*"
+    visible:
+      text: "${OLD_SESSION}(\n.*)*"
+      id: "session-.*"
     timeout: 60000
 - runFlow:
     file: sub/open_row.yaml
@@ -30,17 +48,19 @@ appId: com.danyzmaj.pocketterm
     text: "${OLD_PROMPT_RE}"
     index: 1
 - takeScreenshot: earlier-once
-- tapOn: "Back"
+- runFlow: sub/back.yaml
 - runFlow:
     file: sub/open_row.yaml
     env:
       ROW: ${SESSION}
 - extendedWaitUntil:
-    visible: "Prompt omp…"
+    visible:
+      id: "session-input"
     timeout: 15000
-- tapOn: "Prompt omp…"
+- runFlow: sub/prompt.yaml
 - inputText: ${PROMPT}
-- tapOn: "Send"
+- tapOn:
+    id: "session-send"
 - extendedWaitUntil:
     visible: ".*fake reply: ${PROMPT_RE}.*"
     timeout: 30000

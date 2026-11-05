@@ -1,15 +1,21 @@
 // The end-to-end run (tool/e2e/run.sh): for each terminal, a fresh local
-// PocketTerm server, the real desktop app under integration_test with a
-// throwaway home and terminals, and the phone's Maestro flows in the
-// Simulator, phase by phase. Prints a pass/fail table; everything it saw is
-// in build/e2e/<stamp>/.
+// PocketTerm server, the native Mac app (a test build, lib/mac_app.dart)
+// with a throwaway home and terminals, driven by lib/desktop.dart, and the
+// phone's Maestro flows on the iPhone Simulator or the Android emulator,
+// phase by phase. Prints a pass/fail table; everything it saw is in
+// build/e2e/<stamp>/.
 //
 //   dart run tool/e2e/bin/run.dart [--terminal kitty|ghostty|wezterm|iterm|all]
 //       [--server local|builtin|supabase|supabase-cloud --supabase-token-file <file>|<https url> (--setup-link <link> |
-//        --setup-link-file <file>) [--server-stop-cmd <sh> --server-start-cmd <sh>]
-//        [--server-ca <pem>]]
+//        --setup-link-file <file>) [--server-stop-cmd <sh> --server-start-cmd <sh>]]
 //       [--no-phone] [--platform ios|android [--avd <name>]] [--device <udid or serial>]
-//       [--phone-only <flow>,…] [--phone-from-tree] [--desktop-only <text>,…] [--from-head] [--artifacts <dir>]
+//       [--phone-only <flow>,…] [--phone-from-tree] [--desktop-only <text>,…] [--hold] [--from-head]
+//       [--artifacts <dir>]
+//
+// --hold: after the hand-off the phone's main flows are left to you (the
+// run prints the maestro/e2e/run.sh line to run them, one by one if you
+// like), and the run goes on once you delete <run>/<terminal>/hold: for
+// working on a flow without setting the desktop up each time.
 //
 // --from-head runs what's committed: a detached worktree of HEAD in /tmp
 // (others' uncommitted edits stay out), artifacts still in this checkout's
@@ -24,7 +30,8 @@
 // HEAD; the desktop always runs this checkout). --desktop-only: just the
 // desktop steps whose name contains one of these texts, besides what every
 // run needs (setup, Get ready, the windows, pairing and the hand-off) and
-// the checks of the phone flows that ran; the rest are skipped.
+// the checks of the phone flows that ran; the rest are skipped. --no-phone:
+// the desktop steps alone, the checks of what the phone did skipped.
 //
 // --server builtin: the desktop's own "On this computer" server, published
 // by `tailscale serve` (Tailscale must be running with HTTPS on and serve
@@ -32,8 +39,8 @@
 // a server elsewhere; its setup link best from a file (it stays off the
 // command line and out of the artifacts). --server-stop-cmd and
 // --server-start-cmd (sh -c) stop and start it for the server restart,
-// e.g. `ssh host docker stop <container>`. --server-ca: a root the desktop
-// trusts for it (a test server with its own CA, e.g. Caddy's `tls internal`).
+// e.g. `ssh host docker stop <container>`. Its certificate must be one macOS
+// trusts (a test CA goes in the login keychain, as for any app).
 // --server supabase: PocketTerm on the local Supabase in Docker
 // (tool/supabase-local.sh, started when it isn't, emptied for each terminal);
 // the server restart stops and starts its function and Realtime.
@@ -48,7 +55,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:pocketterm_e2e/desktop.dart';
 import 'package:pocketterm_e2e/e2e.dart';
+import 'package:pocketterm_e2e/mac_app.dart';
 
 Future<void> main(List<String> args) async {
   final opts = _parse(args);
@@ -92,6 +101,16 @@ Future<void> main(List<String> args) async {
       serverExe,
     ], repo);
   }
+  stdout.writeln('building the Mac app (test build) → ${p.join(root, 'mac-build.log')}');
+  final String appPath;
+  final String axExe;
+  try {
+    appPath = await MacApp.build(repo, p.join(root, 'mac-build.log'));
+    axExe = await MacApp.buildAx(repo, bin);
+  } on Object catch (e) {
+    stderr.writeln('$e');
+    exit(1);
+  }
 
   final table = <String, Map<String, String>>{};
   var allOk = true;
@@ -104,6 +123,8 @@ Future<void> main(List<String> args) async {
       stamp: stamp,
       bin: bin,
       serverExe: serverExe,
+      appPath: appPath,
+      axExe: axExe,
       opts: opts,
       interrupted: interrupted,
     );
@@ -154,11 +175,7 @@ Map<String, String> _parse(List<String> args) {
           '--phone-only' ||
           '--desktop-only':
         o[args[i].substring(2)] = args[++i];
-      case '--setup-link-file' ||
-          '--server-stop-cmd' ||
-          '--server-start-cmd' ||
-          '--server-ca' ||
-          '--supabase-token-file':
+      case '--setup-link-file' || '--server-stop-cmd' || '--server-start-cmd' || '--supabase-token-file':
         o[args[i].substring(2)] = args[++i];
         if (args[i - 1] == '--setup-link-file') o['setup-link'] = File(args[i]).readAsStringSync().trim();
       case '--no-phone':
@@ -167,6 +184,8 @@ Map<String, String> _parse(List<String> args) {
         o['from-head'] = 'yes';
       case '--phone-from-tree':
         o['phone-from-tree'] = 'yes';
+      case '--hold':
+        o['hold'] = 'yes';
       default:
         stderr.writeln('Unknown argument: ${args[i]}');
         exit(64);
@@ -204,7 +223,7 @@ Future<int> _fromHead(String repo, List<String> args) async {
   if (File(p.join(repo, firebase)) case final f when f.existsSync()) f.copySync(p.join(src, firebase));
   stdout.writeln('Running HEAD $head from $src');
   try {
-    await _must('pub get', 'fvm', ['flutter', 'pub', 'get'], src);
+    await _must('pub get', 'fvm', ['dart', 'pub', 'get'], src);
     final run = await Process.start(
       'fvm',
       [
@@ -239,25 +258,6 @@ Future<void> _must(String what, String exe, List<String> args, String cwd) async
     stderr.writeln('$what failed:\n${r.stdout}\n${r.stderr}');
     exit(1);
   }
-}
-
-/// [name] on this terminal's PATH, as an absolute path (the desktop's PATH
-/// is launchd's, which hasn't it).
-String _which(String name) {
-  for (final dir in (Platform.environment['PATH'] ?? '').split(':')) {
-    if (dir.isNotEmpty && File(p.join(dir, name)).existsSync()) return p.join(dir, name);
-  }
-  stderr.writeln('$name is not on the PATH');
-  exit(1);
-}
-
-/// A folder in [work] with just what `flutter test` runs by name that
-/// launchd's PATH hasn't: CocoaPods' `pod`. Nothing else of Homebrew's, so
-/// whatever PocketTerm finds there it finds as from Finder.
-String _flutterTools(String work) {
-  final dir = Directory(p.join(work, 'flutter-tools'))..createSync(recursive: true);
-  Link(p.join(dir.path, 'pod')).createSync(_which('pod'));
-  return dir.path;
 }
 
 Future<int> _freePort() async {
@@ -305,13 +305,7 @@ class _Server {
       'http://127.0.0.1:9',
     ], environment: cleanEnv());
     _proc = proc;
-    final link = Completer<String?>();
-    proc.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((l) {
-      log.writeln(l);
-      if (l.startsWith('pocketterm://') || l.contains('/setup?') || l.contains('setup=')) {
-        if (!link.isCompleted) link.complete(l.trim());
-      }
-    });
+    proc.stdout.transform(utf8.decoder).listen(log.write);
     proc.stderr.transform(utf8.decoder).listen(log.write);
     unawaited(proc.exitCode.then((c) => log.writeln('--- exit $c ${DateTime.now()}')));
     await until('server answering on $url', () async {
@@ -324,7 +318,6 @@ class _Server {
         return false;
       }
     });
-    setupLink ??= await link.future.timeout(const Duration(seconds: 2), onTimeout: () => null);
     if (setupLink == null) {
       final r = await Process.run(exe, ['setup-link', '--data', data, '--public-url', url]);
       setupLink = '${r.stdout}'.trim();
@@ -416,6 +409,14 @@ class _SupabaseCloud {
     }
   }
 
+  /// The refs of the account's projects now.
+  Future<Set<String>> refs() async {
+    final (status, body) = await _call('GET', '/v1/projects');
+    _log('GET /v1/projects → $status');
+    if (status != 200) throw StateError('listing Supabase projects: $status $body');
+    return {for (final p in jsonDecode(body) as List) '${(p as Map)['id'] ?? p['ref']}'};
+  }
+
   /// Deletes project [ref] and waits until Supabase no longer lists it.
   Future<void> delete(String ref) async {
     final (status, body) = await _call('DELETE', '/v1/projects/$ref');
@@ -442,6 +443,8 @@ Future<Map<String, String>> _runTerminal(
   required String stamp,
   required String bin,
   required String serverExe,
+  required String appPath,
+  required String axExe,
   required Map<String, String> opts,
   required Completer<void> interrupted,
 }) async {
@@ -453,7 +456,9 @@ Future<Map<String, String>> _runTerminal(
   final phone = opts['phone'] != 'no';
   _Server? server;
   _Supabase? supabase;
-  Process? desktop;
+  _SupabaseCloud? cloud;
+  var cloudBefore = <String>{};
+  DesktopRun? desktop;
   stdout.writeln('\n== $terminal ==');
   try {
     String setupLink;
@@ -472,7 +477,10 @@ Future<Map<String, String>> _runTerminal(
       setupLink = await supabase.prepare();
       serverUrl = _Supabase.url;
     } else if (opts['server'] == 'supabase-cloud') {
-      // The desktop's setup makes the project and signs in with the link it makes.
+      // The desktop's setup makes the project and signs in with the link it makes; what the account had before
+      // stays as it is.
+      cloud = _SupabaseCloud(opts['supabase-token-file']!, p.join(artifacts, 'supabase.log'));
+      cloudBefore = await cloud.refs();
       setupLink = '';
       serverUrl = 'supabase-cloud';
     } else {
@@ -487,7 +495,6 @@ Future<Map<String, String>> _runTerminal(
       setupLink: setupLink,
       phone: phone,
       terminalPath: Platform.environment['PATH'] ?? launchdPath,
-      serverCa: opts['server-ca'],
       supabaseTokenFile: switch (opts['supabase-token-file']) {
         final f? => p.absolute(f),
         null => null,
@@ -498,109 +505,61 @@ Future<Map<String, String>> _runTerminal(
     writeHome(c);
     File(p.join(bin, 'omp')).copySync(p.join(c.bin, 'omp'));
     Process.runSync('/bin/chmod', ['755', p.join(c.bin, 'omp')]);
-    final configPath = p.join(artifacts, 'config.json');
-    File(configPath).writeAsStringSync(const JsonEncoder.withIndent('  ').convert(c.toJson()));
+    File(p.join(artifacts, 'config.json')).writeAsStringSync(const JsonEncoder.withIndent('  ').convert(c.toJson()));
     stdout.writeln('server $serverUrl, work $work');
 
-    final desktopLog = File(p.join(artifacts, 'desktop.log')).openWrite();
-    // As Launch Services starts the app from Finder (no TERM, no locale,
-    // launchd's PATH), with only what `flutter test` needs besides.
-    desktop = await Process.start(
-      _which('fvm'),
-      [
-        'flutter',
-        'test',
-        'integration_test/e2e_test.dart',
-        '-d',
-        'macos',
-        '--dart-define=E2E_CONFIG=$configPath',
-        // A test build: it honours the POCKETTERM_* stand-ins (lib/test_hooks.dart), a released one doesn't.
-        '--dart-define=POCKETTERM_SMOKE=true',
-      ],
-      workingDirectory: p.join(repo, 'apps', 'pocketterm-desktop'),
-      environment: launchServicesEnv(
-        tools: [_flutterTools(work)],
-        extra: {'TMUX_TMPDIR': c.tmuxTmp, 'POCKETTERM_CLI_JSON': c.cliJson},
-      ),
-      includeParentEnvironment: false,
-    );
-    desktop.stdout.transform(utf8.decoder).listen((s) {
-      desktopLog.write(s);
-      for (final l in const LineSplitter().convert(s)) {
-        if (l.contains('E2E ')) stdout.writeln('  $l'.replaceFirst(RegExp(r'^\s*(flutter: )?'), '  '));
-      }
-    });
-    desktop.stderr.transform(utf8.decoder).listen(desktopLog.write);
-    var ended = false;
-    final exit = desktop.exitCode.then((code) {
-      ended = true;
-      return code;
-    });
-
-    final handled = <String>{};
-    while (!ended) {
-      final stop = await Future.any([
-        exit.then((_) => true),
-        interrupted.future.then((_) => true),
-        Future<bool>.delayed(const Duration(milliseconds: 500), () => false),
-      ]);
-      if (stop) {
-        break;
-      }
-      for (final f in Directory(c.rpcDir).listSync().whereType<File>()) {
-        final name = p.basename(f.path);
-        if (!name.endsWith('.req')) continue;
-        final what = name.substring(0, name.length - 4);
-        // The rest (approve-on-computer, terminal-on …) the desktop test answers itself.
-        if (what != 'server-stop' && what != 'server-start') continue;
-        if (!handled.add(name)) continue;
-        var answer = 'ok';
-        try {
-          switch (what) {
-            case 'server-stop' || 'server-start' when supabase != null:
-              stdout.writeln(
-                '  server: ${what == 'server-stop' ? 'stopping' : 'starting'} Supabase function and Realtime',
-              );
-              await (what == 'server-stop' ? supabase.stop() : supabase.start());
-            case 'server-stop' || 'server-start' when server == null:
-              final cmd = opts[what == 'server-stop' ? 'server-stop-cmd' : 'server-start-cmd'];
-              if (cmd == null) {
-                answer = 'no way to $what this server: --server-stop-cmd / --server-start-cmd';
-                break;
-              }
-              stdout.writeln('  server: $what (command)');
-              final r = await Process.run('/bin/sh', ['-c', cmd]);
-              if (r.exitCode != 0) answer = 'failed: exit ${r.exitCode} ${r.stderr}'.trim();
-            case 'server-stop':
-              stdout.writeln('  server: stopping');
-              await server?.stop();
-            case 'server-start':
-              stdout.writeln('  server: starting');
-              await server?.start();
-          }
-        } on Object catch (e) {
-          answer = 'failed: $e';
+    Future<String> serverControl(String what) async {
+      try {
+        if (supabase != null) {
+          stdout.writeln('  server: ${what == 'server-stop' ? 'stopping' : 'starting'} Supabase function and Realtime');
+          await (what == 'server-stop' ? supabase.stop() : supabase.start());
+        } else if (server == null) {
+          final cmd = opts[what == 'server-stop' ? 'server-stop-cmd' : 'server-start-cmd'];
+          if (cmd == null) return 'no way to $what this server: --server-stop-cmd / --server-start-cmd';
+          stdout.writeln('  server: $what (command)');
+          final r = await Process.run('/bin/sh', ['-c', cmd]);
+          if (r.exitCode != 0) return 'failed: exit ${r.exitCode} ${r.stderr}'.trim();
+        } else if (what == 'server-stop') {
+          stdout.writeln('  server: stopping');
+          await server.stop();
+        } else {
+          stdout.writeln('  server: starting');
+          await server.start();
         }
-        File(p.join(c.rpcDir, '$what.done')).writeAsStringSync(answer);
-      }
-      for (final f in Directory(c.phaseDir).listSync().whereType<File>()) {
-        final name = p.basename(f.path);
-        if (!name.endsWith('.ready') || !handled.add(name)) continue;
-        final phase = name.substring(0, name.length - 6);
-        final code = phone ? await _phonePhase(repo, artifacts, phase, opts) : 'skipped';
-        results['phone: $phase'] = code == '0'
-            ? 'pass'
-            : (code == 'skipped' ? 'skip: --no-phone' : 'fail: phone flow exit $code (see phone/)');
-        File(p.join(c.phaseDir, '$phase.done')).writeAsStringSync(code);
+        return 'ok';
+      } on Object catch (e) {
+        return 'failed: $e';
       }
     }
-    if (interrupted.isCompleted && !ended) {
-      desktop.kill();
-      results['run'] = 'fail: interrupted';
+
+    Future<String> phonePhase(String phase) async {
+      if (!phone) return 'skipped';
+      final code = await _phonePhase(repo, artifacts, phase, opts);
+      results['phone: $phase'] = code == '0' ? 'pass' : 'fail: phone flow exit $code (see phone/)';
+      return code;
     }
-    final code = await exit.timeout(const Duration(seconds: 30), onTimeout: () => -1);
-    await desktopLog.flush();
-    await desktopLog.close();
+
+    final run = desktop = DesktopRun(
+      c,
+      app: MacApp(c, appPath: appPath, axExe: axExe),
+      phonePhase: phonePhase,
+      serverControl: serverControl,
+      supabaseToken: c.supabaseTokenFile == null ? null : File(c.supabaseTokenFile!).readAsStringSync().trim(),
+      hold: opts['hold'] != null,
+    );
+    Object? failure;
+    await Future.any([
+      run.all().then(
+        (_) {},
+        onError: (Object e, StackTrace st) {
+          failure = e;
+          File(p.join(artifacts, 'run-error.txt')).writeAsStringSync('$e\n$st');
+        },
+      ),
+      interrupted.future,
+    ]);
+    if (interrupted.isCompleted) results['run'] = 'fail: interrupted';
+    if (failure != null) results['run'] = 'fail: $failure';
     final resultsFile = File(c.results);
     if (resultsFile.existsSync()) {
       for (final l in resultsFile.readAsLinesSync().where((l) => l.trim().isNotEmpty)) {
@@ -610,12 +569,11 @@ Future<Map<String, String>> _runTerminal(
             : (j['skip'] == true ? 'skip: ${j['detail']}' : 'fail: ${j['detail']}');
       }
     }
-    results['desktop test'] = code == 0 ? 'pass' : 'fail: flutter test exit $code (see desktop.log)';
   } on Object catch (e, st) {
     results['run'] = 'fail: $e';
     File(p.join(artifacts, 'run-error.txt')).writeAsStringSync('$e\n$st');
   } finally {
-    desktop?.kill();
+    await desktop?.end();
     final stopped = await Owned.stopAll(p.join(artifacts, 'owned.jsonl'));
     if (stopped.isNotEmpty) stdout.writeln('  stopped: ${stopped.join(', ')}');
     await server?.stop();
@@ -637,20 +595,30 @@ Future<Map<String, String>> _runTerminal(
       }
       stdout.writeln('  tailscale serve: ${await _tailscaleServes() ?? 'No serve config'}');
     }
-    // The project the desktop's setup made goes, whatever happened.
-    if (opts['server'] == 'supabase-cloud') {
+    // The project the desktop's setup made goes, whatever happened: the one it signed in to, else any the
+    // account didn't have before the run.
+    if (cloud != null) {
       final made = File(p.join(artifacts, 'supabase-project.txt'));
-      final ref = made.existsSync() ? made.readAsStringSync().trim() : '';
-      if (ref.isEmpty) {
+      var refs = made.existsSync() ? {made.readAsStringSync().trim()}.where((r) => r.isNotEmpty).toSet() : <String>{};
+      if (refs.isEmpty) {
+        try {
+          refs = (await cloud.refs()).difference(cloudBefore);
+        } on Object catch (e) {
+          stdout.writeln('  supabase: projects not listed: $e');
+        }
+      }
+      if (refs.isEmpty) {
         results['supabase: test project deleted'] = 'skip: the setup made no project';
       } else {
         try {
-          await _SupabaseCloud(opts['supabase-token-file']!, p.join(artifacts, 'supabase.log')).delete(ref);
+          for (final ref in refs) {
+            await cloud.delete(ref);
+            stdout.writeln('  supabase: project $ref deleted');
+          }
           results['supabase: test project deleted'] = 'pass';
-          stdout.writeln('  supabase: project $ref deleted');
         } on Object catch (e) {
           results['supabase: test project deleted'] = 'fail: $e';
-          stdout.writeln('  supabase: project $ref NOT deleted: $e');
+          stdout.writeln('  supabase: project(s) $refs NOT deleted: $e');
         }
       }
     }

@@ -10,16 +10,20 @@ appId: com.danyzmaj.pocketterm
     env:
       ROW: ${SESSION}
 - extendedWaitUntil:
-    visible: "(Prompt omp…|\nSend)"
+    visible:
+      id: "session-input"
     timeout: 15000
 - runFlow: sub/prompt.yaml
 - inputText: "/mo"
 - extendedWaitUntil:
-    visible: "/model.*"
+    visible:
+      id: "command-model"
     timeout: 10000
 - takeScreenshot: commands
-- tapOn: "/model.*"
-- tapOn: "\n?Send"
+- tapOn:
+    id: "command-model"
+- tapOn:
+    id: "session-send"
 - extendedWaitUntil:
     visible: "Select a model"
     timeout: 15000
@@ -28,16 +32,17 @@ appId: com.danyzmaj.pocketterm
 # card still comes on the conversation under it.
 - runFlow:
     when:
-      visible: "(Type a line…|\nSend \\(types it, then Enter\\))"
+      visible:
+        id: "term-input"
     commands:
       - runFlow: sub/back.yaml
 - extendedWaitUntil:
     visible: "Select a model"
     timeout: 15000
-- assertVisible: "fake-model(\n.*)?"
-- assertVisible: "fake-model-slow(\n.*)?"
+- assertVisible: "fake-model((, |\n).*)?"
+- assertVisible: "fake-model-slow((, |\n).*)?"
 - takeScreenshot: picker
-- tapOn: "fake-model-fast(\n.*)?"
+- tapOn: "fake-model-fast((, |\n).*)?"
 - extendedWaitUntil:
     notVisible: "Select a model"
     timeout: 15000

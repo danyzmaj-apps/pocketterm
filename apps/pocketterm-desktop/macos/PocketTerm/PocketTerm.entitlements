@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Not sandboxed: PocketTerm runs the terminals' CLIs (kitty, tmux, wezterm), writes ~/.config/pocketterm
+	     and the coding agents' folders, and starts its server. -->
+	<key>com.apple.security.app-sandbox</key>
+	<false/>
+	<!-- iTerm2 and Ghostty through AppleScript (NSAppleEventsUsageDescription). -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- The local API on 127.0.0.1 for the coding agents' integrations. -->
+	<key>com.apple.security.network.server</key>
+	<true/>
+</dict>
+</plist>

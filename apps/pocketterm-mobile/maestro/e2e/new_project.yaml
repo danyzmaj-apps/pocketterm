@@ -19,11 +19,14 @@ appId: com.danyzmaj.pocketterm
 - takeScreenshot: named
 - tapOn: "Create and open"
 - extendedWaitUntil:
-    visible: "(Prompt omp…|\nSend)"
+    visible:
+      id: "session-input"
     timeout: 45000
 - takeScreenshot: started
 - runFlow: sub/back.yaml
 - scrollUntilVisible:
-    element: "${NAME_RE}\n.*"
+    element:
+      text: "${NAME_RE}(\n.*)*"
+      id: "session-.*"
     timeout: 30000
 - takeScreenshot: listed

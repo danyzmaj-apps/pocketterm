@@ -7,14 +7,17 @@ appId: com.danyzmaj.pocketterm
 - runFlow: sub/home.yaml
 - tapOn: "\n?New session"
 - extendedWaitUntil:
-    visible: "Start omp\n.*"
+    visible:
+      id: "start-agent"
     timeout: 10000
-- tapOn: "Start omp\n.*"
-- assertVisible: "Start omp\nOff: just a shell(\n.*)?"
+- runFlow:
+    file: sub/switch.yaml
+    env:
+      ID: start-agent
 - scrollUntilVisible:
-    element: "${PROJECT}\n.*/${PROJECT}"
+    element: "${PROJECT}(, |\n).*/${PROJECT}"
     timeout: 20000
-- tapOn: "${PROJECT}\n.*/${PROJECT}"
+- tapOn: "${PROJECT}(, |\n).*/${PROJECT}"
 - extendedWaitUntil:
     visible: "Opened in a new tab in the .* window with ${PROJECT}"
     timeout: 45000

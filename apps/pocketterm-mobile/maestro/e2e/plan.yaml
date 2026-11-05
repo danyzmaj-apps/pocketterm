@@ -10,14 +10,22 @@ appId: com.danyzmaj.pocketterm
     env:
       ROW: ${SESSION}
 - extendedWaitUntil:
-    visible: "(Prompt omp…|\nSend)"
+    visible:
+      id: "session-input"
     timeout: 15000
 - runFlow: sub/prompt.yaml
 - inputText: ${PROMPT}
-- tapOn: "\n?Send"
+- tapOn:
+    id: "session-send"
 # The keyboard put away: with it up the card, at most under half of what's
-# left, scrolls and its heading may sit above what shows.
-- hideKeyboard
+# left, scrolls and its heading may sit above what shows. iOS puts it away
+# itself when the agent asks (and Maestro can't: a SwiftUI field has no
+# dismiss action).
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - extendedWaitUntil:
     visible: "Plan ready"
     timeout: 20000

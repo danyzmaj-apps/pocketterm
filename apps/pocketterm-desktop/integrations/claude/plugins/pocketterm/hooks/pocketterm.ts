@@ -22,7 +22,7 @@ import {
 // to the phone through PocketTerm. The transcript as items, the answer as it's written, whether Claude is busy, and
 // the questions, approvals and plan reviews it waits on (answered on the phone by keys PocketTerm types into this
 // terminal window). From the phone you can prompt (with images and files), stop, and page back through older history.
-// The protocol is described in packages/pocketterm_core/lib/live.dart; mods have no WebSocket, so it goes over HTTP
+// The protocol is described in packages/PocketTermKit/Sources/PocketTermKit/Live.swift; mods have no WebSocket, so it goes over HTTP
 // long polls (POST /v1/live/http).
 //
 // Only an interactive session talks, and only to PocketTerm's local API on 127.0.0.1 (port and token from
@@ -248,7 +248,7 @@ async function helloFrame($: EngineInterface): Promise<Frame> {
 	};
 }
 
-/** Where Claude runs, as PocketTerm maps it to a terminal window (packages/pocketterm_core/lib/terminal.dart): the
+/** Where Claude runs, as PocketTerm maps it to a terminal window (packages/PocketTermKit/Sources/PocketTermKit/TerminalModel.swift): the
  * terminals' variables, and its tty where only a tty tells (Ghostty); read once. */
 let term: Record<string, string> | undefined;
 async function termOf($: EngineInterface): Promise<Record<string, string>> {

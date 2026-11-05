@@ -21,12 +21,7 @@ tool/supabase-local.sh link    # a computer's setup link
 tool/supabase-local.sh stop    # stop and remove the throwaway project
 ```
 
-The client tests run against it from `packages/pocketterm_core`:
-
-```sh
-POCKETTERM_SUPABASE=1 fvm flutter test -j 1 test/server_client_test.dart test/session_test.dart
-# -j 1: each test empties the one local project, so test files must not run side by side.
-```
+The end-to-end harness runs against it (`tool/e2e`, its Supabase backend; see [docs/TESTING.md](../../../docs/TESTING.md)).
 
 ## Design
 

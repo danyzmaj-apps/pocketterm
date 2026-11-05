@@ -8,7 +8,7 @@ import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 // Streams this omp session to the PocketTerm menu-bar app (github.com/danyzmaj-apps/pocketterm), which relays it to the
 // phone: the transcript as items (messages, tool calls with the end of their output), the answer as it's
 // written, whether omp is busy, and the questions and approvals it waits on. From the phone you can prompt
-// (with images), interrupt, and page back through older history. The protocol is described in packages/pocketterm_core/lib/live.dart.
+// (with images), interrupt, and page back through older history. The protocol is described in packages/PocketTermKit/Sources/PocketTermKit/Live.swift.
 //
 // Only the top-level interactive session talks, and only to PocketTerm's local API on 127.0.0.1 (port and token
 // from ~/.config/pocketterm/cli.json, or the file POCKETTERM_CLI_JSON names), once whatever answers at that port has
@@ -64,7 +64,7 @@ async function proven(port: number, token: string): Promise<boolean> {
 	}
 }
 
-/** One transcript entry, keyed like LiveItem.toJson in packages/pocketterm_core/lib/live.dart (the Mac adds `o` and `s`). */
+/** One transcript entry, keyed like LiveItem.toJson in packages/PocketTermKit/Sources/PocketTermKit/Live.swift (the Mac adds `o` and `s`). */
 export type Item = {
 	id: string;
 	k: "user" | "assistant" | "tool" | "notice";
@@ -381,7 +381,7 @@ function windowKey(): string | null {
 	return listen && window ? `${basename(listen.replace(/^unix:/, ""))}/${window}` : null;
 }
 
-/** The terminal variables PocketTerm maps to the window omp runs in (packages/pocketterm_core/lib/terminal.dart). */
+/** The terminal variables PocketTerm maps to the window omp runs in (packages/PocketTermKit/Sources/PocketTermKit/TerminalModel.swift). */
 const TERM_VARS = [
 	"TERM_PROGRAM",
 	"KITTY_WINDOW_ID",

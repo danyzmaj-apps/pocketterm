@@ -1,0 +1,18 @@
+# Flips the switch ID: on iOS the switch itself (its row's label doesn't flip
+# it), on Android the row (it toggles as a whole).
+appId: com.danyzmaj.pocketterm
+---
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          text: "[01]"
+          childOf:
+            id: "${ID}"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          id: "${ID}"

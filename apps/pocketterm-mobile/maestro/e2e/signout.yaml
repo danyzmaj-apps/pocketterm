@@ -8,6 +8,10 @@ appId: com.danyzmaj.pocketterm
 - assertVisible: "Signed in with your computer’s code"
 - assertVisible: ".*Encrypted, through the push relay.*"
 - takeScreenshot: account
+# Android's Settings is a full page: the row is further down.
+- scrollUntilVisible:
+    element: "Leave this server"
+    timeout: 20000
 - tapOn: "Leave this server"
 - tapOn: "Leave"
 - extendedWaitUntil:
@@ -17,7 +21,9 @@ appId: com.danyzmaj.pocketterm
 - takeScreenshot: signed-out
 # Relaunched, still signed out: nothing of the sign-in was kept.
 - stopApp
-- launchApp
+- launchApp:
+    arguments:
+      POCKETTERM_E2E: "true"
 - extendedWaitUntil:
     visible: "Scan the code from your computer"
     timeout: 30000

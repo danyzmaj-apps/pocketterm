@@ -10,10 +10,13 @@ appId: com.danyzmaj.pocketterm
     env:
       ROW: ${SESSION}
 - extendedWaitUntil:
-    visible: "(Prompt omp…|\nSend)"
+    visible:
+      id: "session-input"
     timeout: 15000
-- tapOn: "\n?Attach images or files"
-- tapOn: "Choose from Photos"
+- runFlow:
+    file: sub/attach_pick.yaml
+    env:
+      PICK: "Choose from Photos"
 - runFlow:
     when:
       platform: iOS
@@ -62,6 +65,12 @@ appId: com.danyzmaj.pocketterm
       - extendedWaitUntil:
           visible: ".*(Photo|Photos|Select|images).*"
           timeout: 15000
+      # Google Photos' banner over the grid would push the tenth photo under
+      # the bar that comes with the first pick (a tap there is "View
+      # selected", a preview): dismissed first.
+      - tapOn:
+          id: "com.google.android.providers.media.module:id/dismiss_button"
+          optional: true
       # The system photo picker, newest first; its button counts the picks,
       # "Add (10)".
       - tapOn:
@@ -97,24 +106,72 @@ appId: com.danyzmaj.pocketterm
       - takeScreenshot: picker
       - tapOn: "(Done|Add|Select) \\(10\\)"
 # Each image its own ✕, ten of them; no eleventh.
-- extendedWaitUntil:
-    visible:
-      text: "Remove image"
-      index: 9
-    timeout: 30000
-- assertNotVisible:
-    text: "Remove image"
-    index: 10
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible:
+            text: "Remove image"
+            index: 9
+          timeout: 30000
+      - assertNotVisible:
+          text: "Remove image"
+          index: 10
+# iOS reads only the thumbnails on screen: scroll the strip to its end.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "attachment-remove-0"
+          timeout: 30000
+      - repeat:
+          times: 3
+          while:
+            notVisible:
+              id: "attachment-remove-9"
+          commands:
+            - swipe:
+                from:
+                  id: "attachment-strip"
+                direction: LEFT
+      - extendedWaitUntil:
+          visible:
+            id: "attachment-remove-9"
+          timeout: 10000
+      - assertNotVisible:
+          id: "attachment-remove-10"
 - takeScreenshot: ten-attached
 # Full: the attach button opens no menu.
 - tapOn: "\n?Attach images or files"
 - assertNotVisible: "Choose from Photos"
 - takeScreenshot: full
+# iOS: back to the strip's start first; the first one scrolled half out of
+# view can't be tapped. Each ✕ in turn then, the first each time.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - repeat:
+          times: 3
+          while:
+            notVisible:
+              id: "attachment-remove-0"
+          commands:
+            - swipe:
+                from:
+                  id: "attachment-strip"
+                direction: RIGHT
 - repeat:
+    times: 12
     while:
       visible: "Remove image"
     commands:
-      - tapOn: "Remove image"
+      - tapOn:
+          text: "Remove image"
+          index: 0
 - assertNotVisible: "Remove image"
 - takeScreenshot: removed
 - runFlow: sub/back.yaml

@@ -1,9 +1,8 @@
 package com.danyzmaj.pocketterm
 
 import android.Manifest
-import android.app.Activity
+import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -16,26 +15,34 @@ import android.speech.RecognitionSupportCallback
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.annotation.RequiresApi
-import io.flutter.plugin.common.EventChannel
-import io.flutter.plugin.common.MethodChannel
+import com.danyzmaj.pocketterm.core.SpeechCheck
+import com.danyzmaj.pocketterm.core.SpeechEvent
+import com.danyzmaj.pocketterm.core.SpeechFix
+import com.danyzmaj.pocketterm.core.SpeechLanguage
+import com.danyzmaj.pocketterm.core.SpeechSource
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.Locale
+import kotlin.coroutines.resume
 
 /**
- * The composer's microphone (packages/pocketterm_core/lib/speech.dart): speech to text on the phone, in the
- * language Dart asks for (`en` or `hr`). Android 12+: the on-device recognizer
+ * The composer's microphone ([SpeechSource]): speech to text on the phone, in the
+ * language asked for (`en` or `hr`). Android 12+: the on-device recognizer
  * (SpeechRecognizer.createOnDeviceSpeechRecognizer), with Android 13+ checking that the language is installed for
  * it; otherwise the phone's recognizer, asked to stay offline
  * (EXTRA_PREFER_OFFLINE). Android's recognizer stops at each pause, so while the person is still listening a new
  * round starts at once and the text so far is kept.
  *
- * Methods (from MainActivity's channel): speechCheck {language} → {status, fix?}, speechStop, speechFix {fix,
- * language}. Events on `pocketterm/speech`, listened to with {language}, a stream per listening: {type: heard,
- * text}, {type: level, level 0…1}, then
- * {type: ended, why: stopped|interrupted|error, message?, status?} and the stream's end. Cancelling it discards.
+ * A listening is a flow ([listen]) of {type: heard, text}, {type: level, level 0…1}, then
+ * {type: ended, why: stopped|interrupted|error, message?, status?} ([SpeechEvent.fromMap]) and its end.
+ * Cancelling the collection discards. Runs on the main thread, as SpeechRecognizer wants.
  */
-class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
+class Dictation(private val activity: Context) : SpeechSource {
     private val main = Handler(Looper.getMainLooper())
-    private var sink: EventChannel.EventSink? = null
+    private var sink: SendChannel<SpeechEvent>? = null
     private var recognizer: SpeechRecognizer? = null
     private var listening = false
     private var stopping = false
@@ -49,8 +56,6 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
     /** When the current round started; rounds that keep ending at once mean the recognizer is failing. */
     private var roundAt = 0L
     private var quickEnds = 0
-
-    private var micWaiter: ((Boolean) -> Unit)? = null
 
     /** The language of the current listening, as onListen was given it. */
     private var listeningIn = "en"
@@ -82,27 +87,26 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
 
     // ------------------------------------------------------------------ methods
 
-    fun check(code: String?, result: MethodChannel.Result) {
-        askMic { granted ->
-            if (granted) support(code, result) else result.success(mapOf("status" to "denied", "fix" to "appSettings"))
+    override suspend fun check(language: SpeechLanguage): SpeechCheck {
+        if (!ActivityHost.request(Manifest.permission.RECORD_AUDIO)) {
+            return SpeechCheck.fromMap(mapOf("status" to "denied", "fix" to "appSettings"))
         }
+        return support(language)
     }
 
-    /** speechSupport: whether the language can be recognized on this phone, asking for no permission. */
-    fun support(code: String?, result: MethodChannel.Result) {
+    /** Whether the language can be recognized on this phone, asking for no permission. */
+    override suspend fun support(language: SpeechLanguage): SpeechCheck = SpeechCheck.fromMap(
         when {
             // Before Android 12, or no on-device recognizer: the phone's own, asked to stay offline.
-            !onDevice -> result.success(
-                mapOf("status" to if (SpeechRecognizer.isRecognitionAvailable(activity)) "ready" else "unavailable"),
-            )
+            !onDevice -> mapOf("status" to if (SpeechRecognizer.isRecognitionAvailable(activity)) "ready" else "unavailable")
             // Android 12 can't say which languages it has: a missing language shows when listening starts.
-            Build.VERSION.SDK_INT < 33 -> result.success(mapOf("status" to "ready"))
-            else -> checkLanguage(code, result)
-        }
-    }
+            Build.VERSION.SDK_INT < 33 -> mapOf("status" to "ready")
+            else -> checkLanguage(language.code)
+        },
+    )
 
     @RequiresApi(33)
-    private fun checkLanguage(code: String?, result: MethodChannel.Result) {
+    private suspend fun checkLanguage(code: String?): Map<String, Any?> = suspendCancellableCoroutine { cont ->
         val r = SpeechRecognizer.createOnDeviceSpeechRecognizer(activity)
         val lang = tag(code)
         fun has(list: List<String>) = list.any { it.equals(lang, ignoreCase = true) }
@@ -112,7 +116,7 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
             object : RecognitionSupportCallback {
                 override fun onSupportResult(support: RecognitionSupport) {
                     r.destroy()
-                    result.success(
+                    cont.resume(
                         when {
                             has(support.installedOnDeviceLanguages) -> mapOf("status" to "ready")
                             has(support.pendingOnDeviceLanguages) -> mapOf("status" to "downloading")
@@ -126,58 +130,44 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
                 override fun onError(error: Int) {
                     r.destroy()
                     // It couldn't say: listening finds out.
-                    result.success(mapOf("status" to "ready"))
+                    cont.resume(mapOf("status" to "ready"))
                 }
             },
         )
     }
 
-    fun fix(fix: String?, code: String?, result: MethodChannel.Result) {
+    override suspend fun fix(fix: SpeechFix, language: SpeechLanguage) {
         when {
-            fix == "download" && Build.VERSION.SDK_INT >= 33 -> {
+            fix == SpeechFix.download && Build.VERSION.SDK_INT >= 33 -> {
                 // The system downloads it, with its own notification; the recognizer stays bound a while for that.
                 val r = SpeechRecognizer.createOnDeviceSpeechRecognizer(activity)
-                r.triggerModelDownload(intent(code))
+                r.triggerModelDownload(intent(language.code))
                 main.postDelayed({ r.destroy() }, 10_000)
             }
-            fix == "speechSettings" -> open(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) || openApp()
+            fix == SpeechFix.speechSettings -> open(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) || openApp()
             else -> openApp()
         }
-        result.success(null)
     }
 
-    private fun open(intent: Intent) = runCatching { activity.startActivity(intent) }.isSuccess
+    private fun open(intent: Intent) = ActivityHost.start(intent)
 
     private fun openApp() =
         open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", activity.packageName, null)))
 
-    /** RECORD_AUDIO, asked for the first time the microphone is used. */
-    private fun askMic(then: (Boolean) -> Unit) {
-        if (activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            return then(true)
-        }
-        micWaiter?.invoke(false)
-        micWaiter = then
-        activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), MIC_REQUEST)
-    }
-
-    /** From MainActivity.onRequestPermissionsResult. */
-    fun micAnswered(granted: Boolean) {
-        val w = micWaiter
-        micWaiter = null
-        w?.invoke(granted)
-    }
-
-    fun stop(result: MethodChannel.Result) {
-        result.success(null)
+    override suspend fun stop() {
         finish("stopped")
     }
 
     // ------------------------------------------------------------------ listening
 
-    override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+    override fun listen(language: SpeechLanguage): Flow<SpeechEvent> = callbackFlow {
+        start(language.code, channel)
+        awaitClose { main.post { cancel(channel) } }
+    }
+
+    private fun start(code: String, events: SendChannel<SpeechEvent>) {
         teardown()
-        listeningIn = (arguments as? Map<*, *>)?.get("language") as? String ?: "en"
+        listeningIn = code
         sink = events
         settled = ""
         partial = ""
@@ -195,8 +185,9 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
         r.startListening(intent(listeningIn))
     }
 
-    override fun onCancel(arguments: Any?) {
-        // Closed or cancelled: what was heard goes, and the microphone stops now.
+    private fun cancel(events: SendChannel<SpeechEvent>) {
+        // Closed or cancelled: what was heard goes, and the microphone stops now. A later listening is its own.
+        if (sink !== events && sink != null) return
         sink = null
         listening = false
         teardown()
@@ -217,9 +208,9 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
         settle()
         val s = sink
         sink = null
-        s?.success(mapOf("type" to "heard", "text" to settled))
-        s?.success(listOfNotNull("type" to "ended", "why" to why, message?.let { "message" to it }, status?.let { "status" to it }).toMap())
-        s?.endOfStream()
+        s?.trySend(SpeechEvent.Heard(settled))
+        s?.trySend(SpeechEvent.fromMap(listOfNotNull("type" to "ended", "why" to why, message?.let { "message" to it }, status?.let { "status" to it }).toMap()))
+        s?.close()
         teardown()
     }
 
@@ -236,7 +227,7 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
     }
 
     private fun emitText() {
-        sink?.success(mapOf("type" to "heard", "text" to joined(settled, partial)))
+        sink?.trySend(SpeechEvent.Heard(joined(settled, partial)))
     }
 
     /** The round ended at a pause while the person still listens: a new one starts, the words so far kept. */
@@ -259,7 +250,7 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
         override fun onRmsChanged(rmsdB: Float) {
             // Android reports about -2 dB (silence) to 10 dB (loud speech).
             if (listening && !stopping) {
-                sink?.success(mapOf("type" to "level", "level" to ((rmsdB + 2f) / 12f).coerceIn(0f, 1f).toDouble()))
+                sink?.trySend(SpeechEvent.Level(((rmsdB + 2f) / 12f).coerceIn(0f, 1f).toDouble()))
             }
         }
 
@@ -299,8 +290,6 @@ class Dictation(private val activity: Activity) : EventChannel.StreamHandler {
         results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.takeIf { it.isNotBlank() }
 
     companion object {
-        const val MIC_REQUEST = 0x0D2F
-
         // SpeechRecognizer's, from API 31.
         private const val ERROR_LANGUAGE_NOT_SUPPORTED = 12
         private const val ERROR_LANGUAGE_UNAVAILABLE = 13

@@ -13,19 +13,26 @@ onFlowComplete:
       commands:
         - tapOn: "Cancel"
 ---
-- extendedWaitUntil:
-    visible: "(Open in .PocketTerm.*|\n?Back)"
-    timeout: 30000
 - runFlow:
     when:
-      visible: "Open in .PocketTerm.*"
+      platform: iOS
     commands:
-      - tapOn: "Open"
+      - extendedWaitUntil:
+          visible: "Open in .PocketTerm.*"
+          timeout: 15000
+          optional: true
+      - runFlow:
+          when:
+            visible: "Open in .PocketTerm.*"
+          commands:
+            - tapOn: "Open"
+# The session's page: its composer, and its title (iOS: with its state after ", ").
 - extendedWaitUntil:
-    visible: "\n?Back"
+    visible:
+      id: "session-input"
     timeout: 30000
 - extendedWaitUntil:
-    visible: "${SESSION}(\n.*)?"
+    visible: "${SESSION}((, |\n).*)?"
     timeout: 30000
 - extendedWaitUntil:
     visible: ".*${REPLY}.*"

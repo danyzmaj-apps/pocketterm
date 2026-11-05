@@ -2,7 +2,9 @@
 # one before left open.
 appId: com.danyzmaj.pocketterm
 ---
-- launchApp
+- launchApp:
+    arguments:
+      POCKETTERM_E2E: "true"
 # Below Android 9 a button's tooltip is read after a line break.
 - extendedWaitUntil:
     visible: "\n?New session"

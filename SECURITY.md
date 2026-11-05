@@ -9,8 +9,8 @@ What the publisher collects: the [privacy policy](https://www.danyzmaj.com/pocke
 ## Scope
 
 - The desktop app for macOS and Windows (`apps/pocketterm-desktop`), including its local API, the omp extension and the Claude Code plugin (`integrations/`).
-- The phone app for iPhone and Android (`apps/pocketterm-mobile`) and the shared code (`packages/pocketterm_core`).
-- The PocketTerm server (`packages/pocketterm_server`, [PROTOCOL.md](packages/pocketterm_server/PROTOCOL.md)), both built into the desktop app (`apps/pocketterm-desktop/lib/hosting`) and as the Docker image with Caddy (`apps/pocketterm-server`), and PocketTerm on Supabase (`apps/pocketterm-desktop/supabase`, [its README](apps/pocketterm-desktop/supabase/README.md)): the Edge Function, the migrations and the setup that deploys them.
+- The phone apps for iPhone and Android (`apps/pocketterm-mobile`) and the shared protocol code (`packages/PocketTermKit`, the Android app's `:core`, the Windows app's `PocketTerm.Core`).
+- The PocketTerm server (`packages/pocketterm_server`, [PROTOCOL.md](packages/pocketterm_server/PROTOCOL.md)), both built into the desktop apps (bundled as a sidecar binary, started by `BuiltInServer` in `packages/PocketTermKit/Sources/PocketTermDesktop` and `apps/pocketterm-desktop/windows/PocketTerm.Desktop.Core/Hosting`) and as the Docker image with Caddy (`apps/pocketterm-server`), and PocketTerm on Supabase (`apps/pocketterm-desktop/supabase`, [its README](apps/pocketterm-desktop/supabase/README.md)): the Edge Function, the migrations and the setup that deploys them.
 - The publisher's push relay (`apps/pocketterm-relay`, [its SECURITY.md](apps/pocketterm-relay/SECURITY.md)).
 
 Out of scope: Tailscale, Supabase, Apple, Google, Microsoft, Docker, Caddy and Let's Encrypt themselves; the terminals and coding agents PocketTerm drives; a server whose owner gave its setup link, a pairing code or a computer's QR code to someone else; attacks that need an unlocked device the attacker already controls.
@@ -37,7 +37,7 @@ PocketTerm trusts the computer it runs on and the phones that scanned its code. 
 
 ## Keys and storage
 
-Each computer makes a 32-byte channel key the first time it needs one (`apps/pocketterm-desktop/lib/channel_keys.dart`). It never goes to any server.
+Each computer makes a 32-byte channel key the first time it needs one (`ChannelKeys.swift` in `packages/PocketTermKit/Sources/PocketTermDesktop`, `Storage/ChannelKeys.cs` on Windows). It never goes to any server.
 
 | Platform | Where keys and the device token live |
 | --- | --- |
@@ -60,7 +60,7 @@ A device token is 32 random bytes; the server keeps only its SHA-256. It works u
 
 ## Encryption and replay protection
 
-Code: `packages/pocketterm_core/lib/e2e.dart`.
+Code: `packages/PocketTermKit/Sources/PocketTermKit/E2E.swift`, `apps/pocketterm-mobile/android/core/src/main/kotlin/com/danyzmaj/pocketterm/core/E2e.kt`, `apps/pocketterm-desktop/windows/PocketTerm.Core/Crypto/E2e.cs`, all three checked against the frozen vectors in `tool/vectors/vectors.json`.
 
 - Everything between a computer and its phones is sealed with AES-256-GCM under the computer's channel key, with a random 12-byte nonce and additional data naming what it is: `pocketterm/v1|<computer id>|<event>` for live messages, `pocketterm/v1|image|<blob path>` for images and files, `pocketterm/v1|push|<computer id>` for notifications, `pocketterm/v1|activity|<computer id>` for Android followed sessions. A sealed message can't be moved to another computer, event, blob or purpose.
 - Every live message carries a timestamp, a random id, its sender's random epoch and a sequence number. The receiver drops a message more than 5 minutes off its clock or older than the receiving app's start, an id seen in the last 10 minutes, and a sequence number at or below the last one from that epoch.
@@ -85,7 +85,7 @@ Pushes are off until the person turns them on in the phone app, which explains w
 
 ## Local API
 
-The desktop app's API (`apps/pocketterm-desktop/lib/local_api.dart`) listens on `127.0.0.1` only, behind a random token in `~/.config/pocketterm/cli.json` (`%USERPROFILE%\.config\pocketterm` on Windows). On macOS the file is mode 600 in a mode 700 folder, and no token is written if that fails. The omp extension and Claude Code plugin send the token only after the app proves it holds it (an HMAC-SHA256 of a fresh nonce), so a stale port never receives it. The file is removed when PocketTerm quits. kitty is reached over its unix sockets, and only sockets owned by the current user count.
+The desktop app's API (`LocalApi` in `PocketTermDesktop` and `PocketTerm.Desktop.Core`) listens on `127.0.0.1` only, behind a random token in `~/.config/pocketterm/cli.json` (`%USERPROFILE%\.config\pocketterm` on Windows). On macOS the file is mode 600 in a mode 700 folder, and no token is written if that fails. The omp extension and Claude Code plugin send the token only after the app proves it holds it (an HMAC-SHA256 of a fresh nonce), so a stale port never receives it. The file is removed when PocketTerm quits. kitty is reached over its unix sockets, and only sockets owned by the current user count.
 
 A session in the orchestrator folder (`orchestrator` beside `cli.json`) can, through the local API, list every other session, read its conversation, prompt it (not a slash command, not itself) and stop its run. The desktop app decides who that is from the folder each session reports on connecting, so any process of the same user holding the token could claim it, as it could already drive the terminals. Transcripts it reads can carry text meant to steer it (prompt injection); its tools that prompt or stop ask first only when omp is set to ask before writing.
 
@@ -101,7 +101,12 @@ A session in the orchestrator folder (`orchestrator` beside `cli.json`) can, thr
 
 ## Test builds
 
-tool/smoke and tool/e2e build the desktop app with `--dart-define=POCKETTERM_SMOKE=true` (`apps/pocketterm-desktop/lib/test_hooks.dart`). Only such a build reads the environment variables that point it at stand-ins: `POCKETTERM_TAILSCALE` (another program run as the Tailscale CLI), `POCKETTERM_CLI_JSON` (another file for the local API's port and token), `POCKETTERM_KITTY_DIR` (another folder of kitty sockets) and `POCKETTERM_PROFILE` (secrets kept in memory instead of the Keychain, the accessibility tree always on). A released build ignores them. The Mac app's window code still reads `POCKETTERM_PROFILE` to announce its accessibility tree, which only asks macOS to read the window as VoiceOver would.
+The hooks the smoke and end-to-end harnesses use are compiled only into test builds; a released build has none of them and ignores the variables.
+
+- **Mac.** A Debug build, or one compiled with `-D POCKETTERM_SMOKE` (`tool/smoke/run.sh` passes it to xcodebuild; `TestHooks.swift`). Only it reads `POCKETTERM_TAILSCALE` (another program run as the Tailscale CLI), `POCKETTERM_CLI_JSON` (another file for the local API's port and token), `POCKETTERM_KITTY_DIR` (another folder of kitty sockets), `POCKETTERM_PROFILE` (secrets kept in memory instead of the Keychain, preferences in their own defaults domain) and `POCKETTERM_APPEARANCE` (light or dark, for screenshots). Sparkle doesn't check for updates in it.
+- **Windows.** A Debug build, or one published with `-p:PocketTermE2E=true` (`TestHooks.cs`). Besides the same four variables it reads `POCKETTERM_DATA` (a throwaway support folder), `POCKETTERM_LOG` (a log file) and takes `--quit` from a second start; it also puts the pairing code's link in the QR image's UI Automation help text, so a test can "scan" it.
+- **iPhone.** Debug builds compiled with `POCKETTERM_E2E` (`Model/E2E.swift`), switched on only by the `POCKETTERM_E2E` launch argument or environment variable: the scanner takes a pasted code, the tips start out seen, and the microphone hears a scripted speaker.
+- **Android.** A debug build made with `-PpockettermE2e=true` (`BuildConfig.E2E`): the same three hooks. Release builds never have it.
 
 ## Updates
 

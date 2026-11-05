@@ -9,23 +9,26 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     visible: "Opens in ${TERMINAL_RE}, as a tab in the project's window"
     timeout: 10000
-- assertVisible: "Start omp\n.*"
+- assertVisible: "Start omp((, |\n).*)?"
 # General (the home folder) comes first, for a session about nothing in particular.
-- assertVisible: "General\n~"
+- assertVisible: "General(, |\n)~"
 - takeScreenshot: sheet
-# Each project is a tile: its name, its path under it (the run's projects
+# Each project is a row: its name, its path under it (the run's projects
 # aren't under its home, so the full path); open windows' folders come first,
-# so it may be further down.
+# so it may be further down. iOS reads a row's two lines joined by ", ".
 - scrollUntilVisible:
-    element: "${PROJECT}\n.*/${PROJECT}"
+    element: "${PROJECT}(, |\n).*/${PROJECT}"
     timeout: 20000
-- tapOn: "${PROJECT}\n.*/${PROJECT}"
+- tapOn: "${PROJECT}(, |\n).*/${PROJECT}"
 - extendedWaitUntil:
-    visible: "Prompt omp…"
+    visible:
+      id: "session-input"
     timeout: 45000
 - takeScreenshot: started
-- tapOn: "Back"
+- runFlow: sub/back.yaml
 - extendedWaitUntil:
-    visible: "${PROJECT}\n.*"
+    visible:
+      text: "${PROJECT}(\n.*)*"
+      id: "session-.*"
     timeout: 20000
 - takeScreenshot: listed

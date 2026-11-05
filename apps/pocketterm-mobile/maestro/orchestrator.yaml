@@ -1,10 +1,14 @@
-# The orchestrator's bar and sheet in the demo, photographed as orchestrator-*. Needs an E2E build
-# (--dart-define=POCKETTERM_E2E=true): the Simulator has no microphone, so lib/voice.dart's scripted speaker says
+# The orchestrator's bar and sheet in the demo, photographed as orchestrator-*. Needs an E2E build (iOS: a Debug
+# build, switched on by the launch argument below; Android: the E2E build): the Simulator has no microphone, so the
+# scripted speaker (iOS: PocketTerm/Voice/Voice.swift) says
 # "Add a dark mode toggle to the settings page and write a test for it." while the microphone is held. Signed out:
 #   maestro test orchestrator.yaml
 appId: com.danyzmaj.pocketterm
 ---
-- launchApp
+- launchApp:
+    # iOS: a Debug build's test hooks (PocketTerm/Model/E2E.swift: tips seen, scripted speech).
+    arguments:
+      POCKETTERM_E2E: "true"
 - extendedWaitUntil:
     visible: ".*changed the icon.*"
     timeout: 3000

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:pocketterm_server/src/relay.dart';
@@ -18,21 +19,44 @@ Usage:
 Options (each also read from the environment variable in brackets):
   --data <dir>           Where everything is kept [POCKETTERM_DATA] (default: ./data)
   --public-url <url>     The https address phones and computers reach the server at, put in setup links
-                         [POCKETTERM_PUBLIC_URL] (required)
-  --port <n>             serve, health: the port to listen on [POCKETTERM_PORT] (default: 47900)
+                         [POCKETTERM_PUBLIC_URL] (required, except for serve on a loopback --address: then
+                         http://<address>:<port>)
+  --port <n>             serve, health: the port to listen on [POCKETTERM_PORT] (default: 47900; serve: 0 lets
+                         the system pick a free one)
   --address <ip>         serve, health: the address to listen on [POCKETTERM_ADDRESS] (default: 0.0.0.0)
   --relay <url>          serve: the push relay [PUSH_RELAY_URL] (default: the publisher's)
   --relay-key <base64>   serve: the relay's X25519 public key, every push is sealed to it [PUSH_RELAY_KEY]
                          (default: the publisher's relay's)
   --trust-proxy          serve: rate limit by the last X-Forwarded-For address; only behind a reverse proxy
                          [POCKETTERM_TRUST_PROXY=1]
+  --trust-loopback-proxy serve: the same, but only for connections from a loopback address (a proxy on this
+                         machine, like `tailscale serve`); others count by their own address
+                         [POCKETTERM_TRUST_LOOPBACK_PROXY=1]
+  --exit-with-stdin      serve: stop when stdin closes, so the server never outlives the app that started it
   --new                  setup-link: replace the setup token first (the old link stops working; computers
                          already signed in stay signed in)
+
+serve prints one line to stdout once it listens, {"event":"listening","address":"127.0.0.1","port":47900};
+everything else goes to stderr. Exit codes: 0 stopped (SIGINT, SIGTERM or stdin closed), 1 didn't start,
+$exitPortInUse the port is taken, 64 bad usage.
 ''';
 
+/// `serve`'s exit code when its port is taken: try another.
+const exitPortInUse = 98;
+
+/// EADDRINUSE on Linux, macOS and Windows.
+const _addressInUse = {98, 48, 10048};
+
 /// Runs the `pocketterm-server` command with [args]; returns the exit code.
-Future<int> runCli(List<String> args, {Map<String, String>? environment}) async {
+/// [input] stands in for stdin and [output] for stdout (tests).
+Future<int> runCli(
+  List<String> args, {
+  Map<String, String>? environment,
+  Stream<List<int>>? input,
+  IOSink? output,
+}) async {
   final env = environment ?? Platform.environment;
+  final out = output ?? stdout;
   final command = args.isEmpty ? '' : args.first;
   final Map<String, String> flags;
   try {
@@ -56,10 +80,6 @@ Future<int> runCli(List<String> args, {Map<String, String>? environment}) async 
 
   switch (command) {
     case 'serve':
-      if (publicUrl == null) {
-        stderr.writeln('--public-url (or POCKETTERM_PUBLIC_URL) is required.\n\n$_usage');
-        return 64;
-      }
       final port = int.tryParse(option('port', 'POCKETTERM_PORT') ?? '47900');
       final address = InternetAddress.tryParse(option('address', 'POCKETTERM_ADDRESS') ?? '0.0.0.0');
       final relayText = option('relay', 'PUSH_RELAY_URL');
@@ -75,6 +95,10 @@ Future<int> runCli(List<String> args, {Map<String, String>? environment}) async 
         stderr.writeln('--port, --address, --relay or --relay-key is not valid.\n\n$_usage');
         return 64;
       }
+      if (publicUrl == null && !address.isLoopback) {
+        stderr.writeln('--public-url (or POCKETTERM_PUBLIC_URL) is required.\n\n$_usage');
+        return 64;
+      }
       final firstStart = !Store.hasSetupToken(data);
       final PocketTermServer server;
       try {
@@ -82,34 +106,53 @@ Future<int> runCli(List<String> args, {Map<String, String>? environment}) async 
           dataDir: data,
           address: address,
           port: port,
+          // On loopback without one: http://<address>:<bound port>, known once bound (publicUrlFor).
           publicUrl: publicUrl,
+          publicUrlFor: publicUrl == null ? (p) => _loopbackUrl(address, p) : null,
           relay: relay,
           relayKey: relayKey,
           trustProxy: flags.containsKey('trust-proxy') || env['POCKETTERM_TRUST_PROXY'] == '1',
+          trustLoopbackProxy:
+              flags.containsKey('trust-loopback-proxy') || env['POCKETTERM_TRUST_LOOPBACK_PROXY'] == '1',
           log: stderr.writeln,
         );
+      } on SocketException catch (e) {
+        if (_addressInUse.contains(e.osError?.errorCode)) {
+          stderr.writeln('Port $port on ${address.address} is taken: $e');
+          return exitPortInUse;
+        }
+        stderr.writeln("The server didn't start: $e");
+        return 1;
       } on Object catch (e) {
         stderr.writeln("The server didn't start: $e");
         return 1;
       }
-      stdout.writeln('PocketTerm server $serverVersion on ${address.address}:${server.port}, data in ${data.path}');
+      out.writeln(jsonEncode({'event': 'listening', 'address': address.address, 'port': server.port}));
+      await out.flush();
+      stderr.writeln('PocketTerm server $serverVersion on ${address.address}:${server.port}, data in ${data.path}');
       if (firstStart) {
-        stdout.writeln(
+        stderr.writeln(
           'Open this setup link on each of your computers (PocketTerm, Your own server); keep it private:\n'
           '${server.setupLink()}',
         );
       } else {
-        stdout.writeln('Run `pocketterm-server setup-link` for the setup link.');
+        stderr.writeln('Run `pocketterm-server setup-link` for the setup link.');
       }
       final stopping = Completer<void>();
+      void stop() => stopping.isCompleted ? null : stopping.complete();
+      // Windows delivers Ctrl+C as sigint (and closing the console as sighup); Ctrl+Break can't be watched.
       final signals = [
         ProcessSignal.sigint.watch(),
-        if (!Platform.isWindows) ProcessSignal.sigterm.watch(),
-      ].map((s) => s.listen((_) => stopping.isCompleted ? null : stopping.complete())).toList();
+        if (Platform.isWindows) ProcessSignal.sighup.watch() else ProcessSignal.sigterm.watch(),
+      ].map((s) => s.listen((_) => stop())).toList();
+      final watchInput = flags.containsKey('exit-with-stdin')
+          ? (input ?? stdin).listen((_) {}, onDone: stop, onError: (Object _) => stop(), cancelOnError: true)
+          : null;
       await stopping.future;
       for (final s in signals) {
         await s.cancel();
       }
+      unawaited(watchInput?.cancel());
       await server.stop();
       return 0;
     case 'setup-link':
@@ -118,7 +161,7 @@ Future<int> runCli(List<String> args, {Map<String, String>? environment}) async 
         return 64;
       }
       final replace = flags.containsKey('new');
-      stdout.writeln(PocketTermServer.setupLinkFor(data, publicUrl, replace: replace));
+      out.writeln(PocketTermServer.setupLinkFor(data, publicUrl, replace: replace));
       if (replace) stderr.writeln('The previous setup link no longer works.');
       return 0;
     case 'health':
@@ -155,7 +198,7 @@ Future<int> runCli(List<String> args, {Map<String, String>? environment}) async 
   }
 }
 
-const _switches = {'trust-proxy', 'new'};
+const _switches = {'trust-proxy', 'trust-loopback-proxy', 'exit-with-stdin', 'new'};
 const _valued = {'data', 'public-url', 'port', 'address', 'relay', 'relay-key'};
 
 /// `--name value`, `--name=value` and bare switches.
@@ -182,3 +225,5 @@ Map<String, String> _flags(List<String> args) {
   }
   return flags;
 }
+
+Uri _loopbackUrl(InternetAddress address, int port) => Uri(scheme: 'http', host: address.address, port: port);

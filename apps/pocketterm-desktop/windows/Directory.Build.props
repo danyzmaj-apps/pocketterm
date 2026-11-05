@@ -1,0 +1,19 @@
+<Project>
+  <!-- Shared by every project of PocketTerm.sln. -->
+  <PropertyGroup>
+    <LangVersion>12</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <Company>Danijel Lovric</Company>
+    <Product>PocketTerm</Product>
+  </PropertyGroup>
+  <!-- Libraries and the app: a warning is a bug. Test projects keep warnings as warnings. -->
+  <PropertyGroup Condition="!$(MSBuildProjectName.EndsWith('.Tests'))">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Doc comments go on public types (CS1591 would demand them on every member); a <param> tag documents
+         the parameters that need it, not every one (CS1573). -->
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+  </PropertyGroup>
+</Project>

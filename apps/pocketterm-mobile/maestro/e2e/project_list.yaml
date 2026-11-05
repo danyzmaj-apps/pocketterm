@@ -1,68 +1,80 @@
-# The list's projects: a tap on the sort pill switches between Name and
-# Recent activity (another tap back, as kept); tapping a project's heading
-# folds it to a count of its sessions and unfolds it again; long-pressing it
-# offers Fold all others, then Unfold all. Everything is left as it was found.
-#   env: PROJECT (regex: a project with sessions; its heading reads it in
-#   capitals, and Maestro matches text ignoring case)
+# The list's projects: the sort control switches between Name and Recent
+# activity (and back, as kept); tapping a project's heading folds it to a
+# count of its sessions and unfolds it again; long-pressing it offers Fold all
+# others, then Unfold all. Everything is left as it was found.
+#   env: PROJECT (regex: a project with sessions; its heading reads its name,
+#   as does its session's row, so each is found by its id too)
 appId: com.danyzmaj.pocketterm
 ---
 - runFlow: sub/home.yaml
-# The pill reads its choice (with its tooltip, Sort projects, after a line
-# break where the platform reads tooltips so); a tap switches to the other.
+# The control reads its choice.
 - extendedWaitUntil:
-    visible: "(Name|Recent activity)(\nSort projects)?"
+    visible:
+      text: "(Name|Recent activity)"
+      id: "project-sort"
     timeout: 10000
 - takeScreenshot: sort
 - runFlow:
     when:
-      visible: "Name(\nSort projects)?"
+      visible:
+        text: "Name"
+        id: "project-sort"
     commands:
-      - tapOn:
-          id: "project-sort"
-      - extendedWaitUntil:
-          visible: "Recent activity(\nSort projects)?"
-          timeout: 5000
+      - runFlow:
+          file: sub/sort.yaml
+          env:
+            TO: Recent activity
       - takeScreenshot: sorted-other
-      - tapOn:
-          id: "project-sort"
-      - extendedWaitUntil:
-          visible: "Name(\nSort projects)?"
-          timeout: 5000
+      - runFlow:
+          file: sub/sort.yaml
+          env:
+            TO: Name
 # After the block above it reads Name, so this one runs only when it started
 # on Recent activity.
 - runFlow:
     when:
-      visible: "Recent activity(\nSort projects)?"
+      visible:
+        text: "Recent activity"
+        id: "project-sort"
     commands:
-      - tapOn:
-          id: "project-sort"
-      - extendedWaitUntil:
-          visible: "Name(\nSort projects)?"
-          timeout: 5000
+      - runFlow:
+          file: sub/sort.yaml
+          env:
+            TO: Name
       - takeScreenshot: sorted-other
-      - tapOn:
-          id: "project-sort"
-      - extendedWaitUntil:
-          visible: "Recent activity(\nSort projects)?"
-          timeout: 5000
+      - runFlow:
+          file: sub/sort.yaml
+          env:
+            TO: Recent activity
 # Fold and unfold by its heading (in the middle: at the bottom it sits under the orchestrator's bar); its
 # session's row goes and comes back.
 - scrollUntilVisible:
-    element: "${PROJECT}"
+    element:
+      text: "${PROJECT}"
+      id: "project-.*"
     centerElement: true
     timeout: 20000
-- tapOn: "${PROJECT}"
+- tapOn:
+    text: "${PROJECT}"
+    id: "project-.*"
 - extendedWaitUntil:
-    notVisible: "${PROJECT}\n.*"
+    notVisible:
+      text: "${PROJECT}(\n.*)*"
+      id: "session-.*"
     timeout: 5000
 - assertVisible: "[0-9]+ sessions?( · .*)?"
 - takeScreenshot: folded
-- tapOn: "${PROJECT}"
+- tapOn:
+    text: "${PROJECT}"
+    id: "project-.*"
 - extendedWaitUntil:
-    visible: "${PROJECT}\n.*"
+    visible:
+      text: "${PROJECT}(\n.*)*"
+      id: "session-.*"
     timeout: 5000
 # Its menu: fold the others, then unfold all.
-- longPressOn: "${PROJECT}"
+- runFlow:
+    file: sub/project_menu.yaml
 - extendedWaitUntil:
     visible: "Fold all others"
     timeout: 5000
@@ -71,13 +83,18 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     visible: "[0-9]+ sessions?( · .*)?"
     timeout: 5000
-- assertVisible: "${PROJECT}\n.*"
+- assertVisible:
+    text: "${PROJECT}(\n.*)*"
+    id: "session-.*"
 - takeScreenshot: others-folded
 - scrollUntilVisible:
-    element: "${PROJECT}"
+    element:
+      text: "${PROJECT}"
+      id: "project-.*"
     centerElement: true
     timeout: 20000
-- longPressOn: "${PROJECT}"
+- runFlow:
+    file: sub/project_menu.yaml
 - extendedWaitUntil:
     visible: "Unfold all"
     timeout: 5000
@@ -85,5 +102,7 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     notVisible: "[0-9]+ sessions?( · .*)?"
     timeout: 5000
-- assertVisible: "${PROJECT}\n.*"
+- assertVisible:
+    text: "${PROJECT}(\n.*)*"
+    id: "session-.*"
 - takeScreenshot: unfolded

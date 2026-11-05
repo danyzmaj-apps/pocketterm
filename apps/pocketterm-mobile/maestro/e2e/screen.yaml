@@ -11,20 +11,27 @@ appId: com.danyzmaj.pocketterm
     env:
       ROW: ${WINDOW}
 - extendedWaitUntil:
-    visible: "Type a line…"
+    visible:
+      id: "term-input"
     timeout: 15000
 - runFlow:
     when:
       true: ${SCREEN != 'yes'}
     commands:
-      - assertVisible: ".* can't share its screen\\."
+      - assertVisible:
+          id: "screen-unreadable"
 - takeScreenshot: screen
-- tapOn: "Esc"
-- tapOn: "↑"
-- tapOn: "↓"
-- tapOn: "Type a line…"
+- tapOn:
+    id: "key-esc"
+- tapOn:
+    id: "key-up"
+- tapOn:
+    id: "key-down"
+- tapOn:
+    id: "term-input"
 - inputText: "echo e2e-$((6*7))"
-- tapOn: "Send \\(types it, then Enter\\)"
+- tapOn:
+    id: "term-send"
 - runFlow:
     when:
       true: ${SCREEN == 'yes'}

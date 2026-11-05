@@ -12,30 +12,89 @@ permissions:
 
 # Third-party actions are pinned to commits (the tag they were is beside each).
 jobs:
-  # The shared code and the desktop app on Windows: analyze, the tests that don't need a POSIX
-  # system (tag posix: /bin/sh, unix sockets, chmod…), and a debug build of the Windows app.
-  dart-windows:
+  # The native Windows app (apps/pocketterm-desktop/windows): the .NET libraries and their tests (the Windows-only
+  # ones and the built-in server's included), the WinUI app published self-contained, its installer, and a smoke
+  # run of the app on this runner.
+  dotnet-windows:
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        member: [packages/pocketterm_core, apps/pocketterm-desktop]
     defaults:
       run:
         shell: pwsh
+    env:
+      DOTNET_NOLOGO: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+      SLN: apps/pocketterm-desktop/windows/PocketTerm.sln
+      LIBS: apps/pocketterm-desktop/windows/PocketTerm.Libraries.slnf
+      APP: apps/pocketterm-desktop/windows/PocketTerm.App/PocketTerm.App.csproj
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - id: fvm
-        run: echo "flutter=$((Get-Content .fvmrc | ConvertFrom-Json).flutter)" >> $env:GITHUB_OUTPUT
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          flutter-version: ${{ steps.fvm.outputs.flutter }}
-          cache: true
-      - run: flutter pub get
-      - working-directory: ${{ matrix.member }}
-        run: flutter analyze
-      - working-directory: ${{ matrix.member }}
-        run: flutter test --exclude-tags posix
-      - if: matrix.member == 'apps/pocketterm-desktop'
-        working-directory: ${{ matrix.member }}
-        run: flutter build windows --debug
+          global-json-file: apps/pocketterm-desktop/windows/global.json
+      # Dart, for the built-in server the app bundles (tool/server-sidecar.ps1); the version fvm's pinned Flutter ships.
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          sdk: 3.13.4
+      - name: Built-in server
+        run: pwsh tool/server-sidecar.ps1
+      # The libraries first (they build and test anywhere), so their tests report even when the app doesn't build.
+      - name: Build libraries
+        run: dotnet build $env:LIBS -c Release
+      - name: Test
+        env:
+          POCKETTERM_SERVER_BIN: ${{ github.workspace }}\build\server-sidecar\windows-x64\pocketterm-server.exe
+        run: dotnet test $env:LIBS -c Release --no-build --logger "console;verbosity=normal"
+      - name: Build (whole solution, the app included)
+        run: dotnet build $env:SLN -c Release
+      - name: Publish
+        run: dotnet publish $env:APP -c Release -p:Platform=x64 -p:PocketTermRelease=true -o apps/pocketterm-desktop/build/windows/publish
+      - name: Installer
+        working-directory: apps/pocketterm-desktop
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y; if ($LASTEXITCODE) { exit $LASTEXITCODE } }
+          $v = dotnet msbuild windows/PocketTerm.App/PocketTerm.App.csproj -getProperty:Version
+          & $iscc /DMyAppVersion=$v windows\installer.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: PocketTerm-windows-installer
+          path: apps/pocketterm-desktop/build/windows/installer/*.exe
+          if-no-files-found: error
+      # Installs it as a person would (per-user, silently), checks what went where, and uninstalls it again.
+      - name: Install and uninstall
+        working-directory: apps/pocketterm-desktop
+        run: |
+          $setup = (Get-ChildItem build/windows/installer/*-setup.exe | Select-Object -First 1).FullName
+          $p = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+          if ($p.ExitCode) { throw "setup exited with $($p.ExitCode)" }
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\PocketTerm'
+          foreach ($f in 'PocketTerm.exe', 'PocketTerm.pri', 'pocketterm-server.exe', 'integrations\omp\pocketterm-live.ts',
+                   'integrations\claude\plugins\pocketterm\hooks\pocketterm.ts', 'supabase\migrations', 'supabase\functions\pocketterm\index.ts',
+                   'assets\tray.ico', 'assets\icon\windows-dawn.ico') {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "not installed: $f" }
+          }
+          $open = (Get-ItemProperty 'HKCU:\Software\Classes\pocketterm\shell\open\command').'(default)'
+          if ($open -ne "`"$dir\PocketTerm.exe`" `"%1`"") { throw "pocketterm:// opens $open" }
+          $p = Start-Process (Join-Path $dir 'unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+          if ($p.ExitCode) { throw "uninstall exited with $($p.ExitCode)" }
+          # The uninstaller hands over to a copy of itself and returns before it's done.
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Test-Path (Join-Path $dir 'PocketTerm.exe')) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          if (Test-Path (Join-Path $dir 'PocketTerm.exe')) { throw 'PocketTerm.exe is still there after uninstalling' }
+          if (Test-Path 'HKCU:\Software\Classes\pocketterm') { throw 'pocketterm:// is still registered after uninstalling' }
+      # The same app with the test hooks (TestHooks.cs, App.Hooks), driven by tool/smoke.ps1 with the bundled server
+      # and a phone stand-in on PocketTerm.Core (tool/PhoneStandIn, built with the solution).
+      - name: Publish (smoke build)
+        run: dotnet publish $env:APP -c Release -p:Platform=x64 -p:PocketTermE2E=true -o build/smoke-app
+      - name: Smoke
+        run: >-
+          pwsh apps/pocketterm-desktop/windows/tool/smoke.ps1 -App build/smoke-app
+          -Phone apps/pocketterm-desktop/windows/tool/PhoneStandIn/bin/Release/net8.0/PhoneStandIn.dll
+          -Artifacts build/smoke-artifacts
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: PocketTerm-windows-smoke
+          path: build/smoke-artifacts
+          if-no-files-found: ignore

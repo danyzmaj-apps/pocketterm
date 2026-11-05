@@ -14,15 +14,20 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     visible: "Windows and tabs"
     timeout: 10000
-- assertVisible: "${TERMINAL_RE} window [0-9]+(\n.*)?"
+- assertVisible: "${TERMINAL_RE} window [0-9]+((, |\n).*)?"
 - takeScreenshot: sheet
-# A tab's row: its title, then its program and folder.
+# A tab's row: its title, then its program and folder (iOS: joined by ", ").
 - scrollUntilVisible:
-    element: ".*\n.* · .*/${PROJECT}"
+    element:
+      text: ".*(, |\n).* · .*/${PROJECT}"
+      id: "layout-tab-.*"
     timeout: 20000
-- tapOn: ".*\n.* · .*/${PROJECT}"
+- tapOn:
+    text: ".*(, |\n).* · .*/${PROJECT}"
+    id: "layout-tab-.*"
 - extendedWaitUntil:
-    visible: "(Type a line…|\nSend \\(types it, then Enter\\))"
+    visible:
+      id: "term-input"
     timeout: 30000
 - takeScreenshot: tab-opened
 - runFlow: sub/back.yaml

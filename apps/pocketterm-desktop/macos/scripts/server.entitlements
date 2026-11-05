@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The built-in server (Contents/Helpers/pocketterm-server) is a Dart AOT executable: its runtime maps the
+	     compiled snapshot as code the signature doesn't cover. Under the hardened runtime without this, macOS kills
+	     it at exec (SIGKILL); allow-jit isn't enough. -->
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+</dict>
+</plist>

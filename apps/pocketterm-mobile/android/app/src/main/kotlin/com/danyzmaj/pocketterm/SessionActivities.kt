@@ -12,8 +12,8 @@ import org.json.JSONObject
 /**
  * Coding sessions followed in the notification shade: one ongoing notification
  * per session, Android's take on the iPhone's Live Activities
- * (ios/Shared/SessionActivity.swift). Dart starts, updates and ends them while
- * the app runs (packages/pocketterm_core/lib/live_activity.dart); otherwise the server updates them by
+ * (ios/Shared/SessionActivity.swift). The app starts, updates and ends them while
+ * it runs (core LiveActivity.kt through AndroidNative); otherwise the server updates them by
  * push (PushService), sent to this phone's FCM token once per followed
  * session. A tap opens the session; swiping one away stops following it.
  */
@@ -118,8 +118,8 @@ object SessionActivities {
 
     /**
      * Stops following [key]: gone at once ([immediate]: the person ended it),
-     * or Ended for 10 minutes (the session ended on the computer). Either way Dart
-     * hears activityEnded, as from the iPhone.
+     * or Ended for 10 minutes (the session ended on the computer). Either way the app
+     * hears activityEnded (NativeEvents), as from the iPhone.
      */
     @Synchronized
     fun end(c: Context, key: String, immediate: Boolean) {
@@ -138,7 +138,7 @@ object SessionActivities {
         val args = mutableMapOf<String, Any>("key" to key, "state" to state)
         if (since != null) args["since"] = since
         if (kind != null) args["kind"] = kind
-        // Not followed (any more): the server stops once Dart says so.
+        // Not followed (any more): the server stops once the app says so.
         update(c, args)
     }
 

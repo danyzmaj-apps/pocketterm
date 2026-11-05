@@ -5,7 +5,9 @@
 appId: com.danyzmaj.pocketterm
 ---
 - stopApp
-- launchApp
+- launchApp:
+    arguments:
+      POCKETTERM_E2E: "true"
 - extendedWaitUntil:
     visible: "\n?New session"
     timeout: 30000

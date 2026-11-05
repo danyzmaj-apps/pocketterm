@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The Windows app's services without UI: what apps/pocketterm-desktop/lib was for the Flutter
+       app, minus its widgets. net8.0, so it builds and tests on macOS too; the Windows-only parts
+       are [SupportedOSPlatform("windows")] and their callers check OperatingSystem.IsWindows(). -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>PocketTerm.Desktop</RootNamespace>
+    <AssemblyName>PocketTerm.Desktop.Core</AssemblyName>
+  </PropertyGroup>
+  <!-- Test hooks (TestHooks.cs): Debug builds and the end-to-end/smoke builds read them. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug' Or '$(PocketTermE2E)' == 'true'">
+    <DefineConstants>$(DefineConstants);E2E</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Kestrel, for the local API on 127.0.0.1 (ships with the shared framework). -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- DPAPI, for the secrets file (Windows only at run time). -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PocketTerm.Desktop.Core.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PocketTerm.Core\PocketTerm.Core.csproj" />
+  </ItemGroup>
+</Project>

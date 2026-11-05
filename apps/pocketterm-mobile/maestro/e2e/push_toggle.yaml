@@ -1,5 +1,5 @@
-# Notifications turned on later in the account sheet (after Not now at
-# sign-in), then off and on again; the sheet closes.
+# Notifications turned on later in the account sheet (Settings on Android)
+# after Not now at sign-in, then off and on again; the sheet closes.
 appId: com.danyzmaj.pocketterm
 ---
 - runFlow: sub/home.yaml
@@ -8,11 +8,14 @@ appId: com.danyzmaj.pocketterm
     visible: ".*Off: no notifications.*"
     timeout: 5000
 - takeScreenshot: push-off
-- tapOn: "Notifications\n.*"
+- runFlow:
+    file: sub/switch.yaml
+    env:
+      ID: push-toggle
 # Android 13+ asks for notifications: Allow. On iOS Maestro's driver answers
 # the system's alert itself; a tap of ours on the Allow it saw would come after
-# the alert has gone and land on the sheet (the switch, as the sheet is laid
-# out now), turning notifications off again.
+# the alert has gone and land on the sheet (the switch), turning
+# notifications off again.
 - runFlow:
     when:
       platform: Android
@@ -23,17 +26,22 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     visible: ".*Encrypted, through the push relay.*"
     timeout: 10000
-- tapOn: "Notifications\n.*"
+- runFlow:
+    file: sub/switch.yaml
+    env:
+      ID: push-toggle
 - extendedWaitUntil:
     visible: ".*Off: no notifications.*"
     timeout: 10000
-- tapOn: "Notifications\n.*"
+- runFlow:
+    file: sub/switch.yaml
+    env:
+      ID: push-toggle
 - extendedWaitUntil:
     visible: ".*Encrypted, through the push relay.*"
     timeout: 10000
 - takeScreenshot: push-on
-- tapOn:
-    point: "50%,8%"
+- runFlow: sub/close_account.yaml
 - extendedWaitUntil:
     notVisible: "Leave this server"
     timeout: 5000

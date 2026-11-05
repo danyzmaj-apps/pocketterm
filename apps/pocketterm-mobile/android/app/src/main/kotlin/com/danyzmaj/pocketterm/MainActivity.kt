@@ -1,72 +1,38 @@
 package com.danyzmaj.pocketterm
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.graphics.drawable.ColorDrawable
-import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.provider.Settings
-import android.util.Base64
-import android.view.WindowManager
-import com.google.firebase.FirebaseApp
-import com.google.firebase.messaging.FirebaseMessaging
-import io.flutter.embedding.android.FlutterActivity
-import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.plugin.common.EventChannel
-import io.flutter.plugin.common.MethodCall
-import io.flutter.plugin.common.MethodChannel
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import com.danyzmaj.pocketterm.ui.AppRoot
 
 /**
- * Events for Dart (packages/pocketterm_core/lib/native.dart's Native.listen) from wherever they
- * happen: the activity, the push service, a followed session's notification.
- * Dropped while no engine runs; a tapped push's session waits in [tappedSession]
- * for Dart to take.
+ * The app's one activity: edge to edge, Compose all the way down ([AppRoot]). It hands what comes
+ * in from outside to the app: `pocketterm://` links (setup links, followed sessions') and the session
+ * of a tapped terminal push.
  */
-object NativeEvents {
-    @Volatile
-    var channel: MethodChannel? = null
-
-    /** The session a tapped terminal push is about, until Dart takes it. */
-    @Volatile
-    var tappedSession: String? = null
-
-    private val main = Handler(Looper.getMainLooper())
-
-    fun emit(method: String, args: Any? = null) {
-        main.post { channel?.invokeMethod(method, args) }
-    }
-}
-
-/**
- * Android's half of packages/pocketterm_core/lib/native.dart (the iPhone's is
- * ios/Runner/AppDelegate.swift; same methods, arguments and results).
- */
-class MainActivity : FlutterActivity() {
-    private var channel: MethodChannel? = null
-
-    /** Waiting for the notification permission's answer. */
-    private val permissionWaiters = mutableListOf<(Boolean) -> Unit>()
-
-    /** The composer's microphone. */
-    private val dictation = Dictation(this)
+class MainActivity : ComponentActivity() {
+    private val graph: AppGraph get() = (application as PocketTermApp).graph
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
-        // After the system's splash, until Flutter's first frame: the chosen theme's background, which the
-        // intro starts on (before Android 13 the splash itself always shows Catppuccin Mocha's, the default).
-        window.setBackgroundDrawable(ColorDrawable(AppIcons.themeBackground(this)))
+        // The system splash stays until the session has read what this phone kept: no flash of setup.
+        splash.setKeepOnScreenCondition { graph.session.launching }
+        enableEdgeToEdge()
+        ActivityHost.attach(this)
         // A recreated activity has already handled its intent.
-        if (savedInstanceState == null) tapped(intent)
+        if (savedInstanceState == null) handle(intent)
         PocketTermShared.forgetPushKey(this)
+        setContent { AppRoot(graph) }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        tapped(intent)
+        setIntent(intent)
+        handle(intent)
     }
 
     override fun onStop() {
@@ -75,168 +41,25 @@ class MainActivity : FlutterActivity() {
         AppIcons.applyPending(this)
     }
 
-    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
-        val ch = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "pocketterm/native")
-        ch.setMethodCallHandler(::handle)
-        channel = ch
-        NativeEvents.channel = ch
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "pocketterm/speech").setStreamHandler(dictation)
+    override fun onDestroy() {
+        ActivityHost.detach(this)
+        super.onDestroy()
     }
 
-    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
-        dictation.onCancel(null)
-        if (NativeEvents.channel === channel) NativeEvents.channel = null
-        channel = null
-        super.cleanUpFlutterEngine(flutterEngine)
-    }
-
-    /** A terminal push was tapped (pocketterm:// links go to app_links). */
-    private fun tapped(intent: Intent?) {
+    /** A terminal push was tapped, or a pocketterm:// link opened. */
+    private fun handle(intent: Intent?) {
         intent ?: return
         if (intent.hasExtra(Notifications.EXTRA_SESSION)) {
             val session = intent.getStringExtra(Notifications.EXTRA_SESSION)
             NativeEvents.tappedSession = session
-            NativeEvents.emit("openTerminal", session?.let { mapOf("session" to it) })
+            NativeEvents.emit("openTerminal", if (session == null) emptyMap() else mapOf("session" to session))
             intent.removeExtra(Notifications.EXTRA_SESSION)
         }
-    }
-
-    private fun handle(call: MethodCall, result: MethodChannel.Result) {
-        val args = call.arguments as? Map<*, *> ?: emptyMap<String, Any?>()
-        when (call.method) {
-            "setAppIcon" -> {
-                val icon = args["icon"] as? String ?: "default"
-                AppIcons.request(icon)
-                // The icon goes with the theme, so its splash does too; the system keeps it for later starts.
-                if (Build.VERSION.SDK_INT >= 33) {
-                    AppIcons.splashTheme(icon)?.let { splashScreen.setSplashScreenTheme(it) }
-                }
-                result.success(null)
-            }
-            "setKeepAwake" -> {
-                if (args["on"] == true) {
-                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                } else {
-                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                }
-                result.success(null)
-            }
-            "deviceName" -> result.success(
-                Settings.Global.getString(contentResolver, Settings.Global.DEVICE_NAME)?.ifBlank { null }
-                    ?: Build.MODEL,
-            )
-            "getBackend" -> result.success(
-                PocketTermShared.backendUrl(this)?.let { url ->
-                    listOfNotNull(
-                        "url" to url,
-                        PocketTermShared.backendKind(this)?.let { "kind" to it },
-                        PocketTermShared.legacyBackendKey(this)?.let { "key" to it },
-                    ).toMap()
-                },
-            )
-            "setBackend" -> {
-                PocketTermShared.setBackend(this, args["url"] as? String, args["kind"] as? String)
-                result.success(null)
-            }
-            "deviceToken" -> result.success(PocketTermShared.deviceToken(this))
-            "setDeviceToken" -> {
-                PocketTermShared.setDeviceToken(this, args["value"] as? String)
-                result.success(null)
-            }
-            "takeTappedSession" -> {
-                result.success(NativeEvents.tappedSession)
-                NativeEvents.tappedSession = null
-            }
-            "registerPush" -> registerPush(result)
-            "setChannelKey" -> {
-                val desktop = args["desktop"] as? String
-                val key = runCatching { Base64.decode(args["key"] as? String, Base64.DEFAULT) }.getOrNull()
-                if (desktop == null || key?.size != 32) {
-                    result.error("bad-args", "desktop and a 32-byte base64 key", null)
-                } else {
-                    PocketTermShared.setChannelKey(this, desktop, key)
-                    result.success(null)
-                }
-            }
-            "removeAllChannelKeys" -> {
-                PocketTermShared.removeAllChannelKeys(this)
-                result.success(null)
-            }
-            "channelKeys" -> result.success(
-                PocketTermShared.channelKeys(this).mapValues { Base64.encodeToString(it.value, Base64.NO_WRAP) },
-            )
-            "notificationsAllowed" -> result.success(Notifications.allowed(this))
-            "openSettings" -> {
-                // PocketTerm's notification settings (Android 8+), else its app info (permissions).
-                val intent = if (args["notifications"] == true) {
-                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-                } else {
-                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
-                }
-                runCatching { startActivity(intent) }
-                result.success(null)
-            }
-            "startActivity" -> askNotifications { result.success(SessionActivities.start(this, args)) }
-            "updateActivity" -> result.success(SessionActivities.update(this, args))
-            "endActivity" -> {
-                (args["key"] as? String)?.let { SessionActivities.end(this, it, immediate = args["immediate"] == true) }
-                result.success(null)
-            }
-            "liveActivities" -> result.success(SessionActivities.running(this))
-            "speechCheck" -> dictation.check(args["language"] as? String, result)
-            "speechSupport" -> dictation.support(args["language"] as? String, result)
-            "speechStop" -> dictation.stop(result)
-            "speechFix" -> dictation.fix(args["fix"] as? String, args["language"] as? String, result)
-            else -> result.notImplemented()
+        val data = intent.data
+        if (intent.action == Intent.ACTION_VIEW && data?.scheme == "pocketterm") {
+            graph.openLink(data.toString())
+            // Handled once, also across a configuration change.
+            intent.data = null
         }
-    }
-
-    /**
-     * Permission first (a no-op after the first answer), then the FCM token.
-     * Null: not allowed, no token, or a build without Firebase
-     * (android/app/google-services.json); the phone gets no pushes then.
-     */
-    private fun registerPush(result: MethodChannel.Result) {
-        if (FirebaseApp.getApps(this).isEmpty()) return result.success(null)
-        askNotifications { granted ->
-            if (!granted) return@askNotifications result.success(null)
-            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-                val token = if (task.isSuccessful) task.result else null
-                if (token == null) return@addOnCompleteListener result.success(null)
-                PocketTermShared.setFcmToken(this, token)
-                result.success(mapOf("token" to token))
-            }
-        }
-    }
-
-    /** Asks for POST_NOTIFICATIONS on Android 13+; [then] gets whether notifications can show. */
-    private fun askNotifications(then: (Boolean) -> Unit) {
-        Notifications.ensureChannels(this)
-        if (Build.VERSION.SDK_INT < 33 ||
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        ) {
-            return then(Notifications.allowed(this))
-        }
-        permissionWaiters.add(then)
-        if (permissionWaiters.size == 1) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATIONS_REQUEST)
-        }
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == Dictation.MIC_REQUEST) {
-            return dictation.micAnswered(grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
-        }
-        if (requestCode != NOTIFICATIONS_REQUEST) return
-        val allowed = Notifications.allowed(this)
-        val waiters = permissionWaiters.toList()
-        permissionWaiters.clear()
-        for (w in waiters) w(allowed)
-    }
-
-    private companion object {
-        const val NOTIFICATIONS_REQUEST = 0x0D2E
     }
 }

@@ -9,17 +9,19 @@ appId: com.danyzmaj.pocketterm
 - scrollUntilVisible:
     element: "Try the demo"
 - tapOn: "Try the demo"
-- extendedWaitUntil:
-    visible: ".*DEMO.*"
-    timeout: 5000
+# The tour question comes over the list first (an iOS sheet hides what's under it).
 - extendedWaitUntil:
     visible: "Show me"
-    timeout: 2500
+    timeout: 5000
     optional: true
 - tapOn:
     text: "Show me"
     optional: true
+# A tip's bubble over the list can hide the rest from the test until it's dismissed.
 - runFlow: tips.yaml
+- extendedWaitUntil:
+    visible: ".*DEMO.*"
+    timeout: 5000
 # A row reads as its whole text. A tip's tour can take the first tap.
 - tapOn: ".*Fix the pricing table on small screens.*"
 - runFlow: tips.yaml
@@ -33,7 +35,17 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     visible: ".*Built in 6.2 s.*"
     timeout: 5000
-- tapOn: "Back"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          id: "BackButton"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn: "Back"
 - runFlow: tips.yaml
 - tapOn: "Exit demo"
 - assertVisible: "Scan the code from your computer"

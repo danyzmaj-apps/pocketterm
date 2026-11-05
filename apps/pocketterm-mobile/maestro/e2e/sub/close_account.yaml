@@ -1,0 +1,16 @@
+# Closes the account settings: the sheet's Done on iOS, the Settings page's
+# Back on Android.
+appId: com.danyzmaj.pocketterm
+---
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          id: "account-done"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          id: "settings-back"

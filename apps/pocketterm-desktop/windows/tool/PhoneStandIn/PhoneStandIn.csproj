@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- tool/smoke.ps1's phone: scans the app's pairing code (its link) with PocketTerm.Core, the phone's protocol, and
+       checks the computer's terminal bridge answers it. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>PocketTerm.PhoneStandIn</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\PocketTerm.Core\PocketTerm.Core.csproj" />
+  </ItemGroup>
+</Project>

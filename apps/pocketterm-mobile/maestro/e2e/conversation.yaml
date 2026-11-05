@@ -5,20 +5,23 @@ appId: com.danyzmaj.pocketterm
 ---
 - runFlow: sub/home.yaml
 - extendedWaitUntil:
-    visible: "${SESSION}\n.*"
+    visible:
+      text: "${SESSION}(\n.*)*"
+      id: "session-.*"
     timeout: 30000
 - runFlow:
     file: sub/open_row.yaml
     env:
       ROW: ${SESSION}
-# Below Android 9 the field's hint isn't read (sub/prompt.yaml): there Send, its tooltip after a line break.
 - extendedWaitUntil:
-    visible: "(Prompt omp…|\nSend)"
+    visible:
+      id: "session-input"
     timeout: 15000
 - takeScreenshot: opened
 - runFlow: sub/prompt.yaml
 - inputText: ${PROMPT}
-- tapOn: "\n?Send"
+- tapOn:
+    id: "session-send"
 - extendedWaitUntil:
     visible: ".*fake reply: ${PROMPT_RE}.*"
     timeout: 30000

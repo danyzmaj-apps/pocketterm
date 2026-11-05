@@ -18,4 +18,4 @@ appId: com.danyzmaj.pocketterm
     visible: ${THEN}
     timeout: 20000
 - takeScreenshot: answered
-- tapOn: "Back"
+- runFlow: sub/back.yaml

@@ -9,11 +9,13 @@ appId: com.danyzmaj.pocketterm
     env:
       ROW: ${SESSION}
 - extendedWaitUntil:
-    visible: "(Prompt omp…|\nSend)"
+    visible:
+      id: "session-input"
     timeout: 15000
 - runFlow: sub/prompt.yaml
 - inputText: ${PROMPT}
-- tapOn: "\n?Send"
+- tapOn:
+    id: "session-send"
 - extendedWaitUntil:
     visible: "Which color should the e2e button be\\?"
     timeout: 20000
@@ -22,7 +24,8 @@ appId: com.danyzmaj.pocketterm
 - assertVisible: "Blue"
 - takeScreenshot: asking
 - tapOn: "Green"
-- tapOn: "Answer"
+- tapOn:
+    id: "answer"
 - extendedWaitUntil:
     visible: ".*fake answer: Green.*"
     timeout: 30000

@@ -16,7 +16,7 @@ import javax.crypto.spec.SecretKeySpec
 /**
  * What the app, its notifications and its push service share, in
  * app-private storage: the server the phone connected (written by
- * packages/pocketterm_core/lib/backend.dart), the FCM token, each
+ * core Backend.kt through AndroidNative), the FCM token, each
  * computer's channel key and the phone's sign-in on its server. Android's
  * ios/Shared/PocketTermShared.swift.
  */
@@ -139,7 +139,7 @@ object PocketTermShared {
         keys.entries.firstOrNull { pushTag(it.value) == tag }?.toPair()
 
     // The phone's sign-in on its server (the device token and what came with
-    // it, one string the Dart side reads), wrapped like the channel keys.
+    // it, one string the app reads), wrapped like the channel keys.
 
     private const val TOKEN_FILE = "pocketterm_device_token"
     private const val TOKEN_AAD = "device-token"

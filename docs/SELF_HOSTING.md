@@ -46,13 +46,12 @@ The wizard shows a checklist that looks again every few seconds and moves on by 
 Your phone needs the Tailscale app too, from the App Store or Google Play, signed in to the same Tailscale account. The wizard and the phone step of the checklist both say so.
 
 <p align="center">
-  <img src="images/mac-setup-tailscale-install.png" width="32%" alt="Install Tailscale, with what Tailscale is">
+  <img src="images/mac-setup-tailscale-install.png" width="32%" alt="Start Tailscale, with what Tailscale is">
   <img src="images/mac-setup-tailscale-sign-in.png" width="32%" alt="Sign in to Tailscale">
   <img src="images/mac-setup-https-off.png" width="32%" alt="Turn on HTTPS certificates">
 </p>
 <p align="center">
   <img src="images/mac-setup-this-computer.png" width="45%" alt="Everything ready: Start">
-  <img src="images/mac-setup-confirm.png" width="45%" alt="Install Tailscale asks first and shows the command">
 </p>
 
 From now on the server starts with the app. **Settings → Account** shows how Tailscale stands, and Settings' status bar says when phones can't reach the server (Tailscale switched off, signed out, or something else took port 443). Another computer of yours can use this computer's server too: on this one, **Settings → Account → Add a computer…** shows a setup link; on the other one (signed in to Tailscale with the same account), choose **On my own server → Yes** and paste it.
@@ -110,7 +109,6 @@ While you work, the wizard checks the address and turns each line green: **the n
 
 <p align="center">
   <img src="images/mac-setup-vps.png" width="45%" alt="The commands for 203.0.113.7, HTTPS not answering yet">
-  <img src="images/mac-setup-vps-ready.png" width="45%" alt="Every check green, and the box for the setup link">
 </p>
 
 The setup link signs a computer in to your server: keep it private. If it leaks, replace it (computers already signed in stay signed in):

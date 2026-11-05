@@ -10,33 +10,40 @@ appId: com.danyzmaj.pocketterm
     env:
       ROW: ${SESSION}
 - extendedWaitUntil:
-    visible: "(Prompt omp…|\nSend)"
+    visible:
+      id: "session-input"
     timeout: 15000
 - runFlow: sub/prompt.yaml
 - inputText: ${SLOW}
-- tapOn: "\n?Send"
+- tapOn:
+    id: "session-send"
 - extendedWaitUntil:
-    visible: "Stop"
+    visible:
+      id: "stop"
     timeout: 15000
 - takeScreenshot: working
 # Queue on: the prompt waits in the queue on the computer, shown above the field.
-- tapOn: "Queue(\n.*)?"
+- tapOn:
+    id: "follow-up"
 - tapOn:
     id: "session-input"
 - inputText: ${HELD}
-- tapOn: "\n?Send"
+- tapOn:
+    id: "session-send"
 - extendedWaitUntil:
     visible:
       id: "queue-strip"
     timeout: 15000
 - assertVisible: ".*${HELD_RE}.*"
 - takeScreenshot: queued
-- tapOn: "Stop"
+- tapOn:
+    id: "stop"
 - extendedWaitUntil:
     visible: ".*Interrupted.*"
     timeout: 15000
 - extendedWaitUntil:
-    notVisible: "Stop"
+    notVisible:
+      id: "stop"
     timeout: 15000
 # Stopped: the queue holds what waits until Resume.
 - extendedWaitUntil:

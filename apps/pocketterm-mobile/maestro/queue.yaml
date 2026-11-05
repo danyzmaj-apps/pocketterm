@@ -4,11 +4,15 @@
 # the end, one is deleted and comes back with Undo, one is sent now and shows
 # as Sent, and the queue pauses and resumes; then it closes. Needs the app
 # signed out, as after a fresh install. Photographs each step
-# (queue-<THEME>-*), so it can run once per theme.
-#   maestro test -e THEME=mocha queue.yaml
+# (queue-<THEME>-*), so it can run once per theme (system, catppuccin,
+# rosePine, tokyoNight) and appearance.
+#   maestro test -e THEME=system queue.yaml
 appId: com.danyzmaj.pocketterm
 ---
-- launchApp
+- launchApp:
+    # iOS: a Debug build's test hooks (PocketTerm/Model/E2E.swift: tips seen, scripted speech).
+    arguments:
+      POCKETTERM_E2E: "true"
 # Started in another theme (written to its preferences before launch), iOS says it changed the app's icon.
 - runFlow:
     when:
@@ -69,8 +73,9 @@ appId: com.danyzmaj.pocketterm
 - takeScreenshot: queue-${THEME}-editing
 - tapOn: "Save"
 - extendedWaitUntil:
-    visible: ".*Update the limits section of the docs. And the changelog.*"
+    notVisible: "Save"
     timeout: 5000
+- assertVisible: ".*Update the limits section of the docs. And the changelog.*"
 # Added at the end.
 - tapOn: "Add to the queue"
 - inputText: "Then open a pull request."
@@ -79,7 +84,20 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     visible: ".*Then open a pull request.*"
     timeout: 5000
-- hideKeyboard
+# iOS: a scroll of the list puts the keyboard away (Maestro's hideKeyboard can't on a multi-line field).
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          from:
+            id: "queue-list"
+          direction: DOWN
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - assertVisible: "(?i)queued · 5"
 - takeScreenshot: queue-${THEME}-added
 # Deleted, then back with Undo.
@@ -91,21 +109,33 @@ appId: com.danyzmaj.pocketterm
     timeout: 5000
 - assertNotVisible: ".*Add a test for the 429 answer.*"
 - takeScreenshot: queue-${THEME}-deleted
+# The toast slides in: tapped once it sits still.
+- waitForAnimationToEnd:
+    timeout: 1500
 - tapOn: "Undo"
 - extendedWaitUntil:
     visible: ".*Add a test for the 429 answer.*"
     timeout: 5000
-# Sent now: shows as Sent a moment.
+# Sent now: it leaves the queue, shown as Sent a moment.
+- waitForAnimationToEnd:
+    timeout: 1500
 - tapOn:
     id: "queue-menu-dq3"
-- tapOn: "Send now"
+# Sent shows for only 1.5 s: the tap mustn't spend it waiting for the screen to settle. Even so, a tap and a
+# look at the screen can outlast it (on iOS each takes a second or more), so the Sent row is only photographed
+# when caught (the app's unit tests hold it); that the prompt went is checked.
+- tapOn:
+    text: "Send now"
+    waitToSettleTimeoutMs: 500
 - extendedWaitUntil:
     visible: "(?i)sent"
-    timeout: 3000
+    timeout: 1500
+    optional: true
 - takeScreenshot: queue-${THEME}-sent
 - extendedWaitUntil:
-    notVisible: "(?i)sent"
+    notVisible: ".*This trace is from production.*"
     timeout: 5000
+- assertVisible: "(?i)queued · 4"
 # Paused and resumed.
 - tapOn: "(?i)pause"
 - extendedWaitUntil:
@@ -121,6 +151,16 @@ appId: com.danyzmaj.pocketterm
     notVisible: "Add to the queue"
     timeout: 5000
 - assertVisible: "Queued · 4"
-- tapOn: "Back"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          id: "BackButton"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn: "Back"
 - tapOn: "Exit demo"
 - assertVisible: "Scan the code from your computer"

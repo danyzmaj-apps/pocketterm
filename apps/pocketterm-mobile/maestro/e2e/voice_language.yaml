@@ -1,45 +1,50 @@
-# Voice prompts in Croatian, end to end (an E2E build: lib/voice.dart's scripted speaker stands in for the
+# Voice prompts in Croatian, end to end (an E2E build: the app's scripted speaker stands in for the
 # microphone, and it has every language). Account → Voice prompt language lists Auto, English and Hrvatski, each
 # on this phone; Hrvatski is kept after the app is stopped. In the session a voice prompt is heard in Croatian
 # and sent, and the agent's reply comes back through the computer. Then the language at the top of the voice
 # screen switches to English while listening and that prompt goes too. Auto again at the end.
+# A row reads its title and its note joined by ", " on iOS, by a line break on Android.
 #   env: SESSION (regex)
 appId: com.danyzmaj.pocketterm
 ---
 - runFlow: sub/home.yaml
-- tapOn: "\n?Account"
-- extendedWaitUntil:
-    visible: "Voice prompt language\nAuto"
-    timeout: 5000
-- tapOn: "Voice prompt language\nAuto"
-- extendedWaitUntil:
-    visible: "Hrvatski\nOn this phone"
-    timeout: 5000
-- assertVisible: "English\nOn this phone"
-- assertVisible: "Auto\n.*English.*"
-- takeScreenshot: picker
-- tapOn: "Hrvatski\nOn this phone"
-- takeScreenshot: picked
 - tapOn:
-    point: "50%,8%"
+    id: "account"
 - extendedWaitUntil:
-    visible: "Voice prompt language\nHrvatski"
+    visible: "Voice prompt language(, |\n)Auto"
+    timeout: 5000
+- tapOn:
+    id: "voice-language-setting"
+- extendedWaitUntil:
+    visible: "Hrvatski(, |\n)On this phone"
+    timeout: 5000
+- assertVisible: "English(, |\n)On this phone"
+- assertVisible: "Auto(, |\n).*English.*"
+- takeScreenshot: picker
+- tapOn: "Hrvatski(, |\n)On this phone"
+- takeScreenshot: picked
+- runFlow: sub/close_picker.yaml
+- extendedWaitUntil:
+    visible: "Voice prompt language(, |\n)Hrvatski"
     timeout: 5000
 # Kept: stopped and started again, the account sheet still says Hrvatski.
 - stopApp
 - runFlow: sub/home.yaml
-- tapOn: "\n?Account"
-- extendedWaitUntil:
-    visible: "Voice prompt language\nHrvatski"
-    timeout: 5000
 - tapOn:
-    point: "50%,8%"
+    id: "account"
 - extendedWaitUntil:
-    notVisible: "Leave this server"
+    visible: "Voice prompt language(, |\n)Hrvatski"
+    timeout: 5000
+- runFlow: sub/close_account.yaml
+- extendedWaitUntil:
+    notVisible:
+      id: "leave-server"
     timeout: 5000
 # Spoken in Croatian, sent, answered.
 - extendedWaitUntil:
-    visible: "${SESSION}\n.*"
+    visible:
+      text: "${SESSION}(\n.*)*"
+      id: "session-.*"
     timeout: 30000
 - runFlow:
     file: sub/open_row.yaml
@@ -100,22 +105,25 @@ appId: com.danyzmaj.pocketterm
 - takeScreenshot: english-replied
 - runFlow: sub/back.yaml
 # The switch was kept; Auto again, the phone's default.
-- tapOn: "\n?Account"
-- extendedWaitUntil:
-    visible: "Voice prompt language\nEnglish"
-    timeout: 5000
-- tapOn: "Voice prompt language\nEnglish"
-- extendedWaitUntil:
-    visible: "Auto\n.*"
-    timeout: 5000
-- tapOn: "Auto\n.*"
 - tapOn:
-    point: "50%,8%"
+    id: "account"
 - extendedWaitUntil:
-    visible: "Voice prompt language\nAuto"
+    visible: "Voice prompt language(, |\n)English"
     timeout: 5000
 - tapOn:
-    point: "50%,8%"
+    id: "voice-language-setting"
 - extendedWaitUntil:
-    notVisible: "Leave this server"
+    visible:
+      id: "voice-language-auto"
+    timeout: 5000
+- tapOn:
+    id: "voice-language-auto"
+- runFlow: sub/close_picker.yaml
+- extendedWaitUntil:
+    visible: "Voice prompt language(, |\n)Auto"
+    timeout: 5000
+- runFlow: sub/close_account.yaml
+- extendedWaitUntil:
+    notVisible:
+      id: "leave-server"
     timeout: 5000

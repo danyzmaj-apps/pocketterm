@@ -1,21 +1,41 @@
-# Swipe left on a session's row, End session (the swipe was the asking: it
-# ends at once): its window closes on the computer and the row goes. The row is
-# scrolled to the middle first, clear of the + button (close_window.yaml).
+# Swipe left on a session's row, End session, then (iOS asks first, as with
+# any close) End session again in the question: its window closes on the
+# computer and the row goes. The row is scrolled to the middle first, clear of
+# the + button (close_window.yaml).
 #   env: SESSION (regex)
 appId: com.danyzmaj.pocketterm
 ---
 - runFlow: sub/home.yaml
 - scrollUntilVisible:
-    element: "${SESSION}\n.*"
+    element:
+      text: "${SESSION}(\n.*)*"
+      id: "session-.*"
     centerElement: true
     timeout: 20000
 - swipe:
-    from: "${SESSION}\n.*"
+    from:
+      text: "${SESSION}(\n.*)*"
+      id: "session-.*"
     direction: LEFT
 - tapOn: "End session"
+- extendedWaitUntil:
+    visible:
+      id: "close-confirm"
+    timeout: 5000
+    optional: true
+- runFlow:
+    when:
+      visible:
+        id: "close-confirm"
+    commands:
+      - takeScreenshot: asking
+      - tapOn:
+          id: "close-confirm"
 - takeScreenshot: ending
 - assertNotVisible: "Find a project, or type ~/path"
 - extendedWaitUntil:
-    notVisible: "${SESSION}\n.*"
+    notVisible:
+      text: "${SESSION}(\n.*)*"
+      id: "session-.*"
     timeout: 30000
 - takeScreenshot: ended

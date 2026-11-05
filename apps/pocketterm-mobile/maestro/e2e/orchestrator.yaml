@@ -29,9 +29,12 @@ appId: com.danyzmaj.pocketterm
 - assertVisible: ".*dark mode toggle.*"
 - assertNotVisible: "Starting the orchestrator.*"
 - takeScreenshot: heard
+# The field's ✕ empties it: erasing from a tap leaves whatever is after the cursor.
+- tapOn:
+    id: "orchestrator-clear"
+- assertNotVisible: ".*dark mode toggle.*"
 - tapOn:
     id: "orchestrator-input"
-- eraseText: 120
 - inputText: "e2e-orch-tell ${PROJECT}: ${TEXT}"
 - tapOn:
     id: "orchestrator-send"
@@ -55,17 +58,23 @@ appId: com.danyzmaj.pocketterm
     visible: ".*coding sessions? on this computer:.*"
     timeout: 60000
 - takeScreenshot: listed
-- tapOn: "Close"
+- tapOn:
+    id: "orchestrator-close"
 - extendedWaitUntil:
     notVisible:
       id: "orchestrator-sheet"
     timeout: 5000
-# Back on the list: the bar shows its last answer; its folder is no project and its window no other window.
+# Back on the list: the bar shows its last answer (iOS: the bar's value, its
+# label Orchestrator); its folder is no project and its window no other window.
 - assertVisible:
     id: "orchestrator-bar"
 - extendedWaitUntil:
-    visible: "Orchestrator\n.*coding sessions? on this computer.*"
+    visible:
+      text: "(Orchestrator\n)?.*coding sessions? on this computer.*"
+      id: "orchestrator-bar"
     timeout: 10000
-- assertNotVisible: "ORCHESTRATOR|orchestrator"
+- assertNotVisible:
+    text: "orchestrator"
+    id: "project-.*"
 - assertNotVisible: ".*π . orchestrator.*"
 - takeScreenshot: list

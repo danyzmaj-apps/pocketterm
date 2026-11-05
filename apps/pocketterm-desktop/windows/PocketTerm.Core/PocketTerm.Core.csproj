@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- PocketTerm's protocol core for Windows: what packages/pocketterm_core was for the
+       Flutter desktop app, minus Flutter UI and terminal hosts. Cross-platform (net8.0),
+       so it builds and tests on macOS too. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>PocketTerm.Core</RootNamespace>
+    <AssemblyName>PocketTerm.Core</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PocketTerm.Core.Tests" />
+  </ItemGroup>
+</Project>

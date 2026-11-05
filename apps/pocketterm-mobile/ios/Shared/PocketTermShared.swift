@@ -3,15 +3,15 @@ import Foundation
 import Security
 
 /// What the app and its push extension share through the App Group: the
-/// server the phone connected (written by
-/// packages/pocketterm_core/lib/backend.dart), each computer's channel key
-/// and the phone's sign-in on its server. Compiled into Runner and
-/// PocketTermPush.
-enum PocketTermShared {
+/// server the phone connected, each computer's channel key and the phone's
+/// sign-in on its server. Compiled into the app (main-actor by default, hence
+/// `nonisolated`: the Keychain is safe from any thread) and PocketTermPush.
+nonisolated enum PocketTermShared {
   /// The App Group id, from config/PocketTerm.xcconfig through each target's
   /// Info.plist (`PocketTermAppGroup`).
   static let group = Bundle.main.object(forInfoDictionaryKey: "PocketTermAppGroup") as! String
-  static let defaults = UserDefaults(suiteName: group)!
+  // UserDefaults is thread-safe; the SDK just doesn't mark it Sendable.
+  nonisolated(unsafe) static let defaults = UserDefaults(suiteName: group)!
 
   /// The connected server's URL.
   static var backendUrl: String? { defaults.string(forKey: "backendUrl") }
@@ -44,7 +44,7 @@ enum PocketTermShared {
   /// The phone's sign-in on its server (the device token and what came with
   /// it, one string the Dart side reads): one Keychain item, readable after
   /// the first unlock and never leaving this device.
-  private static let tokenQuery: [String: Any] = [
+  private nonisolated(unsafe) static let tokenQuery: [String: Any] = [
     kSecClass as String: kSecClassGenericPassword,
     kSecAttrService as String: "com.danyzmaj.pocketterm.device-token",
     kSecAttrAccessGroup as String: group,

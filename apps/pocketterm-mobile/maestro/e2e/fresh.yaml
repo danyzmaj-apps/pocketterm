@@ -5,6 +5,12 @@
 appId: com.danyzmaj.pocketterm
 ---
 - launchApp:
+    # iOS: a Debug build's test hooks (PocketTerm/Model/E2E.swift: the scanner takes a pasted code, tips start
+    # seen, scripted speech); Android's E2E build has them built in. POCKETTERM_E2E_FRESH: iOS drops the
+    # preferences clearState leaves behind (the Simulator's preferences daemon keeps them).
+    arguments:
+      POCKETTERM_E2E: "true"
+      POCKETTERM_E2E_FRESH: "true"
     clearState: true
     clearKeychain: true
     permissions:

@@ -1,25 +1,28 @@
 # PocketTerm for iPhone and Android
 
-The phone app: your computers' coding sessions and terminal windows, pairing with a server by scanning the code PocketTerm shows on your computer. Phones don't set up servers. With several computers on one account, the home screen's title picks which one to show. **Try the demo** on the setup screen shows the app on a made-up computer (`lib/demo/`), with no server and no network.
+The phone app: your computers' coding sessions and terminal windows, pairing with a server by scanning the code PocketTerm shows on your computer. Phones don't set up servers. With several computers on one account, the home screen's title picks which one to show. **Try the demo** on the setup screen shows the app on a made-up computer (`ios/PocketTerm/Demo/`, `android/…/demo/`), with no server and no network.
 
-Notifications are opt-in: after the first sign-in on a server the phone explains the push relay (push.danyzmaj.com) and asks; **Account → Notifications** changes it later. Off, the phone's tokens are unregistered from the server and followed sessions end. When turning them on doesn't work, the phone says why: notifications off in the phone's Settings (with a way there), or no notification address from Apple or Google.
+Notifications are opt-in: after the first sign-in on a server the phone explains the push relay (push.danyzmaj.com) and asks; **Notifications** in the account sheet (iPhone) or Settings (Android) changes it later. Off, the phone's tokens are unregistered from the server and followed sessions end. When turning them on doesn't work, the phone says why: notifications off in the phone's Settings (with a way there), or no notification address from Apple or Google.
 
 The first time it reaches your sessions (or the demo), the phone asks **New here?** and, on **Show me**, shows short tips one at a time; **Show tips again** in the account sheet brings them back.
 
+Two native apps, one per platform, with the same features, strings and test ids:
+
 | Path | What |
 | --- | --- |
-| `lib/` | Flutter app (shared code comes from [`packages/pocketterm_core`](../../packages/pocketterm_core/)) |
-| `ios/` | Runner (native channel, push, Live Activities), `PocketTermLive` (the Live Activity), `PocketTermPush` (decrypts pushes) |
-| `android/` | `MainActivity` (native channel), FCM service, the ongoing notification for followed coding sessions |
-| `maestro/` | Maestro flows: `e2e/` (with its `run.sh`) for the end-to-end run, `demo.yaml` through the demo (with `tips.yaml`, which dismisses the first-use tips) |
-| `test/screenshots/` | Renders the phone screenshots in [`docs/images`](../../docs/images/): `fvm flutter test --tags screenshots --run-skipped` |
+| `ios/` | The iPhone app (Swift 6, SwiftUI, iOS 17+), on the shared Swift package [`packages/PocketTermKit`](../../packages/PocketTermKit/): `PocketTerm/` (the app), `PocketTermLive/` (the Live Activity), `PocketTermPush/` (decrypts pushes), `Shared/`, `PocketTermTests/`; the Xcode project comes from `project.yml` (xcodegen). What looks different from 0.1.x: [UX-NOTES.md](ios/UX-NOTES.md) |
+| `android/` | The Android app (Kotlin, Jetpack Compose, Material 3, Android 8.0+): `:app` (UI, FCM, the ongoing notification for followed sessions, dictation, launcher icons) and `:core` (the protocol core, pure Kotlin). [UX-NOTES.md](android/UX-NOTES.md) |
+| `maestro/` | Maestro flows: `e2e/` (with its `run.sh`) for the end-to-end run, `demo.yaml` through the demo (with `tips.yaml`, which dismisses the first-use tips), `voice.yaml`, `queue.yaml`, `orchestrator.yaml` |
+| `tool/` | `build-ipa.sh`, `build-aab.sh`: the store builds |
+| `assets/icon/` | The app icon's source images (drawn by [`make_icon.swift`](../pocketterm-desktop/tool/make_icon.swift)) |
 
-The two platforms do the same things, push included. Building Android from source, push needs your Firebase project's `android/app/google-services.json` (not committed); a debug build without it works without push, and a release build stops unless you pass `-P allowNoPush=true`.
+The two platforms do the same things, push included. Building Android from source, push needs your Firebase project's `android/app/google-services.json` (not committed); a debug build without it works without push, and a release build stops unless you pass `-PallowNoPush=true`.
 
-Run it from this directory:
+Run it:
 
 ```sh
-fvm flutter run -d <device>
+(cd ios && xcodegen generate && open PocketTerm.xcodeproj)    # then run the PocketTerm scheme
+(cd android && ./gradlew :app:installDebug)                    # JDK 17
 ```
 
 Building and signing: [docs/BUILDING.md](../../docs/BUILDING.md).

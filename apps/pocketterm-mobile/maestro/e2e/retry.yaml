@@ -5,6 +5,8 @@
 appId: com.danyzmaj.pocketterm
 ---
 - launchApp:
+    arguments:
+      POCKETTERM_E2E: "true"
     stopApp: false
 - runFlow:
     when:
@@ -21,6 +23,8 @@ appId: com.danyzmaj.pocketterm
 # Below Android 9 a button's tooltip is read after a line break.
 - assertVisible: "\n?New session"
 - scrollUntilVisible:
-    element: "${SESSION}\n.*"
+    element:
+      text: "${SESSION}(\n.*)*"
+      id: "session-.*"
     timeout: 20000
 - takeScreenshot: online

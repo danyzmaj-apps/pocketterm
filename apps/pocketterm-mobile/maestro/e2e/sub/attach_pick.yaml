@@ -1,0 +1,20 @@
+# Opens the composer's attach menu and picks PICK ("Choose from Files",
+# "Choose from Photos"). iOS's menu springs open and now and then drops a tap
+# (it highlights the item and stays open): tapped again while it's still there.
+#   env: PICK
+appId: com.danyzmaj.pocketterm
+---
+- tapOn: "\n?Attach images or files"
+- waitForAnimationToEnd
+- tapOn: ${PICK}
+- repeat:
+    times: 2
+    while:
+      visible: ${PICK}
+    commands:
+      - waitForAnimationToEnd
+      - runFlow:
+          when:
+            visible: ${PICK}
+          commands:
+            - tapOn: ${PICK}

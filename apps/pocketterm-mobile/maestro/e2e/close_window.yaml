@@ -1,23 +1,43 @@
-# Swipe left on a plain shell window's row, Close window (the swipe was the
-# asking: it closes at once): the window closes on the computer and the row
-# goes. The row is scrolled to the middle first: at the bottom of the screen its
-# Close window sits under the + button, and the tap opened New session instead.
+# Swipe left on a plain shell window's row, Close window, then (iOS asks
+# first, as with any close) Close window again in the question: the window
+# closes on the computer and the row goes. The row is scrolled to the middle
+# first: at the bottom of the screen its Close window sits under the + button,
+# and the tap opened New session instead.
 #   env: WINDOW (regex)
 appId: com.danyzmaj.pocketterm
 ---
 - runFlow: sub/home.yaml
 - scrollUntilVisible:
-    element: "${WINDOW}\n.*"
+    element:
+      text: "${WINDOW}(\n.*)*"
+      id: "term-.*"
     centerElement: true
     timeout: 20000
 - swipe:
-    from: "${WINDOW}\n.*"
+    from:
+      text: "${WINDOW}(\n.*)*"
+      id: "term-.*"
     direction: LEFT
 - tapOn: "Close window"
+- extendedWaitUntil:
+    visible:
+      id: "close-confirm"
+    timeout: 5000
+    optional: true
+- runFlow:
+    when:
+      visible:
+        id: "close-confirm"
+    commands:
+      - takeScreenshot: asking
+      - tapOn:
+          id: "close-confirm"
 - takeScreenshot: closing
 # The row gone under a sheet the tap opened isn't the row closed.
 - assertNotVisible: "Find a project, or type ~/path"
 - extendedWaitUntil:
-    notVisible: "${WINDOW}\n.*"
+    notVisible:
+      text: "${WINDOW}(\n.*)*"
+      id: "term-.*"
     timeout: 30000
 - takeScreenshot: closed

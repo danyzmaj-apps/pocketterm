@@ -6,10 +6,22 @@ What each PocketTerm release brings.
 
 Servers and the push relay need no update. To have sessions from your omp profiles reach the phone, click **Install** or **Update** for omp in PocketTerm on the computer. An older phone still opens sessions on a newer computer, and a newer phone on an older computer, without the windows and tabs.
 
+### Native apps
+
+Every app is rewritten in its platform's own toolkit (formerly one Flutter app for the desktops and one for the phones): SwiftUI on the Mac and the iPhone, Jetpack Compose on Android, WinUI 3 on Windows. Every feature stays, and so does what you set up: updating from 0.1.7 keeps your sign-in, your computers' keys and your preferences. The apps follow the system's light or dark mode, and the launch animation is gone.
+
+- **Themes that follow light and dark.** Four themes, each with a light and a dark side that switches with your system: **System** (the new default: your system's accent, and terminals in black on white or light on near-black with the standard terminal colors), **Catppuccin** (Latte and Mocha), **Rosé Pine** (Dawn and Rosé Pine) and **Tokyo Night** (Day and Night), with the colors from each theme's official palette. They color terminal screens, code and the accent; the theme picker shows each one's light and dark side. Gruvbox Material is gone: if you had it, or Catppuccin Mocha, you're on Catppuccin; Rosé Pine Dawn becomes Rosé Pine. A new install starts on System. The app icon still follows the theme: System and Catppuccin show PocketTerm's own icon, Rosé Pine and Tokyo Night theirs. On the phone a terminal's whole page, bars included, takes its screen's colors.
+
+- **Mac.** A click on the menu-bar item opens a panel: how this computer stands, the **Terminal from phone** switch with its terminal and session counts, what needs attention, **Add a phone…** and **Settings…**; a right click keeps the short menu. Setup and the setup checklist have their own window; Settings is a standard Mac Settings window with Phone, Coding agents, Terminals and Account tabs, and a red dot on a tab that needs you. An Edit menu, so ⌘V pastes a setup link.
+- **Windows.** A Windows 11 look: Mica, Fluent icons, Settings in a side pane with a badge on a section that needs you, confirmations as dialogs, notices as bars under the title. Project folders are picked one at a time. The installer updates 0.1.7 in place.
+- **iPhone.** The computer picker is in the title's menu; the profile filter and the sort are menus. A session's state shows as an icon in its color, pulsing while it works. Swipe a row for Rename, Color and End session / Close window; closing asks first. Tool calls fold away, code blocks have a Copy button, the queue reorders with drag handles, and the voice sheet's orb grows as you speak. Tips are popovers on the controls; the scanner is the system's.
+- **Android.** Material 3 with your wallpaper's colors on Android 12 and later, edge to edge, with predictive back. The account sheet is a full **Settings** page, with your computers and the app version. Swipe a row to end a session or close a window (it asks first); Rename and Color are in the long-press menu. Tool calls are expandable cards, the queue reorders by drag, tips are tooltips, and the scanner uses the camera with ML Kit.
+
 ### Desktop app
 
 - **omp profiles.** PocketTerm's extension goes into every omp profile (`omp --profile <name>`) as well as the default, and **Settings → Coding agents** lists them; a profile made later asks for **Install** again. A session started from the phone in a profile runs `omp --profile=<name>`, switching a screen-only window to its conversation resumes it in its own profile, and notifications name the profile (`omp · personal finished · garden`).
 - **A session from the phone opens in its project's window.** It goes in as a new tab of the terminal window that already holds that project's tabs, and gets a window of its own when none does, so each project can keep one window. **Settings → Terminals → Place them** switches to a new window for every session.
+- **Fixed: tmux sessions could vanish from the phone.** With `TMUX_TMPDIR` set and an old tmux socket left in `/tmp`, PocketTerm looked at the dead one and missed the live server: sessions from the phone in Ghostty (which run in tmux) opened but never showed up.
 
 ### Phone app
 
@@ -18,6 +30,10 @@ Servers and the push relay need no update. To have sessions from your omp profil
 - **You know where a new session went.** After it opens, the phone says where: "Opened in a new tab in the kitty window with wrkly".
 - **Pick a project by name.** **New session** lists projects by name with their path under it, instead of full paths.
 - **Ask about anything.** **General** at the top of **New session** starts one in your home folder, no project needed; such sessions are grouped under **General**.
+
+### Server
+
+- **Runs as a child process of an app.** `serve` takes `--port 0` (a free port), `--exit-with-stdin` (stops when the app that started it closes its stdin) and `--trust-loopback-proxy` (trusts `X-Forwarded-For` only from this machine, as for `tailscale serve`); on a loopback `--address`, `--public-url` defaults to `http://<address>:<port>`. It prints one JSON line to stdout once it listens and logs to stderr, including the first start's setup link (`pocketterm-server setup-link` prints it any time); a taken port exits with `98`. `tool/server-sidecar.sh` builds the binary the desktop apps bundle.
 
 ## 0.1.7
 

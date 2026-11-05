@@ -5,6 +5,8 @@
 appId: com.danyzmaj.pocketterm
 ---
 - launchApp:
+    arguments:
+      POCKETTERM_E2E: "true"
     stopApp: false
 - extendedWaitUntil:
     visible: "Your sign-in ended on the server.*"

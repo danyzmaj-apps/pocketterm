@@ -11,43 +11,50 @@ appId: com.danyzmaj.pocketterm
       ROW: ${SESSION}
 # Below Android 9 the field's hint isn't read (sub/prompt.yaml): there Send, its tooltip after a line break.
 - extendedWaitUntil:
-    visible: "(Prompt omp…|\nSend)"
+    visible:
+      id: "session-input"
     timeout: 15000
 - runFlow: sub/prompt.yaml
 - inputText: ${SLOW}
-- tapOn: "\n?Send"
+- tapOn:
+    id: "session-send"
 # Working: Stop shows, and the empty field offers to steer.
 - extendedWaitUntil:
-    visible: "Stop"
+    visible:
+      id: "stop"
     timeout: 15000
 - extendedWaitUntil:
-    visible: "(Steer omp…|\nSend)"
+    visible: "Steer omp…"
     timeout: 10000
 - takeScreenshot: working
 # The hint changed, so the field is found by its identifier.
 - tapOn:
     id: "session-input"
 - inputText: ${STEER}
-- tapOn: "\n?Send"
+- tapOn:
+    id: "session-send"
 # Sent once the field is empty again; the steer shows while the run goes on.
 - extendedWaitUntil:
-    visible: "(Steer omp…|\nSend)"
+    visible: "Steer omp…"
     timeout: 10000
 - extendedWaitUntil:
     visible: "${STEER_RE}"
     timeout: 10000
-- assertVisible: "Stop"
+- assertVisible:
+    id: "stop"
 - takeScreenshot: steered
-# Queue on: the next prompt waits for the run to end. The chip reads with its tooltip.
-- tapOn: "Queue(\n.*)?"
+# Queue on: the next prompt waits for the run to end.
+- tapOn:
+    id: "follow-up"
 - extendedWaitUntil:
-    visible: "(Queue a prompt…|\nSend)"
+    visible: "Queue a prompt…"
     timeout: 10000
 - takeScreenshot: queue-on
 - tapOn:
     id: "session-input"
 - inputText: ${QUEUE}
-- tapOn: "\n?Send"
+- tapOn:
+    id: "session-send"
 - extendedWaitUntil:
     visible:
       id: "queue-strip"
@@ -67,7 +74,8 @@ appId: com.danyzmaj.pocketterm
           visible: ".*fake reply: ${QUEUE_RE}.*"
           timeout: 30000
       - extendedWaitUntil:
-          notVisible: "Stop"
+          notVisible:
+            id: "stop"
           timeout: 30000
 - takeScreenshot: queued-ran
 - runFlow: sub/back.yaml

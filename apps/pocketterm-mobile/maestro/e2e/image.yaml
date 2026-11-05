@@ -9,10 +9,13 @@ appId: com.danyzmaj.pocketterm
     env:
       ROW: ${SESSION}
 - extendedWaitUntil:
-    visible: "Prompt omp…"
+    visible:
+      id: "session-input"
     timeout: 15000
-- tapOn: "Attach images( or files)?"
-- tapOn: "Choose from Photos"
+- runFlow:
+    file: sub/attach_pick.yaml
+    env:
+      PICK: "Choose from Photos"
 - runFlow:
     when:
       platform: iOS
@@ -44,9 +47,10 @@ appId: com.danyzmaj.pocketterm
     visible: "Remove image"
     timeout: 15000
 - takeScreenshot: attached
-- tapOn: "Prompt omp…"
+- runFlow: sub/prompt.yaml
 - inputText: ${IMAGE_PROMPT}
-- tapOn: "Send"
+- tapOn:
+    id: "session-send"
 - extendedWaitUntil:
     visible: ".*fake image: .*"
     timeout: 30000

@@ -1,4 +1,4 @@
-# Release signing for `fvm flutter build appbundle --release` (docs/RELEASING.md).
+# Release signing for `./gradlew :app:bundleRelease` (tool/build-aab.sh) (docs/RELEASING.md).
 # Copy to android/key.properties (git-ignored) and fill in your own upload keystore.
 # Keep the keystore outside the repo; storeFile is an absolute path or relative to android/app.
 storeFile=/absolute/path/to/your-upload.jks

@@ -1,32 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Android 12+ draws its own splash on this colour; no icon on it (the intro shows the icon), so the splash
-         is the plain background the intro starts on. This one is Catppuccin Mocha's, the default; a chosen
-         theme's follows. -->
-    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <item name="android:windowBackground">@color/pocketterm_win</item>
+    <!-- The splash for a chosen icon: MainActivity hands it to the system (Android 13+,
+         SplashScreen.setSplashScreenTheme), which keeps it for the next cold starts: the icon on its theme's
+         background, light or dark as the system is (values/colors.xml, values-night/colors.xml). -->
+    <style name="LaunchTheme.Default" parent="Theme.PocketTerm">
         <item name="android:windowSplashScreenBackground">@color/pocketterm_win</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
     </style>
-    <!-- The splash for a chosen theme: MainActivity hands it to the system (Android 13+), which keeps it for
-         the next cold starts. The colours are AppIcons.themeBackground's. -->
-    <style name="LaunchTheme.Mocha">
-        <item name="android:windowBackground">@color/pocketterm_mocha</item>
-        <item name="android:windowSplashScreenBackground">@color/pocketterm_mocha</item>
-    </style>
-    <style name="LaunchTheme.Dawn">
-        <item name="android:windowBackground">@color/pocketterm_dawn</item>
+    <style name="LaunchTheme.Dawn" parent="Theme.PocketTerm">
         <item name="android:windowSplashScreenBackground">@color/pocketterm_dawn</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_dawn_foreground</item>
     </style>
-    <style name="LaunchTheme.TokyoNight">
-        <item name="android:windowBackground">@color/pocketterm_tokyo_night</item>
+    <style name="LaunchTheme.TokyoNight" parent="Theme.PocketTerm">
         <item name="android:windowSplashScreenBackground">@color/pocketterm_tokyo_night</item>
-    </style>
-    <style name="LaunchTheme.Gruvbox">
-        <item name="android:windowBackground">@color/pocketterm_gruvbox</item>
-        <item name="android:windowSplashScreenBackground">@color/pocketterm_gruvbox</item>
-    </style>
-    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <item name="android:windowBackground">@color/pocketterm_win</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_tokyo_night_foreground</item>
     </style>
 </resources>

@@ -1,6 +1,6 @@
 # Smoke test of a published Windows app built with the test hooks (-p:PocketTermE2E=true), run by CI:
 #
-#   pwsh apps/pocketterm-desktop/windows/tool/smoke.ps1 -App <publish dir> [-Artifacts <dir>]
+#   pwsh apps/pocketterm-desktop/windows/tool/smoke.ps1 -App <publish dir> -Phone <PhoneStandIn.dll> [-Artifacts <dir>]
 #
 # In a throwaway support folder and cli.json, with secrets in memory (POCKETTERM_PROFILE), it:
 #   1. starts PocketTerm --hidden (as at login) and waits for its local API: cli.json, then /v1/ping with the
@@ -9,15 +9,26 @@
 #      hides, PocketTerm keeps running;
 #   3. starts PocketTerm again: the second start hands over to the first and exits, and the first shows its window
 #      (the first-run setup), checked through UI Automation by AutomationId and walked one step in;
-#   4. quits it (`PocketTerm.exe --quit`, the tray's Quit) and checks it took cli.json back out.
+#   4. starts the bundled server (pocketterm-server.exe serve on 127.0.0.1) and sets PocketTerm up with it: On my
+#      own server, its setup link pasted, signed in, the setup checklist, then Settings, each section in turn;
+#   5. Phone → Add a phone… shows the pairing code, and the phone stand-in (tool/PhoneStandIn, PocketTerm.Core)
+#      scans it: it signs in, joins this computer's channel and gets the terminal bridge's sealed state;
+#   6. Account: signs that phone out (its confirm dialog), signs this computer out (sign-in page), Use a different
+#      server (the first-run setup again);
+#   7. quits it (`PocketTerm.exe --quit`, the tray's Quit) and checks it took cli.json back out.
 # Screenshots and the app's log go to -Artifacts.
 param(
   [Parameter(Mandatory)] [string]$App,
+  [Parameter(Mandatory)] [string]$Phone,
   [string]$Artifacts = (Join-Path ([IO.Path]::GetTempPath()) 'pocketterm-smoke-artifacts')
 )
 $ErrorActionPreference = 'Stop'
-$exe = Join-Path (Resolve-Path $App) 'PocketTerm.exe'
+$appDir = (Resolve-Path $App).Path
+$exe = Join-Path $appDir 'PocketTerm.exe'
 if (-not (Test-Path $exe)) { throw "no PocketTerm.exe in $App" }
+$serverExe = Join-Path $appDir 'pocketterm-server.exe'
+if (-not (Test-Path $serverExe)) { throw "no pocketterm-server.exe in $App" }
+$Phone = (Resolve-Path $Phone).Path
 New-Item -ItemType Directory -Force -Path $Artifacts | Out-Null
 $Artifacts = (Resolve-Path $Artifacts).Path
 $started = Get-Date
@@ -33,15 +44,18 @@ $env:POCKETTERM_LOG = $log
 $env:POCKETTERM_TAILSCALE = Join-Path $root 'no-tailscale.exe'
 
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms, System.Drawing
+$UIA = [System.Windows.Automation.AutomationElement]
 
 function Step($text) { Write-Host "== $text" }
 
+$shots = 0
 function Shot($name) {
+  $script:shots++
   $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
   $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
   $g = [System.Drawing.Graphics]::FromImage($bmp)
   $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
-  $bmp.Save((Join-Path $Artifacts "$name.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+  $bmp.Save((Join-Path $Artifacts ('{0:D2}-{1}.png' -f $script:shots, $name)), [System.Drawing.Imaging.ImageFormat]::Png)
   $g.Dispose(); $bmp.Dispose()
 }
 
@@ -56,24 +70,59 @@ function Until($what, [scriptblock]$test, [int]$seconds = 60) {
 }
 
 function Window($processId) {
-  $cond = New-Object System.Windows.Automation.PropertyCondition ([System.Windows.Automation.AutomationElement]::ProcessIdProperty), $processId
-  [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $cond) |
+  $cond = New-Object System.Windows.Automation.PropertyCondition ($UIA::ProcessIdProperty), $processId
+  $UIA::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $cond) |
     Where-Object { $_.Current.Name -eq 'PocketTerm' } | Select-Object -First 1
 }
 
-function Find($window, $id) {
-  $cond = New-Object System.Windows.Automation.PropertyCondition ([System.Windows.Automation.AutomationElement]::AutomationIdProperty), $id
-  $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+# The element with AutomationId $id in PocketTerm's window (dialogs included), or none.
+function Find($id) {
+  $cond = New-Object System.Windows.Automation.PropertyCondition ($UIA::AutomationIdProperty), $id
+  $w = Window $pt.Id
+  if ($w) { $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond) }
 }
 
+# Every element whose AutomationId starts with $prefix.
+function FindPrefixed($prefix) {
+  $w = Window $pt.Id
+  if (-not $w) { return @() }
+  @($w.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) |
+    Where-Object { $_.Current.AutomationId.StartsWith($prefix) })
+}
+
+function Wait($id, [int]$seconds = 60) { Until $id { Find $id } $seconds }
+
+# Presses a button or link, selects a navigation item.
 function Press($element) {
-  $pattern = $null
-  if ($element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { $pattern.Invoke(); return }
+  $p = $null
+  if ($element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$p)) { $p.Invoke(); return }
+  if ($element.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$p)) { $p.Select(); return }
+  if ($element.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$p)) { $p.Toggle(); return }
   throw "$($element.Current.AutomationId) can't be pressed"
+}
+
+# The button named $name (a dialog's own buttons have no id of ours).
+function FindButton($name) {
+  $w = Window $pt.Id
+  if (-not $w) { return $null }
+  $byName = New-Object System.Windows.Automation.PropertyCondition ($UIA::NameProperty), $name
+  $isButton = New-Object System.Windows.Automation.PropertyCondition ($UIA::ControlTypeProperty), ([System.Windows.Automation.ControlType]::Button)
+  $cond = [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.Condition[]]@($byName, $isButton))
+  $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+}
+
+# (Not "Type": that's Get-Content's alias, and an alias beats a function.)
+function SetText($element, $text) {
+  $element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($text)
+}
+
+function Alive {
+  if ($pt.HasExited) { throw "PocketTerm exited ($($pt.ExitCode))" }
 }
 
 # (Not $app: PowerShell's names ignore case, and -App is the publish folder.)
 $pt = $null
+$server = $null
 try {
   Step 'start --hidden'
   $pt = Start-Process -FilePath $exe -ArgumentList '--hidden' -PassThru
@@ -92,7 +141,7 @@ try {
 
   Step 'not set up: the window opens though started --hidden; closing it only hides it'
   $window = Until 'the window' { Window $pt.Id }
-  Until 'setup-this-computer' { Find $window 'setup-this-computer' } | Out-Null
+  Wait 'setup-this-computer' | Out-Null
   $window.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
   Until 'the window to hide' { -not (Window $pt.Id) } | Out-Null
   Start-Sleep -Seconds 1
@@ -102,19 +151,99 @@ try {
   $second = Start-Process -FilePath $exe -PassThru
   if (-not $second.WaitForExit(30000)) { throw 'the second PocketTerm kept running' }
   if ($second.ExitCode -ne 0) { throw "the second PocketTerm exited with $($second.ExitCode)" }
-  $window = Until 'the window' { Window $pt.Id }
-  $choose = Until 'setup-this-computer' { Find $window 'setup-this-computer' }
-  foreach ($id in 'setup-own-server', 'setup-supabase') { if (-not (Find $window $id)) { throw "no $id on the first-run setup" } }
-  Shot '1-setup'
+  Until 'the window' { Window $pt.Id } | Out-Null
+  $choose = Wait 'setup-this-computer'
+  foreach ($id in 'setup-own-server', 'setup-supabase') { if (-not (Find $id)) { throw "no $id on the first-run setup" } }
+  Shot 'setup'
 
   Step 'On this computer'
   Press $choose
-  Until 'check-installed' { Find $window 'check-installed' } | Out-Null
-  if (-not (Find $window 'setup-start-server')) { throw 'no setup-start-server' }
-  Shot '2-this-computer'
-  Press (Until 'setup-back' { Find $window 'setup-back' })
-  Until 'the choose screen again' { Find $window 'setup-own-server' } | Out-Null
-  if ($pt.HasExited) { throw "PocketTerm exited ($($pt.ExitCode))" }
+  Wait 'check-installed' | Out-Null
+  if (-not (Find 'setup-start-server')) { throw 'no setup-start-server' }
+  Shot 'this-computer'
+  Press (Wait 'setup-back')
+  Wait 'setup-own-server' | Out-Null
+  Alive
+
+  Step 'a server: the bundled pocketterm-server on 127.0.0.1'
+  $start = [System.Diagnostics.ProcessStartInfo]::new($serverExe)
+  foreach ($a in 'serve', '--data', (Join-Path $root 'server'), '--address', '127.0.0.1', '--port', '0', '--exit-with-stdin') { $start.ArgumentList.Add($a) }
+  $start.UseShellExecute = $false
+  $start.RedirectStandardInput = $true
+  $start.RedirectStandardOutput = $true
+  $server = [System.Diagnostics.Process]::Start($start)
+  $listening = $null
+  $deadline = (Get-Date).AddSeconds(60)
+  while (-not $listening -and (Get-Date) -lt $deadline) {
+    $read = $server.StandardOutput.ReadLineAsync()
+    if (-not $read.Wait(30000) -or $null -eq $read.Result) { break }
+    if ($read.Result -match '"event"\s*:\s*"listening"') { $listening = $read.Result | ConvertFrom-Json }
+  }
+  if (-not $listening) { throw "pocketterm-server didn't say it listens" }
+  $serverUrl = "http://127.0.0.1:$($listening.port)"
+  $setupLink = (& $serverExe setup-link --data (Join-Path $root 'server') --public-url $serverUrl | Select-Object -First 1).Trim()
+  if ($LASTEXITCODE -or -not $setupLink.StartsWith('pocketterm://setup')) { throw "no setup link: $setupLink" }
+  Write-Host "server at $serverUrl"
+
+  Step 'On my own server: paste its setup link, connect'
+  Press (Wait 'setup-own-server')
+  Press (Wait 'setup-have-server')
+  SetText (Wait 'setup-link') $setupLink
+  Wait 'setup-link-health' | Out-Null
+  Shot 'setup-link'
+  Press (Wait 'setup-connect')
+
+  Step 'signed in: the setup checklist'
+  $done = Wait 'get-ready-done'
+  Start-Sleep -Seconds 2
+  Shot 'get-ready'
+
+  Step 'Settings, each section'
+  Press $done
+  foreach ($tab in 'phone', 'agents', 'terminals', 'account') {
+    Press (Wait "settings-tab-$tab")
+    Start-Sleep -Seconds 2
+    Shot "settings-$tab"
+  }
+  Wait 'settings-sign-out' | Out-Null
+  Alive
+
+  Step 'Phone: Add a phone… shows the pairing code; the phone stand-in scans it'
+  Press (Wait 'settings-tab-phone')
+  Press (Wait 'settings-add-phone')
+  $qr = Wait 'pairing-qr'
+  $pairing = Until 'the pairing link' { $l = $qr.Current.HelpText; if ($l -and $l.StartsWith('pocketterm://')) { $l } }
+  Start-Sleep -Seconds 1
+  Shot 'pairing'
+  # Its log goes to stderr: not an error here.
+  $ErrorActionPreference = 'Continue'
+  $phoneOut = @(& dotnet $Phone $pairing 60 2>&1 | ForEach-Object { "$_" })
+  $phoneExit = $LASTEXITCODE
+  $ErrorActionPreference = 'Stop'
+  $phoneOut | ForEach-Object { Write-Host "  phone: $_" }
+  if ($phoneExit) { throw "the phone stand-in failed ($phoneExit)" }
+  if (-not ($phoneOut | Where-Object { $_.StartsWith('state from ') })) { throw 'the phone got no state' }
+  Press (Until 'the dialog''s Done' { FindButton 'Done' })
+  Until 'the pairing dialog to close' { -not (Find 'pairing-qr') } | Out-Null
+  Alive
+
+  Step 'Account: sign the phone out (confirm), then this computer'
+  Press (Wait 'settings-tab-account')
+  $phoneRow = Until 'the phone on the account' { FindPrefixed 'settings-phone-sign-out-' | Select-Object -First 1 }
+  Shot 'account-with-phone'
+  Press $phoneRow
+  Wait 'PrimaryButton' | Out-Null
+  Shot 'phone-sign-out-dialog'
+  Press (Find 'PrimaryButton')
+  Until 'the phone to go' { -not (FindPrefixed 'settings-phone-sign-out-') } | Out-Null
+  Press (Wait 'settings-sign-out')
+  Wait 'sign-in-other-server' | Out-Null
+  Start-Sleep -Seconds 1
+  Shot 'signed-out'
+  Press (Find 'sign-in-other-server')
+  Wait 'setup-this-computer' | Out-Null
+  Shot 'setup-again'
+  Alive
 
   Step 'quit'
   $quit = Start-Process -FilePath $exe -ArgumentList '--quit' -PassThru
@@ -134,6 +263,11 @@ catch {
 }
 finally {
   if ($pt -and -not $pt.HasExited) { $pt.Kill($true) }
+  if ($server -and -not $server.HasExited) {
+    # Closing its stdin stops it (--exit-with-stdin).
+    $server.StandardInput.Close()
+    if (-not $server.WaitForExit(10000)) { $server.Kill($true) }
+  }
   if (Test-Path $log) { Write-Host '--- PocketTerm log'; Get-Content $log | Write-Host }
   Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }

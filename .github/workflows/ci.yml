@@ -111,11 +111,15 @@ jobs:
           while ((Test-Path (Join-Path $dir 'PocketTerm.exe')) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
           if (Test-Path (Join-Path $dir 'PocketTerm.exe')) { throw 'PocketTerm.exe is still there after uninstalling' }
           if (Test-Path 'HKCU:\Software\Classes\pocketterm') { throw 'pocketterm:// is still registered after uninstalling' }
-      # The same app with the test hooks (TestHooks.cs, App.Hooks), driven by tool/smoke.ps1.
+      # The same app with the test hooks (TestHooks.cs, App.Hooks), driven by tool/smoke.ps1 with the bundled server
+      # and a phone stand-in on PocketTerm.Core (tool/PhoneStandIn, built with the solution).
       - name: Publish (smoke build)
         run: dotnet publish $env:APP -c Release -p:Platform=x64 -p:PocketTermE2E=true -o build/smoke-app
       - name: Smoke
-        run: pwsh apps/pocketterm-desktop/windows/tool/smoke.ps1 -App build/smoke-app -Artifacts build/smoke-artifacts
+        run: >-
+          pwsh apps/pocketterm-desktop/windows/tool/smoke.ps1 -App build/smoke-app
+          -Phone apps/pocketterm-desktop/windows/tool/PhoneStandIn/bin/Release/net8.0/PhoneStandIn.dll
+          -Artifacts build/smoke-artifacts
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

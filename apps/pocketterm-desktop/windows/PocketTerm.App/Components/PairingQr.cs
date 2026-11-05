@@ -33,6 +33,8 @@ internal sealed class PairingQr : View
     public PairingQr(Session session)
     {
         _session = session;
+        // On the image: a Border has no automation peer, so screen readers and UI Automation wouldn't see it.
+        _image.Id("pairing-qr", "Pairing code");
         var code = new Border
         {
             // A QR reads dark on light, whatever the window's theme.
@@ -40,7 +42,7 @@ internal sealed class PairingQr : View
             CornerRadius = new CornerRadius(12),
             Padding = new Thickness(10),
             Child = _image,
-        }.Id("pairing-qr");
+        };
         var ring = new ProgressRing { IsActive = true, Width = 24, Height = 24 }.Align(HorizontalAlignment.Center, VerticalAlignment.Center);
         var message = Ui.Dim("");
         message.TextAlignment = TextAlignment.Center;
@@ -98,6 +100,10 @@ internal sealed class PairingQr : View
             var source = await RenderAsync(link);
             if (generation != _generation) return;
             _image.Source = source;
+#if E2E
+            // tool/smoke's phone stand-in scans this: a test build hands the link to UI Automation.
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(_image, link);
+#endif
         }
         catch (Exception e)
         {

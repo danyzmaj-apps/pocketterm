@@ -70,10 +70,19 @@ itself is built, tested and run on Windows (CI's `dotnet-windows` job).
 Debug builds and `-p:PocketTermE2E=true` builds read, besides Desktop.Core's `POCKETTERM_TAILSCALE`,
 `POCKETTERM_CLI_JSON`, `POCKETTERM_KITTY_DIR` and `POCKETTERM_PROFILE` (`TestHooks.cs`): `POCKETTERM_DATA` (a
 throwaway support folder instead of `%APPDATA%\Danijel Lovric\PocketTerm`), `POCKETTERM_LOG` (a file the log lines
-go to), and a second start with `--quit` (the tray's Quit). A release build reads none of them.
+go to), and a second start with `--quit` (the tray's Quit). Such a build also puts the pairing code's link in its
+image's UI Automation HelpText, so a test can "scan" it. A release build does none of this.
 
-`tool/smoke.ps1 -App <publish dir>` runs such a build: it starts it `--hidden`, waits for `cli.json` and
-`/v1/ping` (with the nonce proof), closes the window it opens (nothing is set up yet) and checks it only hid,
-starts it again (the second start hands over and exits, the window comes back with the first-run setup, checked and
-walked through UI Automation by AutomationId), quits it and checks `cli.json` is gone.
+`tool/smoke.ps1 -App <publish dir> -Phone <PhoneStandIn.dll>` runs such a build:
+
+1. starts it `--hidden`, waits for `cli.json` and `/v1/ping` (with the nonce proof);
+2. closes the window it opens (nothing is set up yet) and checks it only hid; starts it again (the second start
+   hands over and exits, the window comes back with the first-run setup);
+3. starts the bundled `pocketterm-server.exe` on 127.0.0.1 and, through UI Automation by AutomationId, sets the app
+   up with its setup link (On my own server), passes the setup checklist and visits each Settings section;
+4. opens Add a phone…, and `tool/PhoneStandIn` (a phone on PocketTerm.Core) scans the code: it signs in, finds this
+   computer in the account, joins its channel and receives the terminal bridge's sealed `state`;
+5. signs that phone out (confirm dialog), signs this computer out, picks a different server (back to setup), quits
+   it and checks `cli.json` is gone.
+
 CI runs it on every pull request and keeps its screenshots and log as the `PocketTerm-windows-smoke` artifact.

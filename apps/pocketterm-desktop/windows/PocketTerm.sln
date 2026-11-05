@@ -13,6 +13,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PocketTerm.Desktop.Core.Tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PocketTerm.App", "PocketTerm.App\PocketTerm.App.csproj", "{15C9DE6B-C597-4BF5-8D72-ECB574336FFC}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tool", "tool", "{99CC5279-4CDC-4E3B-82B5-DD66125EEB3C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhoneStandIn", "tool\PhoneStandIn\PhoneStandIn.csproj", "{34566331-85C9-4D23-8A09-F61AE51BC752}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -42,5 +46,12 @@ Global
 		{15C9DE6B-C597-4BF5-8D72-ECB574336FFC}.Debug|Any CPU.Build.0 = Debug|x64
 		{15C9DE6B-C597-4BF5-8D72-ECB574336FFC}.Release|Any CPU.ActiveCfg = Release|x64
 		{15C9DE6B-C597-4BF5-8D72-ECB574336FFC}.Release|Any CPU.Build.0 = Release|x64
+		{34566331-85C9-4D23-8A09-F61AE51BC752}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{34566331-85C9-4D23-8A09-F61AE51BC752}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{34566331-85C9-4D23-8A09-F61AE51BC752}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{34566331-85C9-4D23-8A09-F61AE51BC752}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{34566331-85C9-4D23-8A09-F61AE51BC752} = {99CC5279-4CDC-4E3B-82B5-DD66125EEB3C}
 	EndGlobalSection
 EndGlobal

@@ -72,4 +72,13 @@
   <Target Name="PocketTermNeedsSidecar" BeforeTargets="Build" Condition="'$(PocketTermRelease)' == 'true' And !Exists('$(PocketTermSidecar)')">
     <Error Text="The built-in server isn't built: run tool/server-sidecar.ps1 first (looked for $(PocketTermSidecar))." />
   </Target>
+  <!-- The app's resource index (PocketTerm.pri, with WinUI's own resources merged in) is made in the build's output
+       folder only: an unpackaged app's publish has to take it along, or WinUI can't find its theme resources. -->
+  <Target Name="PocketTermPublishPri" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(AppxGeneratePriEnabled)' != 'false'">
+    <Error Condition="!Exists('$(ProjectPriFullPath)')" Text="No resource index at $(ProjectPriFullPath): WinUI won't start without it." />
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="$(ProjectPriFullPath)" />
+      <ResolvedFileToPublish Include="$(ProjectPriFullPath)" RelativePath="$(ProjectPriFileName)" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 </Project>

@@ -5,9 +5,11 @@
 # In a throwaway support folder and cli.json, with secrets in memory (POCKETTERM_PROFILE), it:
 #   1. starts PocketTerm --hidden (as at login) and waits for its local API: cli.json, then /v1/ping with the
 #      nonce proof and with the token;
-#   2. starts PocketTerm again: the second start hands over to the first and exits, and the first shows its window
+#   2. sees its window open anyway (nothing is set up, so there's nothing to do but that) and closes it: the window
+#      hides, PocketTerm keeps running;
+#   3. starts PocketTerm again: the second start hands over to the first and exits, and the first shows its window
 #      (the first-run setup), checked through UI Automation by AutomationId and walked one step in;
-#   3. quits it (`PocketTerm.exe --quit`, the tray's Quit) and checks it took cli.json back out.
+#   4. quits it (`PocketTerm.exe --quit`, the tray's Quit) and checks it took cli.json back out.
 # Screenshots and the app's log go to -Artifacts.
 param(
   [Parameter(Mandatory)] [string]$App,
@@ -87,7 +89,14 @@ try {
   if ($ping.app -ne 'pocketterm' -or $ping.proof -ne $want) { throw "bad ping answer: $($ping | ConvertTo-Json -Compress)" }
   $mine = Invoke-RestMethod "http://127.0.0.1:$($info.port)/v1/ping" -Headers @{ Authorization = "Bearer $($info.token)" }
   if ($mine.pid -ne $pt.Id) { throw "bad ping answer: $($mine | ConvertTo-Json -Compress)" }
-  if (Window $pt.Id) { throw 'the window shows, though PocketTerm started --hidden' }
+
+  Step 'not set up: the window opens though started --hidden; closing it only hides it'
+  $window = Until 'the window' { Window $pt.Id }
+  Until 'setup-this-computer' { Find $window 'setup-this-computer' } | Out-Null
+  $window.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
+  Until 'the window to hide' { -not (Window $pt.Id) } | Out-Null
+  Start-Sleep -Seconds 1
+  if ($pt.HasExited) { throw "closing the window ended PocketTerm ($($pt.ExitCode))" }
 
   Step 'second start: hands over and exits, the first shows its window'
   $second = Start-Process -FilePath $exe -PassThru

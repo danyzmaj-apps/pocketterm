@@ -73,6 +73,7 @@ throwaway support folder instead of `%APPDATA%\Danijel Lovric\PocketTerm`), `POC
 go to), and a second start with `--quit` (the tray's Quit). A release build reads none of them.
 
 `tool/smoke.ps1 -App <publish dir>` runs such a build: it starts it `--hidden`, waits for `cli.json` and
-`/v1/ping` (with the nonce proof), starts it again (the second start hands over and exits, the window shows the
-first-run setup, checked and walked through UI Automation by AutomationId), quits it and checks `cli.json` is gone.
+`/v1/ping` (with the nonce proof), closes the window it opens (nothing is set up yet) and checks it only hid,
+starts it again (the second start hands over and exits, the window comes back with the first-run setup, checked and
+walked through UI Automation by AutomationId), quits it and checks `cli.json` is gone.
 CI runs it on every pull request and keeps its screenshots and log as the `PocketTerm-windows-smoke` artifact.

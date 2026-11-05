@@ -12,8 +12,8 @@
 #     getready   Get this computer ready: its rows, then Done opens Settings
 #     settings   Settings: each tab, How your data is protected (Read…), the status bar
 #     theme      Settings → Account → Theme: each theme, kept in the copy's preferences, each tab
-#                photographed in it; Auto last
-#     menubar    the window closed, the menu bar icon opens it again
+#                photographed in it; System last
+#     menubar    the window closed, the menu bar icon's panel opens it again
 #     quit       Settings → Account → Quit PocketTerm: the copy is gone
 #
 # It drives the copy only through run.sh (launch, ax, shot). It starts the
@@ -26,7 +26,8 @@
 # Needs Accessibility and Screen Recording for the terminal it runs in
 # (System Settings → Privacy & Security). The menu bar icon's right-click
 # menu (Open PocketTerm, Settings…, Check for Updates…, Quit PocketTerm)
-# needs a real right click and stays a manual check.
+# needs a real right click and stays a manual check; a press (left click)
+# opens its panel, which `menubar` drives.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
 run=$here/run.sh
@@ -125,15 +126,15 @@ ready() {
     }
     pass "launched with the stand-in Tailscale (pid $(cat "$started"))"
   fi
-  if no_window; then ax press-extra PocketTerm >/dev/null; fi
+  if no_window; then open_from_panel; fi
   if ! wait_for 15 window; then
     fail "its window isn't on screen"
     return 1
   fi
 }
 
-# Copies: apps/pocketterm-desktop/lib/setup_page.dart (ThisComputerSetup) and
-# lib/hosting/hosting_view.dart (phoneTailscaleNote).
+# Copies: apps/pocketterm-desktop/macos/PocketTerm/Setup (the On this computer checklist) and
+# PocketTerm/Shared/Hosting.swift (phoneTailscaleNote).
 wizard() {
   if has 'Open setup checklist' || has 'Get this computer ready'; then
     fail "this copy is set up already; the wizard needs a fresh one (run.sh clean, then run.sh prepare)"
@@ -210,8 +211,8 @@ wizard() {
 
 served() { [[ $(cat "$state" 2>/dev/null) == *'"Proxy":"http://127.0.0.1:'* ]]; }
 
-# Copies: apps/pocketterm-desktop/lib/onboarding/get_ready.dart, lib/hosting/hosting_view.dart,
-# lib/main_window.dart.
+# Copies: apps/pocketterm-desktop/macos/PocketTerm/GetReady, PocketTerm/Shared/Hosting.swift,
+# PocketTerm/Settings.
 getready() {
   if has 'Open setup checklist'; then press 'Open setup checklist'; fi
   shows 'Get this computer ready'
@@ -242,7 +243,7 @@ tab() {
   shot "settings-$(echo "$1" | tr 'A-Z ' 'a-z-')"
 }
 
-# Copies: apps/pocketterm-desktop/lib/main_window.dart, lib/onboarding/data_protection.dart.
+# Copies: apps/pocketterm-desktop/macos/PocketTerm/Settings, PocketTerm/Shared/DataProtection.swift.
 settings() {
   if ! wait_for 5 has 'Open setup checklist'; then
     fail "Settings isn't open (run getready first)"
@@ -270,16 +271,16 @@ settings() {
   hides 'Encrypted from end to end'
 }
 
-# Copies: apps/pocketterm-desktop/lib/main_window.dart, packages/pocketterm_core/lib/theme.dart (labels and
-# the names the choice is kept under).
+# Copies: apps/pocketterm-desktop/macos/PocketTerm/Settings, packages/PocketTermKit/Sources/PocketTermKit/Theme.swift
+# (labels and the names the choice is kept under).
 theme() {
   if ! wait_for 5 has 'Open setup checklist'; then
     fail "Settings isn't open (run getready first)"
     return
   fi
   local label name t
-  # Catppuccin Mocha, the default, last: picked first it would already be the choice, and nothing kept.
-  for label in 'Rosé Pine Dawn:dawn' 'Tokyo Night:tokyoNight' 'Gruvbox Material:gruvbox' 'Catppuccin Mocha:mocha'; do
+  # System, the default, last: picked first it would already be the choice, and nothing kept.
+  for label in 'Rosé Pine:rosePine' 'Tokyo Night:tokyoNight' 'Catppuccin:catppuccin' 'System:system'; do
     name=${label#*:}
     label=${label%%:*}
     step "$label"
@@ -296,13 +297,27 @@ theme() {
   tab_press Account
 }
 
-# Gruvbox writes the tabs' labels in capitals (ThemeShape.caps), and so they read.
-tab_press() { check "press \"$1\"" press_any_case "$1"; }
-press_any_case() { ax press "$1" >/dev/null || ax press "$(echo "$1" | tr a-z A-Z)" >/dev/null; }
+tab_press() { check "press \"$1\"" quiet ax press "$1"; }
 
-kept() { [ "$(/usr/bin/defaults read com.danyzmaj.pocketterm.smoke flutter.theme 2>/dev/null)" = "$1" ]; }
+# The copy is a test build with POCKETTERM_PROFILE=smoke: its preferences are in <bundle id>.smoke.
+kept() { [ "$(/usr/bin/defaults read com.danyzmaj.pocketterm.smoke.smoke theme 2>/dev/null)" = "$1" ]; }
 
-# Copies: apps/pocketterm-desktop/macos/Runner/MainFlutterWindow.swift (the icon's accessibility description).
+# The menu bar icon's panel, then its way into the window: Set up PocketTerm… before setup, Open setup
+# checklist until it's done, Settings… after (App/MenuBarView.swift).
+open_from_panel() {
+  [ -n "$(ax panel)" ] || ax press-extra PocketTerm >/dev/null
+  wait_for 5 panel_open || return 1
+  local l
+  for l in 'Settings…' 'Open setup checklist' 'Open PocketTerm' 'Set up PocketTerm…'; do
+    ax press-panel "$l" >/dev/null && return 0
+  done
+  return 1
+}
+
+panel_open() { [ -n "$(ax panel)" ]; }
+
+# Copies: apps/pocketterm-desktop/macos/PocketTerm/App/StatusItem.swift (the icon's accessibility description)
+# and App/MenuBarView.swift.
 menubar() {
   local heading=''
   for h in 'Open setup checklist' 'Get this computer ready' 'This list checks itself as you go.' 'Set up PocketTerm'; do
@@ -314,7 +329,10 @@ menubar() {
   check 'a menu bar icon labelled PocketTerm' extra_listed
   check 'press the close button' quiet ax close
   check 'the window is closed' wait_for 10 no_window
-  check 'press the menu bar icon' quiet ax press-extra PocketTerm
+  check 'press the menu bar icon: its panel opens' wait_for 5 opened_panel
+  check "the panel says how it stands" panel_has 'All set' 'attention' 'Checking this computer' 'Not set up yet'
+  shot_panel
+  check 'press its way into the window' quiet open_from_panel
   check 'the window is back' wait_for 10 window
   [ -n "$heading" ] && shows "$heading"
   shot menubar-back
@@ -322,7 +340,23 @@ menubar() {
 
 extra_listed() { [[ $(ax extras) == *PocketTerm* ]]; }
 
-# Copies: apps/pocketterm-desktop/lib/main_window.dart.
+opened_panel() {
+  [ -n "$(ax panel)" ] || ax press-extra PocketTerm >/dev/null
+  panel_open
+}
+
+# panel_has <text>…: the open panel shows one of them.
+panel_has() {
+  local p t
+  p=$(ax panel)
+  for t in "$@"; do [[ $p == *"$t"* ]] && return 0; done
+  return 1
+}
+
+# The panel's picture (its own window, above the menu bar's level).
+shot_panel() { check "screenshot menubar-panel" quiet "$run" shot-panel menubar-panel; }
+
+# Copies: apps/pocketterm-desktop/macos/PocketTerm/Settings.
 quit() {
   if ! wait_for 5 has 'Open setup checklist'; then
     fail "Settings isn't open (run getready first)"
@@ -339,7 +373,7 @@ stopped() { ! running; }
 
 names=("$@")
 if [ ${#names[@]} -eq 0 ]; then
-  sed -n '2,27p' "$0"
+  sed -n '2,30p' "$0"
   exit 2
 fi
 for name in "${names[@]}"; do

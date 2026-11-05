@@ -1,20 +1,28 @@
-# Account → Theme → PICK, from a relaunched app; then the theme sheet, the
+# Account → Theme → PICK, from a relaunched app; then the theme picker, the
 # session list and SESSION's page are photographed in it (theme-<NAME>-*).
-# iOS confirms the new home screen icon with an alert of its own: OK. The sheet
-# shows when its Rosé Pine Dawn row does (the account sheet's reads Theme\n<theme>).
-#   env: PICK (regex: the theme's row), NAME (screenshot name), SESSION (regex)
+# iOS confirms the new home screen icon with an alert of its own: OK (System
+# and Catppuccin share the app's own icon: no alert between them). The picker
+# shows when its System row does. iOS: the account sheet's Theme page (Back,
+# then the sheet's Done); Android: a sheet over Settings.
+#   env: PICK (the theme's name: system, catppuccin, rosePine, tokyoNight),
+#        NAME (screenshot name), SESSION (regex)
 appId: com.danyzmaj.pocketterm
 ---
 - runFlow: home.yaml
-- tapOn: "\n?Account"
+- tapOn:
+    id: "account"
 - extendedWaitUntil:
-    visible: "Theme\n.*"
+    visible:
+      id: "theme"
     timeout: 5000
-- tapOn: "Theme\n.*"
+- tapOn:
+    id: "theme"
 - extendedWaitUntil:
-    visible: "Rosé Pine Dawn"
+    visible:
+      id: "theme-system"
     timeout: 5000
-- tapOn: "${PICK}"
+- tapOn:
+    id: "theme-${PICK}"
 - runFlow:
     when:
       platform: iOS
@@ -34,16 +42,16 @@ appId: com.danyzmaj.pocketterm
                 retryTapIfNoChange: false
 - waitForAnimationToEnd
 - takeScreenshot: theme-${NAME}-sheet
-# The theme sheet, then the account sheet under it.
-- tapOn:
-    point: "50%,8%"
+# The theme picker, then the account sheet (Settings) under it.
+- runFlow: close_picker.yaml
 - extendedWaitUntil:
-    notVisible: "Rosé Pine Dawn"
+    notVisible:
+      id: "theme-.+"
     timeout: 5000
-- tapOn:
-    point: "50%,8%"
+- runFlow: close_account.yaml
 - extendedWaitUntil:
-    notVisible: "Leave this server"
+    notVisible:
+      id: "leave-server"
     timeout: 5000
 - assertVisible: "\n?New session"
 - takeScreenshot: theme-${NAME}-list

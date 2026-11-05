@@ -14,20 +14,26 @@ appId: com.danyzmaj.pocketterm
 - runFlow: sub/prompt.yaml
 - inputText: "/"
 - extendedWaitUntil:
-    visible: "/new.*"
+    visible:
+      id: "command-new"
     timeout: 10000
 - takeScreenshot: commands
-- tapOn: "/new.*"
-- tapOn: "\n?Send"
+- tapOn:
+    id: "command-new"
+- tapOn:
+    id: "session-send"
 - extendedWaitUntil:
     notVisible: ".*fake reply: .*"
     timeout: 30000
 - takeScreenshot: fresh-session
 - runFlow: sub/back.yaml
 - extendedWaitUntil:
-    visible: "${SESSION}\n.*"
+    visible:
+      text: "${SESSION}(\n.*)*"
+      id: "session-.*"
     timeout: 10000
 - assertNotVisible:
-    text: "${SESSION}\n.*"
+    text: "${SESSION}(\n.*)*"
+    id: "session-.*"
     index: 1
 - takeScreenshot: one-row

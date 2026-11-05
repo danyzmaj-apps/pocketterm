@@ -3,7 +3,7 @@
 appId: com.danyzmaj.pocketterm
 ---
 - repeat:
-    times: 3
+    times: 5
     commands:
       - extendedWaitUntil:
           visible: "Got it"

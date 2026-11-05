@@ -9,19 +9,22 @@ appId: com.danyzmaj.pocketterm
     env:
       ROW: ${SESSION}
 - extendedWaitUntil:
-    visible: "(Prompt omp…|\nSend)"
+    visible:
+      id: "session-input"
     timeout: 15000
-# Below Android 9 a button's tooltip is read after a line break.
-- tapOn: "\n?Screen"
-# Below Android 9 the field's hint isn't read: there its Send.
+- tapOn:
+    id: "open-screen"
 - extendedWaitUntil:
-    visible: "(Type a line…|\nSend \\(types it, then Enter\\))"
+    visible:
+      id: "term-input"
     timeout: 15000
-- assertVisible: "Esc"
+- assertVisible:
+    id: "key-esc"
 - takeScreenshot: screen
 - runFlow: sub/back.yaml
 - extendedWaitUntil:
-    visible: "(Prompt omp…|\nSend)"
+    visible:
+      id: "session-input"
     timeout: 15000
 - takeScreenshot: conversation
 - runFlow: sub/back.yaml

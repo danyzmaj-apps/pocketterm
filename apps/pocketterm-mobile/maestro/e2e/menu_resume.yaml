@@ -10,16 +10,20 @@ appId: com.danyzmaj.pocketterm
     env:
       ROW: ${SESSION}
 - extendedWaitUntil:
-    visible: "(Prompt omp…|\nSend)"
+    visible:
+      id: "session-input"
     timeout: 15000
 # Opened, then Cancel (Esc on the computer).
 - runFlow: sub/prompt.yaml
 - inputText: "/res"
 - extendedWaitUntil:
-    visible: "/resume.*"
+    visible:
+      id: "command-resume"
     timeout: 10000
-- tapOn: "/resume.*"
-- tapOn: "\n?Send"
+- tapOn:
+    id: "command-resume"
+- tapOn:
+    id: "session-send"
 - extendedWaitUntil:
     visible: "Resume a session"
     timeout: 15000
@@ -28,17 +32,19 @@ appId: com.danyzmaj.pocketterm
 # card still comes on the conversation under it.
 - runFlow:
     when:
-      visible: "(Type a line…|\nSend \\(types it, then Enter\\))"
+      visible:
+        id: "term-input"
     commands:
       - runFlow: sub/back.yaml
 - extendedWaitUntil:
     visible: "Resume a session"
     timeout: 15000
-- assertVisible: "e2e alpha session(\n.*)?"
-- assertVisible: "e2e beta session(\n.*)?"
-- assertVisible: "e2e gamma session(\n.*)?"
+- assertVisible: "e2e alpha session((, |\n).*)?"
+- assertVisible: "e2e beta session((, |\n).*)?"
+- assertVisible: "e2e gamma session((, |\n).*)?"
 - takeScreenshot: picker
-- tapOn: "Cancel"
+- tapOn:
+    id: "menu-cancel"
 - extendedWaitUntil:
     notVisible: "Resume a session"
     timeout: 15000
@@ -47,43 +53,36 @@ appId: com.danyzmaj.pocketterm
 - runFlow: sub/prompt.yaml
 - inputText: "/res"
 - extendedWaitUntil:
-    visible: "/resume.*"
+    visible:
+      id: "command-resume"
     timeout: 10000
-- tapOn: "/resume.*"
-- tapOn: "\n?Send"
+- tapOn:
+    id: "command-resume"
+- tapOn:
+    id: "session-send"
 - extendedWaitUntil:
     visible: "Resume a session"
     timeout: 15000
     optional: true
 - runFlow:
     when:
-      visible: "(Type a line…|\nSend \\(types it, then Enter\\))"
+      visible:
+        id: "term-input"
     commands:
       - runFlow: sub/back.yaml
 - extendedWaitUntil:
     visible: "Resume a session"
     timeout: 15000
-# Below Android 9 Flutter hands a text field's hint to nobody: there the
-# search is the first thing under the card's title.
-- runFlow:
-    when:
-      visible: "Search…"
-    commands:
-      - tapOn: "Search…"
-- runFlow:
-    when:
-      notVisible: "Search…"
-    commands:
-      - tapOn:
-          below: "Resume a session"
+- tapOn:
+    id: "menu-search"
 - inputText: "beta"
 - extendedWaitUntil:
-    notVisible: "e2e alpha session(\n.*)?"
+    notVisible: "e2e alpha session((, |\n).*)?"
     timeout: 15000
-- assertNotVisible: "e2e gamma session(\n.*)?"
-- assertVisible: "e2e beta session(\n.*)?"
+- assertNotVisible: "e2e gamma session((, |\n).*)?"
+- assertVisible: "e2e beta session((, |\n).*)?"
 - takeScreenshot: searched
-- tapOn: "e2e beta session(\n.*)?"
+- tapOn: "e2e beta session((, |\n).*)?"
 - extendedWaitUntil:
     notVisible: "Resume a session"
     timeout: 15000

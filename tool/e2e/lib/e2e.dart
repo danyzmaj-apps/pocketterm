@@ -1,7 +1,7 @@
 /// The end-to-end run's shared pieces: the run's configuration (written by
-/// bin/run.dart, read by the desktop's integration_test/e2e_test.dart), the
-/// throwaway home the terminals run in, and the throwaway terminals
-/// themselves, each started with a config of its own and stopped by pid.
+/// bin/run.dart to `<artifacts>/config.json`), the throwaway home the
+/// terminals run in, and the throwaway terminals themselves, each started with
+/// a config of its own and stopped by pid.
 ///
 /// Never touches what it didn't start: kitty listens in a socket folder of
 /// its own, WezTerm keeps its socket under the throwaway home, Ghostty and
@@ -19,8 +19,8 @@ import 'package:path/path.dart' as p;
 /// The terminals the run covers, by the desktop's ids.
 const terminalIds = ['kitty', 'ghostty', 'wezterm', 'iterm'];
 
-/// One terminal's run: everything the desktop side needs, as JSON in
-/// `<artifacts>/config.json`.
+/// One terminal's run: everything the desktop side (desktop.dart) needs, as
+/// JSON in `<artifacts>/config.json`.
 class E2eConfig {
   E2eConfig({
     required this.terminal,
@@ -30,7 +30,6 @@ class E2eConfig {
     required this.setupLink,
     required this.phone,
     required this.terminalPath,
-    this.serverCa,
     this.supabaseTokenFile,
     this.phoneOnly,
     this.desktopOnly,
@@ -44,7 +43,6 @@ class E2eConfig {
     setupLink: j['setupLink'] as String,
     phone: j['phone'] as bool,
     terminalPath: j['terminalPath'] as String,
-    serverCa: j['serverCa'] as String?,
     supabaseTokenFile: j['supabaseTokenFile'] as String?,
     phoneOnly: (j['phoneOnly'] as List?)?.cast<String>(),
     desktopOnly: (j['desktopOnly'] as List?)?.cast<String>(),
@@ -82,15 +80,15 @@ class E2eConfig {
   /// exists: bin/run.dart deletes that project after the run.
   String get supabaseProject => p.join(artifacts, 'supabase-project.txt');
 
-  /// Whether the phone's phases run (else the desktop goes on alone).
+  /// Whether the phone's phases run (else the desktop goes on alone and the
+  /// checks of what the phone did are skipped).
   final bool phone;
 
   /// The phone flows the run is limited to (`--phone-only`); null: all of them.
   final List<String>? phoneOnly;
 
-  /// Whether the phone ran [flow], so what it did can be checked here; the
-  /// stand-in phone ([phone] off) does everything.
-  bool phoneRan(String flow) => !phone || phoneOnly == null || phoneOnly!.contains(flow);
+  /// Whether the phone ran [flow], so what it did can be checked here.
+  bool phoneRan(String flow) => phone && (phoneOnly == null || phoneOnly!.contains(flow));
 
   /// Texts the desktop steps the run is limited to contain (`--desktop-only`); null: every step.
   final List<String>? desktopOnly;
@@ -104,10 +102,6 @@ class E2eConfig {
   /// desktop itself runs with launchd's, [launchServicesEnv]).
   final String terminalPath;
 
-  /// A PEM root the desktop trusts besides the system's: a test server
-  /// whose certificate is its own CA's (Caddy's `tls internal`).
-  final String? serverCa;
-
   Map<String, Object> toJson() => {
     'terminal': terminal,
     'artifacts': artifacts,
@@ -116,7 +110,6 @@ class E2eConfig {
     'setupLink': setupLink,
     'phone': phone,
     'terminalPath': terminalPath,
-    'serverCa': ?serverCa,
     'supabaseTokenFile': ?supabaseTokenFile,
     'phoneOnly': ?phoneOnly,
     'desktopOnly': ?desktopOnly,
@@ -132,7 +125,6 @@ class E2eConfig {
   String get bin => p.join(work, 'bin');
   String get typedLogs => p.join(work, 'typed');
   String get owned => p.join(artifacts, 'owned.jsonl');
-  String get phaseDir => p.join(artifacts, 'phase');
   String get rpcDir => p.join(artifacts, 'rpc');
   String get results => p.join(artifacts, 'results.jsonl');
   String get screenshots => p.join(artifacts, 'screenshots');
@@ -182,17 +174,17 @@ Map<String, String> cleanEnv([Map<String, String>? env]) => {
 const launchdPath = '/usr/bin:/bin:/usr/sbin:/sbin';
 
 /// What Launch Services starts an app from Finder or the Dock with: the
-/// home, user, shell and temp folder, launchd's PATH ([tools] after it:
-/// what `flutter test` itself needs), no TERM, no locale, nothing a shell or
-/// terminal sets; [extra] on top. The e2e desktop runs in it, so whatever
-/// PocketTerm starts behaves as it does for someone who opened the app,
-/// not as from the terminal the run was started in.
-Map<String, String> launchServicesEnv({List<String> tools = const [], Map<String, String> extra = const {}}) {
+/// home, user, shell and temp folder, launchd's PATH, no TERM, no locale,
+/// nothing a shell or terminal sets; [extra] on top. `open` hands its own
+/// environment to the app it starts, so the e2e desktop is opened in it:
+/// whatever PocketTerm starts behaves as it does for someone who opened the
+/// app, not as from the terminal the run was started in.
+Map<String, String> launchServicesEnv({Map<String, String> extra = const {}}) {
   const kept = {'HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'SSH_AUTH_SOCK', '__CF_USER_TEXT_ENCODING'};
   return {
     for (final MapEntry(:key, :value) in Platform.environment.entries)
       if (kept.contains(key)) key: value,
-    'PATH': [launchdPath, ...tools].join(':'),
+    'PATH': launchdPath,
     ...extra,
   };
 }
@@ -296,7 +288,7 @@ Future<void> _quitApp(int pid) async {
 /// Tab, Enter and Ctrl+C key it gets to `<typedLogs>/<folder>.log`, and runs a folder's
 /// `.e2e-autorun` once when it starts there; the terminals' configs.
 void writeHome(E2eConfig c) {
-  for (final d in [c.home, c.projects, c.kittyDir, c.typedLogs, c.bin, c.phaseDir, c.rpcDir, c.screenshots]) {
+  for (final d in [c.home, c.projects, c.kittyDir, c.typedLogs, c.bin, c.rpcDir, c.screenshots]) {
     Directory(d).createSync(recursive: true);
   }
   Process.runSync('/bin/chmod', ['700', c.kittyDir]);

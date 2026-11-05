@@ -10,10 +10,13 @@ appId: com.danyzmaj.pocketterm
     env:
       ROW: ${SESSION}
 - extendedWaitUntil:
-    visible: "(Prompt omp…|\nSend)"
+    visible:
+      id: "session-input"
     timeout: 15000
-- tapOn: "\n?Attach images or files"
-- tapOn: "Choose from Files"
+- runFlow:
+    file: sub/attach_pick.yaml
+    env:
+      PICK: "Choose from Files"
 - runFlow:
     when:
       platform: iOS

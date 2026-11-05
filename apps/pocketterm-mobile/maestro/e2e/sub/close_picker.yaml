@@ -1,0 +1,16 @@
+# Closes a picker opened from the account settings (Theme, Voice prompt
+# language): on iOS a page of the account sheet (Back), on Android a sheet over
+# Settings (a tap above it).
+appId: com.danyzmaj.pocketterm
+---
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - runFlow: back.yaml
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          point: "50%,8%"

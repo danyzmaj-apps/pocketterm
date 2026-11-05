@@ -1,0 +1,18 @@
+# Opens project PROJECT's menu (regex: its name): iOS taps its heading's ⋯
+# (a list heading has no context menu there), Android long-presses the heading.
+#   env: PROJECT
+appId: com.danyzmaj.pocketterm
+---
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          id: "project-actions-.*/${PROJECT}"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - longPressOn:
+          text: "${PROJECT}"
+          id: "project-.*"

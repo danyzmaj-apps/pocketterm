@@ -10,17 +10,20 @@ appId: com.danyzmaj.pocketterm
     env:
       ROW: ${WINDOW}
 - extendedWaitUntil:
-    visible: "Switch to conversation"
+    visible:
+      id: "switch-open"
     timeout: 15000
 - takeScreenshot: screen-only
-- tapOn: "Switch to conversation"
+- tapOn:
+    id: "switch-open"
 - extendedWaitUntil:
     visible: ${HOW}
     timeout: 15000
 - takeScreenshot: sheet
 - tapOn: ${HOW}
 - extendedWaitUntil:
-    visible: "Prompt omp…"
+    visible:
+      id: "session-input"
     timeout: 45000
 - runFlow:
     when:
@@ -34,9 +37,9 @@ appId: com.danyzmaj.pocketterm
       true: ${HOW != 'Restart and continue'}
     commands:
       - extendedWaitUntil:
-          # The chip reads with its tooltip.
-          visible: "Continue(\n.*)?"
+          visible:
+            id: "continue"
           timeout: 15000
       - assertNotVisible: ".*fake reply: continue.*"
 - takeScreenshot: conversation
-- tapOn: "Back"
+- runFlow: sub/back.yaml

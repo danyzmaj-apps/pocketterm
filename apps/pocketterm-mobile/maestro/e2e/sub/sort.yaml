@@ -1,0 +1,18 @@
+# Sorts the projects by TO (Name or Recent activity), the order not shown. iOS:
+# the sort control is a menu, TO picked in it (the control reads the other
+# order, so TO is the item's); Android: a chip, a tap switches to the other.
+#   env: TO
+appId: com.danyzmaj.pocketterm
+---
+- tapOn:
+    id: "project-sort"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn: "${TO}"
+- extendedWaitUntil:
+    visible:
+      text: "${TO}"
+      id: "project-sort"
+    timeout: 5000

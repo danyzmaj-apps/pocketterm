@@ -12,17 +12,22 @@ appId: com.danyzmaj.pocketterm
       ROW: ${WINDOW}
 # Below Android 9 the field's hint isn't read: there its Send.
 - extendedWaitUntil:
-    visible: "(Type a line…|\nSend \\(types it, then Enter\\))"
+    visible:
+      id: "term-input"
     timeout: 15000
 - runFlow:
     when:
       true: ${SCREEN != 'yes'}
     commands:
-      - assertVisible: ".* can't share its screen\\."
+      - assertVisible:
+          id: "screen-unreadable"
 - takeScreenshot: screen
-- tapOn: "Tab"
-- tapOn: "⏎"
-- tapOn: "\\^C"
+- tapOn:
+    id: "key-tab"
+- tapOn:
+    id: "key-enter"
+- tapOn:
+    id: "key-ctrl\\+c"
 - runFlow:
     when:
       true: ${SCREEN == 'yes'}

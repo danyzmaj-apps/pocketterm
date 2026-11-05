@@ -1,6 +1,10 @@
 # The account's computers: the paired one online, a second one (signed in to
 # the server, never in a code this phone read) locked until its code is
 # scanned. Back on the paired one at the end.
+# iOS: the title's menu; its items read their title alone (the subtitle,
+# Online or Locked: scan its code, isn't in the item's label), so there the
+# locked screen and the list coming back say which is which. Android: the
+# picker sheet's rows read name and status.
 #   env: COMPUTER, COMPUTER_RE, LOCKED_COMPUTER_RE
 appId: com.danyzmaj.pocketterm
 ---
@@ -9,12 +13,26 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     visible: "Computers"
     timeout: 5000
-- extendedWaitUntil:
-    visible: "${LOCKED_COMPUTER_RE}\nLocked: scan its code"
-    timeout: 10000
-- assertVisible: "${COMPUTER_RE}\nOnline"
-- takeScreenshot: computers
-- tapOn: "${LOCKED_COMPUTER_RE}\nLocked: scan its code"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: "${LOCKED_COMPUTER_RE}"
+          timeout: 10000
+      - assertVisible: "${COMPUTER_RE}"
+      - takeScreenshot: computers
+      - tapOn: "${LOCKED_COMPUTER_RE}"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: "${LOCKED_COMPUTER_RE}(, |\n)Locked: scan its code"
+          timeout: 10000
+      - assertVisible: "${COMPUTER_RE}(, |\n)Online"
+      - takeScreenshot: computers
+      - tapOn: "${LOCKED_COMPUTER_RE}(, |\n)Locked: scan its code"
 - extendedWaitUntil:
     visible: "Scan this computer’s code to connect"
     timeout: 5000
@@ -24,7 +42,7 @@ appId: com.danyzmaj.pocketterm
 - extendedWaitUntil:
     visible: "Computers"
     timeout: 5000
-- tapOn: "${COMPUTER_RE}\nOnline"
+- tapOn: "${COMPUTER_RE}((, |\n)Online)?"
 - extendedWaitUntil:
     visible: "New session"
     timeout: 15000

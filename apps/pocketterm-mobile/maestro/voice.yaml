@@ -1,15 +1,20 @@
-# Voice prompts in the demo, photographed as voice-<NAME>-*. Needs an E2E build
-# (--dart-define=POCKETTERM_E2E=true): the Simulator has no microphone, so lib/voice.dart's scripted speaker says
+# Voice prompts in the demo, photographed as voice-<NAME>-*. Needs an E2E build (iOS: a Debug build, switched on
+# by the launch argument below; Android: the E2E build): the Simulator has no microphone, so the scripted speaker
+# (iOS: PocketTerm/Voice/Voice.swift) says
 # "Add a dark mode toggle to the settings page and write a test for it." where the phone would hear the person.
 # Signed out (the demo), in the theme already chosen: the demo has no account sheet to pick one, so set it in the
-# app's preferences with the app stopped (THEME: mocha, dawn, tokyoNight, gruvbox):
+# app's preferences with the app stopped (THEME: system, catppuccin, rosePine, tokyoNight; each in the light or
+# dark half the Simulator shows, `xcrun simctl ui booted appearance light|dark`):
 #   C=$(xcrun simctl get_app_container booted com.danyzmaj.pocketterm data)
-#   xcrun simctl spawn booted defaults write $C/Library/Preferences/com.danyzmaj.pocketterm flutter.theme -string THEME
+#   xcrun simctl spawn booted defaults write $C/Library/Preferences/com.danyzmaj.pocketterm theme -string THEME
 #   maestro test -e NAME=<name> voice.yaml
 appId: com.danyzmaj.pocketterm
 ---
-- launchApp
-# A theme other than Mocha brings its icon, which iOS confirms with an alert of its own.
+- launchApp:
+    # iOS: a Debug build's test hooks (PocketTerm/Model/E2E.swift: tips seen, scripted speech).
+    arguments:
+      POCKETTERM_E2E: "true"
+# A theme with an icon of its own (Rosé Pine, Tokyo Night) brings it, which iOS confirms with an alert of its own.
 - extendedWaitUntil:
     visible: ".*changed the icon.*"
     timeout: 3000

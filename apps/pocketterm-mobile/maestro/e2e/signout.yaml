@@ -17,7 +17,9 @@ appId: com.danyzmaj.pocketterm
 - takeScreenshot: signed-out
 # Relaunched, still signed out: nothing of the sign-in was kept.
 - stopApp
-- launchApp
+- launchApp:
+    arguments:
+      POCKETTERM_E2E: "true"
 - extendedWaitUntil:
     visible: "Scan the code from your computer"
     timeout: 30000

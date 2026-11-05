@@ -3,7 +3,9 @@
 # again and, the server still down, says so again.
 appId: com.danyzmaj.pocketterm
 ---
-- launchApp
+- launchApp:
+    arguments:
+      POCKETTERM_E2E: "true"
 # Backend.unreachable, at the top of the list or in its place; "Updated …"
 # before it when there is an older list to show.
 - extendedWaitUntil:

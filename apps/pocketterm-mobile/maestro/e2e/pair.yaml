@@ -6,7 +6,9 @@
 #   env: LINK, PUSH, COMPUTER
 appId: com.danyzmaj.pocketterm
 ---
-- launchApp
+- launchApp:
+    arguments:
+      POCKETTERM_E2E: "true"
 - extendedWaitUntil:
     visible: "Scan the code from your computer"
     timeout: 30000

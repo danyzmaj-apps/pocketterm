@@ -13,10 +13,11 @@
 # don't get in; commit what the run should test. --from-tree builds this
 # checkout as it is instead (uncommitted work under test). --no-build reuses
 # the installed app.
-# iOS: the Simulator "PocketTerm E2E" (made and booted when missing), an E2E
-# debug build (its scanner takes a pasted code: lib/e2e_hooks.dart).
+# iOS: the Simulator "PocketTerm E2E" (made and booted when missing), a Debug
+# build (its E2E hooks, ios/PocketTerm/Model/E2E.swift, switched on by the
+# flows' launch argument POCKETTERM_E2E: the scanner takes a pasted code).
 # Android: the running emulator, or --avd cold-booted (its snapshot neither
-# loaded nor saved);
+# loaded nor saved), a debug build made with -PpockettermE2e=true;
 # `adb reverse` makes the server's 127.0.0.1 port the emulator's too.
 # Exit status: 0 when every flow passed.
 set -o pipefail
@@ -30,7 +31,8 @@ ADB=${ADB:-$HOME/Library/Android/sdk/platform-tools/adb}
 EMULATOR=${EMULATOR:-$HOME/Library/Android/sdk/emulator/emulator}
 SIM_NAME="PocketTerm E2E"
 
-RUN_DIR="" PLATFORM=ios PHASE=main ONLY="" DEVICE="" AVD="" BUILD=1 FROM_TREE=0
+# The emulator booted when none runs: the e2e one (API 35), unless --avd says otherwise.
+RUN_DIR="" PLATFORM=ios PHASE=main ONLY="" DEVICE="" AVD=pocketterm_api35 BUILD=1 FROM_TREE=0
 while [ $# -gt 0 ]; do
   case $1 in
     --run-dir) RUN_DIR=$2; shift 2 ;;
@@ -166,15 +168,15 @@ if [ "$PLATFORM" = android ]; then
   [ -n "$PORT" ] && "$ADB" -s "$DEVICE" reverse "tcp:$PORT" "tcp:$PORT" >/dev/null
 fi
 
-# An E2E debug build (pasted codes, tips start seen: lib/e2e_hooks.dart) of
-# HEAD, built and installed once per run; a photo in the library for
-# image.yaml and ten more for attach_limit.yaml (each its own size, so none
-# is the same as another), and documents in the phone's files (simctl
-# addmedia takes photos only: on iOS they go straight into the Files app's
-# On My iPhone storage, on Android into Download): one for file.yaml, and a
-# 21 MB one, over what a message takes, for too_large.yaml. The first is the
-# one the desktop's stand-in phone sends (integration_test/e2e_test.dart
-# checks it arrives as it was), its name with spaces, so its @path is quoted.
+# An E2E debug build (pasted codes, tips start seen) of HEAD, built and
+# installed once per run; a photo in the library for image.yaml and ten more
+# for attach_limit.yaml (each its own size, so none is the same as another),
+# and documents in the phone's files (simctl addmedia takes photos only: on
+# iOS they go straight into the Files app's On My iPhone storage, on Android
+# into Download): one for file.yaml, and a 21 MB one, over what a message
+# takes, for too_large.yaml. The first is checked on the computer to arrive
+# as it was (tool/e2e/lib/desktop.dart), its name with spaces, so its @path is
+# quoted.
 FIXTURE="$APP/assets/icon/ios.png"
 DOC_NAME="notes from the phone.txt"
 DOC_FIXTURE="$OUT/$DOC_NAME"
@@ -202,21 +204,20 @@ if [ "$PHASE" = main ] && [ $BUILD = 1 ]; then
     SRC_APP="$PHONE_SRC/${APP#"$REPO"/}"
     echo "phone build: $HEAD_SHA in $PHONE_SRC" | tee -a "$SUMMARY"
   fi
-  # Flutter regenerates the Dart plugin registrant only when the workspace's
-  # package_config.json changes; a plugin the desktop app already pulled in
-  # (file_selector) leaves it as it was, and the phone gets the plugin's
-  # native side without its Dart side (MissingPluginException). Built anew.
-  rm -f "$SRC_APP/.dart_tool/flutter_build/dart_plugin_registrant.dart"
   if [ "$PLATFORM" = ios ]; then
-    (cd "$SRC_APP" && fvm flutter build ios --simulator --debug --dart-define=POCKETTERM_E2E=true) >"$OUT/build.log" 2>&1 ||
+    (cd "$SRC_APP/ios" && /opt/homebrew/bin/xcodegen generate --quiet &&
+      xcodebuild -quiet -project PocketTerm.xcodeproj -scheme PocketTerm -configuration Debug \
+        -destination "id=$DEVICE" -derivedDataPath build/e2e build) >"$OUT/build.log" 2>&1 ||
       { echo "build failed: $OUT/build.log" >&2; exit 1; }
-    xcrun simctl install "$DEVICE" "$SRC_APP/build/ios/iphonesimulator/Runner.app"
+    xcrun simctl install "$DEVICE" "$SRC_APP/ios/build/e2e/Build/Products/Debug-iphonesimulator/PocketTerm.app"
   else
     # Push needs the Firebase config, kept out of git.
     [ "$SRC_APP" = "$APP" ] || cp "$APP/android/app/google-services.json" "$SRC_APP/android/app/" 2>/dev/null
-    (cd "$SRC_APP" && fvm flutter build apk --debug --dart-define=POCKETTERM_E2E=true) >"$OUT/build.log" 2>&1 ||
+    (cd "$SRC_APP/android" && JAVA_HOME=${JAVA_HOME:-/opt/homebrew/opt/openjdk@17} \
+      ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk} \
+      ./gradlew --quiet :app:assembleDebug -PpockettermE2e=true) >"$OUT/build.log" 2>&1 ||
       { echo "build failed: $OUT/build.log" >&2; exit 1; }
-    "$ADB" -s "$DEVICE" install -r "$SRC_APP/build/app/outputs/flutter-apk/app-debug.apk" >/dev/null
+    "$ADB" -s "$DEVICE" install -r "$SRC_APP/android/app/build/outputs/apk/debug/app-debug.apk" >/dev/null
   fi
 fi
 if [ "$PHASE" = main ]; then
@@ -275,9 +276,9 @@ open_cold() {
 
 # ------------------------------------------------------------------ timing
 
-# What the app logs of getting connected (debug builds: lib/timing.dart in
-# pocketterm_core), with a mark at each flow's start; timing.txt reads them
-# after the phase (timing_report).
+# What the app logs of getting connected (debug builds: PocketTermKit's
+# Timing.swift, the Android core's Timing.kt), with a mark at each flow's
+# start; timing.txt reads them after the phase (timing_report).
 TIMING_LOG="$OUT/timing.log" MARKS="$OUT/timing-marks.log"
 : >"$MARKS"
 if [ "$PLATFORM" = ios ]; then
@@ -285,7 +286,7 @@ if [ "$PLATFORM" = ios ]; then
     --predicate 'eventMessage CONTAINS "PocketTerm timing"' >"$TIMING_LOG" 2>&1 &
 else
   "$ADB" -s "$DEVICE" logcat -c
-  "$ADB" -s "$DEVICE" logcat -v brief -s flutter:I >"$TIMING_LOG" 2>&1 &
+  "$ADB" -s "$DEVICE" logcat -v brief -s PocketTerm:I >"$TIMING_LOG" 2>&1 &
 fi
 LOG_PID=$!
 
@@ -326,7 +327,8 @@ print("\n".join(runs) if runs else "no timing lines (not a debug build?)")
 PY
   cat "$OUT/timing.txt" >>"$SUMMARY"
 }
-trap 'timing_report; kill $LOG_PID 2>/dev/null' EXIT
+# simctl's `log stream` runs in the Simulator: killing simctl can leave it behind, so it goes by name too.
+trap 'timing_report; kill $LOG_PID 2>/dev/null; [ "$PLATFORM" != ios ] || pkill -f "eventMessage CONTAINS \"PocketTerm timing\"" 2>/dev/null' EXIT
 
 # ------------------------------------------------------------------- flows
 
@@ -344,7 +346,9 @@ flow() {
   mkdir -p "$dir"
   local started=$SECONDS ok=0 try
   # A flow whose Maestro driver didn't start on the device never touched
-  # the app: it runs once more.
+  # the app, and one whose driver died under it (XCTest losing an element
+  # mid-snapshot as the app comes to the front: "[Failed] <flow> (2s)", no
+  # reason) didn't fail on the app: it runs once more.
   for try in 1 2; do
     echo "$(now_ms) $name" >>"$MARKS"
     if [ -n "${BEFORE:-}" ]; then eval "$BEFORE"; fi
@@ -355,7 +359,8 @@ flow() {
       ok=1
       break
     fi
-    grep -qE "MaestroDriverStartupException|IOSDriverTimeoutException" "$dir/maestro.log" || break
+    grep -qE "MaestroDriverStartupException|IOSDriverTimeoutException|^\[Failed\] [^ ]+ \([0-9]+m? ?[0-9]*s\)$" \
+      "$dir/maestro.log" || break
     cp "$dir/maestro.log" "$dir/maestro-driver-$try.log"
   done
   if [ $ok = 1 ]; then

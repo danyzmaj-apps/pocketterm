@@ -1,23 +1,23 @@
-# The page's Back. While typing on Android, the keyboard's own back (in the
-# navigation bar) reads "Back" too: the keyboard goes first. Below Android 9
-# the navigation bar's back reads Back as well, and the page's "Back\nBack"
-# (its tooltip after its label): that one is tapped.
+# The page's Back. iOS: the navigation bar's back button (its label is the
+# page before's title). Android: the top bar's Back; while typing, the
+# keyboard's own back (in the navigation bar) reads "Back" too: the keyboard
+# goes first.
 appId: com.danyzmaj.pocketterm
 ---
 - runFlow:
     when:
-      visible:
-        id: "android:id/input_method_nav_back"
+      platform: iOS
     commands:
-      - hideKeyboard
-# In this order: once one Back is tapped, the other's condition doesn't hold.
+      - tapOn:
+          id: "BackButton"
 - runFlow:
     when:
-      notVisible: "Back\nBack"
+      platform: Android
     commands:
+      - runFlow:
+          when:
+            visible:
+              id: "android:id/input_method_nav_back"
+          commands:
+            - hideKeyboard
       - tapOn: "Back"
-- runFlow:
-    when:
-      visible: "Back\nBack"
-    commands:
-      - tapOn: "Back\nBack"

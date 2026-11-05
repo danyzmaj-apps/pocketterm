@@ -68,12 +68,13 @@ function Press($element) {
   throw "$($element.Current.AutomationId) can't be pressed"
 }
 
-$app = $null
+# (Not $app: PowerShell's names ignore case, and -App is the publish folder.)
+$pt = $null
 try {
   Step 'start --hidden'
-  $app = Start-Process -FilePath $exe -ArgumentList '--hidden' -PassThru
+  $pt = Start-Process -FilePath $exe -ArgumentList '--hidden' -PassThru
   $info = Until 'cli.json' { if (Test-Path $cli) { try { Get-Content $cli -Raw | ConvertFrom-Json } catch { $null } } }
-  if ($info.pid -ne $app.Id) { throw "cli.json names pid $($info.pid), PocketTerm is $($app.Id)" }
+  if ($info.pid -ne $pt.Id) { throw "cli.json names pid $($info.pid), PocketTerm is $($pt.Id)" }
   Write-Host "local API on 127.0.0.1:$($info.port)"
 
   Step '/v1/ping'
@@ -83,14 +84,14 @@ try {
   $want = -join ($hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes("pocketterm-ping`n$($info.port)`n$nonce")) | ForEach-Object { $_.ToString('x2') })
   if ($ping.app -ne 'pocketterm' -or $ping.proof -ne $want) { throw "bad ping answer: $($ping | ConvertTo-Json -Compress)" }
   $mine = Invoke-RestMethod "http://127.0.0.1:$($info.port)/v1/ping" -Headers @{ Authorization = "Bearer $($info.token)" }
-  if ($mine.pid -ne $app.Id) { throw "bad ping answer: $($mine | ConvertTo-Json -Compress)" }
-  if (Window $app.Id) { throw 'the window shows, though PocketTerm started --hidden' }
+  if ($mine.pid -ne $pt.Id) { throw "bad ping answer: $($mine | ConvertTo-Json -Compress)" }
+  if (Window $pt.Id) { throw 'the window shows, though PocketTerm started --hidden' }
 
   Step 'second start: hands over and exits, the first shows its window'
   $second = Start-Process -FilePath $exe -PassThru
   if (-not $second.WaitForExit(30000)) { throw 'the second PocketTerm kept running' }
   if ($second.ExitCode -ne 0) { throw "the second PocketTerm exited with $($second.ExitCode)" }
-  $window = Until 'the window' { Window $app.Id }
+  $window = Until 'the window' { Window $pt.Id }
   $choose = Until 'setup-this-computer' { Find $window 'setup-this-computer' }
   foreach ($id in 'setup-own-server', 'setup-supabase') { if (-not (Find $window $id)) { throw "no $id on the first-run setup" } }
   Shot '1-setup'
@@ -102,12 +103,12 @@ try {
   Shot '2-this-computer'
   Press (Until 'setup-back' { Find $window 'setup-back' })
   Until 'the choose screen again' { Find $window 'setup-own-server' } | Out-Null
-  if ($app.HasExited) { throw "PocketTerm exited ($($app.ExitCode))" }
+  if ($pt.HasExited) { throw "PocketTerm exited ($($pt.ExitCode))" }
 
   Step 'quit'
   $quit = Start-Process -FilePath $exe -ArgumentList '--quit' -PassThru
   $quit.WaitForExit(30000) | Out-Null
-  if (-not $app.WaitForExit(30000)) { throw "PocketTerm didn't quit" }
+  if (-not $pt.WaitForExit(30000)) { throw "PocketTerm didn't quit" }
   if (Test-Path $cli) { throw 'cli.json is still there after quitting' }
   Write-Host 'SMOKE PASSED'
 }
@@ -116,7 +117,7 @@ catch {
   throw
 }
 finally {
-  if ($app -and -not $app.HasExited) { $app.Kill($true) }
+  if ($pt -and -not $pt.HasExited) { $pt.Kill($true) }
   if (Test-Path $log) { Write-Host '--- PocketTerm log'; Get-Content $log | Write-Host }
   Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }

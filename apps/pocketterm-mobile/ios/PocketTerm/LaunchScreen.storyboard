@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- The intro's first frame (packages/pocketterm_core/lib/intro.dart): the app icon 42% of the screen's short side
-     across, at most 360 pt, centred on Catppuccin Mocha's background. LaunchIconMocha is drawn by the intro's own painter
-     (test/screenshots/launch_image_test.dart), so the intro takes over without a visible change. -->
+<!-- The app icon 42% of the screen's short side across, at most 360 pt, centred on the System theme's terminal
+     background (LaunchBackground: white in light mode, near-black in dark), as RootView's LaunchView shows it next,
+     so the app takes over without a visible change. -->
 <document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="12121" systemVersion="16G29" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" colorMatched="YES" initialViewController="01J-lp-oVM">
     <dependencies>
         <deployment identifier="iOS"/>
@@ -43,7 +43,7 @@
     <resources>
         <image name="LaunchIconMocha" width="360" height="360"/>
         <namedColor name="LaunchBackground">
-            <color red="0.1176" green="0.1176" blue="0.1804" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+            <color red="0.1176" green="0.1176" blue="0.1176" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
         </namedColor>
     </resources>
 </document>

@@ -2,15 +2,15 @@ import ActivityKit
 import Foundation
 
 /// A coding session (omp or Claude Code) followed on the Lock Screen and in the Dynamic Island
-/// (the app starts it: ios/Runner/AppDelegate.swift; the PocketTermLive
-/// extension draws it: ios/PocketTermLive/PocketTermLive.swift).
+/// (the app starts it: PocketTerm/Native/SessionActivities.swift; the PocketTermLive
+/// extension draws it: PocketTermLive/PocketTermLive.swift).
 ///
 /// What it's called and which session it is are fixed here, on the phone,
 /// when it starts; they never travel. Pushes carry only the ContentState, at
 /// the activity's own push token. They can't carry text: the notification
 /// extension that decrypts alerts never sees a Live Activity push, so
 /// anything in one would be readable by the relay.
-struct SessionActivity: ActivityAttributes {
+nonisolated struct SessionActivity: ActivityAttributes {
   struct ContentState: Codable, Hashable {
     enum State: String, Codable, Hashable {
       case working, needs, done, ended

@@ -1,0 +1,102 @@
+# The Mac app and its unit tests. The source of PocketTerm.xcodeproj: run `xcodegen generate` here
+# after changing this file (the .xcodeproj is git-ignored). Who signs it and which ids it uses come from
+# config/PocketTerm.xcconfig (the team there, never another).
+name: PocketTerm
+options:
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+  groupSortPosition: top
+configs:
+  Debug: debug
+  Release: release
+fileGroups:
+  - project.yml
+  - UX-NOTES.md
+  - scripts
+packages:
+  PocketTermKit:
+    path: ../../../packages/PocketTermKit
+  # Updates from the GitHub releases' appcast (Info.plist SUFeedURL), as the Flutter app did through CocoaPods.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.6.4
+settings:
+  base:
+    # What the About box and Sparkle show, and the build number every release raises (tool/release.sh reads
+    # these). Sparkle compares CFBundleVersion: it carries on from the Flutter app's 0.1.7+22.
+    MARKETING_VERSION: 0.1.7
+    CURRENT_PROJECT_VERSION: 22
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    DEVELOPMENT_TEAM: $(POCKETTERM_TEAM)
+    CODE_SIGN_STYLE: Automatic
+    DEAD_CODE_STRIPPING: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+targets:
+  PocketTerm:
+    type: application
+    platform: macOS
+    configFiles:
+      Debug: ../../../config/PocketTerm.xcconfig
+      Release: ../../../config/PocketTerm.xcconfig
+    sources:
+      - path: PocketTerm
+    dependencies:
+      - package: PocketTermKit
+        product: PocketTermKit
+      - package: PocketTermKit
+        product: PocketTermTerminals
+      - package: PocketTermKit
+        product: PocketTermDesktop
+      - package: Sparkle
+        product: Sparkle
+    postBuildScripts:
+      # The built-in server (tool/server-sidecar.sh) to Contents/Helpers, signed with the hardened runtime; the
+      # coding agents' integrations, the Supabase setup and the themes' Dock icons to Resources.
+      - name: Bundle the server and resources
+        script: '"$SRCROOT/scripts/bundle-resources.sh"'
+        basedOnDependencyAnalysis: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(POCKETTERM_BUNDLE_ID)
+        PRODUCT_NAME: PocketTerm
+        INFOPLIST_FILE: PocketTerm/Info.plist
+        CODE_SIGN_ENTITLEMENTS: PocketTerm/PocketTerm.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        PRODUCT_COPYRIGHT: Copyright © 2026 Danijel Lovric. MIT License.
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        COMBINE_HIDPI_IMAGES: YES
+        ENABLE_PREVIEWS: YES
+      configs:
+        Release:
+          # Developer ID and notarization need it; the Flutter Runner's Release had it too.
+          ENABLE_HARDENED_RUNTIME: YES
+          ARCHS: arm64 x86_64
+          ONLY_ACTIVE_ARCH: NO
+    # `xcodebuild -scheme PocketTerm test`: the unit tests. The app as a person uses it is driven through
+    # accessibility by tool/smoke and tool/e2e instead (no UI test target: they need no automation mode).
+    scheme:
+      testTargets:
+        - PocketTermTests
+      gatherCoverageData: false
+  PocketTermTests:
+    type: bundle.unit-test
+    platform: macOS
+    configFiles:
+      Debug: ../../../config/PocketTerm.xcconfig
+      Release: ../../../config/PocketTerm.xcconfig
+    sources:
+      - path: PocketTermTests
+    dependencies:
+      - target: PocketTerm
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(POCKETTERM_BUNDLE_ID).Tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/PocketTerm.app/Contents/MacOS/PocketTerm
+        BUNDLE_LOADER: $(TEST_HOST)
+        # XCTestCase's overrides are nonisolated: tests mark what touches the app @MainActor themselves.
+        SWIFT_APPROACHABLE_CONCURRENCY: YES

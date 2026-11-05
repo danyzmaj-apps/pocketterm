@@ -1,5 +1,5 @@
 // What this session looks like on the phone: Claude Code's conversation rows as transcript items, keyed like
-// LiveItem.toJson in packages/pocketterm_core/lib/live.dart, and its questions and approvals as LiveAsk.toJson has
+// LiveItem.toJson in packages/PocketTermKit/Sources/PocketTermKit/Live.swift, and its questions and approvals as LiveAsk.toJson has
 // them. Pure functions, used by pocketterm.ts and its tests.
 
 const TAIL_LINES = 60;

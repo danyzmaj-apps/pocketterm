@@ -243,8 +243,15 @@ try {
   Start-Sleep -Seconds 1
   Shot 'signed-out'
   Press (Find 'sign-in-other-server')
-  Wait 'setup-this-computer' | Out-Null
+  # The first-run setup opens where it was left (Paste your server's setup link), as the Flutter app's did; Back
+  # goes up to its first screen.
+  Wait 'setup-link' | Out-Null
   Shot 'setup-again'
+  Until 'the first screen' {
+    if (Find 'setup-this-computer') { return $true }
+    if ($b = Find 'setup-back') { Press $b }
+    $false
+  } 30 | Out-Null
   Alive
 
   Step 'quit'

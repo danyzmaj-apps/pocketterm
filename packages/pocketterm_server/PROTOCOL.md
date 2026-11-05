@@ -2,7 +2,7 @@
 
 The PocketTerm server serves one owner: their computers (role `desktop`) and their phones (role `phone`).
 It relays what the apps send without reading it: live channel payloads, images and files and notification text are
-end-to-end encrypted by the apps (see the envelope in `pocketterm_core/lib/e2e.dart`).
+end-to-end encrypted by the apps (see the envelope in `packages/PocketTermKit/Sources/PocketTermKit/E2E.swift` and its Kotlin and C# twins; [SECURITY.md](../../SECURITY.md#encryption-and-replay-protection)).
 
 Everything lives under `<url>/v1/`, where `<url>` is the server's public URL (`https://pt.example.com`,
 `http://100.101.102.103:47900`, …), with no trailing slash.

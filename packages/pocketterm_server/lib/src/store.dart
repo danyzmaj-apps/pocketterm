@@ -148,7 +148,7 @@ class ActivityToken {
   final String platform;
   final String device;
 
-  /// What an Android phone's pushes name [session] by: its tag under the computer's key (pocketterm_core's
+  /// What an Android phone's pushes name [session] by: its tag under the computer's key (the apps'
   /// sessionTag), which the phone registered. An iPhone's activity has none: its token is its own.
   final String? ref;
 

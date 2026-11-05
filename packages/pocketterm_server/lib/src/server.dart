@@ -50,10 +50,10 @@ final _sessionKey = RegExp(r'^[\w.:/-]{1,64}$');
 final _routedKey = RegExp(r'^[a-z0-9]{8}/[\w.:/-]{1,55}$');
 final _fcmToken = RegExp(r'^[A-Za-z0-9_:\-]{100,4096}$');
 
-/// What a push names its computer by (pocketterm_core's pushTag): 8 bytes of an HMAC under its key, base64url.
+/// What a push names its computer by (the apps' pushTag): 8 bytes of an HMAC under its key, base64url.
 final _pushTag = RegExp(r'^[A-Za-z0-9_-]{11}$');
 
-/// What a push names a coding session by (pocketterm_core's sessionTag): 16 bytes of an HMAC, base64url.
+/// What a push names a coding session by (the apps' sessionTag): 16 bytes of an HMAC, base64url.
 final _sessionTag = RegExp(r'^[A-Za-z0-9_-]{22}$');
 
 /// The relay takes at most 3000 base64 characters (FCM's 4 KB of data in all).

@@ -5,7 +5,7 @@ import 'package:test/test.dart';
 
 import 'harness.dart';
 
-/// A computer's push tag and a session's (pocketterm_core's pushTag, sessionTag): opaque to the server.
+/// A computer's push tag and a session's (the apps' pushTag, sessionTag): opaque to the server.
 const _tag = 'RJM0r7AxRLM';
 const _ref = 'yMPqtkm1TA3-r0AeuNDSHg';
 

@@ -1,14 +1,11 @@
 name: pocketterm_workspace
-description: "PocketTerm: the workspace of the desktop app, the phone app and the code they share."
+description: "PocketTerm: the workspace of the Dart server and the end-to-end harness (the apps are native)."
 publish_to: 'none'
 
 environment:
   sdk: ^3.13.4
 
 workspace:
-  - packages/pocketterm_core
-  - apps/pocketterm-desktop
-  - apps/pocketterm-mobile
   - packages/pocketterm_server
   - apps/pocketterm-server
   - tool/e2e

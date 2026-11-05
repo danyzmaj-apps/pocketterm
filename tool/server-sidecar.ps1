@@ -3,8 +3,7 @@
 #
 #   pwsh tool/server-sidecar.ps1 [-Out <dir>]          (default -Out: build/server-sidecar)
 #
-# Uses fvm's Dart when fvm is installed, else the Dart on PATH (CI's, from the pinned Flutter: the workspace has
-# Flutter packages, so `flutter pub get` resolves it).
+# Uses fvm's Dart when fvm is installed, else the Dart on PATH (CI's, from dart-lang/setup-dart).
 param([string]$Out = 'build/server-sidecar')
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
@@ -18,7 +17,6 @@ $dir = Join-Path $Out "windows-$arch"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 $fvm = [bool](Get-Command fvm -ErrorAction SilentlyContinue)
 if ($fvm) { fvm dart pub get | Out-Null }
-elseif (Get-Command flutter -ErrorAction SilentlyContinue) { flutter pub get | Out-Null }
 else { dart pub get | Out-Null }
 if ($LASTEXITCODE -ne 0) { throw 'pub get failed' }
 $exe = Join-Path $dir 'pocketterm-server.exe'

@@ -45,7 +45,7 @@ Every user's server sends phone notifications through one relay the publisher ru
 1. **APNs key.** At [developer.apple.com → Keys](https://developer.apple.com/account/resources/authkeys/add), create a key with Apple Push Notifications service (Sandbox & Production, team scoped), or reuse an existing key of the team: APNs keys work for every app of the team. The `.p8` downloads once; keep its `AuthKey_<KEYID>.p8` name.
 2. **Firebase service account.** In the Firebase project that holds the Android app (package `com.danyzmaj.pocketterm`), Project settings → Service accounts → **Generate new private key**. The same project's `google-services.json` goes into Android release builds (below).
 3. **Secrets on the server**, in `/etc/danyzmaj/pocketterm-relay/`: the relay's X25519 private key (`openssl genpkey -algorithm X25519`, kept as `<keys>/pocketterm-relay-x25519.key`), the `.p8`, the service account and `app.env` with `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_TOPIC`. File names and the copy command: [apps/pocketterm-relay/README.md](../apps/pocketterm-relay/README.md#deploy).
-4. **Deploy:** a push to `main` that touches `apps/pocketterm-relay/**` starts Baker's *Relay* workflow (project `pocketterm-mobile`): it runs the relay's tests (`deno check main.ts && deno task test`), then deploys it on the server itself as compose project `pocketterm-relay`. Baker → *Relay* → *Deploy* redeploys.
+4. **Deploy:** a push to `main` that touches `apps/pocketterm-relay/**` starts Baker's *Relay* workflow (project `pocketterm-android`): it runs the relay's tests (`deno check main.ts && deno task test`), then deploys it on the server itself as compose project `pocketterm-relay`. Baker → *Relay* → *Deploy* redeploys.
 
 Every PocketTerm server sends to `PUSH_RELAY_URL` (default `https://push.danyzmaj.com/v1/push`), sealed to `PUSH_RELAY_KEY` (default the relay's public key); both defaults are in `packages/pocketterm_server/lib/src/relay.dart`. Servers pick up a new default only when they update, so a new relay key or URL goes in the changelog, and the old one keeps working until they have.
 
@@ -118,23 +118,26 @@ iPhone:
 
 Android:
 
-1. A **Google Play Console** app with package `com.danyzmaj.pocketterm`, with the **Internal testing** track and its testers' list. Internal testing needs no review. Play only accepts API uploads once one build was uploaded by hand: run `tool/build-aab.sh` (in `apps/pocketterm-mobile`) once and upload `build/app/outputs/bundle/release/app-release.aab` to Internal testing in the console.
+1. A **Google Play Console** app with package `com.danyzmaj.pocketterm`, with the **Internal testing** track and its testers' list. Internal testing needs no review. Play only accepts API uploads once one build was uploaded by hand: run `apps/pocketterm-mobile/tool/build-aab.sh` once and upload `apps/pocketterm-mobile/android/app/build/outputs/bundle/release/app-release.aab` to Internal testing in the console.
 2. **Play App Signing** (the default): Google holds the app signing key; uploads are signed with the upload key `pocketterm-upload.jks` (alias `upload`) in the maintainer's keys folder, its password in the Keychain item `pocketterm-upload`. `apps/pocketterm-mobile/android/key.properties` (git-ignored, from `key.properties.example`) points at it. If it is lost, request an upload key reset in Play Console.
 3. `apps/pocketterm-mobile/android/app/google-services.json` (git-ignored) from the Firebase project `pocketterm-cf6de8`, whose service account the relay holds. A release build stops without it (it would have no push).
 4. A Play service account (`shipyard-play-uploader@holdup-signup.iam.gserviceaccount.com`), its JSON in the keys folder, set as the project's Play JSON in Baker. Invite it in Play Console → **Users and permissions** with release access to the app; until then uploads fail with a permission error.
 
-Baker: add `apps/pocketterm-mobile` as a project, set its App Store Connect key preset and Play JSON, and use a workflow with the Play track `beta` (open testing), status `completed`, and the TestFlight group `External testers`.
+Baker builds a native app from its own folder, so the phones are two Baker projects on this repo, each with a workflow **Default** (ref `main`, no triggers: nothing ships on its own):
+
+- `pocketterm-android`, folder `apps/pocketterm-mobile/android`: the Play JSON, carry-over files `key.properties` and `app/google-services.json`, Play track `beta` (open testing) plus `internal`, status `completed`. It also holds the repo's checks (CI) and the *Relay* workflow.
+- `pocketterm-ios`, folder `apps/pocketterm-mobile/ios`: the App Store Connect key preset `danyzmaj` and the TestFlight group `External testers`.
 
 ### Each release
 
-Set the version name (`MARKETING_VERSION` in `ios/project.yml`, `versionName` in `android/app/build.gradle.kts`), then ship from Baker to TestFlight and Google Play (**Ship both**). Baker's workflow uses the git commit count as the build number (`autoBuildNumber`), so it grows with every commit; ship from a new commit each time. For a build by hand, in `apps/pocketterm-mobile`: `tool/build-ipa.sh --build-name <version> --build-number <n>` (check `codesign -dv` on the app in the archive shows `TeamIdentifier=5SSZ6TYMF5`) and `tool/build-aab.sh --build-name <version> --build-number <n>`, with `<n>` above the last uploaded build.
+Set the version name (`MARKETING_VERSION` in `ios/project.yml`, `versionName` in `android/app/build.gradle.kts`), then ship each phone from Baker: *Ship* on `pocketterm-ios` (TestFlight) and on `pocketterm-android` (Google Play). The workflows leave the version name empty, so the builds take it from those files (a `v<version>` tag or `release/<version>` branch overrides it). The build number comes from each project's build counter (`autoBuildNumber`), which only goes up; keep both counters above the highest build TestFlight and Play have. For a build by hand, from anywhere: `apps/pocketterm-mobile/tool/build-ipa.sh --build-name <version> --build-number <n>` (check `codesign -dv` on the app in the archive shows `TeamIdentifier=5SSZ6TYMF5`) and `apps/pocketterm-mobile/tool/build-aab.sh --build-name <version> --build-number <n>`, with `<n>` above the last uploaded build.
 
 ### Phone builds (Baker)
 
-Baker runs the build command in `apps/pocketterm-mobile`, appends `--build-name <version> --build-number <n>`, and uploads the newest `.aab` under `build/app/outputs/bundle/` and `.ipa` under `build/ios/ipa/`. Build commands:
+Baker runs each project's build command in its folder, appends `--build-name=<version> --build-number=<n>`, and uploads the newest `.aab` under the Gradle modules' `build/outputs/bundle/` or the newest `.ipa` under `build/`. Build commands:
 
-- Android: `tool/build-aab.sh` (Gradle `:app:bundleRelease`, signed with `android/key.properties`; writes `build/app/outputs/bundle/release/app-release.aab`)
-- iPhone: `tool/build-ipa.sh` (xcodegen, archive and App Store Connect export with the team from `config/PocketTerm.xcconfig`; writes `build/ios/ipa/PocketTerm.ipa`, no upload)
+- Android (`pocketterm-android`, in `apps/pocketterm-mobile/android`): `../tool/build-aab.sh` (Gradle `:app:bundleRelease`, signed with `android/key.properties`; writes `android/app/build/outputs/bundle/release/app-release.aab`). Without `android/local.properties`, as in Baker's worktree, it uses the SDK in `ANDROID_HOME` or `~/Library/Android/sdk`.
+- iPhone (`pocketterm-ios`, in `apps/pocketterm-mobile/ios`): `../tool/build-ipa.sh` (xcodegen, archive and App Store Connect export with the team from `config/PocketTerm.xcconfig`; writes `ios/build/ipa/PocketTerm.ipa`, no upload)
 
 Check commands (from the repo root):
 

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Builds the App Store .ipa for TestFlight. Baker runs this from
-# apps/pocketterm-mobile and appends --build-name/--build-number; the ipa
-# lands where Baker looks for it (build/ios/ipa/). Export only, no upload.
+# Builds the App Store .ipa for TestFlight. Baker (project pocketterm-ios) runs
+# this as ../tool/build-ipa.sh from apps/pocketterm-mobile/ios and appends
+# --build-name=<v> --build-number=<n>; the ipa lands where Baker looks for it,
+# under the project's build/ (ios/build/ipa/PocketTerm.ipa). Runs from any
+# folder. Export only, no upload.
 set -euo pipefail
 
 usage() { echo "usage: $0 [--build-name X] [--build-number N]" >&2; exit 2; }
@@ -10,7 +12,9 @@ name="" number=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --build-name) [[ $# -ge 2 ]] || usage; name="$2"; shift 2 ;;
+    --build-name=*) name="${1#*=}"; shift ;;
     --build-number) [[ $# -ge 2 ]] || usage; number="$2"; shift 2 ;;
+    --build-number=*) number="${1#*=}"; shift ;;
     *) echo "unknown argument: $1" >&2; usage ;;
   esac
 done
@@ -29,7 +33,7 @@ for f in "$repo/config/PocketTerm.xcconfig" "$repo/config/Local.xcconfig"; do
 done
 [[ -n "$team" ]] || { echo "error: POCKETTERM_TEAM not found in config/PocketTerm.xcconfig" >&2; exit 1; }
 
-work="$mobile/build/ios"
+work="$ios/build"
 archive="$work/PocketTerm.xcarchive"
 ipadir="$work/ipa"
 rm -rf "$archive" "$ipadir"

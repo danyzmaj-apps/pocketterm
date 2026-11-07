@@ -6,8 +6,8 @@ import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
 
-/// The publisher's push relay (it holds the APNs key and the Firebase service account), on the publisher's
-/// own server. A fork with its own keys points `PUSH_RELAY_URL` and `PUSH_RELAY_KEY` elsewhere.
+/// The publisher's push relay (it holds the APNs key and the Firebase service account), run by the
+/// publisher. A fork with its own keys points `PUSH_RELAY_URL` and `PUSH_RELAY_KEY` elsewhere.
 final Uri defaultRelay = Uri.parse('https://push.danyzmaj.com/v1/push');
 
 /// The publisher's relay's X25519 public key (base64 of 32 bytes): every request is sealed to it.

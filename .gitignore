@@ -36,10 +36,7 @@ coverage/
 
 # FVM Version Cache
 .fvm/
-# Supabase CLI state
-/apps/pocketterm-desktop/supabase/.temp/
-# Secrets for the CLI and local functions (apps/pocketterm-desktop/tool/setup-backend.sh, docs/BUILDING.md),
-# and any other env file anywhere in the repo
+# Env files anywhere in the repo
 .env
 .env.*
 # Your own signing identity (config/Local.xcconfig.example)

@@ -31,6 +31,23 @@ The native app (SwiftUI on AppKit, macOS 13+) keeps every feature, string and se
   checklist) is the first section of every tab; a tab with something to do has a red dot on its toolbar icon.
 - **Sparkle** doesn't check in test builds (`POCKETTERM_SMOKE`) either, so a smoke copy never replaces itself.
 
+## Setup: Tailscale only
+
+- **One setup page.** PocketTerm's server is only the one built into the app, published over Tailscale: the setup
+  opens on the Tailscale checklist (`check-*`) with Start (`setup-start-server`). The choose screen (On this
+  computer / On my own server / Supabase), the VPS screens (address, commands, live checks) and the Supabase setup
+  (access token, project, migrations, function) are gone.
+- **Join another computer's PocketTerm…** (`setup-join`), under Start, opens the paste-a-link screen (`setup-link`,
+  `setup-link-health`, `setup-connect`, `setup-error`, `setup-back`) for the link another computer's Settings →
+  Account → Add a computer… shows. A release build takes only `https://<name>.<tailnet>.ts.net` servers ("This
+  link isn't for a PocketTerm on Tailscale."); a test build takes any http(s) server, which tool/e2e and tool/smoke
+  sign in to on 127.0.0.1.
+- **Moving off Supabase or a VPS**: at launch, a computer signed in to a server that is neither its own built-in
+  one nor a `*.ts.net` one is signed out here (a VPS is told in the background, Supabase isn't), its saved server
+  forgotten, and the setup says once, until the next sign-in (`setup-moved`): "PocketTerm now runs its server on
+  this computer, over Tailscale. Set it up below; then scan the new code with your phone."
+- Add a computer… is offered only by a computer running the built-in server; the Supabase one is gone.
+
 ## Test builds
 
 - A test build is a Debug build or one compiled with `-D POCKETTERM_SMOKE` (tool/smoke/run.sh passes it on the

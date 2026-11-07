@@ -16,7 +16,8 @@ nonisolated enum PocketTermShared {
   /// The connected server's URL.
   static var backendUrl: String? { defaults.string(forKey: "backendUrl") }
 
-  /// What kind of server it is: "supabase", or nil for a PocketTerm server.
+  /// What kind of server an app from before saved: "supabase" (no longer
+  /// spoken: the app signs out of it at launch), or nil for a PocketTerm server.
   static var backendKind: String? { defaults.string(forKey: "backendKind") }
 
   /// Keeps the connected server (nil url: none).

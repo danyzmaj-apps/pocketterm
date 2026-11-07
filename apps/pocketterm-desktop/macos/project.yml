@@ -54,7 +54,7 @@ targets:
         product: Sparkle
     postBuildScripts:
       # The built-in server (tool/server-sidecar.sh) to Contents/Helpers, signed with the hardened runtime; the
-      # coding agents' integrations, the Supabase setup and the themes' Dock icons to Resources.
+      # coding agents' integrations and the themes' Dock icons to Resources.
       - name: Bundle the server and resources
         script: '"$SRCROOT/scripts/bundle-resources.sh"'
         basedOnDependencyAnalysis: false

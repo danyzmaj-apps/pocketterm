@@ -224,7 +224,7 @@ final class HostFakeSidecar: ServerSidecar, @unchecked Sendable {
     if let kept = try? String(contentsOf: file, encoding: .utf8) {
       token = kept
     } else {
-      token = newSetupToken()
+      token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
       try token.write(to: file, atomically: true, encoding: .utf8)
     }
     var url = publicUrl

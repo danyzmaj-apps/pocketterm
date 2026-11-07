@@ -14,7 +14,6 @@ import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -387,30 +386,6 @@ class SessionTest : Confined() {
         assertEquals(listOf(link), session.connected)
         assertEquals(listOf(false), session.scans)
         assertNull(session.linkToConfirm)
-    }
-
-    @Test
-    fun `on Supabase, a computer signs in with the project's setup link and a phone with its code, both keep the kind`() = test {
-        val project = FakeSupabase.start()
-        try {
-            val studio = device("Mac Studio").apply { computer = ComputerKey("efgh5678", ChannelKey.generate()) }
-            studio.connectLink(project.backend.linkWithSetup(project.setupToken))
-            assertNull(studio.authError)
-            assertIs<SupabaseServerClient>(studio.server)
-            assertEquals(project.backend, studio.saved)
-
-            val phone = device("iPhone", phone = true)
-            val code = studio.pairingLink()
-            assertEquals(project.backend, Backend.fromLink(code), "the computer's code names the Supabase project")
-            phone.connectLink(code, scanned = true)
-            assertNull(phone.authError)
-            assertEquals(studio.user?.id, phone.user?.id)
-            assertEquals(listOf(studio.computer), phone.keys)
-            phone.disconnect()
-            studio.disconnect()
-        } finally {
-            project.stop()
-        }
     }
 }
 

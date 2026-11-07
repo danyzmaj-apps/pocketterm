@@ -101,8 +101,7 @@ public sealed class ChannelSeal
 
 /// <summary>
 /// A computer's <see cref="Topic"/> (its id) on the server's live channel (GET /v1/ws,
-/// packages/pocketterm_server/PROTOCOL.md; Supabase Realtime for a Supabase project, <see cref="RealtimeLive"/>),
-/// kept joined while open. Everything on it is sealed with the computer's key (<see cref="ChannelSeal"/>): the
+/// packages/pocketterm_server/PROTOCOL.md), kept joined while open. Everything on it is sealed with the computer's key (<see cref="ChannelSeal"/>): the
 /// server only relays envelopes; handlers get the opened messages, in the order they came.
 ///
 /// Whenever it isn't joined (no connection, the server went away or restarted, a join nobody answers, two pings

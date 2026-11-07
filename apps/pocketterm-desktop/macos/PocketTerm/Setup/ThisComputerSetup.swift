@@ -2,15 +2,10 @@ import PocketTermDesktop
 import PocketTermKit
 import SwiftUI
 
-/// On this computer: a checklist that follows Tailscale as it's set up, looking again every 3 seconds: installed,
-/// running, signed in, HTTPS certificates on, port 443 free for PocketTerm. Each step shows only its own action;
-/// then Start runs the built-in server and signs this computer in to it.
+/// The setup's Tailscale checklist, which follows Tailscale as it's set up, looking again every 3 seconds:
+/// installed, running, signed in, HTTPS certificates on, port 443 free for PocketTerm. Each step shows only its own
+/// action; then Start runs the built-in server and signs this computer in to it.
 struct ThisComputerSetup: View {
-  let onBack: () -> Void
-
-  /// A tailnet whose HTTPS only its admin turns on (a work one): the VPS way instead.
-  var onOwnServer: (() -> Void)?
-
   @EnvironmentObject private var app: AppController
   @State private var status: TailscaleStatus?
 
@@ -81,12 +76,6 @@ struct ThisComputerSetup: View {
     let ts = app.tailscale
     let commands = app.commands
     return VStack(alignment: .leading, spacing: 0) {
-      SetupHeader(
-        title: "On this computer",
-        text:
-          "PocketTerm runs your server here. Tailscale gives it a private HTTPS address that only your own devices "
-          + "reach, at home or away. This list checks itself as you go.",
-        onBack: onBack)
       Explainer("What is Tailscale, and why?", id: "why-tailscale") {
         Text(
           "Tailscale makes a private network between your own devices, wherever they are. Your phone reaches this "
@@ -132,17 +121,12 @@ struct ThisComputerSetup: View {
           state(3), state(3) == .done ? "HTTPS certificates are on" : "Turn on HTTPS certificates",
           note:
             "On the Tailscale page that opens, turn on HTTPS (and MagicDNS, if it asks). Your phone then gets a "
-            + "secure address for this computer. On a work tailnet only its admin can: ask them, or run your server "
-            + "on a VPS instead.",
+            + "secure address for this computer. On a work tailnet only its admin can: ask them.",
           id: "check-https"
         ) {
           Button(askingHttps ? "Opening…" : "Turn on HTTPS…") { Task { await turnOnHttps() } }
             .disabled(askingHttps)
             .accessibilityIdentifier("setup-turn-on-https")
-          if let onOwnServer {
-            Button("Use my own server instead", action: onOwnServer)
-              .accessibilityIdentifier("setup-https-own-server")
-          }
         }
         CheckRow(
           state(4),

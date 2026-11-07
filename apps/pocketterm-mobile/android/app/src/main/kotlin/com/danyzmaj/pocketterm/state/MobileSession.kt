@@ -18,6 +18,8 @@ import com.danyzmaj.pocketterm.core.jsonDecode
 import com.danyzmaj.pocketterm.core.jsonEncode
 import com.danyzmaj.pocketterm.core.jsonOf
 import com.danyzmaj.pocketterm.core.pushPlatform
+import com.danyzmaj.pocketterm.core.SUPABASE_GONE_NOTE
+import com.danyzmaj.pocketterm.core.forgetSupabase
 import com.danyzmaj.pocketterm.demo.DemoComputer
 import com.danyzmaj.pocketterm.demo.demoDesktopId
 import kotlinx.coroutines.CancellationException
@@ -118,17 +120,15 @@ class MobileSession(
     fun takeOpenedSession(): String? = openedSession.also { openedSession = null }
 
     /**
-     * PocketTerm 0.1 connected through a Supabase project (its URL kept with that project's key): no
-     * server this app talks to. What it left goes, so the phone starts at setup: the project, a
-     * sign-in and computer keys if any, the Supabase session and the computers list it cached, and
-     * the sessions it followed. The tips seen and the list's order stay.
+     * PocketTerm no longer runs on Supabase projects ([forgetSupabase]): a phone signed in through
+     * one is signed out here and told to scan its computer's new code. What that left goes too: the
+     * Supabase session and the computers list it cached, and the sessions it followed. The tips
+     * seen and the list's order stay. Once: nothing is left to forget after.
      */
     suspend fun forgetOldApp() {
         try {
-            if (native.getBackend()?.legacy != true) return
-            native.setBackend()
-            native.setDeviceToken(null)
-            native.removeAllChannelKeys()
+            if (!forgetSupabase(native)) return
+            signedOutReason = SUPABASE_GONE_NOTE
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

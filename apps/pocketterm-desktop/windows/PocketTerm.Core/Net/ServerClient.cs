@@ -81,7 +81,7 @@ public sealed class ServerException(int status, string code, string message) : E
 /// <summary>
 /// The live channel's connection, in the frames of PROTOCOL.md's WebSocket (<c>join</c>, <c>send</c>,
 /// <c>leave</c>, <c>ping</c> out; <c>joined</c>, <c>msg</c>, <c>pong</c>, <c>error</c> in), whatever carries
-/// them: the PocketTerm server's own WebSocket, or Supabase Realtime (<see cref="RealtimeLive"/>).
+/// them: the PocketTerm server's own WebSocket.
 /// <see cref="CloseCode"/> 4003 once closed: this device was signed out.
 /// </summary>
 public interface ILiveSocket
@@ -98,9 +98,8 @@ public interface ILiveSocket
 
 /// <summary>
 /// Where this device is signed in (packages/pocketterm_server/PROTOCOL.md): signing in, pairing, the computers
-/// list, images and push, and the live channel (<see cref="ConnectLive"/>). <see cref="Server.Create"/> picks
-/// the implementation for the backend's kind: <see cref="PocketTermServerClient"/> or
-/// <see cref="SupabaseServerClient"/>.
+/// list, images and push, and the live channel (<see cref="ConnectLive"/>). <see cref="Server.Create"/> makes
+/// a <see cref="PocketTermServerClient"/>.
 /// </summary>
 public interface IServer
 {
@@ -172,18 +171,14 @@ public interface IServer
     void Close();
 }
 
-/// <summary>Picks the <see cref="IServer"/> for a backend's kind (Dart's <c>Server(backend, tokens:)</c>), and
+/// <summary>Makes the <see cref="IServer"/> for a backend (Dart's <c>Server(backend, tokens:)</c>), and
 /// the limits every server shares.</summary>
 public static partial class Server
 {
     /// <summary>The most a blob may hold (the server's limit, 20 MiB).</summary>
     public const int MaxBlobBytes = 20 * 1024 * 1024;
 
-    public static IServer Create(Backend backend, IDeviceTokens tokens) => backend.Kind switch
-    {
-        BackendKind.Supabase => new SupabaseServerClient(backend, tokens),
-        _ => new PocketTermServerClient(backend, tokens),
-    };
+    public static IServer Create(Backend backend, IDeviceTokens tokens) => new PocketTermServerClient(backend, tokens);
 
     /// <summary><paramref name="path"/> can be one of <see cref="IServer.NewBlobPath"/>'s.</summary>
     public static bool IsBlobPath(string path) => BlobPath().IsMatch(path);
@@ -479,10 +474,6 @@ public class PocketTermServerClient : IServer
         }
         http.Dispose();
     }
-
-    /// <summary>A JSON request to <paramref name="path"/> as this device, for what a subclass adds
-    /// (<see cref="SupabaseServerClient"/>); a 401 ends the sign-in as any other.</summary>
-    protected Task<JsonNode?> Request(string method, string path, JsonObject? body = null) => Json(method, path, body: body);
 
     private async Task<JsonNode?> Json(string method, string path, JsonObject? body = null, byte[]? bytes = null, bool auth = true, string? token = null)
     {

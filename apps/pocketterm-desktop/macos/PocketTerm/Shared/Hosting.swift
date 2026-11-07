@@ -86,28 +86,22 @@ struct HostingStatusView: View {
   }
 }
 
-/// Settings → Account → "Add a computer…": the setup link another computer pastes (Your own server) to join this
-/// computer's server through Tailscale. `how` says what the other computer does with it.
+/// Settings → Account → "Add a computer…": the setup link another computer pastes (Join another computer's
+/// PocketTerm…) to join this computer's server through Tailscale.
 struct AddComputerSheet: View {
   @EnvironmentObject var app: AppController
   @Environment(\.dismiss) private var dismiss
   let link: URL
-  var how: String = AddComputerSheet.tailscaleHow
   @State private var copied: String?
 
   /// What the other computer does with a link to this computer's built-in server.
-  static let tailscaleHow =
-    "On the other computer, sign in to Tailscale with the same account, install PocketTerm, choose Your own "
-    + "server and paste this link."
-
-  /// The same for a Supabase project's link (a new one; the one before stops working).
-  static let supabaseHow =
-    "On the other computer, open PocketTerm, choose Supabase, then Paste a setup link, and paste this link. "
-    + "A link you made before this one stops working."
+  static let how =
+    "On the other computer, sign in to Tailscale with the same account, install PocketTerm, choose Join another "
+    + "computer’s PocketTerm… and paste this link."
 
   var body: some View {
     SheetLayout(title: "Add a computer", width: 420) {
-      Text(how).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+      Text(Self.how).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
       Text(link.absoluteString)
         .font(commandFont)
         .textSelection(.enabled)

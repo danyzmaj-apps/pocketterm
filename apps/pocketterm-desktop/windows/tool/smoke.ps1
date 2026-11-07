@@ -9,8 +9,8 @@
 #      hides, PocketTerm keeps running;
 #   3. starts PocketTerm again: the second start hands over to the first and exits, and the first shows its window
 #      (the first-run setup), checked through UI Automation by AutomationId and walked one step in;
-#   4. starts the bundled server (pocketterm-server.exe serve on 127.0.0.1) and sets PocketTerm up with it: On my
-#      own server, its setup link pasted, signed in, the setup checklist, then Settings, each section in turn;
+#   4. starts the bundled server (pocketterm-server.exe serve on 127.0.0.1) and sets PocketTerm up with it: Join
+#      another computer's PocketTerm, its setup link pasted (a test build takes any URL), signed in, the setup checklist, then Settings, each section in turn;
 #   5. Phone → Add a phone… shows the pairing code, and the phone stand-in (tool/PhoneStandIn, PocketTerm.Core)
 #      scans it: it signs in, joins this computer's channel and gets the terminal bridge's sealed state;
 #   6. Account: signs that phone out (its confirm dialog), signs this computer out (sign-in page), Use a different
@@ -143,7 +143,7 @@ try {
 
   Step 'not set up: the window opens though started --hidden; closing it only hides it'
   $window = Until 'the window' { Window $pt.Id }
-  Wait 'setup-this-computer' | Out-Null
+  Wait 'setup-join' | Out-Null
   $window.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
   Until 'the window to hide' { -not (Window $pt.Id) } | Out-Null
   Start-Sleep -Seconds 1
@@ -154,17 +154,10 @@ try {
   if (-not $second.WaitForExit(30000)) { throw 'the second PocketTerm kept running' }
   if ($second.ExitCode -ne 0) { throw "the second PocketTerm exited with $($second.ExitCode)" }
   Until 'the window' { Window $pt.Id } | Out-Null
-  $choose = Wait 'setup-this-computer'
-  foreach ($id in 'setup-own-server', 'setup-supabase') { if (-not (Find $id)) { throw "no $id on the first-run setup" } }
-  Shot 'setup'
-
-  Step 'On this computer'
-  Press $choose
+  Step 'setup: the Tailscale checklist, Start, and Join another computer'
   Wait 'check-installed' | Out-Null
-  if (-not (Find 'setup-start-server')) { throw 'no setup-start-server' }
-  Shot 'this-computer'
-  Press (Wait 'setup-back')
-  Wait 'setup-own-server' | Out-Null
+  foreach ($id in 'setup-start-server', 'setup-join') { if (-not (Find $id)) { throw "no $id on the first-run setup" } }
+  Shot 'setup'
   Alive
 
   Step 'a server: the bundled pocketterm-server on 127.0.0.1'
@@ -187,9 +180,8 @@ try {
   if ($LASTEXITCODE -or -not $setupLink.StartsWith('pocketterm://setup')) { throw "no setup link: $setupLink" }
   Write-Host "server at $serverUrl"
 
-  Step 'On my own server: paste its setup link, connect'
-  Press (Wait 'setup-own-server')
-  Press (Wait 'setup-have-server')
+  Step 'Join another computer: paste the local server's setup link (test builds take any URL), connect'
+  Press (Wait 'setup-join')
   SetText (Wait 'setup-link') $setupLink
   Wait 'setup-link-health' | Out-Null
   Shot 'setup-link'

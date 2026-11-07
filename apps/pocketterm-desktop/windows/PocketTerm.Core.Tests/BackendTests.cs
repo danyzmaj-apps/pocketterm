@@ -76,7 +76,7 @@ public class BackendTests
     public async Task AServerOlderThanThisAppNeedsSaysToUpdateIt()
     {
         await using var old = await Answering(ctx => ctx.Response.WriteAsync("""{"pocketterm":1,"version":"0.0.9"}"""));
-        Assert.Contains("Update the server", await new Backend(old.Url).Check());
+        Assert.Contains("Update PocketTerm on that computer", await new Backend(old.Url).Check());
         await using var newer = await Answering(ctx => ctx.Response.WriteAsync("""{"pocketterm":1,"version":"0.10.0"}"""));
         Assert.Null(await new Backend(newer.Url).Check());
         await using var future = await Answering(ctx => ctx.Response.WriteAsync("""{"pocketterm":2}"""));
@@ -111,13 +111,8 @@ public class BackendTests
     public void AComputersBackendIsInItsPreferences()
     {
         var backend = new Backend("https://pt.example.com");
-        var supabase = new Backend("https://abcdefghijklmnop.supabase.co", BackendKind.Supabase);
         var prefs = new MemoryPreferenceStore();
         Assert.Null(Backend.Load(prefs));
-        backend.Save(prefs);
-        Assert.Equal(backend, Backend.Load(prefs));
-        supabase.Save(prefs);
-        Assert.Equal(supabase, Backend.Load(prefs));
         backend.Save(prefs);
         Assert.Equal(backend, Backend.Load(prefs));
         Backend.Clear(prefs);
@@ -127,6 +122,12 @@ public class BackendTests
         before.SetString("backend_url", "https://abc.supabase.co");
         before.SetString("backend_key", "sb_x");
         Assert.Null(Backend.Load(before));
+
+        // A Supabase project saved by 0.1.x isn't a server any more.
+        var supabase = new MemoryPreferenceStore();
+        supabase.SetString("backend_url", "https://abcdefghijklmnop.supabase.co");
+        supabase.SetString("backend_kind", "supabase");
+        Assert.Null(Backend.Load(supabase));
     }
 
     [Fact]

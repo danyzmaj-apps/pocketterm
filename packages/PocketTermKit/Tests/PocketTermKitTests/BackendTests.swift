@@ -9,12 +9,13 @@ final class BackendVectorTests: XCTestCase {
     XCTAssertFalse(cases.isEmpty)
     for c in cases {
       let note = c["note"]!.string!
-      let r = Backend.parse(c["input"]!.string!, kind: BackendKind(rawValue: c["kind"]!.string!)!)
+      // Every case left is a PocketTerm server's: its `kind` says so.
+      XCTAssertEqual(c["kind"]?.string ?? "pocketterm", "pocketterm", note)
+      let r = Backend.parse(c["input"]!.string!)
       XCTAssertEqual(r.error, c["error"]?.string, note)
       if let b = c["backend"]?.object {
         let backend = try! XCTUnwrap(r.backend, note)
         XCTAssertEqual(backend.url, b["url"]?.string, note)
-        XCTAssertEqual(backend.kind.rawValue, b["kind"]?.string, note)
         XCTAssertEqual(backend.api, b["api"]?.string, note)
         XCTAssertEqual(backend.host, b["host"]?.string, note)
         XCTAssertEqual(backend.onTailnet, b["onTailnet"]?.bool, note)
@@ -26,7 +27,7 @@ final class BackendVectorTests: XCTestCase {
   }
 
   func backend(_ j: JSON) -> Backend {
-    Backend(url: j["url"]!.string!, kind: BackendKind(rawValue: j["kind"]!.string!)!)
+    Backend(url: j["url"]!.string!)
   }
 
   func testBuild() {
@@ -88,17 +89,15 @@ final class BackendVectorTests: XCTestCase {
 
 /// backend_test.dart.
 final class BackendTests: XCTestCase {
-  func testSupabaseLinksKeepTheirKind() {
-    let supabase = Backend(url: "https://abcdefghijklmnop.supabase.co", kind: .supabase)
-    XCTAssertEqual(supabase.api, "https://abcdefghijklmnop.supabase.co/functions/v1/pocketterm")
-    for link in [supabase.link, supabase.linkWithSetup("s"), supabase.linkWithCode("c")] {
-      XCTAssertEqual(Backend.fromLink(link), supabase)
+  func testSupabaseLinksAreNone() {
+    // What a Supabase project's computer showed before: this app no longer speaks it.
+    for link in [
+      "pocketterm://setup?kind=supabase&url=https%3A%2F%2Fabcdefghijklmnop.supabase.co",
+      "pocketterm://setup?kind=supabase&url=https%3A%2F%2Fabcdefghijklmnop.supabase.co&code=ABCD-1234",
+    ] {
+      XCTAssertNil(Backend.fromLink(link), link)
+      XCTAssertNil(Backend.pairingCode(link), link)
     }
-    let key = ComputerKey(desktop: "abcd1234", key: ChannelKey.generate())
-    let qr = supabase.linkWithCode("ABCD-1234", computer: key)
-    XCTAssertEqual(Backend.computerKey(qr), key)
-    XCTAssertEqual(Backend.pairingCode(qr), "ABCD-1234")
-    XCTAssertNil(Backend.setupToken(qr))
   }
 
   func testOlderThan() {
@@ -157,7 +156,7 @@ final class BackendTests: XCTestCase {
   func testVersions() async throws {
     let old = try answering { _ in .http(status: 200, body: #"{"pocketterm":1,"version":"0.0.9"}"#) }
     let o = await old.check()
-    XCTAssertTrue(o?.contains("Update the server") == true, o ?? "nil")
+    XCTAssertTrue(o?.contains("Update PocketTerm on the computer that runs it") == true, o ?? "nil")
     let newer = try answering { _ in .http(status: 200, body: #"{"pocketterm":2}"#) }
     let n = await newer.check()
     XCTAssertTrue(n?.contains("newer than this app") == true, n ?? "nil")
@@ -188,16 +187,18 @@ final class BackendTests: XCTestCase {
     let prefs = MemoryPreferenceStore()
     let store = PreferencesBackendStore(prefs)
     let backend = Backend(url: "https://pt.example.com")
-    let supabase = Backend(url: "https://abcdefghijklmnop.supabase.co", kind: .supabase)
     XCTAssertNil(Backend.load(from: store))
     backend.save(to: store)
     XCTAssertEqual(Backend.load(from: store), backend)
-    supabase.save(to: store)
-    XCTAssertEqual(Backend.load(from: store), supabase)
-    backend.save(to: store)
-    XCTAssertEqual(Backend.load(from: store), backend, "a server after a Supabase project is no project")
+    XCTAssertFalse(prefs.contains("backend_kind"))
     Backend.clear(in: store)
     XCTAssertNil(Backend.load(from: store))
+
+    prefs.setString("backend_url", "https://abcdefghijklmnop.supabase.co")
+    prefs.setString("backend_kind", "supabase")
+    XCTAssertNil(Backend.load(from: store), "a Supabase project")
+    backend.save(to: store)
+    XCTAssertEqual(Backend.load(from: store), backend, "a server after a Supabase project is no project")
 
     prefs.setString("backend_url", "https://abc.supabase.co")
     prefs.setString("backend_key", "sb_x")

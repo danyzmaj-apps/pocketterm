@@ -6,8 +6,7 @@
 # table; artifacts in build/e2e/<stamp>/.
 #
 #   tool/e2e/run.sh [--terminal kitty|ghostty|wezterm|iterm|all]
-#                   [--server local|builtin|supabase|supabase-cloud --supabase-token-file <file>|
-#                    <https url> --setup-link-file <file> [--server-stop-cmd <sh> --server-start-cmd <sh>]]
+#                   [--server local|builtin]
 #                   [--no-phone] [--platform ios|android [--avd <name>]] [--device <id>] [--phone-only <flow>,…]
 #                   [--phone-from-tree] [--desktop-only <text>,…] [--hold] [--from-head]
 # (tool/e2e/bin/run.dart says what each does; docs/TESTING.md how it fits.)

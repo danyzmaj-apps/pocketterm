@@ -111,15 +111,9 @@ const _docName = 'notes from the phone.txt';
 final List<int> _doc = utf8.encode('PocketTerm e2e notes\n');
 
 class DesktopRun {
-  DesktopRun(
-    this.c, {
-    required this.app,
-    required this.phonePhase,
-    required this.serverControl,
-    required this.supabaseToken,
-    this.hold = false,
-  }) : report = Report(c, app),
-       owned = Owned(c.owned);
+  DesktopRun(this.c, {required this.app, required this.phonePhase, required this.serverControl, this.hold = false})
+    : report = Report(c, app),
+      owned = Owned(c.owned);
 
   final E2eConfig c;
   final MacApp app;
@@ -131,9 +125,6 @@ class DesktopRun {
 
   /// `server-stop` / `server-start` for a server outside the app; `ok` or what went wrong.
   final Future<String> Function(String what) serverControl;
-
-  /// The Supabase personal access token (--server supabase-cloud).
-  final String? supabaseToken;
 
   /// `--hold`: after the hand-off the phone's main flows are left to the person (maestro/e2e/run.sh by hand,
   /// against this run's folder), and the run goes on once `<artifacts>/hold` is deleted.
@@ -179,8 +170,7 @@ class DesktopRun {
 
     await report.step('desktop: runs as from Finder (launchd PATH, no TERM, no locale)', _asFromFinder, critical: true);
     await report.step('terminals: throwaway windows open', _openEarlyWindows, critical: true);
-    if (!c.builtIn) await report.step('setup: On this computer shows Tailscale as it is', _thisComputer);
-    await report.step('setup: Not yet shows the server guide', _serverGuide);
+    if (!c.builtIn) await report.step('setup: the Tailscale checklist shows Tailscale as it is', _thisComputer);
     await report.step('setup: link problems are explained', _linkProblems);
     if (c.builtIn) {
       await report.step(
@@ -188,13 +178,8 @@ class DesktopRun {
         _thisComputer,
         critical: true,
       );
-    } else if (c.supabaseCloud) {
-      await report.step('setup: Supabase, set up a new project (real Management API)', _supabaseCloud, critical: true);
-      await report.step('setup: Supabase set up with no Retry', () async {
-        if (_supabaseErrors.isNotEmpty) throw Failed('Retry needed after: ${_supabaseErrors.join(' | ')}');
-      });
     } else {
-      await report.step('setup: own server, paste link', _ownServer, critical: true);
+      await report.step('setup: join another computer, paste link', _join, critical: true);
     }
     await _getReady();
     await report.step('windows: sessions in their own windows', _sessionsLocated, critical: true);
@@ -218,11 +203,7 @@ class DesktopRun {
     await _profiles();
     await report.step('phone: computer off, then Retry brings it back', _computerOff);
 
-    if (c.supabaseCloud) {
-      report.skip('restart: server', 'a project on supabase.com can\u2019t be taken off the network for the test');
-    } else {
-      await report.step('restart: server', _serverRestart);
-    }
+    await report.step('restart: server', _serverRestart);
     await report.step('restart: desktop app', _desktopRestart);
     if (File(_omp).existsSync()) {
       // The phone sends the /new: only when its flow runs (--phone-only may leave it out).
@@ -339,7 +320,10 @@ class DesktopRun {
         return;
       } on AppError catch (e) {
         if (!'$e'.contains('is asking whether') || DateTime.now().isAfter(deadline)) rethrow;
-        if (!told) report.log('waiting for a person to allow PocketTerm E2E to control Ghostty (System Settings › Privacy & Security › Automation)');
+        if (!told)
+          report.log(
+            'waiting for a person to allow PocketTerm E2E to control Ghostty (System Settings › Privacy & Security › Automation)',
+          );
         told = true;
         await Future<void>.delayed(const Duration(seconds: 3));
       }
@@ -348,11 +332,10 @@ class DesktopRun {
 
   // ---------------------------------------------------------------- setup
 
-  /// On this computer: the Tailscale checklist follows Tailscale's real state (asked here of its own CLI).
-  /// Nothing is signed in or started, unless the run uses the built-in server: then Start.
+  /// The setup's first screen, the Tailscale checklist, follows Tailscale's real state (asked here of its own
+  /// CLI). Nothing is signed in or started, unless the run uses the built-in server: then Start.
   Future<void> _thisComputer() async {
     await _toChoose();
-    await app.press('setup-this-computer');
     final installed = File(tailscaleCli).existsSync();
     var json = const <String, dynamic>{};
     if (installed) {
@@ -411,11 +394,7 @@ class DesktopRun {
       'Start is on only when every check is done and Tailscale serves nothing yet (on: $on)',
     );
     await report.shot('setup-this-computer');
-    if (!c.builtIn) {
-      await app.press('setup-back');
-      await app.see('setup-own-server');
-      return;
-    }
+    if (!c.builtIn) return;
     // Start: the server runs here, Tailscale publishes it, this computer signs in on 127.0.0.1.
     await app.press('setup-start-server');
     await until('signed in', () async => (await _state())['user'] != null, timeout: const Duration(seconds: 60));
@@ -443,10 +422,10 @@ class DesktopRun {
     expect(s['hostLaunchAtLogin'] == false, 'the first sign-in adds no login item on its own');
   }
 
-  Future<void> _ownServer() async {
+  /// Join another computer's PocketTerm with the run's sidecar setup link (test builds take its http URL).
+  Future<void> _join() async {
     await _toChoose();
-    await app.press('setup-own-server');
-    await app.press('setup-have-server');
+    await app.press('setup-join');
     await app.see('setup-link');
     await app.set('setup-link', c.setupLink);
     await app.seeText('answers', id: 'setup-link-health');
@@ -455,111 +434,23 @@ class DesktopRun {
     await _signedInChecks();
   }
 
-  /// What the Supabase setup said went wrong, each time Retry was needed.
-  final _supabaseErrors = <String>[];
-
-  /// Supabase, Set up a project, on supabase.com with the run's access token: a non-token is refused without
-  /// asking Supabase; the token lists the organizations (the first picked), the region is picked, Create makes
-  /// the project and the setup goes through its steps, then signs this computer in. An error is retried as a
-  /// person would, at most 3 times, and recorded.
-  Future<void> _supabaseCloud() async {
-    final token = supabaseToken!;
-    await _toChoose();
-    await app.press('setup-supabase');
-    await app.pressLabel('Set up a new project');
-    await app.see('supabase-security');
-    await app.set('supabase-token', 'not-a-token');
-    await app.pressLabel('Continue');
-    await app.seeText('starts with sbp_');
-    await report.shot('supabase-token');
-    await app.set('supabase-token', token);
-    var started = DateTime.now();
-    await app.pressLabel('Continue');
-    await app.see('supabase-org', timeout: const Duration(seconds: 60));
-    report.log('supabase: organizations after ${DateTime.now().difference(started).inSeconds} s');
-    await app.see('supabase-region');
-    await app.pick('supabase-region', 'Europe (Frankfurt)');
-    await report.shot('supabase-project');
-    started = DateTime.now();
-    await app.pressLabel('Create project');
-    String? shownError;
-    await until(
-      'signed in on the new Supabase project',
-      () async {
-        final s = await _state();
-        if (s['user'] != null) return true;
-        final at = '${DateTime.now().difference(started).inSeconds} s';
-        final error = (await app.texts('supabase-error')).join(' ').trim();
-        if (error.isNotEmpty && error != shownError) {
-          shownError = error;
-          _supabaseErrors.add(error);
-          report.log('supabase: error at $at: $error');
-          await report.shot('supabase-error-${_supabaseErrors.length}');
-          if (!await app.has('supabase-retry')) throw Failed('Supabase setup: $error (no Retry)');
-          if (_supabaseErrors.length > 3) throw Failed('Supabase setup still failing: $error');
-          await app.press('supabase-retry');
-          shownError = null;
-        }
-        return false;
-      },
-      timeout: const Duration(minutes: 30),
-      every: const Duration(seconds: 1),
-    );
-    final host = (await _state())['backendHost'] as String;
-    final ref = host.split('.').first;
-    File(c.supabaseProject).writeAsStringSync('$ref\n');
-    report.log('supabase: project $ref set up and signed in after ${DateTime.now().difference(started).inSeconds} s');
-    expect(host == '$ref.supabase.co', 'on the new project: $host');
-    await _signedInChecks();
-  }
-
-  /// Back to the setup's first screen (where the server runs), from any setup screen a step before left open.
+  /// Back to the setup's first screen (the Tailscale checklist), from any setup screen a step before left open.
   Future<void> _toChoose() async {
-    if (!await app.has('setup-own-server')) await app.call('open-main');
-    for (var i = 0; i < 4 && !await app.has('setup-own-server'); i++) {
+    if (!await app.has('setup-join')) await app.call('open-main');
+    for (var i = 0; i < 4 && !await app.has('setup-join'); i++) {
       if (!await app.has('setup-back')) break;
       await app.press('setup-back');
       await Future<void>.delayed(const Duration(milliseconds: 300));
     }
-    await app.see('setup-own-server');
+    await app.see('setup-join');
   }
 
-  /// Own server, Not yet: an address that can't be a server's says why; a public IP address gets its sslip.io
-  /// name and the commands that set the server up there. Back returns to the own-server choice, then the first
-  /// screen.
-  Future<void> _serverGuide() async {
-    await _toChoose();
-    await app.press('setup-own-server');
-    await app.press('setup-new-server');
-    await app.see('setup-address');
-    for (final (bad, want) in const [
-      ('not a server', 'That isn’t an IP address or a domain name'),
-      ('10.0.0.5', 'That’s a private address.'),
-    ]) {
-      await app.set('setup-address', bad);
-      await app.seeText(want, id: 'setup-address-error', timeout: const Duration(seconds: 10));
-      expect(!await app.has('setup-command-0'), 'no commands for $bad');
-    }
-    await app.set('setup-address', '203.0.113.7');
-    await app.seeText('203-0-113-7.sslip.io');
-    await app.see('setup-command-0');
-    expect(!await app.has('setup-address-error'), 'no error for 203.0.113.7');
-    await report.shot('setup-new-server');
-    // What was typed stays with the setup; empty, it doesn't open there again.
-    await app.set('setup-address', '');
-    await app.press('setup-back');
-    await app.see('setup-have-server');
-    await app.press('setup-back');
-    await app.see('setup-own-server');
-  }
-
-  /// Own server, Yes: a pasted link that isn't a computer's setup link says what is wrong with it, asks no
-  /// server, and Connect signs nothing in; a setup link whose server doesn't answer says that. Back to the first
-  /// screen after.
+  /// Join another computer's PocketTerm: a pasted link that isn't a computer's setup link says what is wrong
+  /// with it, asks no server, and Connect signs nothing in; a setup link whose server doesn't answer says that.
+  /// Back to the first screen after.
   Future<void> _linkProblems() async {
     await _toChoose();
-    await app.press('setup-own-server');
-    await app.press('setup-have-server');
+    await app.press('setup-join');
     await app.see('setup-link');
     String link(Map<String, String> q) => '${Uri(scheme: 'pocketterm', host: 'setup', queryParameters: q)}';
     const url = 'https://pocketterm.example.com';
@@ -568,7 +459,6 @@ class DesktopRun {
       ('not a link', 'That isn’t a setup link.'),
       (link({'url': url}), 'That link has no setup token'),
       (link({'url': url, 'code': 'E2E-PHONE'}), 'That link signs in a phone, not a computer.'),
-      (link({'url': 'http://pocketterm.example.com', 'setup': 'e2e'}), 'The server address in that link doesn’t work.'),
     ]) {
       await app.set('setup-link', text);
       await until(
@@ -793,11 +683,7 @@ class DesktopRun {
     };
     // A second computer on the same server that no phone link names: the phone lists it locked. It leaves the
     // server at the end.
-    final setup = c.builtIn
-        ? (await app.call('computer-setup-link')) as String
-        : c.supabaseCloud
-        ? (await app.call('supabase-setup-link')) as String
-        : c.setupLink;
+    final setup = c.builtIn ? (await app.call('computer-setup-link')) as String : c.setupLink;
     await app.call('spare', args: {'link': setup, 'label': 'Spare Mac $t', 'id': 'spare${t.substring(0, 3)}'});
     _spare = true;
     final windows = await _windows();
@@ -1697,8 +1583,8 @@ class DesktopRun {
     _spare = false;
   }
 
-  /// Settings → Account → Sign out, last: a computer running the server asks first (signing out stops it); one on
-  /// its own server goes to sign-in, whose Use a different server returns to the setup.
+  /// Settings → Account → Sign out, last: a computer running the server asks first (signing out stops it); one
+  /// joined to another computer's goes to sign-in, whose other-server choice returns to the setup.
   Future<void> _signOut() async {
     await _tab('Account');
     final hosts = (await _state())['hosting'] != null;

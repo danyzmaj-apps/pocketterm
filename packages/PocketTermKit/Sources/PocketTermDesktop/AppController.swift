@@ -196,7 +196,6 @@ open class AppController: Session {
   }
 
   static let setupStepKey = "setup_step"
-  static let setupAddressKey = "setup_address"
 
   /// Where the first-run setup was left: the screen's name, nil on the first one. It opens there again.
   public var setupStep: String? { prefs.string(Self.setupStepKey) }
@@ -204,11 +203,6 @@ open class AppController: Session {
   public func setSetupStep(_ step: String?) {
     if let step { prefs.setString(Self.setupStepKey, step) } else { prefs.remove(Self.setupStepKey) }
   }
-
-  /// The VPS address typed in the first-run setup, as typed.
-  public var setupAddress: String { prefs.string(Self.setupAddressKey) ?? "" }
-
-  public func setSetupAddress(_ address: String) { prefs.setString(Self.setupAddressKey, address) }
 
   static let getReadyKey = "get_ready_done"
 
@@ -412,6 +406,7 @@ open class AppController: Session {
 
   open override func start() async {
     await host.start { [weak self] event in await self?.onHost(event) }
+    await leaveOldServer()
     if prefs.bool(Self.hostingKey) ?? false {
       do {
         try await startHostingServer()
@@ -426,6 +421,47 @@ open class AppController: Session {
     await signInToOwnServer()
     // Not set up or signed out: there's nothing to do but that, so say so.
     if user == nil { await openMain() }
+  }
+
+  // ---------------------------------------------------------------- the move to Tailscale
+
+  /// Set when [leaveOldServer] signed this computer out of a Supabase project or a VPS; the setup says
+  /// [movedNote] until this computer signs in again.
+  static let movedKey = "server_moved"
+
+  /// What the setup says once, after this computer was signed out of a server PocketTerm no longer
+  /// supports; nil otherwise.
+  public var movedNote: String? {
+    prefs.bool(Self.movedKey) ?? false
+      ? "PocketTerm now runs its server on this computer, over Tailscale. Set it up below; then scan the new "
+        + "code with your phone."
+      : nil
+  }
+
+  /// PocketTerm's server is now only the one built into a computer's app, published over Tailscale. A
+  /// computer signed in to anything else (a Supabase project, a server on a VPS) is signed out here, once:
+  /// its sign-in and saved server go, and the setup shows [movedNote]. A VPS is told in the background
+  /// (DELETE /v1/devices/me), so it lists this computer no more; Supabase isn't spoken to at all.
+  func leaveOldServer() async {
+    guard let saved = backendStore.loadBackend() else { return }
+    let supabase = saved.legacy || saved.kind == supabaseKind
+    let backend = Backend.parse(saved.url).backend
+    if !supabase, let backend, backend.onThisMachine || backend.onTailnet { return }
+    if !supabase, let backend, let kept = try? await deviceTokens.read() {
+      // Its own copy of the sign-in: the next one here mustn't be the one forgotten when this ends.
+      let tokens = MemoryDeviceTokens()
+      try? await tokens.write(kept)
+      let old = makeServer(backend, tokens: tokens)
+      Task.detached {
+        await old.load()
+        try? await old.leave()
+        old.close()
+      }
+    }
+    do { try await deviceTokens.write(nil) } catch { debugLog("PocketTerm: old sign-in not forgotten: \(error)") }
+    Backend.clear(in: backendStore)
+    prefs.setBool(Self.movedKey, true)
+    changed()
   }
 
   // ---------------------------------------------------------------- hosting
@@ -596,6 +632,10 @@ open class AppController: Session {
   /// stays as the user leaves it. Launch at login stays off until the user turns it on (Settings → Account): a
   /// login item is the person's to add.
   open override func onSignedIn(_ user: Account) async {
+    if prefs.contains(Self.movedKey) {
+      prefs.remove(Self.movedKey)
+      changed()
+    }
     if prefs.bool(Self.firstSignInKey) ?? false {
       do { try await startBridge() } catch { debugLog("PocketTerm: terminal bridge not started: \(error)") }
       return

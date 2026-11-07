@@ -66,7 +66,7 @@ final class StatusModel: ObservableObject {
   /// Who is signed in to the server, for the Account tab; nil until known.
   @Published private(set) var devices: [Device]?
 
-  /// This computer's clock is too far off its server's (a VPS's, another computer's): phones drop what it sends.
+  /// This computer's clock is too far off its server's (another computer's): phones drop what it sends.
   @Published private(set) var clock: String?
 
   /// Ghostty's config, for starting its new windows in tmux; nil without Ghostty. What it says, as of the last look.

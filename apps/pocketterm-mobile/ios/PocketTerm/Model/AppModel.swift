@@ -49,6 +49,7 @@ final class AppModel: Session {
     launching = true
     defer { launching = false }
     await forgetOldApp()
+    await leaveSupabase()
     loadComputerKeys()
     await start()
   }
@@ -95,6 +96,30 @@ final class AppModel: Session {
     {
       prefs.remove(k)
     }
+    await native.endAllActivities()
+  }
+
+  static let movedKey = "server_moved"
+
+  /// What the setup says after [leaveSupabase] signed this phone out, until it signs in again; nil otherwise.
+  var movedNote: String? {
+    prefs.bool(Self.movedKey) ?? false ? "Your computer's PocketTerm now runs its own server. Scan its new code." : nil
+  }
+
+  /// PocketTerm no longer runs on Supabase: a computer now runs its own server, over Tailscale. A phone signed in
+  /// to a Supabase project is signed out here (Supabase isn't asked): its sign-in, saved server, computer keys
+  /// and followed sessions go, and the setup says [movedNote] until the computer's new code is scanned. Any other
+  /// server stays.
+  func leaveSupabase() async {
+    guard let saved = backendStore.loadBackend(), !saved.legacy, saved.kind == supabaseKind else { return }
+    backendStore.saveBackend(url: nil, kind: nil)
+    do {
+      try await deviceTokens.write(nil)
+    } catch {
+      debugLog("PocketTerm: the Supabase sign-in not removed: \(error)")
+    }
+    native.removeAllChannelKeys()
+    prefs.setBool(Self.movedKey, true)
     await native.endAllActivities()
   }
 
@@ -235,6 +260,10 @@ final class AppModel: Session {
   // MARK: Push
 
   override func onSignedIn(_ user: Account) async {
+    if prefs.bool(Self.movedKey) != nil {
+      prefs.remove(Self.movedKey)
+      objectWillChange.send()
+    }
     exitDemo()
     if pushEnabled ?? false { _ = await registerPush(user.device.id) }
     await checkNotifications()

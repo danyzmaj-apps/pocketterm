@@ -13,7 +13,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 
-/** A server the client tests run against: the PocketTerm server ([OwnServer]) or PocketTerm on a Supabase project ([FakeSupabase]). */
+/** A server the client tests run against: the PocketTerm server ([OwnServer]). */
 interface TestBackend {
     val backend: Backend
 

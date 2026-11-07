@@ -82,8 +82,8 @@ String callerKey(String address) {
   return '${groups.join(':')}::/64';
 }
 
-/// PocketTerm's own server for one owner: devices, pairing, desktops, blobs, push forwarding and the live
-/// channel over WebSocket. Everything it keeps lives in one data directory. See PROTOCOL.md.
+/// The PocketTerm server built into the desktop apps, for one owner: devices, pairing, desktops, blobs, push
+/// forwarding and the live channel over WebSocket. Everything it keeps lives in one data directory. See PROTOCOL.md.
 class PocketTermServer {
   PocketTermServer._(
     this._dir,
@@ -91,7 +91,6 @@ class PocketTermServer {
     this._store,
     this.publicUrl,
     this._now,
-    this._trustProxy,
     this._trustLoopbackProxy,
     this._log,
     Uri relay,
@@ -107,9 +106,9 @@ class PocketTermServer {
   /// and computers reach it at, put in setup links; or [publicUrlFor] gives it from the bound port (exactly one
   /// of the two). [relay] is the push relay and [relayKey] its X25519 public
   /// key, which every push is sealed to (default: the publisher's relay and key).
-  /// With [trustProxy], the caller's address for rate limits is the last one in X-Forwarded-For (set it only
-  /// behind a reverse proxy). With [trustLoopbackProxy], it is trusted only from a loopback peer: for a server on
-  /// 127.0.0.1 that `tailscale serve` publishes, so each tailnet caller gets its own throttle. [clock] stands in
+  /// With [trustLoopbackProxy], the caller's address for rate limits is the last one in X-Forwarded-For when the
+  /// TCP peer is loopback: for a server on 127.0.0.1 that `tailscale serve` publishes, so each tailnet caller gets
+  /// its own throttle. [clock] stands in
   /// for the time and [relayRetry] for the relay's first retry wait in tests. [deviceBlobQuota] and [blobQuota]
   /// stand in for [maxDeviceBlobBytes] and [maxTotalBlobBytes].
   ///
@@ -123,7 +122,6 @@ class PocketTermServer {
     Uri Function(int port)? publicUrlFor,
     Uri? relay,
     List<int>? relayKey,
-    bool trustProxy = false,
     bool trustLoopbackProxy = false,
     void Function(String message)? log,
     DateTime Function()? clock,
@@ -148,7 +146,6 @@ class PocketTermServer {
       store,
       publicUrl ?? publicUrlFor!(http.port),
       clock ?? DateTime.now,
-      trustProxy,
       trustLoopbackProxy,
       log,
       relay ?? defaultRelay,
@@ -181,7 +178,6 @@ class PocketTermServer {
   late final Relay _relay;
   final Hub _hub = Hub();
   final DateTime Function() _now;
-  final bool _trustProxy;
   final bool _trustLoopbackProxy;
   final Map<String, List<DateTime>> _failures = {};
   final void Function(String)? _log;
@@ -465,13 +461,13 @@ class PocketTermServer {
     return d;
   }
 
-  /// Who sent [req], for the redeem throttle: the TCP peer, or behind a trusted proxy the address it put last
-  /// in X-Forwarded-For (with trustLoopbackProxy, only when the TCP peer is loopback). An IPv6 caller counts by
+  /// Who sent [req], for the redeem throttle: the TCP peer, or with trustLoopbackProxy and a loopback peer (a
+  /// proxy on this machine) the address it put last in X-Forwarded-For. An IPv6 caller counts by
   /// its /64: one machine or home gets a whole /64, so its addresses would otherwise be fresh counters.
   String _caller(HttpRequest req) {
     final peer = req.connectionInfo?.remoteAddress;
     var caller = peer?.address ?? '';
-    if (_trustProxy || (_trustLoopbackProxy && peer != null && peer.isLoopback)) {
+    if (_trustLoopbackProxy && peer != null && peer.isLoopback) {
       final forwarded = req.headers['x-forwarded-for']?.join(',').split(',').last.trim() ?? '';
       if (forwarded.isNotEmpty) caller = forwarded;
     }

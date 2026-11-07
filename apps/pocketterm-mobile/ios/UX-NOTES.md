@@ -101,3 +101,7 @@ e2e flows and the docs can follow them.
 - **The Notifications switch** moves as soon as it's flipped, while registering is still going on. Flutter moved it
   only once the choice was saved.
 - **A link from outside the app** (ConfirmLink) is an inline card with an orange border.
+- **No Supabase.** A phone signed in to a Supabase project is signed out at launch (Supabase isn't asked): its
+  sign-in, computer keys and followed sessions go, and the setup says "Your computer's PocketTerm now runs its own
+  server. Scan its new code." (`server-moved`) until a code signs it in again. Any other server is kept. A
+  `kind=supabase` code is no PocketTerm code.

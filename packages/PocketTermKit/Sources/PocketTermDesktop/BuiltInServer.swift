@@ -534,4 +534,17 @@ public final class BuiltInServer: ObservableObject {
     timer = nil
   }
 }
+
+/// True the first time only.
+final class OnceFlag: @unchecked Sendable {
+  private let lock = NSLock()
+  private var taken = false
+  func take() -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    if taken { return false }
+    taken = true
+    return true
+  }
+}
 #endif

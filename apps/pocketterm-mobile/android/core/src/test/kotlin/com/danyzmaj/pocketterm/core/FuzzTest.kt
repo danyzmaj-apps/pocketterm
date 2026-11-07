@@ -99,7 +99,6 @@ class FuzzTest {
                 Backend.computerKey(raw)
             }
             Backend.parse(raw)
-            Backend.parse(raw, BackendKind.supabase)
         }
     }
 

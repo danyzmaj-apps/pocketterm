@@ -26,9 +26,7 @@ internal sealed partial class SettingsPage
             userName.Text = _app.UserName;
             userSub.Text = _app.Hosting != null
                 ? "This computer runs your server"
-                : _app.Backend?.IsSupabase ?? false
-                    ? "Signed in to your Supabase project"
-                    : "Signed in to this server";
+                : "Signed in to this server";
         });
 
         // Your server: who is signed in to it, and the built-in server's status.
@@ -45,8 +43,7 @@ internal sealed partial class SettingsPage
             var backend = _app.Backend;
             var parts = new List<string>();
             // A computer running the server says where in its status below.
-            if (hosting == null && (backend?.IsSupabase ?? false)) parts.Add($"Supabase, {backend.Host}");
-            else if (hosting == null) parts.Add(backend?.Host ?? "");
+            if (hosting == null) parts.Add(backend?.Host ?? "");
             if (_devices is { } d) parts.Add(DevicesLine(d));
             server.SetDescription(string.Join(" · ", parts));
 
@@ -59,7 +56,7 @@ internal sealed partial class SettingsPage
                 hostingView.Content = hosting == null ? null : new HostingStatusView(hosting);
             }
             hostingView.Shown(hosting != null);
-            var canAdd = hosting?.State == HostState.Ready || _app.Server is SupabaseServerClient;
+            var canAdd = hosting?.State == HostState.Ready;
             addComputer.Shown(canAdd);
             server.SetBody(phoneDevices.Count > 0 || hosting != null || canAdd ? serverBody : null);
         });
@@ -246,31 +243,11 @@ internal sealed partial class SettingsPage
         Run(CheckDevicesAsync);
     }
 
-    /// <summary>Add a computer…: the built-in server's link for another computer, or a new setup link from the
-    /// Supabase project (the one before stops working).</summary>
+    /// <summary>Add a computer…: the built-in server's link for another computer.</summary>
     private async Task AddComputerAsync()
     {
-        if (_app.Hosting is { State: HostState.Ready })
-        {
-            // Ready means Tailscale serves it, so there is a link.
-            if (await _app.ComputerSetupLinkAsync() is { } link) await AddComputerDialog.ShowAsync(link);
-            return;
-        }
-        if (_app.Server is not SupabaseServerClient supabase) return;
-        string newLink;
-        try
-        {
-            newLink = await supabase.NewSetupLink();
-        }
-        catch (Exception e)
-        {
-            if (Live) Shell.Toast($"No link: {e.Message}");
-            return;
-        }
-        if (!Live) return;
-        await AddComputerDialog.ShowAsync(
-            newLink,
-            how: "On the other computer, open PocketTerm, choose Supabase, then Paste a setup link, and paste this link. "
-                + "A link you made before this one stops working.");
+        // Ready means Tailscale serves it, so there is a link.
+        if (_app.Hosting is not { State: HostState.Ready }) return;
+        if (await _app.ComputerSetupLinkAsync() is { } link) await AddComputerDialog.ShowAsync(link);
     }
 }

@@ -272,6 +272,8 @@ internal sealed class TestApp : AppController
                 default: throw new ArgumentException($"{k}: {v}");
             }
         }
+        // Its saved https://pt.example.com isn't signed out by the one-time migration, unless a test asks for it.
+        if (store.GetBool(TailscaleOnlyMigration.DoneKey) == null) store.SetBool(TailscaleOnlyMigration.DoneKey, true);
         var account = new Account("server-1", new Device("device-1", DeviceRole.Desktop, "PC", "windows"));
         return new TestApp(store, real, account, tailscale, serverDir, serverExecutable, secrets);
     }

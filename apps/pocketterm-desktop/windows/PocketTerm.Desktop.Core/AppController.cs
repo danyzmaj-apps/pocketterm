@@ -247,7 +247,6 @@ public class AppController : Session
     }
 
     private const string SetupStepKey = "setup_step";
-    private const string SetupAddressKey = "setup_address";
 
     /// <summary>Where the first-run setup was left: the screen's name, null on the first one. It opens there again.</summary>
     public string? SetupStep => Prefs.GetString(SetupStepKey);
@@ -258,10 +257,12 @@ public class AppController : Session
         else Prefs.SetString(SetupStepKey, step);
     }
 
-    /// <summary>The VPS address typed in the first-run setup, as typed.</summary>
-    public string SetupAddress => Prefs.GetString(SetupAddressKey) ?? "";
+    /// <summary>What setup says once after <see cref="TailscaleOnlyMigration"/> signed this computer out of a
+    /// Supabase project or a server of its own; null otherwise.</summary>
+    public string? MigrationNote => (Prefs.GetBool(TailscaleOnlyMigration.NoteKey) ?? false) ? TailscaleOnlyMigration.Note : null;
 
-    public void SetSetupAddress(string address) => Prefs.SetString(SetupAddressKey, address);
+    /// <summary>The note was shown: it doesn't come back.</summary>
+    public void DismissMigrationNote() => Prefs.Remove(TailscaleOnlyMigration.NoteKey);
 
     private const string GetReadyKey = "get_ready_done";
 
@@ -558,6 +559,7 @@ public class AppController : Session
 
     public override async Task Start()
     {
+        await TailscaleOnlyMigration.RunAsync(Prefs, DeviceTokens, Client).ConfigureAwait(false);
         await Host.StartAsync(OnHost).ConfigureAwait(false);
         if (Updates is { } u)
         {

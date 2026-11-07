@@ -4,7 +4,15 @@ What each PocketTerm release brings.
 
 ## Unreleased
 
-Servers and the push relay need no update. To have sessions from your omp profiles reach the phone, click **Install** or **Update** for omp in PocketTerm on the computer. An older phone still opens sessions on a newer computer, and a newer phone on an older computer, without the windows and tabs.
+The push relay needs no update. To have sessions from your omp profiles reach the phone, click **Install** or **Update** for omp in PocketTerm on the computer. An older phone still opens sessions on a newer computer, and a newer phone on an older computer, without the windows and tabs. Update every computer of yours together: the server now runs only inside the desktop app.
+
+### The server runs on your computer, over Tailscale
+
+PocketTerm's server now runs only inside the desktop app, on one of your computers, and your devices reach it through Tailscale (**On this computer**). PocketTerm on Supabase and **On my own server** (the Docker image on a VPS) are gone.
+
+- **Setup is the Tailscale checklist** and **Start**. The screen with three choices is gone. Another computer of yours joins with **Join another computer's PocketTerm…**: paste the link from **Settings → Account → Add a computer…** on the computer that runs the server. That path takes only a PocketTerm on Tailscale (`https://<computer>.<tailnet>.ts.net`).
+- **Moving over.** A computer that was on Supabase or on your own server is signed out when the new version starts; its setup opens with "PocketTerm now runs its server on this computer, over Tailscale. Set it up below; then scan the new code with your phone." A phone that was on Supabase is signed out with "Your computer's PocketTerm now runs its own server. Scan its new code." Set one computer up, join the others to it and scan each computer's code once. Then delete the old Supabase project or server: see [Moving from Supabase or your own server](docs/SELF_HOSTING.md#moving-from-supabase-or-your-own-server).
+- **Removed:** the Supabase setup (access token, project, database, function, live channel key) and the Supabase server function and migrations; the VPS commands and their checks; the server's Docker image (`ghcr.io/danyzmaj-apps/pocketterm-server`) and compose files. `pocketterm-server serve` listens on a loopback address only and its `--trust-proxy` option is gone.
 
 ### Native apps
 
@@ -176,7 +184,7 @@ The first release of PocketTerm: the omp and Claude Code sessions on your comput
 - **End-to-end encrypted.** Each computer makes its own key and keeps it in the Keychain on a Mac, or in a file encrypted for your Windows user (DPAPI) on Windows. It reaches a phone only in that computer's QR code. Sessions, screens, prompts, images, files (their names too) and notification text are sealed with it (AES-256-GCM), so your server only passes on ciphertext. Live messages carry a timestamp and are dropped when more than 5 minutes off, and the computer drops a message from a phone that it has seen already.
 - **Reset key** (Settings → Phone) makes a new key after a lost phone; every phone you keep scans the computer's code again.
 - **Pushes** are sealed by the computer and go from your server to the push relay at `push.danyzmaj.com`, run by Danijel Lovric in Germany, which passes them to Apple or Google. Every request to the relay is sealed to the relay's own key (X25519, AES-256-GCM). The relay stores nothing. A notification names its computer and session only by tags made with that computer's key, so the push relay, Apple and Google see an encrypted message, a push token and when it was sent. A Lock Screen update on iPhone carries only its state (working, needs you, finished), never text; which session it shows stays on the phone. Android's followed sessions name theirs the same way.
-- **Supabase** (the company, in the region you pick) holds the server's metadata (device list, computer names, push tokens, timing) and sees connection IP addresses; the function and Realtime pass on ciphertext only. The access token covers the whole Supabase organization; PocketTerm uses it only during setup and never stores it. Who sees what, side by side: [SECURITY.md](SECURITY.md), [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md#supabase).
+- **Supabase** (the company, in the region you pick) holds the server's metadata (device list, computer names, push tokens, timing) and sees connection IP addresses; the function and Realtime pass on ciphertext only. The access token covers the whole Supabase organization; PocketTerm uses it only during setup and never stores it. Who sees what, side by side: [SECURITY.md](SECURITY.md), [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md).
 - **Pairing codes** work once, for 10 minutes; ten wrong codes from one address in 10 minutes are turned away for a while. The server keeps only the SHA-256 of each device's token.
 - **Local only:** the desktop app's API for the agents listens on 127.0.0.1 behind a random token.
 

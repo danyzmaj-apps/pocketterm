@@ -97,3 +97,8 @@ uses them. This file lists each deliberate change.
 - On the push question, the buttons stay in the bottom bar while the explanation scrolls.
 - The scanner uses CameraX with ML Kit. A device without a camera gets the message without a
   permission prompt. Camera errors use CameraX's error names.
+- PocketTerm no longer works with Supabase projects; the only server is the one built into a
+  computer's PocketTerm, over Tailscale. A phone that was signed in through a Supabase project is
+  signed out at launch and setup says, once: "Your computer's PocketTerm now runs its own server.
+  Scan its new code." Setup links with `kind=supabase` are no longer accepted. Any other saved
+  server stays.

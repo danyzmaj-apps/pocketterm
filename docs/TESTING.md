@@ -37,14 +37,14 @@ Five layers, cheapest first:
 
 ```
 tool/e2e/run.sh [--terminal kitty|ghostty|wezterm|iterm|all]
-                [--server local|builtin|supabase|supabase-cloud --supabase-token-file <f>|<https url> --setup-link-file <f>]
+                [--server local|builtin]
                 [--no-phone] [--platform ios|android [--avd <name>]] [--device <id>]
                 [--phone-only <flow>,…] [--phone-from-tree] [--desktop-only <text>,…] [--hold] [--from-head]
 ```
 
 `tool/e2e/bin/run.dart` documents every option. For each terminal:
 
-1. **Server**: `local` (the compiled Dart server on a free port), `builtin` (the app's own "On this computer" server, published by the real `tailscale serve`), `supabase` (`tool/supabase-local.sh`), `supabase-cloud` (the app's setup makes a project on supabase.com with the token; the run deletes it, or any project the account didn't have before, whatever happened), or a server elsewhere with its setup link in a file (and `--server-stop-cmd`/`--server-start-cmd` for the restart).
+1. **Server**: `local` (the compiled Dart server on a free port) or `builtin` (the app's own "On this computer" server, published by the real `tailscale serve`).
 2. **Desktop**: the native Mac app, built as a test build of its own (`com.danyzmaj.pocketterm.e2e`, Debug, into `apps/pocketterm-desktop/macos/build/e2e`), opened by Launch Services as from Finder (launchd's PATH, no TERM, no locale) with a throwaway home. `tool/e2e/lib/desktop.dart` drives it two ways (`tool/e2e/lib/mac_app.dart`): accessibility through `ax.swift`'s `serve` mode (the screens' identifiers), and the app's test hooks (`apps/pocketterm-desktop/macos/PocketTerm/App/E2E.swift`, compiled into test builds only, switched on by `POCKETTERM_E2E_DIR`): requests in a folder answered with what the controller, the terminals and the server say; secrets in a file of the run's (never the Keychain), launch at login in memory, the folder picker answering with the run's projects folder, omp found at the fake, the pairing links and phone notifications recorded.
 3. **Terminals**: throwaway kitty / Ghostty / WezTerm / iTerm2 windows and the run's own tmux server, each with only the run's config, the fake omp (`tool/e2e/bin/fake_omp.dart`) first on the PATH and a shell that logs every command and key.
 4. **Phone**: `apps/pocketterm-mobile/maestro/e2e/run.sh` builds the native E2E build (iOS: `xcodebuild` Debug for the Simulator "PocketTerm E2E", made when missing, the flows launching it with `POCKETTERM_E2E`; Android: `./gradlew :app:assembleDebug -PpockettermE2e=true`, the emulator `pocketterm_api35` cold-booted when none runs, `adb reverse` for the server's port) and runs the flows of each phase: `main`, `profiles`, `computer-off`, `server-down`, `server-restart`, `desktop-restart`, `real-omp`, `revoke`. The desktop hands it `phone-link.txt`, `phone-link-2.txt` and `expect.json`, answers its rpc requests (`approve-on-computer`, `terminal-on`) and checks on the computer what each flow did.
@@ -64,10 +64,8 @@ Run it on a quiet Mac: it opens terminal windows, and refuses to start Ghostty o
 | desktop: runs as from Finder | the app's own environment from its hooks (`state.env`): no Homebrew on the PATH, no TERM/locale, the run's HOME |
 | terminals: throwaway windows open | unchanged (`e2e.dart` throwaways; Ghostty's through the app's Ghostty host via `ghostty-launch`) |
 | setup: On this computer shows Tailscale as it is / …starts its server | AX: `setup-this-computer`, each `check-*` row's text against the real Tailscale CLI, `setup-start-server` enabled state; builtin: Start, hooks' `hosting.publicUrl`, `/v1/health` through it |
-| setup: Not yet shows the server guide | AX: `setup-address` set, `setup-address-error` text, `203-0-113-7.sslip.io`, `setup-command-0` |
 | setup: link problems are explained | AX: `setup-link` set, `setup-error` per bad link, no `setup-link-health`, Connect signs nothing in (hooks' `state.backend`) |
-| setup: own server, paste link | AX: `setup-own-server`, `setup-have-server`, `setup-link`, "answers" in `setup-link-health`, `setup-connect`; then signed in, Terminal from phone on, no login item |
-| setup: Supabase, set up a new project | AX through the Supabase screens (`supabase-token`, `supabase-org`, `supabase-region`, `supabase-error`/`supabase-retry`); the project's ref from the signed-in backend |
+| setup: join another computer, paste link | AX: `setup-join`, `setup-link`, "answers" in `setup-link-health`, `setup-connect`; then signed in, Terminal from phone on, no login item |
 | get ready: omp / sessions already open / terminals / project folders / phone code / Done | AX: Install → `confirm-install` text → `confirm-install-go`, extension file; `get-ready-open-sessions`, `get-ready-unreported-<key>`; hooks' `statuses`; `get-ready-choose-folder`; `pairing-qr` and a recorded pairing link; `get-ready-done` |
 | windows: sessions in their own windows / plain shell is a screen | hooks' `sessions`, `windows`, `unreported` |
 | settings: status bar, coding agents tab, data protection, launch at login, new sessions open in | AX: `settings-status`, `settings-open-checklist`; `settings-agent-omp`/`-claude`, `settings-default-omp`; `settings-data-protection`, `data-protection-done`; `settings-launch-at-login` value and the hooks' in-memory login item; `settings-terminal-app` picked |
@@ -118,7 +116,7 @@ What the failures were:
 - Ghostty, `build/e2e/20261105-175912` and `-180159`: stopped at "terminals: throwaway windows open". macOS asked whether the test build (`com.danyzmaj.pocketterm.e2e`) may control Ghostty, a one-time Automation permission a person has to allow. The harness now waits up to 3 minutes for that answer, and says so, instead of failing at once.
 - Ghostty, `build/e2e/20261105-180253`: new-shell, new-tab and windows failed, and so did "ghostty: Start new windows in tmux". An app bug, also in the Dart code: the phone's session opened in a tmux session (attached in a new Ghostty window), yet no window list showed it. `Tmux.sockets()` found the run's server in `$TMUX_TMPDIR/tmux-501/default`, then let `/private/tmp/tmux-501/default` (a socket left behind by a server long gone) replace it because the names matched, so tmux showed no panes and Ghostty's window gave way to a pane that wasn't listed. A name found twice now keeps its first path (a learnt socket, then `$TMUX_TMPDIR`'s, then `/private/tmp`'s); `TmuxTests.testASocketLeftBehindLaterUnderTheSameNameDoesntHideTheLiveServer` covers it. Passes in `20261105-182754`.
 
-Nothing is failing. Not run for this build: WezTerm, iTerm2, Supabase and the built-in server; the Ghostty flows on Android.
+Nothing is failing. Not run for this build: WezTerm, iTerm2 and the built-in server; the Ghostty flows on Android.
 
 ## Manual only
 
@@ -127,4 +125,4 @@ Nothing is failing. Not run for this build: WezTerm, iTerm2, Supabase and the bu
 - The menu-bar icon's right-click menu and Check for Updates… (Sparkle).
 - Launch at login for real, macOS Automation/Accessibility prompts, a locked Keychain.
 - The Windows app: WezTerm install and PATH, the tray menu, the update notice, start at login.
-- Installing Tailscale, tmux or WezTerm for real; a new VPS's DNS and HTTPS; a tailnet with device approval; updating an existing Supabase project.
+- Installing Tailscale, tmux or WezTerm for real; a tailnet with device approval.

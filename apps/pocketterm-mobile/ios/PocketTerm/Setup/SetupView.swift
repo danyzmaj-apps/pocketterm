@@ -33,6 +33,13 @@ struct SetupView: View {
             .padding(.top, 10)
             .accessibilityIdentifier("signed-out-reason")
         }
+        if let note = app.movedNote {
+          Text(note)
+            .foregroundStyle(.orange)
+            .multilineTextAlignment(.center)
+            .padding(.top, 10)
+            .accessibilityIdentifier("server-moved")
+        }
         Text(
           "Your computer\u{2019}s coding sessions on your phone, end-to-end encrypted. This phone connects by "
             + "scanning the code PocketTerm on your computer shows."

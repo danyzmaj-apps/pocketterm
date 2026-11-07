@@ -70,7 +70,7 @@ jobs:
           if ($p.ExitCode) { throw "setup exited with $($p.ExitCode)" }
           $dir = Join-Path $env:LOCALAPPDATA 'Programs\PocketTerm'
           foreach ($f in 'PocketTerm.exe', 'PocketTerm.pri', 'pocketterm-server.exe', 'integrations\omp\pocketterm-live.ts',
-                   'integrations\claude\plugins\pocketterm\hooks\pocketterm.ts', 'supabase\migrations', 'supabase\functions\pocketterm\index.ts',
+                   'integrations\claude\plugins\pocketterm\hooks\pocketterm.ts',
                    'assets\tray.ico', 'assets\icon\windows-dawn.ico') {
             if (-not (Test-Path (Join-Path $dir $f))) { throw "not installed: $f" }
           }

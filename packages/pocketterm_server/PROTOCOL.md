@@ -4,8 +4,9 @@ The PocketTerm server serves one owner: their computers (role `desktop`) and the
 It relays what the apps send without reading it: live channel payloads, images and files and notification text are
 end-to-end encrypted by the apps (see the envelope in `packages/PocketTermKit/Sources/PocketTermKit/E2E.swift` and its Kotlin and C# twins; [SECURITY.md](../../SECURITY.md#encryption-and-replay-protection)).
 
-Everything lives under `<url>/v1/`, where `<url>` is the server's public URL (`https://pt.example.com`,
-`http://100.101.102.103:47900`, …), with no trailing slash.
+The server is built into the PocketTerm desktop apps: the app runs it on 127.0.0.1 and `tailscale serve` publishes
+it to the owner's tailnet. Everything lives under `<url>/v1/`, where `<url>` is the server's public URL
+(`https://mac.tail1234.ts.net`, or `http://127.0.0.1:47900` on the computer itself), with no trailing slash.
 
 ## Conventions
 
@@ -121,8 +122,8 @@ Request `{"code": "<pairing code>", "label": "Pixel 9", "platform": "android"}`.
 Both redeem endpoints share one counter per caller address: after 10 failed redeems (`invalid_code` or
 `bad_request`) within 10 minutes, every redeem from that address gets 429 `rate_limited` with `Retry-After`
 until the oldest failure is 10 minutes old, right code or not. Successful redeems don't count. The address is
-the TCP peer's, or with `--trust-proxy` the last address in `X-Forwarded-For` (what Caddy or the nearest proxy
-puts there). An IPv6 address counts by its /64 (an IPv4-mapped one as the IPv4 address). The counters live in
+the TCP peer's, or with `--trust-loopback-proxy` and a loopback peer (`tailscale serve` on the same machine) the
+last address in `X-Forwarded-For`. An IPv6 address counts by its /64 (an IPv4-mapped one as the IPv4 address). The counters live in
 memory: restarting the server clears a lockout.
 
 ### `GET /v1/me`
@@ -340,14 +341,3 @@ Limits and keepalive:
 
 Close codes from the server: 1001 the server is stopping, 1009 frame too large, 4003 the device was revoked or
 left (don't reconnect with that token).
-
-## PocketTerm on Supabase
-
-The same protocol is also served by PocketTerm on Supabase (`apps/pocketterm-desktop/supabase`, [its README](../../apps/pocketterm-desktop/supabase/README.md)), an Edge Function at `https://<ref>.supabase.co/functions/v1/pocketterm`: the REST paths above sit under that base (`…/functions/v1/pocketterm/v1/health`, and so on). `GET /v1/health` adds `"backend": "supabase"`. Setup links carry `kind=supabase` and the project URL as `url`.
-
-Two endpoints the PocketTerm server doesn't have:
-
-- `POST /v1/setup/new` (desktop): a new setup token, `{"setup": "<token>"}`. The one before stops working; nobody is signed out. (The PocketTerm server prints its own with `setup-link --new`.)
-- `POST /v1/live/token`: `{"token", "expires", "apikey"}`, a 10-minute Realtime token for this device (ES256, signed with the key the setup imported as the project's JWT signing key) and the project's publishable key. Ask for a new one before it runs out.
-
-There is no `GET /v1/ws`: the live channel is Supabase Realtime broadcast on private topics (each computer's id). A device joins `realtime:<topic>` at `/realtime/v1/websocket` with its live token; row level security on `realtime.messages` lets it in only while that device is still signed in. Messages are the same ChannelSeal envelopes. When a device is signed out, `pt.left` is broadcast on the topics: clients then check they are still signed in. A signed-out device's live connection lasts at most until its token runs out.

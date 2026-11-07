@@ -26,7 +26,7 @@ settings:
   base:
     # What the About box and Sparkle show, and the build number every release raises (tool/release.sh reads
     # these). Sparkle compares CFBundleVersion: it carries on from the Flutter app's 0.1.7+22.
-    MARKETING_VERSION: 0.1.7
+    MARKETING_VERSION: 1.0.0
     CURRENT_PROJECT_VERSION: 22
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "13.0"

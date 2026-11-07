@@ -2,12 +2,10 @@ import PocketTermDesktop
 import PocketTermKit
 import SwiftUI
 
-/// A setup link, checked as it's pasted (a link at all, a computer's, its server answering, this computer's clock
-/// against the server's), then redeemed by Connect.
+/// Join another computer's PocketTerm: its setup link (Settings → Add a computer… there), checked as it's pasted (a
+/// link at all, a computer's, on Tailscale, its server answering, this computer's clock against the server's), then
+/// redeemed by Connect. Test builds take any server's link: tool/e2e and tool/smoke sign in to one on 127.0.0.1.
 struct SetupLinkForm: View {
-  /// What asks the pasted link's server for its health.
-  var checks: any ServerChecks = NetworkServerChecks()
-
   /// Says when this computer's clock is off the server's; false where the screen already says so.
   var clock = true
 
@@ -27,16 +25,14 @@ struct SetupLinkForm: View {
     asked += 1
     let ask = asked
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    let problem = trimmed.isEmpty ? nil : setupLinkProblem(text)
+    let problem = trimmed.isEmpty ? nil : setupLinkProblem(text, anyServer: testBuild)
     error = problem
     health = nil
     clockWarning = nil
     guard !trimmed.isEmpty, problem == nil, let backend = Backend.fromLink(trimmed) else { return }
     health = ""
-    let checks = checks
     Task {
-      let h = await checks.answers(backend)
-      guard ask == asked else { return }
+      let h = await backend.health()
       health = h.error == nil ? "\(backend.host) answers" : nil
       error = h.error
       clockWarning = Backend.clockWarning(h.clockOffset)
@@ -44,7 +40,7 @@ struct SetupLinkForm: View {
   }
 
   private func connect() async {
-    if let problem = setupLinkProblem(link) {
+    if let problem = setupLinkProblem(link, anyServer: testBuild) {
       error = problem
       return
     }

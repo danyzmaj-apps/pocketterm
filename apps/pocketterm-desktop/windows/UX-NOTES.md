@@ -22,12 +22,17 @@ named after its ValueKeys. These are the deliberate differences, made so it look
 
 ## First-run setup
 
-- The three choices (and Yes / Not yet) are full-width buttons with an icon, title, description and chevron.
-- Explainers ("Why a server?", …) are Expanders; notices, errors, clock warnings and Supabase's wait notice are
-  InfoBars; busy buttons show a progress ring.
-- Supabase's organization and region pickers are ComboBoxes; the access token goes in a password box.
+- No choice of server any more (Supabase and "On my own server" are gone): setup opens on the Tailscale
+  checklist with Start, and one secondary button, "Join another computer's PocketTerm…" (`setup-join`), that
+  takes the setup link another computer's Settings → Add a computer… makes. A release build accepts only
+  `https://<name>.<tailnet>.ts.net` servers there ("This link isn't for a PocketTerm on Tailscale."); a test
+  build (`E2E`) any http(s) URL, so the CI smoke joins a local sidecar.
+- A computer upgraded while signed in to Supabase or a VPS is signed out once at launch and setup shows an
+  InfoBar (`setup-migration-note`): "PocketTerm now runs its server on this computer, over Tailscale. …"
+- Explainers ("What is Tailscale?", …) are Expanders; notices, errors and clock warnings are InfoBars; busy
+  buttons show a progress ring.
 - Installs offered by setup use winget or the download page only (the Homebrew branch and its "your Mac password"
-  line were Mac-only). The VPS's ssh line says to type it in PowerShell.
+  line were Mac-only).
 
 ## Setup checklist
 

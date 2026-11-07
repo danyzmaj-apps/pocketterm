@@ -1,8 +1,8 @@
 # PocketTerm push relay
 
 The one service that can reach PocketTerm's phones through Apple (APNs) and Google (FCM), because it holds the
-publisher's APNs key and Firebase service account. Every PocketTerm server sends its pushes here. It runs on the
-publisher's own server, at **https://push.danyzmaj.com**.
+publisher's APNs key and Firebase service account. Every PocketTerm server (the one built into each desktop app)
+sends its pushes here. It runs on danyzmaj-server, at **https://push.danyzmaj.com**.
 
 It stores nothing. It can't read your notifications. What it and everyone around it can see is in
 [SECURITY.md](SECURITY.md).
@@ -64,7 +64,7 @@ VjwMi0GtvYoVT3Q9FlENy/dQOVe0vuqU8K4t+fw3fHc=
 ```
 
 The relay logs it at start (`listening`), so you can check the two match. A fork running its own relay sets
-`PUSH_RELAY_URL` and `PUSH_RELAY_KEY` on its servers.
+`--relay` and `--relay-key` (`PUSH_RELAY_URL`, `PUSH_RELAY_KEY`) on its desktop apps' built-in servers.
 
 ## Code
 
@@ -124,7 +124,7 @@ request was sealed to (a request without `kid` is tried with each key).
 3. In `deploy/compose.yaml`, add the secret `relay_key_previous` (file `relay-x25519-previous.key`) to the service and
    the `secrets:` list, and redeploy. The `listening` log line shows both `publicKey` and `previousKey`.
 4. Put the new public key (`publicKey` in that log line) in `defaultRelayKey` and release the server.
-5. Once servers have updated (months: self-hosted servers update rarely), drop the previous key and its secret. For a
+5. Once servers have updated (they update with the desktop apps, which users may not do for months), drop the previous key and its secret. For a
    leaked key skip the wait: servers still on it get `400` until they update.
 
 The public route is in danyzmaj-server's `monitoring/cloudflared/config.yml`: only `/v1/push` and `/health` reach the

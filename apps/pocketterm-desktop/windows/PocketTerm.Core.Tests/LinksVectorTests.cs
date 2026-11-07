@@ -9,14 +9,12 @@ public class LinksVectorTests
 
     private static IEnumerable<JsonObject> Cases(string name) => Links.Arr(name)!.Select(c => (JsonObject)c!);
 
-    private static BackendKind Kind(string? name) => name == "supabase" ? BackendKind.Supabase : BackendKind.Pocketterm;
-
     [Fact]
     public void Parse()
     {
         foreach (var c in Cases("parse"))
         {
-            var (backend, error) = Backend.Parse(c.Str("input")!, Kind(c.Str("kind")));
+            var (backend, error) = Backend.Parse(c.Str("input")!);
             Assert.True(c.Str("error") == error, $"{c.Str("note")}: {error}");
             if (c.Obj("backend") is not { } b)
             {
@@ -25,7 +23,7 @@ public class LinksVectorTests
             }
             Assert.NotNull(backend);
             Assert.Equal(b.Str("url"), backend.Url);
-            Assert.Equal(b.Str("kind"), backend.Kind.Name());
+            Assert.Equal("pocketterm", b.Str("kind"));
             Assert.Equal(b.Str("api"), backend.Api);
             Assert.Equal(b.Str("host"), backend.Host);
             Assert.Equal(b.Bool("onTailnet"), backend.OnTailnet);
@@ -39,7 +37,7 @@ public class LinksVectorTests
         foreach (var c in Cases("build"))
         {
             var b = c.Obj("backend")!;
-            var backend = new Backend(b.Str("url")!, Kind(b.Str("kind")));
+            var backend = new Backend(b.Str("url")!);
             var computer = c.Obj("computer") is { } k ? new ComputerKey(k.Str("desktop")!, new ChannelKey(Vectors.Hex(k["keyHex"]))) : null;
             var link = c.Str("fn") switch
             {
@@ -66,7 +64,7 @@ public class LinksVectorTests
             {
                 Assert.True(backend != null, note);
                 Assert.Equal(b.Str("url"), backend.Url);
-                Assert.Equal(b.Str("kind"), backend.Kind.Name());
+                Assert.Equal("pocketterm", b.Str("kind"));
             }
             else
             {

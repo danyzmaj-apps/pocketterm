@@ -10,13 +10,12 @@ class LinksVectorsTest {
 
     private fun cases(name: String) = links[name].arr!!.map { it.obj!! }
 
-    private fun kind(name: String?) = if (name == "supabase") BackendKind.supabase else BackendKind.pocketterm
-
     @Test
     fun parse() {
         for (c in cases("parse")) {
             val note = c["note"].str
-            val parsed = Backend.parse(c["input"].str!!, kind(c["kind"].str))
+            assertEquals("pocketterm", c["kind"].str ?: "pocketterm", note)
+            val parsed = Backend.parse(c["input"].str!!)
             assertEquals(c["error"].str, parsed.error, note)
             val e = c["backend"].obj
             val b = parsed.backend
@@ -26,7 +25,7 @@ class LinksVectorsTest {
             }
             b!!
             assertEquals(e["url"].str, b.url, note)
-            assertEquals(e["kind"].str, b.kind.name, note)
+            assertEquals("pocketterm", e["kind"].str ?: "pocketterm", note)
             assertEquals(e["api"].str, b.api, note)
             assertEquals(e["host"].str, b.host, note)
             assertEquals(e["onTailnet"].bool, b.onTailnet, note)
@@ -38,7 +37,7 @@ class LinksVectorsTest {
     fun build() {
         for (c in cases("build")) {
             val e = c["backend"].obj!!
-            val b = Backend(e["url"].str!!, kind(e["kind"].str))
+            val b = Backend(e["url"].str!!)
             val link = when (c["fn"].str) {
                 "link" -> b.link
                 "linkWithSetup" -> b.linkWithSetup(c["setup"].str!!)
@@ -59,7 +58,7 @@ class LinksVectorsTest {
             val link = c["link"].str!!
             val b = Backend.fromLink(link)
             val e = c["backend"].obj
-            assertEquals(e?.let { Backend(it["url"].str!!, kind(it["kind"].str)) }, b, note)
+            assertEquals(e?.let { Backend(it["url"].str!!) }, b, note)
             assertEquals(c["pairingCode"].str, Backend.pairingCode(link), note)
             assertEquals(c["setupToken"].str, Backend.setupToken(link), note)
             val k = Backend.computerKey(link)

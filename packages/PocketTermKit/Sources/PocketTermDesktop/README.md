@@ -27,8 +27,8 @@ await app.start()                                    // after the UI is up
   built-in server), the window's close → `host.windowClosed()`, the menu-bar item / Dock / ⌘, →
   `host.event("openMain" | "openSettings")`.
 - Bundle resources the services read: `Contents/Helpers/pocketterm-server` (`tool/server-sidecar.sh`),
-  `Resources/integrations` (← `apps/pocketterm-desktop/integrations/`), `Resources/supabase`
-  (← `apps/pocketterm-desktop/supabase/`), `Resources/icon/macos-<theme>.png` (← `assets/icon/`).
+  `Resources/integrations` (← `apps/pocketterm-desktop/integrations/`), `Resources/icon/macos-<theme>.png`
+  (← `assets/icon/`).
 
 ## Services
 
@@ -56,7 +56,8 @@ dialog; `notices` → the `link-notice` banner.
 | `terminalApp` / `setTerminalApp(_:)` | prefs `terminal_app` ("auto") | Terminals tab → New sessions open in |
 | `placement` / `setPlacement(_:)` | prefs `session_placement` | Terminals tab → Place them |
 | `projectRoots` / `setProjectRoots(_:)` | prefs `project_roots` | Phone tab → Project folders, Get ready step 3 |
-| `setupStep` / `setSetupStep(_:)`, `setupAddress` / `setSetupAddress(_:)` | prefs | setup wizard position, VPS address |
+| `setupStep` / `setSetupStep(_:)` | prefs | setup wizard position |
+| `movedNote` | prefs `server_moved` | the setup's note after `start()` signed this computer out of a Supabase project or a VPS (`leaveOldServer`), until the next sign-in |
 | `getReadyDone` / `setGetReadyDone(_:)` | prefs | Get ready Done / "Open setup checklist" |
 | `launchAtLogin: Bool?`, `refreshLaunchAtLogin()`, `setLaunchAtLogin(on:)` (throws the System Settings hint) | `@Published` / async | Account tab → Launch at login |
 | `hosting: BuiltInServer?`, `hostsServer`, `startHosting()`, `ownServerPorts`, `computerSetupLink()` | `@Published` / async | On this computer → Start, Account → Your server, Add a computer… |
@@ -90,7 +91,7 @@ through the bridge. `orchestratorInstructions`, `sessionsText`, `transcriptText`
 Built by `AppController` while Terminal from phone is on; the UI only reads `app.terminalBridge?.clockOff`. It holds
 the keep-awake assertion (`host.setKeepAwake(on:)`) while it runs.
 
-### `BuiltInServer`, `HostState` (hosting/built_in_server.dart), `Tailscale`, `Vps`
+### `BuiltInServer`, `HostState` (hosting/built_in_server.dart), `Tailscale`
 
 | Member | Flutter screen |
 |---|---|
@@ -100,20 +101,13 @@ the keep-awake assertion (`host.setKeepAwake(on:)`) while it runs.
 
 `Tailscale`: `status()` → `TailscaleStatus` (installed / running / signed in / HTTPS, `url`), `port443(ports)` →
 `Serving`, `enableHttpsLink(port:)`, `open()`, `Tailscale.download` — the On this computer checklist
-(`check-installed` … `check-serve-free`). `Vps`: `ServerAddress.parse(_:)`, `vpsCommands(_:_:)`, `composeUrl(_:)`,
-`NetworkServerChecks` (`check-dns`, `check-https`, `check-health`) — the New server screen.
-`setupLinkProblem(_:)` (SetupLinks.swift) — the setup link form's checks.
+(`check-installed` … `check-serve-free`). `setupLinkProblem(_:anyServer:)` (SetupLinks.swift) — the checks of
+Join another computer's PocketTerm…: only `https://<name>.<tailnet>.ts.net` servers, any server in test builds.
 
 ### `Commands` (commands.dart)
 
 `brew`, `macPorts`, `run(_ argv:password:)` → `CommandResult`, `Commands.tmuxInstall`, `Commands.tailscaleInstall` —
 ConfirmedCommand dialogs (`command-run`, `command-done`, `command-failed`), the tmux and Tailscale install offers.
-
-### `SupabaseAdmin`, `SupabaseSetup` (onboarding/supabase_admin.dart, supabase_setup.dart)
-
-The Supabase wizard: `SupabaseAdmin(token)` (`organizations`, `projects`, `createProject`, …), `SupabaseSetup.run
-(onStep:onWait:done:)` with `SupabaseStep` names/labels (`supabase-step-<name>`), `supabaseRegions`, migrations and
-the function from `Resources/supabase`. The access token is never stored.
 
 ### `Integrations` (integrations.dart)
 

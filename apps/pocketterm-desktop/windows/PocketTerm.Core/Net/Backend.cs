@@ -7,18 +7,6 @@ using System.Text.RegularExpressions;
 
 namespace PocketTerm.Core;
 
-/// <summary>What answers a <see cref="Backend"/>: PocketTerm's own server, or PocketTerm set up on a Supabase
-/// project (apps/pocketterm-desktop/supabase).</summary>
-public enum BackendKind
-{
-    /// <summary>packages/pocketterm_server, on a VPS or built into a computer's app.</summary>
-    Pocketterm,
-
-    /// <summary>The Edge Function <c>pocketterm</c> on a Supabase project: the same REST paths under
-    /// <c>/functions/v1/pocketterm</c>, the live channel over Supabase Realtime.</summary>
-    Supabase,
-}
-
 /// <summary>The outcome of <see cref="Backend.Parse"/>: a backend, or why the URL can't be used.</summary>
 public readonly record struct BackendParse(Backend? Backend, string? Error);
 
@@ -27,11 +15,10 @@ public readonly record struct BackendParse(Backend? Backend, string? Error);
 public readonly record struct BackendHealth(string? Error, TimeSpan? ClockOffset);
 
 /// <summary>
-/// The server this device connects through (packages/pocketterm_server/PROTOCOL.md): one on a VPS, the one
-/// built into a computer's app, reached on the same network or through Tailscale, or a Supabase project
-/// (<see cref="Kind"/>). A computer signs in with the server's setup link
-/// (<c>pocketterm://setup?url=…&amp;setup=…</c>, printed by the server; <c>kind=supabase</c> for a Supabase
-/// project); a phone with a computer's code, a setup link with a pairing code and that computer's key in it
+/// The server this device connects through (packages/pocketterm_server/PROTOCOL.md): the one built into a
+/// computer's app, reached through Tailscale. A computer signs in with the server's setup link
+/// (<c>pocketterm://setup?url=…&amp;setup=…</c>, printed by the server); a phone with a computer's code, a
+/// setup link with a pairing code and that computer's key in it
 /// (<c>pocketterm://setup?url=…&amp;code=…&amp;d=…&amp;k=…</c>). A computer keeps it in its preferences
 /// (<see cref="Load"/>, <see cref="Save"/>).
 /// </summary>
@@ -48,49 +35,38 @@ public sealed partial class Backend : IEquatable<Backend>
     /// minutes stay within reach of each other.</summary>
     public static readonly TimeSpan ClockTolerance = TimeSpan.FromMinutes(2);
 
-    /// <summary>What a Supabase project that doesn't answer may be: paused.</summary>
-    private const string Paused =
-        "Free Supabase projects pause after about a week without use: open supabase.com/dashboard and restore " +
-        "the project, then retry.";
-
     // A computer keeps it in its preferences under these keys.
-    private const string UrlKey = "backend_url";
-    private const string KindKey = "backend_kind";
+    public const string UrlKey = "backend_url";
+
+    /// <summary>What an app from before saved for a Supabase project (<c>supabase</c>), which is no server any
+    /// more; see DesktopMigration.</summary>
+    public const string KindKey = "backend_kind";
 
     /// <summary>Where an app from before kept its Supabase project's key.</summary>
     private const string OldKeyKey = "backend_key";
 
-    public Backend(string url, BackendKind kind = BackendKind.Pocketterm)
+    public Backend(string url)
     {
         Url = url;
-        Kind = kind;
     }
 
-    /// <summary>The server's public URL, <c>https://pocketterm.example.com</c> or
-    /// <c>https://my-mac.tail1234.ts.net</c>, without a trailing slash; for a Supabase project, the project's
-    /// (<c>https://&lt;ref&gt;.supabase.co</c>).</summary>
+    /// <summary>The server's public URL, <c>https://my-pc.tail1234.ts.net</c>, without a trailing slash.</summary>
     public string Url { get; }
 
-    public BackendKind Kind { get; }
-
-    public bool IsSupabase => Kind == BackendKind.Supabase;
-
     /// <summary>Where the REST paths of PROTOCOL.md start (<c>&lt;api&gt;/v1/health</c>, …).</summary>
-    public string Api => IsSupabase ? $"{Url}/functions/v1/pocketterm" : Url;
+    public string Api => Url;
 
     /// <summary><paramref name="url"/> as typed, or a reason it can't be used.</summary>
-    public static BackendParse Parse(string url, BackendKind kind = BackendKind.Pocketterm)
+    public static BackendParse Parse(string url)
     {
         var u = url.DartTrim();
         while (u.EndsWith('/')) u = u[..^1];
         // The API's own path works too.
-        u = kind == BackendKind.Supabase ? SupabaseApiPath().Replace(u, "", 1) : ApiPath().Replace(u, "", 1);
+        u = ApiPath().Replace(u, "", 1);
         var uri = DartUri.TryParse(u);
         if (u.Length == 0 || uri == null || !uri.HasScheme || uri.Host.Length == 0)
         {
-            return new(null, kind == BackendKind.Supabase
-                ? "Enter your Supabase project URL, like https://abcdefghijklmnop.supabase.co."
-                : "Enter your server URL, like https://pocketterm.example.com.");
+            return new(null, "Enter your server URL, like https://pocketterm.example.com.");
         }
         if (uri.Scheme != "https" && !(uri.Scheme == "http" && IsThisMachine(uri.Host)))
         {
@@ -100,12 +76,12 @@ public sealed partial class Backend : IEquatable<Backend>
         {
             return new(null, "Use the server URL alone, without a path.");
         }
-        return new(new Backend(u, kind), null);
+        return new(new Backend(u), null);
     }
 
     /// <summary>A <c>pocketterm://setup?url=…</c> link (its pairing code, if any, is <see cref="PairingCode"/>'s;
     /// its setup token <see cref="SetupToken"/>'s). A link carrying a <c>key</c> isn't one, nor one of a
-    /// <c>kind</c> this app doesn't know.</summary>
+    /// <c>kind</c> other than <c>pocketterm</c> (a Supabase one from before).</summary>
     public static Backend? FromLink(DartUri uri)
     {
         IReadOnlyDictionary<string, string> q;
@@ -120,13 +96,8 @@ public sealed partial class Backend : IEquatable<Backend>
         if (uri.Scheme != "pocketterm" || uri.Host != "setup" || q.ContainsKey("key")) return null;
         q.TryGetValue("url", out var url);
         q.TryGetValue("kind", out var kindName);
-        BackendKind? kind = kindName switch
-        {
-            null or "" or "pocketterm" => BackendKind.Pocketterm,
-            "supabase" => BackendKind.Supabase,
-            _ => null,
-        };
-        return url == null || kind == null ? null : Parse(url, kind.Value).Backend;
+        if (kindName is not (null or "" or "pocketterm")) return null;
+        return url == null ? null : Parse(url).Backend;
     }
 
     /// <summary><see cref="FromLink(DartUri)"/> of link text; null when it isn't a URI.</summary>
@@ -156,13 +127,7 @@ public sealed partial class Backend : IEquatable<Backend>
         return new ComputerKey(desktop, key);
     }
 
-    private List<KeyValuePair<string, string>> Where()
-    {
-        var w = new List<KeyValuePair<string, string>>();
-        if (IsSupabase) w.Add(new("kind", "supabase"));
-        w.Add(new("url", Url));
-        return w;
-    }
+    private List<KeyValuePair<string, string>> Where() => [new("url", Url)];
 
     /// <summary>The setup link of this server, without a secret.</summary>
     public string Link => DartUri.Build("pocketterm", "setup", query: Where());
@@ -236,10 +201,6 @@ public sealed partial class Backend : IEquatable<Backend>
             {
                 throw new RedirectLoopException();
             }
-            if (IsSupabase && status != 200 && status != 404)
-            {
-                return Fail($"Your Supabase project {Host} doesn't answer ({status}). {Paused}");
-            }
             if (status is >= 520 and <= 530 && (res.Headers.Contains("cf-ray") || Cloudflare(res)))
             {
                 return Fail(
@@ -249,8 +210,7 @@ public sealed partial class Backend : IEquatable<Backend>
             if (status is 502 or 503 or 504)
             {
                 return Fail(
-                    $"{Host} answers, but the PocketTerm server behind it doesn't ({status}). On a VPS, check that it runs: " +
-                    "`docker compose ps` and `docker compose logs server`.");
+                    $"{Host} answers, but the PocketTerm server behind it doesn't ({status}).");
             }
             if (status == 404) return Fail(NoServer);
             if (status != 200) return Fail($"The server answered with an error ({status}).");
@@ -261,12 +221,9 @@ public sealed partial class Backend : IEquatable<Backend>
             var map = (JsonObject)health!;
             if (map.Str("version") is { } serverVersion && OlderThan(serverVersion, MinServer))
             {
-                return Fail(IsSupabase
-                    ? $"Your Supabase project runs PocketTerm {serverVersion}; this app needs {MinServer} or newer. Set " +
-                      "PocketTerm up on Supabase again from a computer (it updates the project), then retry."
-                    : $"Your server runs PocketTerm server {serverVersion}; this app needs {MinServer} or newer. Update the " +
-                      "server (on a VPS: `docker compose pull && docker compose up -d`; built into PocketTerm on a " +
-                      "computer: update PocketTerm there), then retry.");
+                return Fail(
+                    $"Your server runs PocketTerm server {serverVersion}; this app needs {MinServer} or newer. Update " +
+                    "PocketTerm on that computer, then retry.");
             }
             var time = DartDate.TryParse(map.Str("time") ?? "");
             // The server read its clock about halfway through the round trip.
@@ -277,7 +234,7 @@ public sealed partial class Backend : IEquatable<Backend>
         {
             return Fail(
                 $"Couldn't make a secure connection to {Host}: its HTTPS certificate isn't valid or isn't there yet. A new " +
-                "server takes a minute to get one; on a VPS, `docker compose logs caddy` says what went wrong.");
+                "server takes a minute to get one.");
         }
         catch (RedirectLoopException)
         {
@@ -287,7 +244,7 @@ public sealed partial class Backend : IEquatable<Backend>
         }
         catch (OperationCanceledException)
         {
-            return Fail($"{Host} took too long to answer.{(IsSupabase ? " " + Paused : "")}");
+            return Fail($"{Host} took too long to answer.");
         }
         catch (Exception e) when (e is HttpRequestException or IOException)
         {
@@ -318,9 +275,7 @@ public sealed partial class Backend : IEquatable<Backend>
     private static bool Cloudflare(HttpResponseMessage res) =>
         res.Headers.TryGetValues("server", out var v) && string.Join(", ", v).ToLowerInvariant() == "cloudflare";
 
-    private string NoServer => IsSupabase
-        ? "PocketTerm isn’t set up on this Supabase project. Set it up from a computer: PocketTerm, Supabase."
-        : "No PocketTerm server answers at this URL.";
+    private const string NoServer = "No PocketTerm server answers at this URL.";
 
     /// <summary>Whether version <paramref name="a"/> (<c>1.2.3</c>) comes before <paramref name="b"/>.</summary>
     internal static bool OlderThan(string a, string b)
@@ -336,22 +291,19 @@ public sealed partial class Backend : IEquatable<Backend>
         return false;
     }
 
-    /// <summary>The server this computer was connected to, if any. One saved by an app from before (a Supabase
-    /// project, which came with a key) isn't one.</summary>
+    /// <summary>The server this computer was connected to, if any. One saved by an app from before for a
+    /// Supabase project (a key, or <see cref="KindKey"/>) isn't one.</summary>
     public static Backend? Load(IPreferenceStore prefs)
     {
         var url = prefs.GetString(UrlKey);
-        if (url == null || prefs.GetString(OldKeyKey) != null) return null;
-        return Parse(url, KindOf(prefs.GetString(KindKey))).Backend;
+        if (url == null || prefs.GetString(OldKeyKey) != null || prefs.GetString(KindKey) is { Length: > 0 }) return null;
+        return Parse(url).Backend;
     }
-
-    private static BackendKind KindOf(string? name) => name == "supabase" ? BackendKind.Supabase : BackendKind.Pocketterm;
 
     public void Save(IPreferenceStore prefs)
     {
         prefs.SetString(UrlKey, Url);
-        if (IsSupabase) prefs.SetString(KindKey, Kind.Name());
-        else prefs.Remove(KindKey);
+        prefs.Remove(KindKey);
         prefs.Remove(OldKeyKey);
     }
 
@@ -362,20 +314,17 @@ public sealed partial class Backend : IEquatable<Backend>
         prefs.Remove(OldKeyKey);
     }
 
-    public bool Equals(Backend? other) => other is not null && other.Url == Url && other.Kind == Kind;
+    public bool Equals(Backend? other) => other is not null && other.Url == Url;
 
     public override bool Equals(object? obj) => obj is Backend b && Equals(b);
 
-    public override int GetHashCode() => HashCode.Combine(Url, Kind);
+    public override int GetHashCode() => Url.GetHashCode();
 
     public static bool operator ==(Backend? a, Backend? b) => a is null ? b is null : a.Equals(b);
 
     public static bool operator !=(Backend? a, Backend? b) => !(a == b);
 
-    public override string ToString() => $"Backend({Url}, {Kind.Name()})";
-
-    [GeneratedRegex(@"/functions/v1/pocketterm(/v1)?\z")]
-    private static partial Regex SupabaseApiPath();
+    public override string ToString() => $"Backend({Url})";
 
     [GeneratedRegex(@"/v1\z")]
     private static partial Regex ApiPath();

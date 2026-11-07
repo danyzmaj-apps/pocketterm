@@ -210,9 +210,6 @@ final class E2EControl {
       return .array(try await app.serverDevices().map { .object($0.toJson()) })
     case "revoke": try await app.revokeServerDevice(try arg(r, "id"))
     case "computer-setup-link": return (await app.computerSetupLink()).map { .string($0.absoluteString) } ?? .null
-    case "supabase-setup-link":
-      guard let s = app.server as? SupabaseServerClient else { throw E2EError("not on Supabase") }
-      return .string(try await s.newSetupLink().absoluteString)
     case "spare":
       // A second computer that no phone link names (_handOff): the phone lists it locked.
       let link = try arg(r, "link")

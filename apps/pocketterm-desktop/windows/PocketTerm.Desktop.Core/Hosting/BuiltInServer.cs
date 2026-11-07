@@ -80,8 +80,8 @@ public sealed class BuiltInServer : ObservableObject, IDisposable
 
     /// <summary>Add a computer: what the other computer does with <see cref="SetupLinkAsync"/>'s link.</summary>
     public const string AddComputerHow =
-        "On the other computer, sign in to Tailscale with the same account, install PocketTerm, choose Your own " +
-        "server and paste this link.";
+        "On the other computer, sign in to Tailscale with the same account, install PocketTerm, choose Join another " +
+        "computer’s PocketTerm… and paste this link.";
 
     /// <summary>Add a computer: the link is a key.</summary>
     public const string AddComputerWarning =

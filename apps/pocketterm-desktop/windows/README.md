@@ -38,7 +38,7 @@ dotnet publish apps/pocketterm-desktop/windows/PocketTerm.App -c Release -p:Plat
 ```
 
 `-p:PocketTermRelease=true` refuses to build without the sidecar. The publish folder holds `PocketTerm.exe`, the
-.NET and Windows App SDK runtimes, `pocketterm-server.exe`, `integrations\` and `supabase\` (copied from
+.NET and Windows App SDK runtimes, `pocketterm-server.exe`, and `integrations\` (copied from
 `apps/pocketterm-desktop`), and the theme icons in `assets\`. The installer is per-user
 (`%LOCALAPPDATA%\Programs\PocketTerm`), keeps the Flutter installer's AppId so it updates a 0.1.x install in place
 (removing the Flutter engine's leftovers), and registers `pocketterm://`.
@@ -81,7 +81,7 @@ image's UI Automation HelpText, so a test can "scan" it. A release build does no
 2. closes the window it opens (nothing is set up yet) and checks it only hid; starts it again (the second start
    hands over and exits, the window comes back with the first-run setup);
 3. starts the bundled `pocketterm-server.exe` on 127.0.0.1 and, through UI Automation by AutomationId, sets the app
-   up with its setup link (On my own server), passes the setup checklist and visits each Settings section;
+   up with its setup link (Join another computer's PocketTerm…; a test build takes a local URL), passes the setup checklist and visits each Settings section;
 4. opens Add a phone…, and `tool/PhoneStandIn` (a phone on PocketTerm.Core) scans the code: it signs in, finds this
    computer in the account, joins its channel and receives the terminal bridge's sealed `state`;
 5. signs that phone out (confirm dialog), signs this computer out, picks a different server (back to setup), quits

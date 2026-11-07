@@ -6,8 +6,7 @@
 // build/e2e/<stamp>/.
 //
 //   dart run tool/e2e/bin/run.dart [--terminal kitty|ghostty|wezterm|iterm|all]
-//       [--server local|builtin|supabase|supabase-cloud --supabase-token-file <file>|<https url> (--setup-link <link> |
-//        --setup-link-file <file>) [--server-stop-cmd <sh> --server-start-cmd <sh>]]
+//       [--server local|builtin]
 //       [--no-phone] [--platform ios|android [--avd <name>]] [--device <udid or serial>]
 //       [--phone-only <flow>,…] [--phone-from-tree] [--desktop-only <text>,…] [--hold] [--from-head]
 //       [--artifacts <dir>]
@@ -33,23 +32,11 @@
 // the checks of the phone flows that ran; the rest are skipped. --no-phone:
 // the desktop steps alone, the checks of what the phone did skipped.
 //
+// --server local (default): a fresh sidecar server per terminal, which the
+// desktop joins with its setup link (Join another computer's PocketTerm).
 // --server builtin: the desktop's own "On this computer" server, published
 // by `tailscale serve` (Tailscale must be running with HTTPS on and serve
-// nothing yet; whatever serves after the run is removed). --server <url>:
-// a server elsewhere; its setup link best from a file (it stays off the
-// command line and out of the artifacts). --server-stop-cmd and
-// --server-start-cmd (sh -c) stop and start it for the server restart,
-// e.g. `ssh host docker stop <container>`. Its certificate must be one macOS
-// trusts (a test CA goes in the login keychain, as for any app).
-// --server supabase: PocketTerm on the local Supabase in Docker
-// (tool/supabase-local.sh, started when it isn't, emptied for each terminal);
-// the server restart stops and starts its function and Realtime.
-// --server supabase-cloud: the desktop's setup makes a new project on
-// supabase.com (Supabase → Set up a project) with the personal access
-// token in --supabase-token-file, in the token's first organization, and
-// this run deletes that project after each terminal's run, whatever
-// happened. The free plan allows 2 active projects: one slot must be free.
-// No server restart (a hosted project can't be taken off the network).
+// nothing yet; whatever serves after the run is removed).
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -167,7 +154,6 @@ Map<String, String> _parse(List<String> args) {
     switch (args[i]) {
       case '--terminal' ||
           '--server' ||
-          '--setup-link' ||
           '--platform' ||
           '--artifacts' ||
           '--avd' ||
@@ -175,9 +161,6 @@ Map<String, String> _parse(List<String> args) {
           '--phone-only' ||
           '--desktop-only':
         o[args[i].substring(2)] = args[++i];
-      case '--setup-link-file' || '--server-stop-cmd' || '--server-start-cmd' || '--supabase-token-file':
-        o[args[i].substring(2)] = args[++i];
-        if (args[i - 1] == '--setup-link-file') o['setup-link'] = File(args[i]).readAsStringSync().trim();
       case '--no-phone':
         o['phone'] = 'no';
       case '--from-head':
@@ -195,16 +178,8 @@ Map<String, String> _parse(List<String> args) {
     stderr.writeln('--terminal: one of ${terminalIds.join(', ')} or all');
     exit(64);
   }
-  if (o['server'] == 'supabase-cloud' && !File(o['supabase-token-file'] ?? '').existsSync()) {
-    stderr.writeln('--server supabase-cloud needs --supabase-token-file <file> (a Supabase personal access token)');
-    exit(64);
-  }
-  if (!{'local', 'builtin', 'supabase', 'supabase-cloud'}.contains(o['server']) && o['setup-link'] == null) {
-    stderr.writeln('--server <url> needs --setup-link-file <file> (or --setup-link <link>)');
-    exit(64);
-  }
-  if ((o['server-stop-cmd'] == null) != (o['server-start-cmd'] == null)) {
-    stderr.writeln('--server-stop-cmd and --server-start-cmd go together');
+  if (!{'local', 'builtin'}.contains(o['server'])) {
+    stderr.writeln('--server: local or builtin');
     exit(64);
   }
   return o;
@@ -339,102 +314,6 @@ class _Server {
   }
 }
 
-/// PocketTerm on the local Supabase in Docker (tool/supabase-local.sh): started if it isn't, emptied for each
-/// terminal's run ([prepare]), its function and Realtime stopped and started for the server restart.
-class _Supabase {
-  _Supabase(this.repo, this.logPath);
-  final String repo;
-  final String logPath;
-  static const url = 'http://127.0.0.1:55421';
-  static const _containers = ['supabase_edge_runtime_pocketterm-local', 'supabase_realtime_pocketterm-local'];
-
-  String get _script => p.join(repo, 'tool', 'supabase-local.sh');
-  Map<String, String> get _env => {
-    'DOCKER_HOST':
-        Platform.environment['DOCKER_HOST'] ?? 'unix://${Platform.environment['HOME']}/.colima/default/docker.sock',
-  };
-
-  Future<String> _run(String what, String exe, List<String> args) async {
-    final r = await Process.run(exe, args, environment: _env);
-    File(logPath).writeAsStringSync('--- $what ${DateTime.now()}\n${r.stdout}${r.stderr}', mode: FileMode.append);
-    if (r.exitCode != 0) throw StateError('$what: exit ${r.exitCode} ${r.stderr}'.trim());
-    return '${r.stdout}'.trim();
-  }
-
-  Future<bool> _answers() async {
-    try {
-      final c = HttpClient();
-      final r = await (await c.getUrl(Uri.parse('$url/functions/v1/pocketterm/v1/health'))).close();
-      c.close(force: true);
-      return r.statusCode == 200;
-    } on Object {
-      return false;
-    }
-  }
-
-  /// Empty, with a new setup token; the computer's setup link.
-  Future<String> prepare() async {
-    if (!await _answers()) await _run('supabase start', _script, ['start']);
-    await _run('supabase reset', _script, ['reset']);
-    await until('PocketTerm on Supabase answering', _answers);
-    return await _run('setup link', _script, ['link']);
-  }
-
-  Future<void> stop() => _run('stop function and Realtime', 'docker', ['stop', ..._containers]);
-
-  Future<void> start() async {
-    await _run('start function and Realtime', 'docker', ['start', ..._containers]);
-    await until('PocketTerm on Supabase answering', _answers);
-  }
-}
-
-/// The Supabase Management API with the run's access token: only what the
-/// clean-up needs (the desktop's setup makes the project itself).
-class _SupabaseCloud {
-  _SupabaseCloud(this.tokenFile, this.logPath);
-  final String tokenFile;
-  final String logPath;
-
-  void _log(String line) => File(logPath).writeAsStringSync('${DateTime.now()} $line\n', mode: FileMode.append);
-
-  Future<(int, String)> _call(String method, String path) async {
-    final c = HttpClient();
-    try {
-      final req = await c.openUrl(method, Uri.parse('https://api.supabase.com$path'));
-      req.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${File(tokenFile).readAsStringSync().trim()}');
-      final res = await req.close();
-      return (res.statusCode, await utf8.decodeStream(res));
-    } finally {
-      c.close(force: true);
-    }
-  }
-
-  /// The refs of the account's projects now.
-  Future<Set<String>> refs() async {
-    final (status, body) = await _call('GET', '/v1/projects');
-    _log('GET /v1/projects → $status');
-    if (status != 200) throw StateError('listing Supabase projects: $status $body');
-    return {for (final p in jsonDecode(body) as List) '${(p as Map)['id'] ?? p['ref']}'};
-  }
-
-  /// Deletes project [ref] and waits until Supabase no longer lists it.
-  Future<void> delete(String ref) async {
-    final (status, body) = await _call('DELETE', '/v1/projects/$ref');
-    _log('DELETE /v1/projects/$ref → $status $body');
-    if (status >= 300 && status != 404) throw StateError('deleting Supabase project $ref: $status $body');
-    await until(
-      'Supabase project $ref gone',
-      () async {
-        final (s, b) = await _call('GET', '/v1/projects/$ref');
-        _log('GET /v1/projects/$ref → $s ${s == 200 ? (jsonDecode(b) as Map)['status'] : b}');
-        return s == 404 || (s == 200 && (jsonDecode(b) as Map)['status'] == 'REMOVED');
-      },
-      timeout: const Duration(minutes: 5),
-      every: const Duration(seconds: 10),
-    );
-  }
-}
-
 /// One terminal's run; scenario → `pass`, `fail: why` or `skip: why`.
 Future<Map<String, String>> _runTerminal(
   String terminal, {
@@ -455,9 +334,6 @@ Future<Map<String, String>> _runTerminal(
   final results = <String, String>{};
   final phone = opts['phone'] != 'no';
   _Server? server;
-  _Supabase? supabase;
-  _SupabaseCloud? cloud;
-  var cloudBefore = <String>{};
   DesktopRun? desktop;
   stdout.writeln('\n== $terminal ==');
   try {
@@ -468,24 +344,10 @@ Future<Map<String, String>> _runTerminal(
       await server.start();
       setupLink = server.setupLink!;
       serverUrl = server.url;
-    } else if (opts['server'] == 'builtin') {
+    } else {
       // The desktop starts it ("On this computer") and makes its links.
       setupLink = '';
       serverUrl = 'builtin';
-    } else if (opts['server'] == 'supabase') {
-      supabase = _Supabase(repo, p.join(artifacts, 'supabase.log'));
-      setupLink = await supabase.prepare();
-      serverUrl = _Supabase.url;
-    } else if (opts['server'] == 'supabase-cloud') {
-      // The desktop's setup makes the project and signs in with the link it makes; what the account had before
-      // stays as it is.
-      cloud = _SupabaseCloud(opts['supabase-token-file']!, p.join(artifacts, 'supabase.log'));
-      cloudBefore = await cloud.refs();
-      setupLink = '';
-      serverUrl = 'supabase-cloud';
-    } else {
-      setupLink = opts['setup-link']!;
-      serverUrl = opts['server']!;
     }
     final c = E2eConfig(
       terminal: terminal,
@@ -495,10 +357,6 @@ Future<Map<String, String>> _runTerminal(
       setupLink: setupLink,
       phone: phone,
       terminalPath: Platform.environment['PATH'] ?? launchdPath,
-      supabaseTokenFile: switch (opts['supabase-token-file']) {
-        final f? => p.absolute(f),
-        null => null,
-      },
       phoneOnly: opts['phone-only']?.split(','),
       desktopOnly: opts['desktop-only']?.split(','),
     );
@@ -510,16 +368,8 @@ Future<Map<String, String>> _runTerminal(
 
     Future<String> serverControl(String what) async {
       try {
-        if (supabase != null) {
-          stdout.writeln('  server: ${what == 'server-stop' ? 'stopping' : 'starting'} Supabase function and Realtime');
-          await (what == 'server-stop' ? supabase.stop() : supabase.start());
-        } else if (server == null) {
-          final cmd = opts[what == 'server-stop' ? 'server-stop-cmd' : 'server-start-cmd'];
-          if (cmd == null) return 'no way to $what this server: --server-stop-cmd / --server-start-cmd';
-          stdout.writeln('  server: $what (command)');
-          final r = await Process.run('/bin/sh', ['-c', cmd]);
-          if (r.exitCode != 0) return 'failed: exit ${r.exitCode} ${r.stderr}'.trim();
-        } else if (what == 'server-stop') {
+        if (server == null) return 'no way to $what the built-in server from here';
+        if (what == 'server-stop') {
           stdout.writeln('  server: stopping');
           await server.stop();
         } else {
@@ -544,7 +394,6 @@ Future<Map<String, String>> _runTerminal(
       app: MacApp(c, appPath: appPath, axExe: axExe),
       phonePhase: phonePhase,
       serverControl: serverControl,
-      supabaseToken: c.supabaseTokenFile == null ? null : File(c.supabaseTokenFile!).readAsStringSync().trim(),
       hold: opts['hold'] != null,
     );
     Object? failure;
@@ -577,8 +426,6 @@ Future<Map<String, String>> _runTerminal(
     final stopped = await Owned.stopAll(p.join(artifacts, 'owned.jsonl'));
     if (stopped.isNotEmpty) stdout.writeln('  stopped: ${stopped.join(', ')}');
     await server?.stop();
-    // A Supabase stopped for the restart and not started again (the run ended between).
-    if (supabase != null) await supabase.start().then((_) {}, onError: (Object _) {});
     _keepLogs(work, artifacts);
     // Another server's setup link stays out of the artifacts.
     final config = File(p.join(artifacts, 'config.json'));
@@ -594,33 +441,6 @@ Future<Map<String, String>> _runTerminal(
         await Process.run(_tailscale, ['serve', 'reset']);
       }
       stdout.writeln('  tailscale serve: ${await _tailscaleServes() ?? 'No serve config'}');
-    }
-    // The project the desktop's setup made goes, whatever happened: the one it signed in to, else any the
-    // account didn't have before the run.
-    if (cloud != null) {
-      final made = File(p.join(artifacts, 'supabase-project.txt'));
-      var refs = made.existsSync() ? {made.readAsStringSync().trim()}.where((r) => r.isNotEmpty).toSet() : <String>{};
-      if (refs.isEmpty) {
-        try {
-          refs = (await cloud.refs()).difference(cloudBefore);
-        } on Object catch (e) {
-          stdout.writeln('  supabase: projects not listed: $e');
-        }
-      }
-      if (refs.isEmpty) {
-        results['supabase: test project deleted'] = 'skip: the setup made no project';
-      } else {
-        try {
-          for (final ref in refs) {
-            await cloud.delete(ref);
-            stdout.writeln('  supabase: project $ref deleted');
-          }
-          results['supabase: test project deleted'] = 'pass';
-        } on Object catch (e) {
-          results['supabase: test project deleted'] = 'fail: $e';
-          stdout.writeln('  supabase: project(s) $refs NOT deleted: $e');
-        }
-      }
     }
   }
   return results;

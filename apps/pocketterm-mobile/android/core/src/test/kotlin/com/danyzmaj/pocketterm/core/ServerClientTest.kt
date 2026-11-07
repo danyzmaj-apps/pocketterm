@@ -54,7 +54,7 @@ abstract class Confined {
     }
 }
 
-/** The same tests against the PocketTerm server ([ServerClientOwnServerTest]) and PocketTerm on Supabase ([ServerClientSupabaseTest]). */
+/** The client's tests against the PocketTerm server ([ServerClientOwnServerTest]). */
 abstract class ServerClientContract : Confined() {
     protected abstract fun start(): TestBackend
 
@@ -253,47 +253,6 @@ abstract class ServerClientContract : Confined() {
 
 class ServerClientOwnServerTest : ServerClientContract() {
     override fun start(): TestBackend = OwnServer.start()
-}
-
-class ServerClientSupabaseTest : ServerClientContract() {
-    override fun start(): TestBackend = FakeSupabase.start()
-
-    @Test
-    fun `a computer makes another computer's setup link, the one before stops working`() = test {
-        val project = own as FakeSupabase
-        val mac = project.desktop() as SupabaseServerClient
-        val link = mac.newSetupLink()
-        assertEquals(project.backend, Backend.fromLink(link))
-        val e = assertFailsWith<ServerException>("the setup token before stops working") { project.desktop(label = "Mac mini") }
-        assertEquals("invalid_code", e.code)
-        val other = project.client()
-        other.redeemSetup(Backend.setupToken(link)!!, label = "Mac mini", platform = "macos")
-        assertEquals(mac.account?.id, other.account?.id)
-        val phone = project.phone(mac) as SupabaseServerClient
-        assertEquals(403, assertFailsWith<ServerException>("only computers make setup links") { phone.newSetupLink() }.status)
-        listOf(mac, other, phone).forEach { it.close() }
-    }
-
-    @Test
-    fun `a channel Realtime closes is joined again, after the sign-in is checked`() = test {
-        val project = own as FakeSupabase
-        val mac = project.desktop()
-        val key = ChannelKey.generate()
-        var joins = 0
-        val desk = TerminalChannel(mac, "abcd1234", emptyMap(), key = key, name = "mac", scope = scope, onJoined = { if (it) joins++ })
-        try {
-            desk.open()
-            until { joins == 1 }
-            project.closeChannel("abcd1234")
-            until { joins == 2 }
-            assertTrue(desk.joined)
-            assertEquals(1, project.joined("abcd1234"))
-            assertTrue(mac.account != null, "still signed in")
-        } finally {
-            desk.close()
-            mac.close()
-        }
-    }
 }
 
 class ServerClientTest : Confined() {

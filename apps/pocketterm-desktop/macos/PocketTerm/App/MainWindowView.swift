@@ -48,7 +48,8 @@ struct SignInView: View {
       Text("Sign in to connect this computer to your phone.").foregroundStyle(.secondary)
       Text(
         app.authError
-          ?? "Open your server’s setup link on this computer. To see it again, run `pocketterm-server setup-link` on the server."
+          ?? "Open your server’s setup link on this computer. The computer that runs it shows one in Settings → "
+          + "Account → Add a computer…"
       )
       .font(.callout)
       .foregroundStyle(app.authError == nil ? Color.secondary : Color.red)

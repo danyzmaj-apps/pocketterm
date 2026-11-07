@@ -2,68 +2,46 @@ import PocketTermDesktop
 import PocketTermKit
 import SwiftUI
 
-let selfHostingGuide = URL(
-  string: "https://github.com/danyzmaj-apps/pocketterm/blob/main/docs/SELF_HOSTING.md#on-my-own-server")!
-
-let serverNeeds = URL(
-  string: "https://github.com/danyzmaj-apps/pocketterm/blob/main/apps/pocketterm-server/README.md#what-it-needs")!
-
-/// The first-run setup's screens. Where it was left is kept (`AppController.setupStep`, by these raw values, the
-/// Flutter app's names) and it opens there again.
+/// The first-run setup's screens. Where it was left is kept (`AppController.setupStep`, by these raw values) and
+/// it opens there again; a step an older app kept (choose, ownServer, haveServer, newServer, supabase) opens the
+/// first one.
 enum SetupStep: String {
-  /// On this computer, on my own server, or Supabase.
-  case choose
-  /// The Tailscale checklist, then Start.
+  /// The Tailscale checklist, then Start: the server built into this app.
   case thisComputer
-  /// Do you already have a PocketTerm server?
-  case ownServer
-  /// Yes: its setup link.
-  case haveServer
-  /// Not yet: its address, the commands for it, live checks, its setup link.
-  case newServer
-  /// A Supabase project: set one up with an access token, or paste the setup link of a computer already on one.
-  case supabase
+  /// Join another computer's PocketTerm: the setup link its Settings → Add a computer… shows.
+  case join
 }
 
-/// First run: where this computer's PocketTerm server runs. **On this computer**: the server built into the app,
-/// reached through Tailscale, after a checklist that follows Tailscale as the person sets it up. **On my own
-/// server**: a VPS, by its setup link, or, without one yet, the commands that set one up, checked live.
-/// **Supabase**: a free Supabase project the setup makes with the person's access token. Either way, the setup
-/// checklist follows sign-in (Get ready).
+/// First run: PocketTerm runs its server on this computer, reached through Tailscale, after a checklist that
+/// follows Tailscale as the person sets it up; then Start. A computer whose other computer already runs it joins
+/// that one instead, with the link from its Settings → Add a computer…. Either way, the setup checklist follows
+/// sign-in (Get ready).
 struct SetupView: View {
   @EnvironmentObject private var app: AppController
 
   /// nil until the person moves: then it's where the setup was left.
   @State private var moved: SetupStep?
 
-  private var step: SetupStep { moved ?? app.setupStep.flatMap(SetupStep.init(rawValue:)) ?? .choose }
+  private var step: SetupStep { moved ?? app.setupStep.flatMap(SetupStep.init(rawValue:)) ?? .thisComputer }
 
   private func go(_ step: SetupStep) {
     moved = step
-    app.setSetupStep(step == .choose ? nil : step.rawValue)
+    app.setSetupStep(step == .thisComputer ? nil : step.rawValue)
   }
 
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 0) {
         switch step {
-        case .choose: choose
-        case .thisComputer:
-          ThisComputerSetup(onBack: { go(.choose) }, onOwnServer: { go(.ownServer) })
-        case .ownServer: ownServer
-        case .haveServer:
+        case .thisComputer: thisComputer
+        case .join:
           SetupHeader(
-            title: "Paste your server’s setup link",
+            title: "Join another computer’s PocketTerm",
             text:
-              "On the server, in ~/pocketterm, run: sudo docker compose exec server pocketterm-server setup-link. "
-              + "A computer of yours that runs PocketTerm’s server has one too, in Settings → Account → Add a "
-              + "computer…",
-            onBack: { go(.ownServer) })
+              "On the computer that runs your PocketTerm, open Settings → Account → Add a computer… and paste the "
+              + "link it shows. This computer needs Tailscale too, signed in to the same account.",
+            onBack: { go(.thisComputer) })
           SetupLinkForm()
-        case .newServer:
-          NewServerSetup(address: app.setupAddress, onBack: { go(.ownServer) })
-        case .supabase:
-          SupabaseSetupView(onBack: { go(.choose) })
         }
       }
       .frame(width: 460, alignment: .leading)
@@ -72,37 +50,40 @@ struct SetupView: View {
     }
   }
 
-  @ViewBuilder private var choose: some View {
+  @ViewBuilder private var thisComputer: some View {
     VStack(spacing: 8) {
       Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 64, height: 64)
       Text("Set up PocketTerm").font(.title2.weight(.semibold))
-      Text("Your phone reaches this computer through a PocketTerm server. Where should it run?")
-        .foregroundStyle(.secondary)
-        .multilineTextAlignment(.center)
-        .fixedSize(horizontal: false, vertical: true)
+      Text(
+        "PocketTerm runs your server on this computer. Tailscale gives it a private HTTPS address that only your "
+          + "own devices reach, at home or away. This list checks itself as you go."
+      )
+      .foregroundStyle(.secondary)
+      .multilineTextAlignment(.center)
+      .fixedSize(horizontal: false, vertical: true)
     }
     .frame(maxWidth: .infinity)
     .padding(.bottom, 20)
-    VStack(spacing: 12) {
-      SetupOption(
-        id: "setup-this-computer", systemImage: "laptopcomputer", title: "On this computer",
-        text:
-          "Free, set up in a few clicks. Uses Tailscale, on this computer and your phone. This computer must stay "
-          + "awake."
-      ) { go(.thisComputer) }
-      SetupOption(
-        id: "setup-own-server", systemImage: "server.rack", title: "On my own server",
-        text:
-          "A VPS you rent. No Tailscale, and several computers share one server. Your sessions still run here, "
-          + "so this computer stays awake for them too."
-      ) { go(.ownServer) }
-      SetupOption(
-        id: "setup-supabase", systemImage: "cloud", title: "Supabase",
-        text:
-          "A free Supabase project PocketTerm sets up for you. No Tailscale, no server to run. Supabase holds your "
-          + "device list."
-      ) { go(.supabase) }
+    if let note = app.movedNote {
+      Notice(text: note, systemImage: "arrow.triangle.2.circlepath", id: "setup-moved")
+        .padding(.bottom, 14)
     }
+    ThisComputerSetup()
+    // The secondary way: another computer already runs PocketTerm's server.
+    Button { go(.join) } label: {
+      Text("Join another computer’s PocketTerm…").frame(maxWidth: .infinity)
+    }
+    .buttonStyle(.bordered)
+    .controlSize(.large)
+    .accessibilityIdentifier("setup-join")
+    .padding(.top, 10)
+    Text("Another computer of yours already runs PocketTerm? Paste the link its Settings → Add a computer… shows.")
+      .font(.callout)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity)
+      .multilineTextAlignment(.center)
+      .padding(.top, 8)
     VStack(alignment: .leading, spacing: 6) {
       Explainer("What is a PocketTerm server?", id: "why-server") {
         Text(
@@ -110,35 +91,9 @@ struct SetupView: View {
             + "devices, your computers’ names, pairing codes for 10 minutes and your phones’ push tokens. Your "
             + "sessions pass through it only encrypted, so it can’t read them.")
       }
-      Explainer("How the three options compare", id: "why-compare") { OptionsTable() }
       Explainer("How your data is protected", id: "why-data") { DataProtectionView() }
     }
     .padding(.top, 18)
-  }
-
-  @ViewBuilder private var ownServer: some View {
-    SetupHeader(title: "On my own server", text: "Do you already have a PocketTerm server?", onBack: { go(.choose) })
-    VStack(spacing: 12) {
-      SetupOption(
-        id: "setup-have-server", systemImage: "link", title: "Yes",
-        text: "Paste its setup link. A link from another computer of yours that runs PocketTerm’s server works too."
-      ) { go(.haveServer) }
-      SetupOption(
-        id: "setup-new-server", systemImage: "plus.circle", title: "Not yet",
-        text: "Set one up on a VPS: you get the commands to copy, and each step is checked as you go."
-      ) { go(.newServer) }
-    }
-    HStack(alignment: .firstTextBaseline) {
-      Text("Already run your own servers? See what the PocketTerm server needs.")
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-      Spacer()
-      Button("Open link") { openLink(serverNeeds) }
-        .buttonStyle(.link)
-        .accessibilityIdentifier("setup-server-needs")
-    }
-    .padding(.top, 14)
   }
 }
 
@@ -159,47 +114,6 @@ struct SetupHeader: View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.bottom, 18)
-  }
-}
-
-/// One way to go on, as a large row: its symbol, what it is, what it means; the row highlights under the pointer.
-struct SetupOption: View {
-  let id: String
-  let systemImage: String
-  let title: String
-  let text: String
-  let action: () -> Void
-  @State private var hover = false
-
-  var body: some View {
-    Button(action: action) {
-      HStack(alignment: .top, spacing: 14) {
-        Image(systemName: systemImage)
-          .font(.system(size: 24))
-          .foregroundStyle(.tint)
-          .frame(width: 32)
-        VStack(alignment: .leading, spacing: 4) {
-          Text(title).font(.headline)
-          Text(text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        }
-        Spacer(minLength: 0)
-        Image(systemName: "chevron.right").foregroundStyle(.tertiary).padding(.top, 4)
-      }
-      .padding(16)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(
-        RoundedRectangle(cornerRadius: 10)
-          .fill(hover ? Color.accentColor.opacity(0.08) : Color(nsColor: .controlBackgroundColor)))
-      .overlay(
-        RoundedRectangle(cornerRadius: 10)
-          .strokeBorder(hover ? Color.accentColor : Color(nsColor: .separatorColor)))
-      .contentShape(RoundedRectangle(cornerRadius: 10))
-    }
-    .buttonStyle(.plain)
-    .onHover { hover = $0 }
-    .accessibilityLabel(title)
-    .accessibilityHint(text)
-    .accessibilityIdentifier(id)
   }
 }
 

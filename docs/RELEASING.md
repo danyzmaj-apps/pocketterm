@@ -8,37 +8,25 @@ Keys and certificates never go in the repo: keep them in the maintainer's keys f
 
 ## Release order
 
-The wizard's VPS commands fetch `docker-compose.yml` from the tag `v<version>` and run the image `ghcr.io/danyzmaj-apps/pocketterm-server:<version>`. Neither exists until the release is out, so a desktop build of a new version can't set up a VPS before both are published. Release in this order:
+Release in this order:
 
-1. **Bump the version** in `apps/pocketterm-desktop/macos/project.yml`, the phone apps' defaults (above) and the `POCKETTERM_VERSION` default in `apps/pocketterm-server/docker-compose.yml` (details in [Mac → Each release](#each-release)). Commit and push to `main`.
-2. **Push the tag.** `tool/release.sh` creates the GitHub release `v<version>`, and with it the tag.
-3. **The server image publishes.** The tag starts Baker's *Server image* workflow (project `pocketterm-mobile`, trigger: tag `v*`), which runs [tool/server-image.sh](../tool/server-image.sh) on the Mac: it pushes `:<version>`, `:<major>.<minor>` and `:latest` (a prerelease tag only its own version) to ghcr for amd64 and arm64, logged in with the Mac's `gh` token (it needs `write:packages`). Wait for it to go green before telling anyone about the release; Baker → *Server image* → *Ship* runs it again, and `tool/server-image.sh v<version>` does the same by hand.
-4. **Desktop and phone builds** go out after that: the Windows installer (built from the same release) and the phone builds from Baker.
-
-**Once, after the first image is published:** packages on ghcr start private, and a VPS can't pull a private image without signing in. On GitHub, open the organization's **Packages** → `pocketterm-server` → **Package settings** → **Danger Zone** → **Change visibility** → **Public**. Check it from a machine that isn't signed in to ghcr: `docker pull ghcr.io/danyzmaj-apps/pocketterm-server:<version>`.
-
-PocketTerm on Supabase needs no release step of its own: its migrations and function (`apps/pocketterm-desktop/supabase/`) ship inside the desktop app, and the app's setup deploys them.
+1. **Bump the version** in `apps/pocketterm-desktop/macos/project.yml` and the phone apps' defaults (above) (details in [Mac → Each release](#each-release)). Commit and push to `main`.
+2. **Push the tag.** `tool/release.sh` creates the GitHub release `v<version>`, and with it the tag. The server ships inside the desktop apps, so there is no server release of its own.
+3. **Desktop and phone builds** go out after that: the Windows installer (built from the same release) and the phone builds from Baker.
 
 ## Before a release: end to end
 
 CI runs the unit tests ([CONTRIBUTING.md](../CONTRIBUTING.md#pull-requests)). Before a release, run end to end only what covers the release's changes and the features around them (pick them as [TESTING.md](TESTING.md#what-to-run-for-a-change) says, from the release's `CHANGELOG.md` section and `git log v<previous>..HEAD`), with `--from-head`, which runs what's committed, in a worktree of HEAD. They run on the maintainer's Mac, on a quiet Mac (they open throwaway terminal windows).
 
-The full matrix below (every terminal, every server, both phone platforms) is for releases with big cross-cutting changes (the protocol, encryption, session routing, the server) or when a targeted run turns up something it can't explain:
+The full matrix below (every terminal, both servers, both phone platforms) is for releases with big cross-cutting changes (the protocol, encryption, session routing, the server) or when a targeted run turns up something it can't explain:
 
 ```sh
 # at the repo root
 tool/e2e/run.sh --from-head --terminal all                                   # local server, iPhone Simulator
 tool/e2e/run.sh --from-head --terminal all --platform android --avd <avd>    # the same on an Android emulator
-tool/e2e/run.sh --from-head --terminal all --server supabase                 # PocketTerm on a local Supabase
-tool/e2e/run.sh --from-head --terminal kitty --server supabase-cloud --supabase-token-file <keys>/<supabase token>
-tool/e2e/run.sh --from-head --terminal all --server https://pocketterm-test.danyzmaj.com \
-  --setup-link-file <keys>/pocketterm-test-setup-link.txt \
-  --server-stop-cmd 'ssh -o BatchMode=yes server docker stop pocketterm-test-app-1' \
-  --server-start-cmd 'ssh -o BatchMode=yes server docker start pocketterm-test-app-1'
 tool/e2e/run.sh --from-head --terminal all --server builtin                  # needs `tailscale serve status` empty
 ```
 
-- **`--server supabase-cloud`** walks the desktop's own Supabase setup on supabase.com with a personal access token from the file: it makes a project named `PocketTerm e2e <terminal> <stamp>` in the token's first organization and deletes it after each terminal's run, whatever happened. The free plan allows 2 active projects: one slot must be free (pause another project for the run and restore it after). It has no server restart phase (a hosted project can't be taken off the network).
 - **`--server builtin`** refuses to start while Tailscale serves anything, so quit the installed PocketTerm first; the run removes what it left in Tailscale's Serve settings.
 - **An Android emulator** must have internet (Firebase gives no push token without it); the phone run waits up to a minute and says so.
 
@@ -50,22 +38,9 @@ tool/smoke/scenario.sh wizard getready settings menubar quit
 tool/smoke/run.sh clean
 ```
 
-### The test server
-
-`https://pocketterm-test.danyzmaj.com` is a PocketTerm server on the publisher's server for the end-to-end runs ([apps/pocketterm-server/deploy/compose.yaml](../apps/pocketterm-server/deploy/compose.yaml), compose project `pocketterm-test`). Redeploy it after server changes: in [Baker](https://baker.danyzmaj.com), project `pocketterm-mobile` → workflow *Test server* → *Deploy*, on the branch to deploy (manual only, no trigger). Baker sends that commit to danyzmaj-server, which builds the image there and starts it with a healthcheck-gated deploy.
-
-After `docker compose … build --pull`, a plain `up -d --wait` can keep the old container running although a new image was built, so the server silently runs old code (the deploy runs `up --wait` too, so it may have the same gap). After redeploying, check the image; if it's the old one, recreate the container on the server, from the deployed checkout's folder:
-
-```sh
-docker compose -p pocketterm-test -f apps/pocketterm-server/deploy/compose.yaml up -d --force-recreate --wait --wait-timeout 180
-docker inspect pocketterm-test-app-1 --format '{{.Image}}'   # must be the image just built
-```
-
-`/v1/health` shows only the version name, not the build, so it can't tell an old container from a new one: check the image ID.
-
 ## Push relay (once, and after relay changes)
 
-Every user's server sends phone notifications through one relay the publisher runs, `apps/pocketterm-relay` on the publisher's own server at `https://push.danyzmaj.com`. It holds the only credentials that can reach PocketTerm's installs: the APNs key for iPhones and the Firebase service account for Android.
+Every user's server sends phone notifications through one relay the publisher runs, `apps/pocketterm-relay` on the publisher's machine at `https://push.danyzmaj.com`. It holds the only credentials that can reach PocketTerm's installs: the APNs key for iPhones and the Firebase service account for Android.
 
 1. **APNs key.** At [developer.apple.com → Keys](https://developer.apple.com/account/resources/authkeys/add), create a key with Apple Push Notifications service (Sandbox & Production, team scoped), or reuse an existing key of the team: APNs keys work for every app of the team. The `.p8` downloads once; keep its `AuthKey_<KEYID>.p8` name.
 2. **Firebase service account.** In the Firebase project that holds the Android app (package `com.danyzmaj.pocketterm`), Project settings → Service accounts → **Generate new private key**. The same project's `google-services.json` goes into Android release builds (below).
@@ -107,8 +82,8 @@ Each release is a notarized DMG of the native Mac app (`apps/pocketterm-desktop/
 
 ### Each release
 
-1. Bump `MARKETING_VERSION` (the version) and `CURRENT_PROJECT_VERSION` (the build number, always higher than the last release's: Sparkle compares it) in `apps/pocketterm-desktop/macos/project.yml` and set the same version name in `apps/pocketterm-desktop/integrations/claude/plugins/pocketterm/.claude-plugin/plugin.json`: Claude Code updates a plugin only to a new version, so installed copies would keep their old hooks (`release.sh` refuses a mismatch). Set the same version as the `POCKETTERM_VERSION` default in `apps/pocketterm-server/docker-compose.yml`: the VPS setup fetches that file from the release tag and runs the image it names (`release.sh` refuses a mismatch here too). Set it as `VERSION` in `apps/pocketterm-desktop/supabase/functions/pocketterm/index.ts` too, what a Supabase project reports in `GET /v1/health` (`release.sh` doesn't check this one).
-2. Add a `## <version>` section at the top of `CHANGELOG.md` with the user-visible changes; `release.sh` refuses to run without it and uses that section as the release notes. Say whether servers must be updated (VPS: `docker compose pull`; Supabase: **Update that project**) and whether the relay must be redeployed.
+1. Bump `MARKETING_VERSION` (the version) and `CURRENT_PROJECT_VERSION` (the build number, always higher than the last release's: Sparkle compares it) in `apps/pocketterm-desktop/macos/project.yml` and set the same version name in `apps/pocketterm-desktop/integrations/claude/plugins/pocketterm/.claude-plugin/plugin.json`: Claude Code updates a plugin only to a new version, so installed copies would keep their old hooks (`release.sh` refuses a mismatch).
+2. Add a `## <version>` section at the top of `CHANGELOG.md` with the user-visible changes; `release.sh` refuses to run without it and uses that section as the release notes. Say whether the relay must be redeployed.
 3. Point the download links in `README.md` (**Getting started**) at the new version's DMG and installer.
 4. Commit and push to `main`, then (in `apps/pocketterm-desktop`):
    ```sh

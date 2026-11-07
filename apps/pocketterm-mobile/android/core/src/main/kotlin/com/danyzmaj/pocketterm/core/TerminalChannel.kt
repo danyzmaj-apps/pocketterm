@@ -86,7 +86,7 @@ class ChannelSeal(
 
 /**
  * A computer's [topic] (its id) on the server's live channel (GET /v1/ws,
- * packages/pocketterm_server/PROTOCOL.md; Supabase Realtime for a Supabase project), kept joined
+ * packages/pocketterm_server/PROTOCOL.md), kept joined
  * while open. Everything on it is sealed with the computer's key ([ChannelSeal]): the server only
  * relays envelopes; handlers get the opened messages, in the order they came.
  *

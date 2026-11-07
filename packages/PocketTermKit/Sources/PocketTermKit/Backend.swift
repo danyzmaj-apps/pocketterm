@@ -1,25 +1,18 @@
 import Foundation
 
-/// What answers a [Backend]: PocketTerm's own server, or PocketTerm set up on a Supabase project
-/// (apps/pocketterm-desktop/supabase).
-public enum BackendKind: String, Sendable, Hashable, CaseIterable {
-  /// packages/pocketterm_server, on a VPS or built into a computer's app.
-  case pocketterm
-
-  /// The Edge Function `pocketterm` on a Supabase project: the same REST paths under
-  /// `/functions/v1/pocketterm`, the live channel over Supabase Realtime.
-  case supabase
-}
+/// What a saved server's `backend_kind` said in an app from before: `supabase` for PocketTerm set up on a
+/// Supabase project, which this app no longer speaks (a device signed in to one is signed out on launch).
+public let supabaseKind = "supabase"
 
 /// Where a device keeps its server: a computer in its preferences ([PreferencesBackendStore]), a phone
 /// where its native side reads it too (the App Group on iOS, PocketTermShared.swift).
 public protocol BackendStore: AnyObject, Sendable {
-  /// The kept URL and kind (`supabase`, or nil for a PocketTerm server); [legacy]: an app from before
-  /// saved a Supabase project there (it came with a key). Nil: none.
+  /// The kept URL and the kind an app from before saved with it (`supabase`, or nil for a PocketTerm
+  /// server); [legacy]: an older app saved a Supabase project there (it came with a key). Nil: none.
   func loadBackend() -> (url: String, kind: String?, legacy: Bool)?
 
-  /// Keeps [url] and [kind] (nil kind: a PocketTerm server); a nil [url] forgets it. Either way any key
-  /// an app from before kept goes.
+  /// Keeps [url] (a PocketTerm server); a nil [url] forgets it. Either way any kind or key an app from
+  /// before kept goes.
   func saveBackend(url: String?, kind: String?)
 }
 
@@ -50,42 +43,31 @@ public final class PreferencesBackendStore: BackendStore, @unchecked Sendable {
   }
 }
 
-/// The server this device connects through (packages/pocketterm_server/PROTOCOL.md): one on a VPS, the
-/// one built into a computer's app, reached on the same network or through Tailscale, or a Supabase
-/// project ([kind]). A computer signs in with the server's setup link (`pocketterm://setup?url=…&setup=…`,
-/// printed by the server; `kind=supabase` for a Supabase project); a phone with a computer's code, a setup
-/// link with a pairing code and that computer's key in it (`pocketterm://setup?url=…&code=…&d=…&k=…`).
+/// The server this device connects through (packages/pocketterm_server/PROTOCOL.md): the one built into a
+/// computer's app, reached through Tailscale. A computer signs in with the server's setup link
+/// (`pocketterm://setup?url=…&setup=…`, made by another computer's Add a computer…); a phone with a
+/// computer's code, a setup link with a pairing code and that computer's key in it
+/// (`pocketterm://setup?url=…&code=…&d=…&k=…`).
 public struct Backend: Sendable, Hashable {
-  public init(url: String, kind: BackendKind = .pocketterm) {
+  public init(url: String) {
     self.url = url
-    self.kind = kind
   }
 
-  /// The server's public URL, `https://pocketterm.example.com` or `https://my-mac.tail1234.ts.net`, without
-  /// a trailing slash; for a Supabase project, the project's (`https://<ref>.supabase.co`).
+  /// The server's public URL, `https://my-mac.tail1234.ts.net`, without a trailing slash.
   public let url: String
-  public let kind: BackendKind
-
-  public var isSupabase: Bool { kind == .supabase }
 
   /// Where the REST paths of PROTOCOL.md start (`<api>/v1/health`, …).
-  public var api: String { isSupabase ? "\(url)/functions/v1/pocketterm" : url }
+  public var api: String { url }
 
   /// [url] as typed, or a reason it can't be used.
-  public static func parse(_ url: String, kind: BackendKind = .pocketterm) -> (backend: Backend?, error: String?) {
+  public static func parse(_ url: String) -> (backend: Backend?, error: String?) {
     var u = url.trimmingCharacters(in: .whitespacesAndNewlines)
     while u.hasSuffix("/") { u.removeLast() }
     // The API's own path works too.
-    u = replaceFirst(
-      u, kind == .supabase ? #"/functions/v1/pocketterm(/v1)?$"# : #"/v1$"#, with: "")
+    u = replaceFirst(u, #"/v1$"#, with: "")
     let uri = DartUri(u)
     guard !u.isEmpty, let uri, uri.scheme != nil, !uri.host.isEmpty else {
-      return (
-        nil,
-        kind == .supabase
-          ? "Enter your Supabase project URL, like https://abcdefghijklmnop.supabase.co."
-          : "Enter your server URL, like https://pocketterm.example.com."
-      )
+      return (nil, "Enter your server URL, like https://pocketterm.example.com.")
     }
     if uri.scheme != "https" && !(uri.scheme == "http" && isThisMachine(uri.host)) {
       return (nil, "The server URL must start with https://.")
@@ -93,25 +75,24 @@ public struct Backend: Sendable, Hashable {
     if !uri.path.isEmpty || uri.query != nil || uri.fragment != nil {
       return (nil, "Use the server URL alone, without a path.")
     }
-    return (Backend(url: u, kind: kind), nil)
+    return (Backend(url: u), nil)
   }
 
   /// A `pocketterm://setup?url=…` link (its pairing code, if any, is [pairingCode]'s; its setup token
-  /// [setupToken]'s). A link carrying a `key` isn't one, nor one of a `kind` this app doesn't know.
+  /// [setupToken]'s). A link carrying a `key` isn't one, nor one of a `kind` this app doesn't know (a
+  /// Supabase project's, `kind=supabase`).
   public static func fromLink(_ link: URL) -> Backend? { fromLink(link.absoluteString) }
 
   public static func fromLink(_ link: String) -> Backend? {
     guard let uri = DartUri(link), uri.scheme == "pocketterm", uri.host == "setup" else { return nil }
     let q = uri.queryParameters
     if q["key"] != nil { return nil }
-    let kind: BackendKind?
     switch q["kind"] {
-    case nil, "", "pocketterm": kind = .pocketterm
-    case "supabase": kind = .supabase
-    default: kind = nil
+    case nil, "", "pocketterm": break
+    default: return nil
     }
-    guard let url = q["url"], let kind else { return nil }
-    return parse(url, kind: kind).backend
+    guard let url = q["url"] else { return nil }
+    return parse(url).backend
   }
 
   /// The pairing code in a setup link (the computer's QR), if it has one: it signs a phone in.
@@ -139,7 +120,7 @@ public struct Backend: Sendable, Hashable {
     return ComputerKey(desktop: desktop, key: key)
   }
 
-  private var whereParams: [(String, String)] { (isSupabase ? [("kind", "supabase")] : []) + [("url", url)] }
+  private var whereParams: [(String, String)] { [("url", url)] }
 
   public var link: URL { setupLink(whereParams) }
 
@@ -175,10 +156,8 @@ public struct Backend: Sendable, Hashable {
       : "Can't reach \(host). Check your connection."
   }
 
-  /// What a Supabase project that doesn't answer may be: paused.
-  static let paused =
-    "Free Supabase projects pause after about a week without use: open supabase.com/dashboard and restore "
-    + "the project, then retry."
+  /// On this machine (`http://127.0.0.1:<port>`): the server built into this computer's app.
+  public var onThisMachine: Bool { Self.isThisMachine(host) }
 
   /// Plain http only to this machine (a computer reaching the server built into it); everything else,
   /// Tailscale included (`tailscale serve` gives it a ts.net certificate), needs https.
@@ -229,13 +208,13 @@ public struct Backend: Sendable, Hashable {
         .clientCertificateRequired:
         return fail(
           "Couldn't make a secure connection to \(host): its HTTPS certificate isn't valid or isn't there yet. A "
-            + "new server takes a minute to get one; on a VPS, `docker compose logs caddy` says what went wrong.")
+            + "new server takes a minute to get one.")
       case .httpTooManyRedirects, .redirectToNonExistentLocation:
         return fail(
           "\(host) keeps redirecting to itself. If it is behind Cloudflare, set SSL/TLS to Full (strict) in "
             + "Cloudflare.")
       case .timedOut:
-        return fail("\(host) took too long to answer.\(isSupabase ? " \(Self.paused)" : "")")
+        return fail("\(host) took too long to answer.")
       default:
         // Refused, reset, or closed mid-answer, e.g. a captive portal or a proxy.
         return fail(onTailnet ? unreachable : "Couldn't reach \(host). Check the URL and your connection.")
@@ -251,9 +230,6 @@ public struct Backend: Sendable, Hashable {
           + "Cloudflare.")
     }
     let status = res.statusCode
-    if isSupabase && status != 200 && status != 404 {
-      return fail("Your Supabase project \(host) doesn't answer (\(status)). \(Self.paused)")
-    }
     if (520...530).contains(status)
       && (res.value(forHTTPHeaderField: "cf-ray") != nil
         || res.value(forHTTPHeaderField: "server")?.lowercased() == "cloudflare")
@@ -264,8 +240,8 @@ public struct Backend: Sendable, Hashable {
     }
     if status == 502 || status == 503 || status == 504 {
       return fail(
-        "\(host) answers, but the PocketTerm server behind it doesn't (\(status)). On a VPS, check that it runs: "
-          + "`docker compose ps` and `docker compose logs server`.")
+        "\(host) answers, but the PocketTerm server behind it doesn't (\(status)). Check that PocketTerm runs on "
+          + "the computer that serves it.")
     }
     if status == 404 { return fail(noServer) }
     if status != 200 { return fail("The server answered with an error (\(status)).") }
@@ -273,12 +249,8 @@ public struct Backend: Sendable, Hashable {
     if version > Self.protocol { return fail("Your server is newer than this app. Update PocketTerm, then retry.") }
     if let serverVersion = health["version"]?.string, Self.olderThan(serverVersion, Self.minServer) {
       return fail(
-        isSupabase
-          ? "Your Supabase project runs PocketTerm \(serverVersion); this app needs \(Self.minServer) or newer. Set "
-            + "PocketTerm up on Supabase again from a computer (it updates the project), then retry."
-          : "Your server runs PocketTerm server \(serverVersion); this app needs \(Self.minServer) or newer. Update the "
-            + "server (on a VPS: `docker compose pull && docker compose up -d`; built into PocketTerm on a "
-            + "computer: update PocketTerm there), then retry.")
+        "Your server runs PocketTerm server \(serverVersion); this app needs \(Self.minServer) or newer. Update "
+          + "PocketTerm on the computer that runs it, then retry.")
     }
     let time = DartDate.tryParse(health["time"]?.string ?? "")
     // The server read its clock about halfway through the round trip.
@@ -296,11 +268,7 @@ public struct Backend: Sendable, Hashable {
       + "time settings."
   }
 
-  var noServer: String {
-    isSupabase
-      ? "PocketTerm isn’t set up on this Supabase project. Set it up from a computer: PocketTerm, Supabase."
-      : "No PocketTerm server answers at this URL."
-  }
+  var noServer: String { "No PocketTerm server answers at this URL." }
 
   /// Whether version [a] (`1.2.3`) comes before [b].
   static func olderThan(_ a: String, _ b: String) -> Bool {
@@ -316,15 +284,15 @@ public struct Backend: Sendable, Hashable {
     return false
   }
 
-  /// The server this device was connected to, if any. One saved by an app from before (a Supabase
-  /// project, which came with a key) isn't one.
+  /// The server this device was connected to, if any. One an app from before saved for a Supabase
+  /// project (with a key, or with kind `supabase`) isn't one.
   public static func load(from store: BackendStore) -> Backend? {
-    guard let saved = store.loadBackend(), !saved.legacy else { return nil }
-    return parse(saved.url, kind: saved.kind == BackendKind.supabase.rawValue ? .supabase : .pocketterm).backend
+    guard let saved = store.loadBackend(), !saved.legacy, saved.kind != supabaseKind else { return nil }
+    return parse(saved.url).backend
   }
 
   public func save(to store: BackendStore) {
-    store.saveBackend(url: url, kind: isSupabase ? kind.rawValue : nil)
+    store.saveBackend(url: url, kind: nil)
   }
 
   public static func clear(in store: BackendStore) { store.saveBackend(url: nil, kind: nil) }

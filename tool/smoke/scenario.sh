@@ -6,9 +6,9 @@
 #
 #   tool/smoke/run.sh prepare                    first, for a copy never set up
 #   tool/smoke/scenario.sh <name>…               these, in this order when several:
-#     wizard     On this computer: the Tailscale checklist through each state
-#                (stopped, signed out, HTTPS off, port 443 taken, all done), Start
-#                enabled only when all is done; Start, then Get this computer ready
+#     wizard     The setup page: Join another computer's PocketTerm… and back, then the Tailscale
+#                checklist through each state (stopped, signed out, HTTPS off, port 443 taken, all
+#                done), Start enabled only when all is done; Start, then Get this computer ready
 #     getready   Get this computer ready: its rows, then Done opens Settings
 #     settings   Settings: each tab, How your data is protected (Read…), the status bar
 #     theme      Settings → Account → Theme: each theme, kept in the copy's preferences, each tab
@@ -141,10 +141,21 @@ wizard() {
     return
   fi
   tailscale_as Stopped on free
-  if has 'Set up PocketTerm'; then press 'On this computer'; fi
+  # One page: no choose screen; the checklist is on it.
+  shows 'Set up PocketTerm'
   shows 'This list checks itself as you go.'
   shows 'What is Tailscale, and why?'
   shows 'Your phone needs the Tailscale app too, signed in to the same Tailscale account.'
+  hides 'On my own server' 1
+  hides 'Supabase' 1
+
+  step 'Join another computer’s PocketTerm…'
+  press 'Join another computer’s PocketTerm…'
+  shows 'Join another computer’s PocketTerm'
+  shows 'Connect'
+  shot wizard-0-join
+  press Back
+  shows 'Set up PocketTerm'
 
   # Each state's first check is a copy only it shows: the list has looked again by then.
   step 'Tailscale stopped'
@@ -175,7 +186,7 @@ wizard() {
   shows 'Signed in to Tailscale'
   shows 'Turn on HTTPS certificates'
   shows 'Turn on HTTPS…'
-  shows 'Use my own server instead'
+  hides 'Use my own server instead' 1
   hides 'HTTPS certificates are on'
   check 'Start is disabled' disabled Start
   shot wizard-3-https-off

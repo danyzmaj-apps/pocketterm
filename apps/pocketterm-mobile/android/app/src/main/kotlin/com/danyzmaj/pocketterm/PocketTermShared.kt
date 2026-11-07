@@ -28,7 +28,7 @@ object PocketTermShared {
     /** The connected server's URL. */
     fun backendUrl(c: Context): String? = prefs(c).getString("backendUrl", null)
 
-    /** What kind of server it is: "supabase", or null for a PocketTerm server. */
+    /** "supabase" when an app from before saved a Supabase project (forgotten at launch), else null. */
     fun backendKind(c: Context): String? = prefs(c).getString("backendKind", null)
 
     /** The key an app from before saved with a Supabase project, if any: its URL is no PocketTerm server. */

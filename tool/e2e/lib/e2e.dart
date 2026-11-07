@@ -30,7 +30,6 @@ class E2eConfig {
     required this.setupLink,
     required this.phone,
     required this.terminalPath,
-    this.supabaseTokenFile,
     this.phoneOnly,
     this.desktopOnly,
   });
@@ -43,7 +42,6 @@ class E2eConfig {
     setupLink: j['setupLink'] as String,
     phone: j['phone'] as bool,
     terminalPath: j['terminalPath'] as String,
-    supabaseTokenFile: j['supabaseTokenFile'] as String?,
     phoneOnly: (j['phoneOnly'] as List?)?.cast<String>(),
     desktopOnly: (j['desktopOnly'] as List?)?.cast<String>(),
   );
@@ -62,23 +60,13 @@ class E2eConfig {
   /// short): the home, the projects, the sockets.
   final String work;
 
-  /// The server's URL, or `builtin`: the desktop's own ("On this
-  /// computer"), which makes its links itself ([setupLink] is empty), or
-  /// `supabase-cloud`: a new project the setup's Supabase branch makes with
-  /// the access token in [supabaseTokenFile] ([setupLink] is empty).
+  /// The server's URL (`local`: the run's sidecar, joined by its setup
+  /// link), or `builtin`: the desktop's own ("On this computer"), which
+  /// makes its links itself ([setupLink] is empty).
   final String serverUrl;
   final String setupLink;
 
   bool get builtIn => serverUrl == 'builtin';
-  bool get supabaseCloud => serverUrl == 'supabase-cloud';
-
-  /// The file with the Supabase personal access token (its path only: the
-  /// token stays out of the config and the artifacts).
-  final String? supabaseTokenFile;
-
-  /// The ref of the project the run made on Supabase, written as soon as it
-  /// exists: bin/run.dart deletes that project after the run.
-  String get supabaseProject => p.join(artifacts, 'supabase-project.txt');
 
   /// Whether the phone's phases run (else the desktop goes on alone and the
   /// checks of what the phone did are skipped).
@@ -110,7 +98,6 @@ class E2eConfig {
     'setupLink': setupLink,
     'phone': phone,
     'terminalPath': terminalPath,
-    'supabaseTokenFile': ?supabaseTokenFile,
     'phoneOnly': ?phoneOnly,
     'desktopOnly': ?desktopOnly,
   };

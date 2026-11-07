@@ -101,6 +101,56 @@ nonisolated final class AppModelTests: XCTestCase {
     XCTAssertEqual(prefs.stringList(TipsController.seenKey), ["slash"])
   }
 
+  /// A phone on a Supabase project (PocketTerm 0.2): signed out here with a note, the person's choices kept;
+  /// once the computer's new code signs it in, the note goes.
+  @MainActor func testAPhoneOnSupabaseIsSignedOutWithANoteOnce() async throws {
+    let prefs = Preferences(defaults)
+    prefs.setString("theme", "dawn")
+    let store = MemoryBackendStore()
+    store.saved = ("https://abcdefghijklmnop.supabase.co", "supabase", false)
+    let tokens = MemoryDeviceTokens()
+    try await tokens.write("old")
+    var native = PhoneNative.fake
+    try native.setChannelKey(ChannelKey.generate(), "abcd1234")
+    var ended = false
+    native.endAllActivities = { ended = true }
+    let app = AppModel(prefs: prefs, device: "test", deviceTokens: tokens, backendStore: store, native: native)
+
+    await app.launch()
+
+    XCTAssertNil(store.saved)
+    XCTAssertNil(app.backend)
+    XCTAssertNil(app.user)
+    let token = try await tokens.read()
+    XCTAssertNil(token)
+    XCTAssertTrue(native.channelKeys().isEmpty)
+    XCTAssertTrue(ended, "followed sessions end")
+    XCTAssertEqual(app.movedNote, "Your computer's PocketTerm now runs its own server. Scan its new code.")
+    XCTAssertEqual(prefs.string("theme"), "dawn")
+
+    let account = Account(id: "server-1", device: Device(id: "phone-1", role: .phone, label: "Phone", platform: "ios"))
+    await app.onSignedIn(account)
+    XCTAssertNil(app.movedNote, "shown once")
+  }
+
+  /// Any other server stays: a computer's on Tailscale, or one on a VPS (that computer moves; this phone then
+  /// scans its new code).
+  @MainActor func testAPhoneOnAPocketTermServerKeepsIt() async throws {
+    for url in ["https://my-mac.tail1234.ts.net", "https://pt.example.com"] {
+      let store = MemoryBackendStore()
+      store.saved = (url, nil, false)
+      let tokens = MemoryDeviceTokens()
+      try await tokens.write("kept")
+      let app = AppModel(
+        prefs: Preferences(defaults), device: "test", deviceTokens: tokens, backendStore: store, native: .fake)
+      await app.leaveSupabase()
+      XCTAssertEqual(store.saved?.url, url)
+      let token = try await tokens.read()
+      XCTAssertEqual(token, "kept", url)
+      XCTAssertNil(app.movedNote, url)
+    }
+  }
+
   @MainActor func testRowNamesAndColoursAreKeptPerComputer() {
     let app = AppModel(
       prefs: Preferences(defaults), device: "test", deviceTokens: MemoryDeviceTokens(),

@@ -132,7 +132,7 @@ final class ControllerTests: XCTestCase {
   func testAtLaunchSignedInItStartsInTheBackground() async {
     let prefs = MemoryPreferenceStore()
     prefs.setBool("first_sign_in_done", true)
-    Backend(url: "https://pt.example.com").save(to: PreferencesBackendStore(prefs))
+    Backend(url: "https://my-mac.tail1234.ts.net").save(to: PreferencesBackendStore(prefs))
     let app = TestApp(prefs: prefs)
     await app.start()
     XCTAssertNotNil(app.user)
@@ -140,9 +140,71 @@ final class ControllerTests: XCTestCase {
   }
 
   @MainActor
+  func testAtLaunchAComputerOnAVpsIsSignedOutOnceAndTheSetupSaysWhy() async throws {
+    let prefs = MemoryPreferenceStore()
+    let secrets = ControllerSecrets()
+    try await SecretDeviceTokens(secrets).write("kept-sign-in")
+    Backend(url: "https://pt.example.com").save(to: PreferencesBackendStore(prefs))
+    let app = TestApp(prefs: prefs, secrets: secrets)
+    await app.start()
+    XCTAssertNil(app.user)
+    XCTAssertNil(app.backend)
+    XCTAssertNil(prefs.string("backend_url"))
+    let tokens = try await SecretDeviceTokens(secrets).read()
+    XCTAssertNil(tokens, "signed out here")
+    XCTAssertEqual(app.fakeHost.calls, ["start", "showMain"])
+    XCTAssertTrue(app.movedNote?.hasPrefix("PocketTerm now runs its server on this computer") == true)
+    // The VPS is told, in the background.
+    for _ in 0..<100 where app.fakeServer?.left != true { try await Task.sleep(nanoseconds: 10_000_000) }
+    XCTAssertEqual(app.fakeServer?.left, true)
+    XCTAssertEqual(app.fakeServer?.backend.url, "https://pt.example.com")
+
+    // Launched again: nothing more to do; the note stays until a sign-in.
+    let again = TestApp(prefs: prefs, secrets: secrets)
+    await again.start()
+    XCTAssertNil(again.fakeServer)
+    XCTAssertNotNil(again.movedNote)
+    await again.signIn()
+    for _ in 0..<100 where again.movedNote != nil { try await Task.sleep(nanoseconds: 10_000_000) }
+    XCTAssertNil(again.movedNote, "shown once")
+  }
+
+  @MainActor
+  func testAtLaunchAComputerOnSupabaseIsSignedOutWithoutAskingIt() async throws {
+    for kept in [("backend_kind", "supabase"), ("backend_key", "sb_publishable_x")] {
+      let prefs = MemoryPreferenceStore()
+      let secrets = ControllerSecrets()
+      try await SecretDeviceTokens(secrets).write("kept-sign-in")
+      prefs.setString("backend_url", "https://abcdefghijklmnop.supabase.co")
+      prefs.setString(kept.0, kept.1)
+      let app = TestApp(prefs: prefs, secrets: secrets)
+      await app.start()
+      XCTAssertNil(app.user, kept.0)
+      XCTAssertNil(app.fakeServer, "Supabase isn't spoken to")
+      XCTAssertNil(prefs.string("backend_url"), kept.0)
+      XCTAssertFalse(prefs.contains(kept.0), kept.0)
+      let tokens = try await SecretDeviceTokens(secrets).read()
+      XCTAssertNil(tokens, kept.0)
+      XCTAssertNotNil(app.movedNote, kept.0)
+    }
+  }
+
+  @MainActor
+  func testAtLaunchAComputerOnTailscaleOrItsOwnServerStaysSignedIn() async {
+    for url in ["https://other-mac.tail1234.ts.net", "http://127.0.0.1:47900"] {
+      let prefs = MemoryPreferenceStore()
+      Backend(url: url).save(to: PreferencesBackendStore(prefs))
+      let app = TestApp(prefs: prefs)
+      await app.start()
+      XCTAssertNotNil(app.user, url)
+      XCTAssertNil(app.movedNote, url)
+    }
+  }
+
+  @MainActor
   func testTheHostsMenuItemsOpenTheWindowAndQuittingWaitsForOnQuit() async {
     let prefs = MemoryPreferenceStore()
-    Backend(url: "https://pt.example.com").save(to: PreferencesBackendStore(prefs))
+    Backend(url: "https://my-mac.tail1234.ts.net").save(to: PreferencesBackendStore(prefs))
     let app = TestApp(prefs: prefs)
     await app.start()
     var release: CheckedContinuation<Void, Never>?
@@ -222,14 +284,12 @@ final class ControllerTests: XCTestCase {
     app.setCodingAgent(.claude)
     app.setProjectRoots(["/Users/me/Dev"])
     app.setSetupStep("thisComputer")
-    app.setSetupAddress("203.0.113.7")
     app.setGetReadyDone(true)
     XCTAssertEqual(prefs.string("terminal_app"), "kitty")
     XCTAssertEqual(prefs.string("session_placement"), "newWindow")
     XCTAssertEqual(prefs.string("coding_agent"), "claude")
     XCTAssertEqual(prefs.stringList("project_roots"), ["/Users/me/Dev"])
     XCTAssertEqual(prefs.string("setup_step"), "thisComputer")
-    XCTAssertEqual(prefs.string("setup_address"), "203.0.113.7")
     XCTAssertEqual(prefs.bool("get_ready_done"), true)
     app.setSetupStep(nil)
     XCTAssertFalse(prefs.contains("setup_step"))

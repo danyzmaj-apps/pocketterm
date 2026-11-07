@@ -30,7 +30,7 @@ nonisolated final class SetupTests: XCTestCase {
   func testASetupCodeCarryingAKeyIsNotAPocketTermCode() {
     XCTAssertEqual(
       ScannedCode.read(
-        ["pocketterm://setup?url=https://abcd.supabase.co&key=sb_publishable_x&code=K7QM"], signedIn: false),
+        ["pocketterm://setup?url=https://abcd.example.com&key=pk_x&code=K7QM"], signedIn: false),
       .problem(ScannedCode.notOurs))
   }
 

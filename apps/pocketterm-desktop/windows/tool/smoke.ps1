@@ -180,7 +180,7 @@ try {
   if ($LASTEXITCODE -or -not $setupLink.StartsWith('pocketterm://setup')) { throw "no setup link: $setupLink" }
   Write-Host "server at $serverUrl"
 
-  Step 'Join another computer: paste the local server's setup link (test builds take any URL), connect'
+  Step 'Join another computer: paste the local server''s setup link (test builds take any URL), connect'
   Press (Wait 'setup-join')
   SetText (Wait 'setup-link') $setupLink
   Wait 'setup-link-health' | Out-Null
@@ -240,7 +240,7 @@ try {
   Wait 'setup-link' | Out-Null
   Shot 'setup-again'
   Until 'the first screen' {
-    if (Find 'setup-this-computer') { return $true }
+    if (Find 'setup-start-server') { return $true }
     if ($b = Find 'setup-back') { Press $b }
     $false
   } 30 | Out-Null

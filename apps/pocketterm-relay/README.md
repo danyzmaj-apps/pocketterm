@@ -105,7 +105,7 @@ The originals are in the publisher's `~/Dev/keys/` (`pocketterm-relay-x25519.key
 `pocketterm-fcm-service-account.json`). To replace one:
 
 ```sh
-ssh deploy@server.danyzmaj.com 'sudo install -m 644 -o root -g runner /dev/stdin /etc/danyzmaj/pocketterm-relay/apns.p8' < ~/Dev/keys/AuthKey_<id>.p8
+ssh deploy@ssh.danyzmaj.com 'sudo install -m 644 -o root -g runner /dev/stdin /etc/danyzmaj/pocketterm-relay/apns.p8' < ~/Dev/keys/AuthKey_<id>.p8
 ```
 
 then redeploy (Baker → _Relay_ → _Deploy_).

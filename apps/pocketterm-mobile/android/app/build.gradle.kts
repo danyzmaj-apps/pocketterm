@@ -38,9 +38,9 @@ android {
         // 26: adaptive icons, notification channels, and the AES-GCM the channel keys need.
         minSdk = 26
         targetSdk = 36
-        // Release scripts pass the store's numbers; the defaults are the last Flutter release's (0.1.7+22).
+        // Release scripts pass the store's numbers; the default name is the current release; the code carries on from the last Flutter build (22).
         versionCode = providers.gradleProperty("versionCode").map { it.toInt() }.getOrElse(22)
-        versionName = providers.gradleProperty("versionName").getOrElse("0.1.7")
+        versionName = providers.gradleProperty("versionName").getOrElse("1.0.0")
         buildConfigField("boolean", "FIREBASE", "$firebase")
     }
 

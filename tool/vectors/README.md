@@ -66,7 +66,7 @@ The rules (`ReplayGuard.check`):
 ### `links`
 | key | schema |
 | --- | --- |
-| `parse` | `Backend.parse(input, kind)` gives `backend` `{url, kind, api, host, onTailnet, unreachable}` or `null`, plus `error` (worded for the user). Plain http is allowed only to `localhost`, `::1` or `127.*` |
+| `parse` | `Backend.parse(input, kind)` gives `backend` `{url, kind, api, host, onTailnet, unreachable}` or `null`, plus `error` (worded for the user). Plain http is allowed only to `localhost`, `::1` or `127.*`. Every case has `kind` `pocketterm`, the only backend kind left |
 | `build` | links a backend makes (`link`, `linkWithSetup`, `linkWithCode` with an optional `computer {desktop, keyHex}`) as `Uri.toString()` (query values percent-encoded) |
 | `read` | a `link` string read as Dart's `Uri.parse` does (in `queryParameters`, `+` decodes as a space), giving `backend` `{url, kind}`, `pairingCode`, `setupToken` and `computerKey` `{desktop, keyHex}`, each `null` when absent. A link with `key=`, or an unknown `kind`, is no link |
 | `clockWarning` | `offsetSeconds` (server ahead of device; `null` = unknown) → `warning`, or `null` within ±2 min. Minutes are rounded half away from zero (150 s → 3), as Dart's `round()` does |

@@ -14,7 +14,6 @@ import kotlin.concurrent.thread
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -146,18 +145,10 @@ class BackendTest {
     }
 
     @Test
-    fun `a Supabase project's links say so, and every link made from it keeps saying so`() {
-        val b = Backend("https://abcdefghijklmnop.supabase.co", BackendKind.supabase)
-        assertEquals("https://abcdefghijklmnop.supabase.co/functions/v1/pocketterm", b.api)
-        val key = ChannelKey.generate()
-        for (link in listOf(b.link, b.linkWithSetup("abc"), b.linkWithCode("K7QM", computer = ComputerKey("abcd1234", key)))) {
-            assertEquals(b, Backend.fromLink(link), link)
-        }
-        assertEquals("abc", Backend.setupToken(b.linkWithSetup("abc")))
-        // The same URL as a PocketTerm server is another server.
-        assertNotEquals(b, Backend.fromLink("pocketterm://setup?url=https://abcdefghijklmnop.supabase.co"))
-        // The function's own URL, pasted, is the project.
-        assertEquals(b, Backend.parse("https://abcdefghijklmnop.supabase.co/functions/v1/pocketterm/v1", BackendKind.supabase).backend)
+    fun `a link of another kind, a Supabase project's included, is no link it can use`() {
+        val supabase = "pocketterm://setup?kind=supabase&url=https://abcdefghijklmnop.supabase.co&setup=abc"
+        assertNull(Backend.fromLink(supabase))
+        assertNull(Backend.setupToken(supabase))
         // A kind this app doesn't know is no link it can use.
         val unknown = "pocketterm://setup?kind=firebase&url=https://x.example.com&setup=abc"
         assertNull(Backend.fromLink(unknown))
@@ -262,7 +253,7 @@ class BackendTest {
     @Test
     fun `a server older than this app needs says to update it`() = runBlocking<Unit> {
         val old = answering { _, _ -> json(jsonEncode(jsonOf("pocketterm" to 1, "version" to "0.0.9"))) }
-        assertTrue(old.check()!!.contains("Update the server"))
+        assertTrue(old.check()!!.contains("Update PocketTerm on that computer"))
         val newer = answering { _, _ -> json(jsonEncode(jsonOf("pocketterm" to 1, "version" to "0.10.0"))) }
         assertNull(newer.check())
     }
@@ -281,14 +272,12 @@ class BackendTest {
     @Test
     fun `a phone's is where its native side reads it`() = runBlocking<Unit> {
         val backend = Backend("https://pt.example.com")
-        val supabase = Backend("https://abcdefghijklmnop.supabase.co", BackendKind.supabase)
         val native = BackendOnlyNative()
         backend.save(native)
         assertEquals(mapOf("url" to backend.url, "kind" to null), native.saved)
         assertEquals(backend, Backend.load(native))
-        supabase.save(native)
-        assertEquals(mapOf("url" to supabase.url, "kind" to "supabase"), native.saved)
-        assertEquals(supabase, Backend.load(native))
+        native.saved = mapOf("url" to "https://abcdefghijklmnop.supabase.co", "kind" to "supabase")
+        assertNull(Backend.load(native), "a Supabase project")
         native.saved = mapOf("url" to "https://abc.supabase.co", "key" to "sb_x")
         assertNull(Backend.load(native), "a Supabase project from an app before")
         Backend.clear(native)

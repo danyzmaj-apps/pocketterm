@@ -1,8 +1,8 @@
 # PocketTerm push relay
 
 The one service that can reach PocketTerm's phones through Apple (APNs) and Google (FCM), because it holds the
-publisher's APNs key and Firebase service account. Every PocketTerm server sends its pushes here. It runs on the
-publisher's own server, at **https://push.danyzmaj.com**.
+publisher's APNs key and Firebase service account. Every PocketTerm server (the one built into each desktop app) sends
+its pushes here. It runs on danyzmaj-server, at **https://push.danyzmaj.com**.
 
 It stores nothing. It can't read your notifications. What it and everyone around it can see is in
 [SECURITY.md](SECURITY.md).
@@ -63,8 +63,8 @@ The relay's public key ships in the server package (`defaultRelayKey` in
 VjwMi0GtvYoVT3Q9FlENy/dQOVe0vuqU8K4t+fw3fHc=
 ```
 
-The relay logs it at start (`listening`), so you can check the two match. A fork running its own relay sets
-`PUSH_RELAY_URL` and `PUSH_RELAY_KEY` on its servers.
+The relay logs it at start (`listening`), so you can check the two match. A fork running its own relay sets `--relay`
+and `--relay-key` (`PUSH_RELAY_URL`, `PUSH_RELAY_KEY`) on its desktop apps' built-in servers.
 
 ## Code
 
@@ -89,8 +89,8 @@ deno task test
 It runs on danyzmaj-server as app `pocketterm-relay`
 ([connect-an-app](https://github.com/danyzmaj-apps/danyzmaj-server/blob/master/docs/connect-an-app.md)): `Dockerfile`
 (Deno, non-root, read-only filesystem, no capabilities) and `deploy/compose.yaml`. [Baker](https://baker.danyzmaj.com)'s
-_Relay_ workflow (project `pocketterm-mobile`) tests it and deploys it on every push to `main` that touches this folder,
-or on _Deploy_ in Baker.
+_Relay_ workflow (project `pocketterm-android`) tests it and deploys it on every push to `main` that touches this
+folder, or on _Deploy_ in Baker.
 
 Settings and secrets live on the server only, in `/etc/danyzmaj/pocketterm-relay/` (folder `750 root:runner`):
 
@@ -124,8 +124,8 @@ request was sealed to (a request without `kid` is tried with each key).
 3. In `deploy/compose.yaml`, add the secret `relay_key_previous` (file `relay-x25519-previous.key`) to the service and
    the `secrets:` list, and redeploy. The `listening` log line shows both `publicKey` and `previousKey`.
 4. Put the new public key (`publicKey` in that log line) in `defaultRelayKey` and release the server.
-5. Once servers have updated (months: self-hosted servers update rarely), drop the previous key and its secret. For a
-   leaked key skip the wait: servers still on it get `400` until they update.
+5. Once servers have updated (they update with the desktop apps, which users may not do for months), drop the previous
+   key and its secret. For a leaked key skip the wait: servers still on it get `400` until they update.
 
 The public route is in danyzmaj-server's `monitoring/cloudflared/config.yml`: only `/v1/push` and `/health` reach the
 container; everything else is `404`.

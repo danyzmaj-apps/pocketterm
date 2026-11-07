@@ -207,13 +207,13 @@ public class AppControllerTests
         app.SetPlacement(Placement.NewWindow);
         app.SetCodingAgent(Agent.Claude);
         app.SetProjectRoots([@"C:\Users\me\code"]);
-        app.SetSetupStep("vps");
+        app.SetSetupStep("join");
         app.SetGetReadyDone(true);
         Assert.Equal("wezterm", app.Prefs.GetString("terminal_app"));
         Assert.Equal("newWindow", app.Prefs.GetString("session_placement"));
         Assert.Equal("claude", app.Prefs.GetString("coding_agent"));
         Assert.Equal([@"C:\Users\me\code"], app.Prefs.GetStringList("project_roots"));
-        Assert.Equal("vps", app.Prefs.GetString("setup_step"));
+        Assert.Equal("join", app.Prefs.GetString("setup_step"));
         Assert.True(app.Prefs.GetBool("get_ready_done"));
         app.SetSetupStep(null);
         Assert.Null(app.SetupStep);

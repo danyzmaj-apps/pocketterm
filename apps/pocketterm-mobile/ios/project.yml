@@ -20,7 +20,7 @@ packages:
 settings:
   base:
     # The version the store shows, and the build number every upload raises (release scripts bump these).
-    MARKETING_VERSION: 0.1.7
+    MARKETING_VERSION: 1.0.0
     CURRENT_PROJECT_VERSION: 22
     SWIFT_VERSION: "6.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"

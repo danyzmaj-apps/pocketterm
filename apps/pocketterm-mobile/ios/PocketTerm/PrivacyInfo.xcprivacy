@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<!-- PocketTerm tracks no one and collects nothing for itself: everything goes through
-	     the user's own Supabase project. -->
+	     the PocketTerm server on the user's own computer. -->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>

@@ -6,8 +6,8 @@ using PocketTerm.Desktop;
 namespace PocketTerm.App.Components;
 
 /// <summary>
-/// Settings → Account → "Add a computer…" (showAddComputer): the setup link another computer pastes (Your own
-/// server) to join this computer's server through Tailscale. <c>how</c> says what the other computer does with it.
+/// Settings → Account → "Add a computer…" (showAddComputer): the setup link another computer pastes (Join another
+/// computer's PocketTerm…) to join this computer's server through Tailscale. <c>how</c> says what the other computer does with it.
 /// </summary>
 internal static class AddComputerDialog
 {

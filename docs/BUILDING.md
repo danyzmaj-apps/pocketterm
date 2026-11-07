@@ -6,7 +6,7 @@
 - **Android:** a JDK 17 (`brew install openjdk@17`, or Android Studio's) and the Android SDK (Android Studio, or the command-line tools) with platform 37 and build-tools 36. The Gradle wrapper (`apps/pocketterm-mobile/android/gradlew`) fetches the rest.
 - **Windows app:** a Windows 10 1809+ or 11 PC with the .NET 8 SDK (or Visual Studio 2022 17.10+ with the .NET desktop workload), and [Inno Setup 6](https://jrsoftware.org/isinfo.php) for the installer (`winget install JRSoftware.InnoSetup`). The WinUI app builds only on Windows; its libraries and tests build anywhere with the .NET 8 SDK.
 - **Dart, for the server:** [fvm](https://fvm.app). The built-in server the desktop apps bundle, the server itself, the relay's test vectors and the end-to-end harness are Dart. `.fvmrc` pins a Flutter release only because fvm pins Dart through one: it is that release's Dart (3.13.4) that `fvm dart` runs, and the apps don't use Flutter. CI on Windows installs the same Dart with `dart-lang/setup-dart`.
-- **Server and relay:** Docker to build the server's image, and [Deno](https://deno.com) for the relay's and the integrations' checks. PocketTerm on a local Supabase (`tool/supabase-local.sh`) needs the [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started) and Docker (colima's socket unless `DOCKER_HOST` is set).
+- **Relay and integrations:** [Deno](https://deno.com) for the relay's and the integrations' checks.
 
 ```sh
 # at the repo root, once
@@ -20,7 +20,7 @@ fvm dart pub get   # the Dart workspace: packages/pocketterm_server, apps/pocket
 | `apps/pocketterm-desktop/windows` | Windows app (`PocketTerm.sln`) | .NET 8 |
 | `apps/pocketterm-mobile/ios` | iPhone app | Xcode, on `packages/PocketTermKit` |
 | `apps/pocketterm-mobile/android` | Android app (`:app`) and its protocol core (`:core`) | Gradle |
-| `packages/pocketterm_server`, `apps/pocketterm-server` | The PocketTerm server and its Docker distribution | Dart |
+| `packages/pocketterm_server`, `apps/pocketterm-server` | The PocketTerm server and its program (`bin/pocketterm_server.dart`), compiled by `tool/server-sidecar.sh`/`.ps1` and bundled in the desktop apps | Dart |
 | `apps/pocketterm-relay` | The push relay | Deno |
 
 Each command below says which directory it runs in.
@@ -54,7 +54,7 @@ xcodebuild -project PocketTerm.xcodeproj -scheme PocketTerm -configuration Debug
 open build/Build/Products/Debug/PocketTerm.app    # or open PocketTerm.xcodeproj and run the PocketTerm scheme
 ```
 
-The build bundles the built-in server ("On this computer"): `tool/server-sidecar.sh` compiles the Dart server (fvm's Dart) into `build/server-sidecar/`, and the build does that itself when it's missing or older than the server's code; `macos/scripts/bundle-resources.sh` puts it at `Contents/Helpers/pocketterm-server` with `integrations/`, `supabase/` and the theme icons. The first time, and whenever a provisioning profile expires (yearly), keep `-allowProvisioningUpdates` so Xcode fetches profiles.
+The build bundles the built-in server ("On this computer"): `tool/server-sidecar.sh` compiles the Dart server (fvm's Dart) into `build/server-sidecar/`, and the build does that itself when it's missing or older than the server's code; `macos/scripts/bundle-resources.sh` puts it at `Contents/Helpers/pocketterm-server` with `integrations/` and the theme icons. The first time, and whenever a provisioning profile expires (yearly), keep `-allowProvisioningUpdates` so Xcode fetches profiles.
 
 A free Apple ID can build and run the Mac app for yourself. Notarized releases need a paid account ([RELEASING.md](RELEASING.md)).
 
@@ -172,9 +172,7 @@ fvm dart run apps/pocketterm-server/bin/pocketterm_server.dart serve \
 fvm dart run apps/pocketterm-server/bin/pocketterm_server.dart setup-link --data build/local-server --public-url http://127.0.0.1:47900
 ```
 
-Paste that link in the desktop app (**On my own server**) to sign the computer in, then add a phone with **Settings → Phone → Add a phone…**. `pocketterm-server help` lists every option. Pushes go through the publisher's relay unless you pass `--relay`. A phone on a device (not the Simulator) can't reach `127.0.0.1`; for one, pick **On this computer**, the server built into the desktop app.
-
-PocketTerm on a local Supabase instead: `tool/supabase-local.sh start`, then `tool/supabase-local.sh link` prints a computer's setup link for it, pasted the same way under **Supabase → Paste a setup link** ([apps/pocketterm-desktop/supabase/README.md](../apps/pocketterm-desktop/supabase/README.md#running-it-locally)).
+Paste that link in a test build of the desktop app (**Join another computer's PocketTerm…**; other builds take only `*.ts.net` addresses) to sign the computer in, then add a phone with **Settings → Phone → Add a phone…**. `pocketterm-server help` lists every option. Pushes go through the publisher's relay unless you pass `--relay`. A phone on a device (not the Simulator) can't reach `127.0.0.1`; for one, pick **On this computer**, the server built into the desktop app.
 
 ## Checks
 
@@ -182,7 +180,7 @@ The checks to run before a pull request, and which of them CI runs (Baker on the
 
 [Maestro](https://maestro.mobile.dev) drives the phone app. `apps/pocketterm-mobile/maestro/demo.yaml` walks through the demo (dismissing the first-use tips with `tips.yaml`) and needs no server (`maestro test apps/pocketterm-mobile/maestro/demo.yaml`, the app signed out). Set `appId` in a flow to your bundle id.
 
-The whole path, end to end, runs on a Mac with `tool/e2e/run.sh`: a server (`--server local`, the default; `builtin`, the one in the desktop app over Tailscale; `supabase`, PocketTerm on a local Supabase; `supabase-cloud`, a new project on supabase.com made by the desktop's own setup and deleted after; or a server's URL with its setup link), the real desktop app, throwaway kitty, Ghostty, WezTerm and iTerm2 windows with a fake omp, and the phone in the Simulator or an Android emulator (`--platform android --avd <name>`), which signs in with the computer's **Add a phone…** code (`apps/pocketterm-mobile/maestro/e2e/`). It prints a pass/fail table; artifacts go to `build/e2e/<stamp>/`. `tool/e2e/bin/run.dart` describes every option; [TESTING.md](TESTING.md) what each run covers.
+The whole path, end to end, runs on a Mac with `tool/e2e/run.sh`: a server (`--server local`, the default; or `builtin`, the one in the desktop app over Tailscale), the real desktop app, throwaway kitty, Ghostty, WezTerm and iTerm2 windows with a fake omp, and the phone in the Simulator or an Android emulator (`--platform android --avd <name>`), which signs in with the computer's **Add a phone…** code (`apps/pocketterm-mobile/maestro/e2e/`). It prints a pass/fail table; artifacts go to `build/e2e/<stamp>/`. `tool/e2e/bin/run.dart` describes every option; [TESTING.md](TESTING.md) what each run covers.
 
 The installed app, as from Finder: `tool/smoke/run.sh prepare` builds a test build and copies it to a throwaway place, then `tool/smoke/scenario.sh wizard getready settings menubar quit` drives it through accessibility (the terminal running it needs Accessibility and Screen Recording). `tool/smoke/run.sh clean` removes what it made.
 

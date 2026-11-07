@@ -109,7 +109,13 @@ final class ControllerFakeServer: Server, @unchecked Sendable {
   func redeemCode(_ code: String, label: String, platform: String) async throws -> Account {
     throw ServerException(0, "offline", "Offline.")
   }
-  func leave() async throws {}
+  /// Whether this device left the server (DELETE /v1/devices/me).
+  var left: Bool {
+    get { lock.withLock { _left } }
+    set { lock.withLock { _left = newValue } }
+  }
+  private var _left = false
+  func leave() async throws { left = true }
   func erase() async throws {}
   func refused() async {}
   func createPairingCode() async throws -> String {
@@ -192,7 +198,7 @@ final class TestApp: AppController {
   }
 
   /// Signs in to the fake server.
-  func signIn() async { await connect(Backend(url: "https://pt.example.com")) }
+  func signIn() async { await connect(Backend(url: "https://my-mac.tail1234.ts.net")) }
 
   /// What went to the server's push, in order: the action and its body.
   var pushes: [JSONObject] = []

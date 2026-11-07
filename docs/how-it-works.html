@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PocketTerm: how the three setups work</title>
+<title>PocketTerm: how it works</title>
 <style>
   :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --text:#e7e9ee; --dim:#9aa1ad; --accent:#7c9cff; --ok:#4ade80; --warn:#fbbf24; --lock:#f472b6; }
   * { box-sizing: border-box; }
@@ -56,15 +56,14 @@
 </head>
 <body>
 <main>
-  <h1>PocketTerm: how the three setups work</h1>
-  <p class="lead">Your sessions always live on your computer. The only question is where the small PocketTerm server runs that connects your phone to it. In every setup, everything that matters is end-to-end encrypted between the computer and the phone.</p>
+  <h1>PocketTerm: how it works</h1>
+  <p class="lead">Your sessions always live on your computer, and so does the small PocketTerm server that connects your phone to it. The phone reaches it over your own Tailscale network, and everything that matters is end-to-end encrypted between the computer and the phone.</p>
 
   <div class="tabs">
-    <button class="on" data-p="local">On this computer (Tailscale)</button>
-    <button data-p="vps">On my own server (VPS)</button>
-    <button data-p="supabase">Supabase</button>
+    <button class="on" data-p="local">The built-in server</button>
+    <button data-p="more">More computers</button>
     <button data-p="crypto">Encryption and pairing</button>
-    <button data-p="compare">Side by side</button>
+    <button data-p="glance">At a glance</button>
   </div>
 
   <!-- ============ LOCAL ============ -->
@@ -124,7 +123,7 @@
     <h3>What happens, step by step</h3>
     <ol class="steps">
       <li><b>Setup wizard checks Tailscale</b><small>Installed, running, signed in, HTTPS certificates on, port 443 free. Each row turns green on its own; buttons install or open things only after you confirm.</small></li>
-      <li><b>The desktop app starts its own server</b><small>It listens on 127.0.0.1 only, so nothing on your Wi-Fi or the internet can reach it directly.</small></li>
+      <li><b>The desktop app starts the built-in server</b><small>It listens on 127.0.0.1 only, so nothing on your Wi-Fi or the internet can reach it directly.</small></li>
       <li><b>Tailscale publishes it privately</b><small><code>tailscale serve</code> gives it an HTTPS address like <code>https://your-computer.tail1234.ts.net</code> that only devices signed in to your Tailscale can open.</small></li>
       <li><b>You scan the QR code with your phone</b><small>The code carries the server address, a one-time pairing code and this computer's encryption key. It never goes through any server.</small></li>
       <li><b>The phone connects through its Tailscale app</b><small>From anywhere: home Wi-Fi, mobile data, a café. Tailscale makes a direct encrypted tunnel to your computer. If your tailnet has device approval on, approve the phone in Tailscale's admin console first.</small></li>
@@ -132,149 +131,51 @@
     </ol>
   </section>
 
-  <!-- ============ VPS ============ -->
-  <section class="panel" id="vps">
-    <svg viewBox="0 0 1060 520" role="img" aria-label="Own server setup diagram">
-      <rect class="zone home" x="20" y="60" width="330" height="420" rx="14"/>
-      <text class="zl" x="40" y="86" fill="#9aa1ad">Your computer(s)</text>
+  <!-- ============ MORE COMPUTERS ============ -->
+  <section class="panel" id="more">
+    <svg viewBox="0 0 1060 440" role="img" aria-label="Adding another computer">
+      <rect class="zone ts" x="20" y="20" width="1020" height="400" rx="18"/>
+      <text class="zl" x="40" y="46" fill="#7c9cff">Your private Tailscale network</text>
 
-      <rect class="box" x="45" y="110" width="280" height="70" rx="12"/>
-      <text class="t" x="61" y="138">omp / Claude Code</text>
-      <text class="s" x="61" y="160">in kitty, Ghostty+tmux, WezTerm</text>
+      <rect class="zone home" x="40" y="70" width="420" height="330" rx="14"/>
+      <text class="zl" x="60" y="94" fill="#9aa1ad">First computer</text>
 
-      <rect class="box mine" x="45" y="240" width="280" height="90" rx="12"/>
-      <text class="t" x="61" y="268">PocketTerm desktop</text>
-      <text class="s" x="61" y="290">connects OUT to your server</text>
-      <text class="s" x="61" y="308">(no ports opened at home)</text>
+      <rect class="box mine" x="70" y="120" width="360" height="90" rx="12"/>
+      <text class="t" x="86" y="148">PocketTerm desktop + built-in server</text>
+      <text class="s" x="86" y="170">Settings → Account → Add a computer…</text>
+      <text class="s" x="86" y="188">shows a setup link</text>
 
-      <rect class="box mine" x="45" y="370" width="280" height="80" rx="12" opacity=".55"/>
-      <text class="t" x="61" y="398" opacity=".7">Another computer (optional)</text>
-      <text class="s" x="61" y="420">joins the same server</text>
+      <rect class="box third" x="70" y="280" width="360" height="70" rx="12"/>
+      <text class="t" x="86" y="308">tailscale serve</text>
+      <text class="s" x="86" y="330">https://&lt;computer&gt;.ts.net → 127.0.0.1</text>
 
-      <rect class="zone net" x="400" y="60" width="300" height="420" rx="14"/>
-      <text class="zl" x="420" y="86" fill="#9aa1ad">Your VPS (any provider)</text>
+      <rect class="box mine" x="640" y="120" width="370" height="90" rx="12"/>
+      <text class="t" x="656" y="148">Another computer</text>
+      <text class="s" x="656" y="170">Join another computer's PocketTerm…</text>
+      <text class="s" x="656" y="188">paste the link; keeps its own key</text>
 
-      <rect class="box third" x="425" y="130" width="250" height="80" rx="12"/>
-      <text class="t" x="441" y="158">Caddy</text>
-      <text class="s" x="441" y="180">HTTPS certificate (Let's Encrypt)</text>
-      <text class="s" x="441" y="198">ports 80 + 443</text>
+      <rect class="box yours" x="640" y="280" width="370" height="90" rx="12"/>
+      <text class="t" x="656" y="308">PocketTerm phone</text>
+      <text class="s" x="656" y="330">scans each computer's QR once</text>
+      <text class="s" x="656" y="348">and picks one at the top</text>
 
-      <rect class="box mine" x="425" y="260" width="250" height="90" rx="12"/>
-      <text class="t" x="441" y="288">PocketTerm server</text>
-      <text class="s" x="441" y="310">Docker container</text>
-      <text class="s" x="441" y="328">relays sealed messages only</text>
-
-      <rect class="box" x="425" y="390" width="250" height="60" rx="12"/>
-      <text class="t" x="441" y="416">/data volume</text>
-      <text class="s" x="441" y="436">device list, computer names, codes</text>
-
-      <rect class="box yours" x="770" y="230" width="260" height="110" rx="12"/>
-      <text class="t" x="786" y="258">PocketTerm phone</text>
-      <text class="s" x="786" y="280">no Tailscale needed</text>
-      <text class="s" x="786" y="300">holds the computer's key</text>
-      <text class="s" x="786" y="320">(from scanning its QR)</text>
-
-      <rect class="box third" x="770" y="400" width="260" height="70" rx="12"/>
-      <text class="t" x="786" y="428">Push relay (optional)</text>
-      <text class="s" x="786" y="450">push.danyzmaj.com → Apple/Google</text>
-
-      <path class="flow plain" d="M185 180 V240"/>
-      <text class="lbl" x="195" y="216">local API</text>
-      <path class="flow e2e anim" d="M325 285 C370 285 380 170 425 170"/>
-      <text class="lbl" x="300" y="226">HTTPS + WebSocket</text>
-      <path class="flow e2e anim" d="M550 210 V260"/>
-      <path class="flow e2e anim" d="M675 170 C730 170 720 285 770 285"/>
-      <text class="lbl" x="690" y="150">HTTPS from anywhere</text>
-      <path class="flow plain" d="M550 350 V390"/>
-      <path class="flow push" d="M675 320 C720 360 730 430 770 435"/>
+      <path class="flow plain" d="M250 210 V280"/>
+      <path class="flow e2e anim" d="M430 315 C530 315 540 165 640 165"/>
+      <path class="flow e2e anim" d="M430 330 H640"/>
+      <text class="lbl" x="470" y="230">HTTPS inside Tailscale</text>
+      <text class="lbl" x="470" y="248">each computer seals with its own key</text>
     </svg>
     <div class="legend">
-      <span style="--c:#f472b6">sealed with the computer's key</span>
-      <span style="--c:#5b6475">local or storage</span>
-      <span style="--c:#fbbf24">push (opt-in), still sealed</span>
+      <span style="--c:#f472b6">sealed with each computer's own key</span>
+      <span style="--c:#5b6475">stays on the first computer</span>
     </div>
 
     <h3>What happens, step by step</h3>
     <ol class="steps">
-      <li><b>The wizard asks for your server's address</b><small>An IP like <code>203.0.113.7</code> becomes the free name <code>203-0-113-7.sslip.io</code>; a domain stays as typed.</small></li>
-      <li><b>You run four commands on the server</b><small>Install Docker, download PocketTerm's compose file (pinned to your app version), start it, print the setup link. Each has a Copy button.</small></li>
-      <li><b>Caddy gets an HTTPS certificate by itself</b><small>Ports 80 and 443 must be open. The wizard watches: name resolves → HTTPS answers → server healthy.</small></li>
-      <li><b>You paste the setup link</b><small>This computer signs in to your server. Other computers can join with the same kind of link.</small></li>
-      <li><b>You scan the computer's QR code with your phone</b><small>Same as the other setup: address, pairing code, and the computer's key, straight from screen to camera.</small></li>
-      <li><b>Both connect out to the server</b><small>The computer and the phone only make outgoing connections, so nothing at home needs to be reachable, and no Tailscale is needed.</small></li>
-    </ol>
-  </section>
-
-  <!-- ============ SUPABASE ============ -->
-  <section class="panel" id="supabase">
-    <svg viewBox="0 0 1060 520" role="img" aria-label="Supabase setup diagram">
-      <rect class="zone home" x="20" y="60" width="330" height="420" rx="14"/>
-      <text class="zl" x="40" y="86" fill="#9aa1ad">Your computer(s)</text>
-
-      <rect class="box" x="45" y="110" width="280" height="70" rx="12"/>
-      <text class="t" x="61" y="138">omp / Claude Code</text>
-      <text class="s" x="61" y="160">in kitty, Ghostty+tmux, WezTerm</text>
-
-      <rect class="box mine" x="45" y="240" width="280" height="90" rx="12"/>
-      <text class="t" x="61" y="268">PocketTerm desktop</text>
-      <text class="s" x="61" y="290">connects OUT to your project</text>
-      <text class="s" x="61" y="308">(no ports opened at home)</text>
-
-      <rect class="box mine" x="45" y="370" width="280" height="80" rx="12" opacity=".55"/>
-      <text class="t" x="61" y="398" opacity=".7">Another computer (optional)</text>
-      <text class="s" x="61" y="420">joins with a setup link</text>
-
-      <rect class="zone net" x="400" y="60" width="300" height="420" rx="14"/>
-      <text class="zl" x="420" y="86" fill="#9aa1ad">Your Supabase project (region you pick)</text>
-
-      <rect class="box third" x="425" y="120" width="250" height="90" rx="12"/>
-      <text class="t" x="441" y="148">Edge Function pocketterm</text>
-      <text class="s" x="441" y="170">same requests as the server</text>
-      <text class="s" x="441" y="188">checks device tokens</text>
-
-      <rect class="box third" x="425" y="250" width="250" height="90" rx="12"/>
-      <text class="t" x="441" y="278">Realtime</text>
-      <text class="s" x="441" y="300">live channel, private topics</text>
-      <text class="s" x="441" y="318">10-minute token per device</text>
-
-      <rect class="box" x="425" y="380" width="250" height="70" rx="12"/>
-      <text class="t" x="441" y="406">Database + Storage</text>
-      <text class="s" x="441" y="428">device list, names, sealed blobs</text>
-
-      <rect class="box yours" x="770" y="230" width="260" height="110" rx="12"/>
-      <text class="t" x="786" y="258">PocketTerm phone</text>
-      <text class="s" x="786" y="280">no Tailscale needed</text>
-      <text class="s" x="786" y="300">holds the computer's key</text>
-      <text class="s" x="786" y="320">(from scanning its QR)</text>
-
-      <rect class="box third" x="770" y="400" width="260" height="70" rx="12"/>
-      <text class="t" x="786" y="428">Push relay (optional)</text>
-      <text class="s" x="786" y="450">push.danyzmaj.com → Apple/Google</text>
-
-      <path class="flow plain" d="M185 180 V240"/>
-      <text class="lbl" x="195" y="216">local API</text>
-      <path class="flow e2e anim" d="M325 285 H425"/>
-      <path class="flow e2e anim" d="M675 295 H770"/>
-      <text class="lbl" x="790" y="214">HTTPS from anywhere</text>
-      <path class="flow plain" d="M325 270 C370 270 380 165 425 165"/>
-      <path class="flow plain" d="M675 165 C730 165 720 260 770 260"/>
-      <path class="flow plain" d="M550 340 V380"/>
-      <path class="flow push" d="M675 190 C730 260 730 430 770 435"/>
-    </svg>
-    <div class="legend">
-      <span style="--c:#f472b6">sealed with the computer's key</span>
-      <span style="--c:#5b6475">requests with a device token, or storage</span>
-      <span style="--c:#fbbf24">push (opt-in), still sealed</span>
-    </div>
-
-    <h3>What happens, step by step</h3>
-    <ol class="steps">
-      <li><b>You paste a Supabase access token</b><small>It covers your whole Supabase organization. PocketTerm uses it only during setup and never stores it: best, an organization of its own for PocketTerm, and delete the token afterwards.</small></li>
-      <li><b>You pick the organization and a region</b><small>PocketTerm creates a free project named PocketTerm there (or updates the one that already has PocketTerm on it). Supabase, in that region, holds the server's metadata.</small></li>
-      <li><b>The wizard sets the project up</b><small>Database, live channel key, the <code>pocketterm</code> server function, then this computer signs in. Other computers join with a setup link from <b>Add a computer…</b>, no token needed.</small></li>
-      <li><b>You scan the computer's QR code with your phone</b><small>Same as the other setups: address, pairing code, and the computer's key, straight from screen to camera.</small></li>
-      <li><b>Both connect out to supabase.co</b><small>The function answers the same requests as the PocketTerm server; the live channel runs over Supabase Realtime with a 10-minute token per device. Both pass on ciphertext only. No Tailscale, nothing reachable at home.</small></li>
-      <li><b>Free projects pause</b><small>After about a week without use. Restore it at supabase.com/dashboard. The free plan allows 2 active projects per account.</small></li>
+      <li><b>On the first computer: Add a computer…</b><small>Settings → Account shows a setup link like <code>pocketterm://setup?url=https://your-computer.tail1234.ts.net&amp;setup=…</code>. It lets a computer sign in, not read sessions; show it only to your own computers.</small></li>
+      <li><b>On the new computer: Join another computer's PocketTerm…</b><small>In the setup, paste the link. Tailscale must be signed in to the same account. Release builds accept only <code>*.ts.net</code> addresses.</small></li>
+      <li><b>The new computer signs in to the first one's server</b><small>It doesn't run a server of its own. The first computer has to be awake for both.</small></li>
+      <li><b>Scan the new computer's QR code</b><small>Each computer has its own key, so your phone scans each one's code once. Then pick a computer at the top of the phone's list.</small></li>
     </ol>
   </section>
 
@@ -302,7 +203,7 @@
       <text class="lbl" x="420" y="135">light only: screen → camera. No server sees the key.</text>
 
       <rect class="box third" x="400" y="210" width="260" height="110" rx="12"/>
-      <text class="t" x="416" y="238">Server (any setup)</text>
+      <text class="t" x="416" y="238">Built-in server</text>
       <text class="s" x="416" y="260">sees: who is paired, when,</text>
       <text class="s" x="416" y="278">how much. Never the contents.</text>
       <text class="s" x="416" y="296">Can't read, can't forge.</text>
@@ -325,21 +226,19 @@
     </div>
   </section>
 
-  <!-- ============ COMPARE ============ -->
-  <section class="panel" id="compare">
+  <!-- ============ AT A GLANCE ============ -->
+  <section class="panel" id="glance">
     <table>
-      <tr><th></th><th>On this computer</th><th>On my own server (VPS)</th><th>Supabase</th></tr>
-      <tr><td>Who runs the server</td><td>This computer (built in)</td><td>You, on a VPS you rent</td><td>Supabase, in a region you pick</td></tr>
-      <tr><td>Who holds the metadata</td><td class="yes">Only you</td><td>You and your VPS host</td><td class="meh">Supabase</td></tr>
-      <tr><td>Cost</td><td class="yes">Free<br><small>Tailscale's Personal plan is free (up to 3 users, 100 devices). Sign in with a personal Google, Apple, GitHub or Microsoft account; a work email domain may start a paid business trial instead.</small></td><td class="meh">A VPS, about €4–6 a month</td><td class="yes">Free plan<br><small>Pauses after about a week unused.</small></td></tr>
-      <tr><td>What you install</td><td>Tailscale on the computer and the phone</td><td>Docker on the VPS (four copy-paste commands)</td><td>Nothing: the wizard sets up the project with an access token</td></tr>
-      <tr><td>Works from anywhere</td><td class="yes">Yes, through Tailscale</td><td class="yes">Yes, public HTTPS</td><td class="yes">Yes, through supabase.co</td></tr>
-      <tr><td>This computer must be awake</td><td class="meh">Yes</td><td class="meh">Yes (your sessions run on it)</td><td class="meh">Yes (your sessions run on it)</td></tr>
-      <tr><td>Several computers</td><td>Yes: others join this computer's server through Tailscale</td><td class="yes">Yes: all join the VPS</td><td class="yes">Yes: all join the project</td></tr>
-      <tr><td>Nothing reachable from the internet</td><td class="yes">Yes: only your tailnet</td><td class="meh">The VPS is public (it only relays sealed data, and using it needs a device token)</td><td class="meh">The function is public (it only relays sealed data, and using it needs a device token)</td></tr>
-      <tr><td>Third parties involved</td><td>Tailscale (sees device names and IPs, not contents)</td><td>Your VPS provider (sees encrypted traffic, and with access to the machine what the server stores, never what a computer seals)</td><td>Supabase (holds the device list, computer names, push tokens and timing, sees connection IPs; never what a computer seals)</td></tr>
-      <tr><td>Contents end-to-end encrypted</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
-      <tr><td>Best for</td><td>One person, one main computer, zero cost</td><td>Several computers, or no Tailscale on the phone</td><td>No VPS and no Tailscale, at zero cost</td></tr>
+      <tr><td>Who runs the server</td><td>Your computer (built into the desktop app, listening on 127.0.0.1 only)</td></tr>
+      <tr><td>Who holds the metadata</td><td class="yes">Only you</td></tr>
+      <tr><td>Cost</td><td class="yes">Free<br><small>Tailscale's Personal plan is free (up to 3 users, 100 devices). Sign in with a personal Google, Apple, GitHub or Microsoft account; a work email domain may start a paid business trial instead.</small></td></tr>
+      <tr><td>What you install</td><td>Tailscale on the computer and the phone, same account</td></tr>
+      <tr><td>Works from anywhere</td><td class="yes">Yes, through Tailscale</td></tr>
+      <tr><td>This computer must be awake</td><td class="meh">Yes</td></tr>
+      <tr><td>Several computers</td><td class="yes">Yes: others join this computer's server with Add a computer…</td></tr>
+      <tr><td>Nothing reachable from the internet</td><td class="yes">Yes: only your tailnet</td></tr>
+      <tr><td>Third parties involved</td><td>Tailscale (sees device names and IPs, not contents); the push relay and Apple or Google only if you turn notifications on</td></tr>
+      <tr><td>Contents end-to-end encrypted</td><td class="yes">Yes</td></tr>
     </table>
   </section>
 </main>

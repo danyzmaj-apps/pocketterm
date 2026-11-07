@@ -1,11 +1,11 @@
 # Push relay: who can see what
 
-The relay is run by Danijel Lovric (the publisher) on his own server in Germany (danyzmaj-server, OVHcloud), behind a
-Cloudflare tunnel, at https://push.danyzmaj.com. It is used only if you turn notifications on in the phone app. A push
-goes:
+The relay is run by Danijel Lovric (the publisher) on danyzmaj-server in Germany (OVHcloud), behind a Cloudflare tunnel,
+at https://push.danyzmaj.com. It is used only if you turn notifications on in the phone app. The PocketTerm servers that
+call it are the ones built into the desktop apps (Mac, Windows). A push goes:
 
 ```
-your computer → your PocketTerm server → Cloudflare → the relay → Apple (APNs) or Google (FCM) → your phone
+your computer → the PocketTerm server built into your computer's app → Cloudflare → the relay → Apple (APNs) or Google (FCM) → your phone
 ```
 
 ## What nobody but your phones can read
@@ -72,7 +72,7 @@ The relay's private key, the APNs key and the Firebase service account sit on th
 ## Don't want to trust it?
 
 Run your own: a fork with its own phone app (its own bundle id and Firebase project) runs this relay with its own keys
-and points its servers at it with `PUSH_RELAY_URL` and `PUSH_RELAY_KEY`. A relay only reaches apps signed with its own
-APNs and Firebase credentials.
+and points its desktop apps' built-in servers at it with `--relay` and `--relay-key` (`PUSH_RELAY_URL`,
+`PUSH_RELAY_KEY`). A relay only reaches apps signed with its own APNs and Firebase credentials.
 
 Report a vulnerability as in the repository's [SECURITY.md](../../SECURITY.md).

@@ -10,27 +10,27 @@ const _usage =
     '''
 PocketTerm server $serverVersion
 
+The server built into the PocketTerm desktop apps. The app runs it on this machine's loopback address and
+publishes it to your tailnet with `tailscale serve`; it never listens on another address.
+
 Usage:
   pocketterm-server serve [options]        Runs the server.
   pocketterm-server setup-link [options]   Prints the setup link for computers.
-  pocketterm-server health [options]       Exits 0 when the server on this machine answers GET /v1/health (for
-                                           container healthchecks).
+  pocketterm-server health [options]       Exits 0 when the server on this machine answers GET /v1/health.
 
 Options (each also read from the environment variable in brackets):
   --data <dir>           Where everything is kept [POCKETTERM_DATA] (default: ./data)
-  --public-url <url>     The https address phones and computers reach the server at, put in setup links
-                         [POCKETTERM_PUBLIC_URL] (required, except for serve on a loopback --address: then
-                         http://<address>:<port>)
+  --public-url <url>     The address phones and computers reach the server at, put in setup links, like
+                         https://mac.tail1234.ts.net [POCKETTERM_PUBLIC_URL] (required for setup-link; serve
+                         defaults to http://<address>:<port>)
   --port <n>             serve, health: the port to listen on [POCKETTERM_PORT] (default: 47900; serve: 0 lets
                          the system pick a free one)
-  --address <ip>         serve, health: the address to listen on [POCKETTERM_ADDRESS] (default: 0.0.0.0)
+  --address <ip>         serve, health: the loopback address to listen on [POCKETTERM_ADDRESS] (default: 127.0.0.1)
   --relay <url>          serve: the push relay [PUSH_RELAY_URL] (default: the publisher's)
   --relay-key <base64>   serve: the relay's X25519 public key, every push is sealed to it [PUSH_RELAY_KEY]
                          (default: the publisher's relay's)
-  --trust-proxy          serve: rate limit by the last X-Forwarded-For address; only behind a reverse proxy
-                         [POCKETTERM_TRUST_PROXY=1]
-  --trust-loopback-proxy serve: the same, but only for connections from a loopback address (a proxy on this
-                         machine, like `tailscale serve`); others count by their own address
+  --trust-loopback-proxy serve: rate limit by the last X-Forwarded-For address for connections from a loopback
+                         address (a proxy on this machine, like `tailscale serve`)
                          [POCKETTERM_TRUST_LOOPBACK_PROXY=1]
   --exit-with-stdin      serve: stop when stdin closes, so the server never outlives the app that started it
   --new                  setup-link: replace the setup token first (the old link stops working; computers
@@ -81,7 +81,7 @@ Future<int> runCli(
   switch (command) {
     case 'serve':
       final port = int.tryParse(option('port', 'POCKETTERM_PORT') ?? '47900');
-      final address = InternetAddress.tryParse(option('address', 'POCKETTERM_ADDRESS') ?? '0.0.0.0');
+      final address = InternetAddress.tryParse(option('address', 'POCKETTERM_ADDRESS') ?? '127.0.0.1');
       final relayText = option('relay', 'PUSH_RELAY_URL');
       final relay = relayText == null || relayText.isEmpty ? null : Uri.tryParse(relayText);
       final relayKeyText = option('relay-key', 'PUSH_RELAY_KEY');
@@ -95,8 +95,9 @@ Future<int> runCli(
         stderr.writeln('--port, --address, --relay or --relay-key is not valid.\n\n$_usage');
         return 64;
       }
-      if (publicUrl == null && !address.isLoopback) {
-        stderr.writeln('--public-url (or POCKETTERM_PUBLIC_URL) is required.\n\n$_usage');
+      // Only `tailscale serve` on this machine should reach the server; it is never published directly.
+      if (!address.isLoopback) {
+        stderr.writeln('--address must be a loopback address, like 127.0.0.1.\n\n$_usage');
         return 64;
       }
       final firstStart = !Store.hasSetupToken(data);
@@ -106,12 +107,11 @@ Future<int> runCli(
           dataDir: data,
           address: address,
           port: port,
-          // On loopback without one: http://<address>:<bound port>, known once bound (publicUrlFor).
+          // Without one: http://<address>:<bound port>, known once bound (publicUrlFor).
           publicUrl: publicUrl,
           publicUrlFor: publicUrl == null ? (p) => _loopbackUrl(address, p) : null,
           relay: relay,
           relayKey: relayKey,
-          trustProxy: flags.containsKey('trust-proxy') || env['POCKETTERM_TRUST_PROXY'] == '1',
           trustLoopbackProxy:
               flags.containsKey('trust-loopback-proxy') || env['POCKETTERM_TRUST_LOOPBACK_PROXY'] == '1',
           log: stderr.writeln,
@@ -132,7 +132,8 @@ Future<int> runCli(
       stderr.writeln('PocketTerm server $serverVersion on ${address.address}:${server.port}, data in ${data.path}');
       if (firstStart) {
         stderr.writeln(
-          'Open this setup link on each of your computers (PocketTerm, Your own server); keep it private:\n'
+          "Open this setup link on each of your computers (PocketTerm, Join another computer's PocketTerm); "
+          'keep it private:\n'
           '${server.setupLink()}',
         );
       } else {
@@ -166,18 +167,14 @@ Future<int> runCli(
       return 0;
     case 'health':
       final port = int.tryParse(option('port', 'POCKETTERM_PORT') ?? '47900');
-      final address = InternetAddress.tryParse(option('address', 'POCKETTERM_ADDRESS') ?? '0.0.0.0');
+      final address = InternetAddress.tryParse(option('address', 'POCKETTERM_ADDRESS') ?? '127.0.0.1');
       if (port == null || port < 1 || port > 65535 || address == null) {
         stderr.writeln('--port or --address is not valid.\n\n$_usage');
         return 64;
       }
-      // A server listening on every address answers on loopback.
-      final host = address == InternetAddress.anyIPv4 || address == InternetAddress.anyIPv6
-          ? InternetAddress.loopbackIPv4
-          : address;
       final client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
       try {
-        final request = await client.get(host.address, port, '/v1/health');
+        final request = await client.get(address.address, port, '/v1/health');
         final response = await request.close().timeout(const Duration(seconds: 3));
         await response.drain<void>();
         if (response.statusCode == 200) return 0;
@@ -198,7 +195,7 @@ Future<int> runCli(
   }
 }
 
-const _switches = {'trust-proxy', 'trust-loopback-proxy', 'exit-with-stdin', 'new'};
+const _switches = {'trust-loopback-proxy', 'exit-with-stdin', 'new'};
 const _valued = {'data', 'public-url', 'port', 'address', 'relay', 'relay-key'};
 
 /// `--name value`, `--name=value` and bare switches.

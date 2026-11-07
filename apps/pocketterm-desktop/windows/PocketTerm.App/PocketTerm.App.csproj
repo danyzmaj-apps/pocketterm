@@ -22,7 +22,7 @@
     <EnableDefaultPageItems>false</EnableDefaultPageItems>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
     <!-- The release scripts pass the tag's version (-p:Version=x.y.z); UpdateCheck compares GitHub's latest to it. -->
-    <Version Condition="'$(Version)' == ''">0.1.7</Version>
+    <Version Condition="'$(Version)' == ''">1.0.0</Version>
     <!-- Where tool/server-sidecar.ps1 puts the built-in server; a build without it runs, minus "On this computer". -->
     <PocketTermSidecar Condition="'$(PocketTermSidecar)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\build\server-sidecar\windows-x64\pocketterm-server.exe</PocketTermSidecar>
   </PropertyGroup>
@@ -51,8 +51,8 @@
   <ItemGroup>
     <EmbeddedResource Include="Views\Styles.xaml" LogicalName="PocketTerm.App.Views.Styles.xaml" />
   </ItemGroup>
-  <!-- Bundled next to PocketTerm.exe (AppPaths.BaseDir): the theme icons, the coding agents' integrations, the
-       Supabase setup's migrations and function, and the built-in server. -->
+  <!-- Bundled next to PocketTerm.exe (AppPaths.BaseDir): the theme icons, the coding agents' integrations and the
+       built-in server. -->
   <PropertyGroup>
     <DesktopDir>$(MSBuildThisFileDirectory)..\..\</DesktopDir>
   </PropertyGroup>
@@ -64,8 +64,6 @@
     <Content Include="$(DesktopDir)integrations\claude\.claude-plugin\*" Link="integrations\claude\.claude-plugin\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="$(DesktopDir)integrations\claude\plugins\pocketterm\.claude-plugin\*" Link="integrations\claude\plugins\pocketterm\.claude-plugin\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="$(DesktopDir)integrations\claude\plugins\pocketterm\hooks\*" Link="integrations\claude\plugins\pocketterm\hooks\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="$(DesktopDir)supabase\migrations\*.sql" Link="supabase\migrations\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="$(DesktopDir)supabase\functions\**\*" Link="supabase\functions\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="$(PocketTermSidecar)" Link="pocketterm-server.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('$(PocketTermSidecar)')" />
   </ItemGroup>
   <!-- A release (-p:PocketTermRelease=true) without the built-in server is a broken one. -->

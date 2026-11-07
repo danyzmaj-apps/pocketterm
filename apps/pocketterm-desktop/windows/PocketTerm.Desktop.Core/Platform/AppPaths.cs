@@ -22,7 +22,7 @@ public static class AppPaths
     /// </summary>
     public static string SupportDir { get; set; } = DefaultSupportDir();
 
-    /// <summary>The app's install folder, where <c>integrations\</c>, <c>supabase\</c> and
+    /// <summary>The app's install folder, where <c>integrations\</c> and
     /// <c>pocketterm-server.exe</c> are bundled next to the executable.</summary>
     public static string BaseDir { get; set; } = AppContext.BaseDirectory;
 

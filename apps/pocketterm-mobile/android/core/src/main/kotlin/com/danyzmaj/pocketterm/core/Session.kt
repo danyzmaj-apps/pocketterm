@@ -98,7 +98,7 @@ abstract class Session(
 
     /** Why the last sign-in is gone, once it is (signed out here, the server ended it); null after a sign-in. The phone shows it on its scan screen. */
     var signedOutReason: String? = null
-        private set
+        protected set
 
     /** Set by [signOut] and [eraseServer] just before the sign-in goes. */
     private var leaving: String? = null

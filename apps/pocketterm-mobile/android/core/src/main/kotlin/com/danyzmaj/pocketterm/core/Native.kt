@@ -19,11 +19,14 @@ data class LiveActivityRef(val key: String, val token: String?)
 /** The server as kept where the platform side (push service, widgets) reads it too. */
 data class SavedBackend(
     val url: String,
-    /** `supabase`, or null for a PocketTerm server. */
+    /** `supabase` for a Supabase project an app from before saved, or null for a PocketTerm server. */
     val kind: String?,
     /** An app from before saved a Supabase project there (it came with a key). */
     val legacy: Boolean,
-)
+) {
+    /** A Supabase project: PocketTerm no longer runs a server there, so the phone signs in again. */
+    val isSupabase: Boolean get() = legacy || kind == "supabase"
+}
 
 /** iOS shows only so many Live Activities at once; Android never throws it, kept for parity. */
 class TooManyActivities : Exception("Too many Live Activities")

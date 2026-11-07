@@ -137,8 +137,8 @@ public struct ServerException: Error, Sendable, CustomStringConvertible, Localiz
 }
 
 /// The live channel's connection, in the frames of PROTOCOL.md's WebSocket (`join`, `send`, `leave`, `ping`
-/// out; `joined`, `msg`, `pong`, `error` in), whatever carries them: the PocketTerm server's own WebSocket,
-/// or Supabase Realtime (SupabaseServer.swift). [closeCode] 4003 once closed: this device was signed out.
+/// out; `joined`, `msg`, `pong`, `error` in): the PocketTerm server's own WebSocket. [closeCode] 4003 once
+/// closed: this device was signed out.
 public protocol LiveSocket: AnyObject, Sendable {
   /// Each frame as it comes; done when the connection is. One stream per socket: read it once.
   var frames: AsyncStream<String> { get }
@@ -152,8 +152,8 @@ extension LiveSocket {
 }
 
 /// Where this device is signed in (packages/pocketterm_server/PROTOCOL.md): signing in, pairing, the
-/// computers list, images and push, and the live channel ([connectLive]). [Servers.make] picks the
-/// implementation for the backend's kind: [PocketTermServerClient] or [SupabaseServerClient].
+/// computers list, images and push, and the live channel ([connectLive]). [Servers.make] gives the
+/// [PocketTermServerClient]; tests stand in their own.
 public protocol Server: AnyObject, Sendable {
   var backend: Backend { get }
 
@@ -225,12 +225,9 @@ public protocol Server: AnyObject, Sendable {
 
 /// What's common to every [Server]: the factory and the blob limits.
 public enum Servers {
-  /// The client for [backend]'s kind, keeping its sign-in in [tokens].
+  /// The client for [backend], keeping its sign-in in [tokens].
   public static func make(_ backend: Backend, tokens: DeviceTokens) -> Server {
-    switch backend.kind {
-    case .pocketterm: PocketTermServerClient(backend, tokens: tokens)
-    case .supabase: SupabaseServerClient(backend, tokens: tokens)
-    }
+    PocketTermServerClient(backend, tokens: tokens)
   }
 
   /// [path] can be one of [Server.newBlobPath]'s.
@@ -248,7 +245,7 @@ public enum Servers {
 /// pairing, the computers list, images and push. Signed in is having a token ([account]); once the server
 /// refuses it (the device was revoked or left, the server was erased) it is forgotten and [ended] says
 /// so. The live channel is TerminalChannel.swift.
-open class PocketTermServerClient: Server, @unchecked Sendable {
+public final class PocketTermServerClient: Server, @unchecked Sendable {
   public init(_ backend: Backend, tokens: DeviceTokens) {
     self.backend = backend
     self.tokens = tokens
@@ -460,7 +457,7 @@ open class PocketTermServerClient: Server, @unchecked Sendable {
   }
 
   /// The server's WebSocket (GET /v1/ws), signed in as this device.
-  open func connectLive() async throws -> LiveSocket {
+  public func connectLive() async throws -> LiveSocket {
     guard let token else { throw ServerException(401, "unauthorized", "Not signed in.") }
     guard var c = URLComponents(string: backend.api) else { throw ServerException(0, "offline", backend.unreachable) }
     c.scheme = c.scheme == "https" ? "wss" : "ws"
@@ -473,12 +470,6 @@ open class PocketTermServerClient: Server, @unchecked Sendable {
   public func close() {
     http.get.invalidateAndCancel()
     endedBroadcast.finish()
-  }
-
-  /// A JSON request to [path] as this device, for what a subclass adds (SupabaseServer.swift); a 401 ends
-  /// the sign-in as any other.
-  public func request(_ method: String, _ path: String, body: JSONObject? = nil) async throws -> JSON? {
-    try await json(method, path, body: body)
   }
 
   private func json(
@@ -563,7 +554,7 @@ final class WebSocketLive: NSObject, LiveSocket, URLSessionWebSocketDelegate, @u
     config.timeoutIntervalForRequest = timeout
     ws.session = URLSession(configuration: config, delegate: ws, delegateQueue: nil)
     ws.task = ws.session.webSocketTask(with: request)
-    // The server's frames are at most 256 KiB, Realtime's about as big.
+    // The server's frames are at most 256 KiB.
     ws.task.maximumMessageSize = 4 * 1024 * 1024
     do {
       try await withTimeout(timeout) {

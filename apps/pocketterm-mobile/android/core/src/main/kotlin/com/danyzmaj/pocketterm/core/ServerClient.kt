@@ -93,8 +93,8 @@ class ServerException(
 
 /**
  * The live channel's connection, in the frames of PROTOCOL.md's WebSocket (`join`, `send`,
- * `leave`, `ping` out; `joined`, `msg`, `pong`, `error` in), whatever carries them: the PocketTerm
- * server's own WebSocket, or Supabase Realtime ([RealtimeLive]). [closeCode] 4003 once closed:
+ * `leave`, `ping` out; `joined`, `msg`, `pong`, `error` in), over the PocketTerm server's own
+ * WebSocket. [closeCode] 4003 once closed:
  * this device was signed out.
  */
 interface LiveSocket {
@@ -110,8 +110,7 @@ interface LiveSocket {
 
 /**
  * Where this device is signed in (packages/pocketterm_server/PROTOCOL.md): signing in, pairing,
- * the computers list, images and push, and the live channel ([connectLive]). [Server.invoke]
- * picks the implementation for the backend's kind: [PocketTermServerClient] or [SupabaseServerClient].
+ * the computers list, images and push, and the live channel ([connectLive]): [PocketTermServerClient].
  */
 interface Server {
     val backend: Backend
@@ -182,11 +181,8 @@ interface Server {
     fun close()
 
     companion object {
-        /** The client for [backend]'s kind, keeping its sign-in in [tokens]. */
-        operator fun invoke(backend: Backend, tokens: DeviceTokens): Server = when (backend.kind) {
-            BackendKind.pocketterm -> PocketTermServerClient(backend, tokens)
-            BackendKind.supabase -> SupabaseServerClient(backend, tokens)
-        }
+        /** The client for [backend], keeping its sign-in in [tokens]. */
+        operator fun invoke(backend: Backend, tokens: DeviceTokens): Server = PocketTermServerClient(backend, tokens)
 
         private val BLOB_PATH = Regex("^[A-Za-z0-9-]{1,64}$")
 
@@ -413,9 +409,6 @@ open class PocketTermServerClient(
         closed = true
         http.connectionPool.evictAll()
     }
-
-    /** A JSON request to [path] as this device, for what a subclass adds ([SupabaseServerClient]); a 401 ends the sign-in as any other. */
-    protected suspend fun request(method: String, path: String, body: JsonObject? = null): JsonElement? = json(method, path, body = body)
 
     private suspend fun json(
         method: String,

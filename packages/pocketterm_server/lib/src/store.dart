@@ -205,7 +205,7 @@ class Store {
     } on FileSystemException catch (e) {
       throw StorageException(
         "Can't write to the data folder ${dir.absolute.path} (${e.osError?.message ?? e.message}). The server "
-        'needs to own it; in Docker it runs as user 65532: `chown -R 65532:65532 <folder>` for a folder you mount.',
+        'needs to own it: the user it runs as must be able to write there.',
       );
     }
     try {

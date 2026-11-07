@@ -25,10 +25,9 @@ internal sealed class ThisComputerSetup : View
     private string? _error;
 
     /// <param name="app">The controller.</param>
-    /// <param name="onBack">Back to the choice.</param>
-    /// <param name="onOwnServer">A tailnet whose HTTPS only its admin turns on (a work one): the VPS way instead.</param>
+    /// <param name="onJoin">Join another computer's PocketTerm by its setup link instead.</param>
     /// <param name="poll">How often the list looks again; zero: only once.</param>
-    public ThisComputerSetup(AppController app, Action onBack, Action? onOwnServer = null, TimeSpan? poll = null)
+    public ThisComputerSetup(AppController app, Action onJoin, TimeSpan? poll = null)
     {
         _app = app;
         var ts = app.Tailscale;
@@ -69,26 +68,27 @@ internal sealed class ThisComputerSetup : View
             "check-signed-in");
         var turnOnHttps = Ui.Button("Turn on HTTPS…", () => Run(TurnOnHttpsAsync), "setup-turn-on-https");
         var httpsActions = new List<Microsoft.UI.Xaml.UIElement> { turnOnHttps };
-        if (onOwnServer != null) httpsActions.Add(Ui.Button("Use my own server instead", onOwnServer, "setup-https-own-server"));
         var https = new SetupCheck(
             CheckState.Later,
             "Turn on HTTPS certificates",
             "On the Tailscale page that opens, turn on HTTPS (and MagicDNS, if it asks). Your phone then gets a secure " +
-            "address for this computer. On a work tailnet only its admin can: ask them, or run your server on a VPS " +
-            "instead.",
+            "address for this computer. On a work tailnet only its admin can: ask them.",
             httpsActions,
             "check-https");
         var serveFree = new SetupCheck(CheckState.Later, "Tailscale’s HTTPS port (443) for PocketTerm", id: "check-serve-free");
         var start = SetupParts.Primary("Start", () => Run(StartAsync), "setup-start-server");
         var error = SetupParts.Error("setup-error");
+        // Once, after an upgrade signed this computer out of Supabase or its own server.
+        var migration = SetupParts.Notice(app.MigrationNote, "setup-migration-note").Margin(0, 0, 0, 10);
+        app.DismissMigrationNote();
 
         Content = Ui.Stack(
             0,
-            SetupParts.Header(
-                "On this computer",
+            Ui.Text("Set up PocketTerm", TextKind.Subtitle),
+            Ui.Text(
                 "PocketTerm runs your server here. Tailscale gives it a private HTTPS address that only your own devices " +
-                "reach, at home or away. This list checks itself as you go.",
-                onBack),
+                "reach, at home or away. This list checks itself as you go.").Margin(0, 8, 0, 10),
+            migration,
             new Explainer(
                 "What is Tailscale, and why?",
                 "Tailscale makes a private network between your own devices, wherever they are. Your phone reaches this " +
@@ -102,7 +102,8 @@ internal sealed class ThisComputerSetup : View
             serveFree,
             SetupParts.Notice(BuiltInServer.PhoneTailscaleNote, "setup-phone-tailscale", glyph: Ui.Glyph.Phone).Margin(0, 14, 0, 0),
             start.Margin(0, 18, 0, 0),
-            error.Margin(0, 12, 0, 0));
+            error.Margin(0, 12, 0, 0),
+            Ui.Button("Join another computer’s PocketTerm…", onJoin, "setup-join").Margin(0, 18, 0, 0));
 
         OnRefresh(() =>
         {

@@ -2,10 +2,9 @@ import PocketTermDesktop
 import PocketTermKit
 import SwiftUI
 
-/// A setup link for another computer, with what that computer does with it.
+/// A setup link for another computer.
 private struct ComputerLink: Identifiable {
   let url: URL
-  let how: String
   var id: String { url.absoluteString }
 }
 
@@ -39,11 +38,7 @@ struct AccountTab: View {
         Avatar(name: app.userName)
         VStack(alignment: .leading, spacing: 2) {
           Text(app.userName).fontWeight(.semibold)
-          Text(
-            hosting != nil
-              ? "This computer runs your server"
-              : app.backend?.isSupabase ?? false ? "Signed in to your Supabase project" : "Signed in to this server"
-          )
+          Text(hosting != nil ? "This computer runs your server" : "Signed in to this server")
           .font(.callout)
           .foregroundStyle(.secondary)
         }
@@ -58,7 +53,7 @@ struct AccountTab: View {
     } message: {
       Text(
         "This computer runs your server. Signing out stops it, and your phones and other computers can’t "
-          + "connect until you choose This computer again. What the server keeps stays on this computer."
+          + "connect until you start it again in the setup. What the server keeps stays on this computer."
       )
     }
 
@@ -85,10 +80,6 @@ struct AccountTab: View {
             .accessibilityIdentifier("settings-add-computer")
         }
       }
-      if let supabase = app.server as? SupabaseServerClient {
-        Button("Add a computer…") { addSupabaseComputer(supabase) }
-          .accessibilityIdentifier("settings-add-computer")
-      }
       InlineMessage(message: $serverMessage, error: true)
     }
     .alert(
@@ -105,7 +96,7 @@ struct AccountTab: View {
       )
     }
     .sheet(item: $addComputer) { link in
-      AddComputerSheet(link: link.url, how: link.how).appEnvironment(AppModel.shared)
+      AddComputerSheet(link: link.url).appEnvironment(AppModel.shared)
     }
 
     Section {
@@ -185,12 +176,10 @@ struct AccountTab: View {
     }
   }
 
-  /// "Supabase, abc.supabase.co · 2 computers, 1 phone"; a computer running the server says where in its status.
+  /// "my-mac.tail1234.ts.net · 2 computers, 1 phone"; a computer running the server says where in its status.
   private var serverLine: String {
     var parts: [String] = []
-    if app.hosting == nil, let backend = app.backend {
-      parts.append(backend.isSupabase ? "Supabase, \(backend.host)" : backend.host)
-    }
+    if app.hosting == nil, let backend = app.backend { parts.append(backend.host) }
     if let devices = status.devices {
       let phones = devices.filter { $0.role == .phone }.count
       parts.append("\(StatusModel.count(devices.count - phones, "computer")), \(StatusModel.count(phones, "phone"))")
@@ -243,19 +232,7 @@ struct AccountTab: View {
   private func addBuiltInComputer() {
     Task {
       guard let link = await app.computerSetupLink() else { return }
-      addComputer = ComputerLink(url: link, how: AddComputerSheet.tailscaleHow)
-    }
-  }
-
-  /// A new setup link from the Supabase project; the one before stops working.
-  private func addSupabaseComputer(_ server: SupabaseServerClient) {
-    Task {
-      do {
-        let link = try await server.newSetupLink()
-        addComputer = ComputerLink(url: link, how: AddComputerSheet.supabaseHow)
-      } catch {
-        serverMessage = "No link: \(error)"
-      }
+      addComputer = ComputerLink(url: link)
     }
   }
 }

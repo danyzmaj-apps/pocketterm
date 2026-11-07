@@ -3,7 +3,6 @@
 # (packages/PocketTermKit/Sources/PocketTermDesktop/README.md, "Wiring at launch"):
 #   Contents/Helpers/pocketterm-server   the built-in server (tool/server-sidecar.sh), signed with the hardened runtime
 #   Resources/integrations               the coding agents' integrations, as the Flutter app bundled them (no tests)
-#   Resources/supabase                   the Supabase setup's migrations and function
 #   Resources/icon/macos-<theme>.png     the other themes' Dock icons (Catppuccin Mocha's is the app's own)
 #
 # The server: $POCKETTERM_SIDECAR if set, else build/server-sidecar/macos-universal (tool/server-sidecar.sh with
@@ -39,15 +38,11 @@ fi
 mkdir -p "$app/Contents/Helpers"
 ditto "$sidecar" "$app/Contents/Helpers/pocketterm-server"
 
-# The Flutter app's asset list (pubspec.yaml): no tests, no READMEs.
+# The Flutter app's asset list (pubspec.yaml): no tests, no READMEs. (Resources/supabase is an older build's.)
 rm -rf "$resources/integrations" "$resources/supabase" "$resources/icon"
 for d in omp claude/.claude-plugin claude/plugins/pocketterm/.claude-plugin claude/plugins/pocketterm/hooks; do
   mkdir -p "$resources/integrations/$d"
   ditto "$desktop/integrations/$d" "$resources/integrations/$d"
-done
-for d in migrations functions/pocketterm; do
-  mkdir -p "$resources/supabase/$d"
-  ditto "$desktop/supabase/$d" "$resources/supabase/$d"
 done
 mkdir -p "$resources/icon"
 for t in dawn tokyoNight; do cp "$desktop/assets/icon/macos-$t.png" "$resources/icon/"; done

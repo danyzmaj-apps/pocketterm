@@ -15,7 +15,6 @@ namespace PocketTerm.App.Components;
 internal sealed class SetupLinkForm : View
 {
     private readonly AppController _app;
-    private readonly ServerChecks _checks;
     private readonly TextBox _link;
     private bool _busy;
     private string? _error;
@@ -28,12 +27,10 @@ internal sealed class SetupLinkForm : View
     private int _asked;
 
     /// <param name="app">Signs in with the link.</param>
-    /// <param name="checks">What asks the pasted link's server for its health.</param>
     /// <param name="clock">Says when this computer's clock is off the server's; false where the screen already says so.</param>
-    public SetupLinkForm(AppController app, ServerChecks? checks = null, bool clock = true)
+    public SetupLinkForm(AppController app, bool clock = true)
     {
         _app = app;
-        _checks = checks ?? new ServerChecks();
         _link = new TextBox
         {
             PlaceholderText = "pocketterm://setup?url=…&setup=…",
@@ -75,7 +72,7 @@ internal sealed class SetupLinkForm : View
     {
         var asked = ++_asked;
         var trimmed = text.DartTrim();
-        var problem = trimmed.Length == 0 ? null : SetupLinks.Problem(text);
+        var problem = trimmed.Length == 0 ? null : SetupLinks.Problem(text, TestHooks.TestBuild);
         _error = problem;
         _health = null;
         _clock = null;
@@ -89,7 +86,7 @@ internal sealed class SetupLinkForm : View
         Refresh();
         Run(async () =>
         {
-            var h = await _checks.AnswersAsync(backend);
+            var h = await backend.Health();
             if (!Live || asked != _asked) return;
             _health = h.Error == null ? $"{backend.Host} answers" : null;
             _error = h.Error;
@@ -99,7 +96,7 @@ internal sealed class SetupLinkForm : View
 
     private async Task ConnectAsync()
     {
-        if (SetupLinks.Problem(_link.Text) is { } problem)
+        if (SetupLinks.Problem(_link.Text, TestHooks.TestBuild) is { } problem)
         {
             _error = problem;
             return;

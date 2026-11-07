@@ -56,7 +56,7 @@ internal sealed partial class SettingsPage : View
     /// <summary>Who is signed in to the server, for the Account tab; null until known.</summary>
     private List<Device>? _devices;
 
-    /// <summary>This computer's clock is too far off its server's (a VPS's, another computer's): phones drop what
+    /// <summary>This computer's clock is too far off its server's (another computer's): phones drop what
     /// it sends (<see cref="Backend.ClockWarning"/>).</summary>
     private string? _clock;
 

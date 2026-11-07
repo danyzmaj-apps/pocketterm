@@ -6,7 +6,7 @@ Thanks for helping. PocketTerm is small and opinionated, so for anything bigger 
 
 [docs/BUILDING.md](docs/BUILDING.md) covers tools, your own signing identity (`config/Local.xcconfig`, Android `key.properties`, `google-services.json`), the Windows build and a local server. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains how the pieces fit.
 
-The apps are native, one per platform: `apps/pocketterm-desktop/macos` (Swift, SwiftUI) and `apps/pocketterm-mobile/ios` (Swift, SwiftUI), both on the Swift package `packages/PocketTermKit`; `apps/pocketterm-mobile/android` (Kotlin, Compose; its protocol core in the Gradle module `:core`); `apps/pocketterm-desktop/windows` (C#, .NET 8, WinUI 3). The PocketTerm server is Dart, in `packages/pocketterm_server` ([PROTOCOL.md](packages/pocketterm_server/PROTOCOL.md)) with its Docker distribution in `apps/pocketterm-server`; the push relay is Deno, in `apps/pocketterm-relay`. Protocol code exists once per language (Swift, Kotlin, C#) and must stay byte-compatible with the Dart server: a change to it goes into all three cores, and `tool/vectors/vectors.json` (generated from Dart, then frozen) is what their tests check it against. A change to the desktop app should work on macOS and Windows, and a change to the phone app on iPhone and Android; if one platform can't do it, say so in the PR.
+The apps are native, one per platform: `apps/pocketterm-desktop/macos` (Swift, SwiftUI) and `apps/pocketterm-mobile/ios` (Swift, SwiftUI), both on the Swift package `packages/PocketTermKit`; `apps/pocketterm-mobile/android` (Kotlin, Compose; its protocol core in the Gradle module `:core`); `apps/pocketterm-desktop/windows` (C#, .NET 8, WinUI 3). The PocketTerm server is Dart, in `packages/pocketterm_server` ([PROTOCOL.md](packages/pocketterm_server/PROTOCOL.md)), its program in `apps/pocketterm-server` (compiled by `tool/server-sidecar.sh`/`.ps1` and bundled in the desktop apps); the push relay is Deno, in `apps/pocketterm-relay`. Protocol code exists once per language (Swift, Kotlin, C#) and must stay byte-compatible with the Dart server: a change to it goes into all three cores, and `tool/vectors/vectors.json` (generated from Dart, then frozen) is what their tests check it against. A change to the desktop app should work on macOS and Windows, and a change to the phone app on iPhone and Android; if one platform can't do it, say so in the PR.
 
 ## Pull requests
 
@@ -27,7 +27,6 @@ The apps are native, one per platform: `apps/pocketterm-desktop/macos` (Swift, S
   fvm dart format -l 120 --set-exit-if-changed lib test   # bin in apps/pocketterm-server
   fvm dart analyze --fatal-infos
   fvm dart test
-  docker build -f apps/pocketterm-server/Dockerfile -t pocketterm-server .   # from the repo root
   # the omp extension, in apps/pocketterm-desktop
   deno check --config integrations/omp-check.json integrations/omp/*.ts
   # the relay: its crypto must match the server's

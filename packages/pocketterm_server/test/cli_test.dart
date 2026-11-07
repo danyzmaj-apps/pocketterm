@@ -70,7 +70,7 @@ void main() {
     expect((await listening(again))['event'], 'listening');
   });
 
-  test('on loopback the public url defaults to http://<address>:<port>, and setup-link works while it runs', () async {
+  test('the public url defaults to http://<address>:<port>, and setup-link works while it runs', () async {
     final p = await serve(['--port', '0', '--trust-loopback-proxy']);
     final port = (await listening(p))['port']! as int;
     final link = await cli(['setup-link', '--data', data.path, '--public-url', 'http://127.0.0.1:$port']);
@@ -88,8 +88,15 @@ void main() {
     expect(Uri.parse(logged), uri);
   });
 
-  test('serve on a non-loopback address still needs --public-url', () async {
-    final p = await cli(['serve', '--data', data.path, '--address', '0.0.0.0', '--port', '0']);
+  test('serve refuses an address that is not loopback', () async {
+    for (final address in ['0.0.0.0', '192.168.1.20', '::']) {
+      final p = await cli(['serve', '--data', data.path, '--address', address, '--port', '0']);
+      expect(await p.exitCode, 64, reason: address);
+    }
+  });
+
+  test('setup-link needs --public-url', () async {
+    final p = await cli(['setup-link', '--data', data.path]);
     expect(await p.exitCode, 64);
   });
 }

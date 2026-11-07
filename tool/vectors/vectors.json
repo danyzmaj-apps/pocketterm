@@ -1609,62 +1609,6 @@
         "kind": "pocketterm",
         "backend": null,
         "error": "The server URL must start with https://."
-      },
-      {
-        "note": "Supabase project",
-        "input": "https://abcdefghijklmnop.supabase.co",
-        "kind": "supabase",
-        "backend": {
-          "url": "https://abcdefghijklmnop.supabase.co",
-          "kind": "supabase",
-          "api": "https://abcdefghijklmnop.supabase.co/functions/v1/pocketterm",
-          "host": "abcdefghijklmnop.supabase.co",
-          "onTailnet": false,
-          "unreachable": "Can't reach abcdefghijklmnop.supabase.co. Check your connection."
-        },
-        "error": null
-      },
-      {
-        "note": "Supabase function URL pasted",
-        "input": "https://abcdefghijklmnop.supabase.co/functions/v1/pocketterm",
-        "kind": "supabase",
-        "backend": {
-          "url": "https://abcdefghijklmnop.supabase.co",
-          "kind": "supabase",
-          "api": "https://abcdefghijklmnop.supabase.co/functions/v1/pocketterm",
-          "host": "abcdefghijklmnop.supabase.co",
-          "onTailnet": false,
-          "unreachable": "Can't reach abcdefghijklmnop.supabase.co. Check your connection."
-        },
-        "error": null
-      },
-      {
-        "note": "Supabase function /v1 URL pasted",
-        "input": "https://abcdefghijklmnop.supabase.co/functions/v1/pocketterm/v1/",
-        "kind": "supabase",
-        "backend": {
-          "url": "https://abcdefghijklmnop.supabase.co",
-          "kind": "supabase",
-          "api": "https://abcdefghijklmnop.supabase.co/functions/v1/pocketterm",
-          "host": "abcdefghijklmnop.supabase.co",
-          "onTailnet": false,
-          "unreachable": "Can't reach abcdefghijklmnop.supabase.co. Check your connection."
-        },
-        "error": null
-      },
-      {
-        "note": "Supabase empty",
-        "input": "",
-        "kind": "supabase",
-        "backend": null,
-        "error": "Enter your Supabase project URL, like https://abcdefghijklmnop.supabase.co."
-      },
-      {
-        "note": "Supabase http public",
-        "input": "http://abcdefghijklmnop.supabase.co",
-        "kind": "supabase",
-        "backend": null,
-        "error": "The server URL must start with https://."
       }
     ],
     "build": [
@@ -1676,15 +1620,6 @@
         },
         "fn": "link",
         "link": "pocketterm://setup?url=https%3A%2F%2Fpt.example.com"
-      },
-      {
-        "note": "Supabase link carries kind",
-        "backend": {
-          "url": "https://abcdefghijklmnop.supabase.co",
-          "kind": "supabase"
-        },
-        "fn": "link",
-        "link": "pocketterm://setup?kind=supabase&url=https%3A%2F%2Fabcdefghijklmnop.supabase.co"
       },
       {
         "note": "built-in server link",
@@ -1704,16 +1639,6 @@
         "fn": "linkWithSetup",
         "setup": "abc_DEF-123",
         "link": "pocketterm://setup?url=https%3A%2F%2Fpt.example.com&setup=abc_DEF-123"
-      },
-      {
-        "note": "Supabase setup link",
-        "backend": {
-          "url": "https://abcdefghijklmnop.supabase.co",
-          "kind": "supabase"
-        },
-        "fn": "linkWithSetup",
-        "setup": "abc",
-        "link": "pocketterm://setup?kind=supabase&url=https%3A%2F%2Fabcdefghijklmnop.supabase.co&setup=abc"
       },
       {
         "note": "a pairing link without a computer key",
@@ -1905,22 +1830,11 @@
         "computerKey": null
       },
       {
-        "note": "a link with key= (old Supabase form) is not one",
-        "link": "pocketterm://setup?url=https://abcd.supabase.co&key=sb_publishable_x&code=K7QM&d=abcd1234&k=AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK-2vcTL0tk",
+        "note": "a link with key= (an old form) is not one",
+        "link": "pocketterm://setup?url=https://abcd.example.com&key=pk_x&code=K7QM&d=abcd1234&k=AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK-2vcTL0tk",
         "backend": null,
         "pairingCode": null,
         "setupToken": null,
-        "computerKey": null
-      },
-      {
-        "note": "kind=supabase",
-        "link": "pocketterm://setup?kind=supabase&url=https://abcdefghijklmnop.supabase.co&setup=abc",
-        "backend": {
-          "url": "https://abcdefghijklmnop.supabase.co",
-          "kind": "supabase"
-        },
-        "pairingCode": null,
-        "setupToken": "abc",
         "computerKey": null
       },
       {

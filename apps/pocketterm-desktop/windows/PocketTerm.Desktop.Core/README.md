@@ -47,8 +47,7 @@ await app.Start();                              // the host starts, the built-in
 Bundled next to the exe (`AppPaths.BaseDir`, `AppContext.BaseDirectory` by default):
 `pocketterm-server.exe` (tool/server-sidecar.ps1), `integrations\` (from
 `apps/pocketterm-desktop/integrations`: `omp`, `claude/.claude-plugin`,
-`claude/plugins/pocketterm/.claude-plugin`, `claude/plugins/pocketterm/hooks`) and `supabase\`
-(from `apps/pocketterm-desktop/supabase`: `migrations\`, `functions\`).
+`claude/plugins/pocketterm/.claude-plugin`, `claude/plugins/pocketterm/hooks`).
 
 ## Services
 
@@ -70,10 +69,9 @@ Bundled next to the exe (`AppPaths.BaseDir`, `AppContext.BaseDirectory` by defau
 | `TerminalFixes`, `ProjectFolders` (Terminals/) | fixes for terminal statuses, which terminals need setup; project folder suggestions | — | statics | main_window attention items, get_ready |
 | `BuiltInServer` (Hosting/) | the bundled sidecar (`serve --exit-with-stdin`, port retry on exit 98, `setup-link`), Tailscale Serve, the hosting status | `Running`, `Port`, `Backend`, `PublicUrl`, `TailscaleStatus`, `State` (`HostState`), `Status` (`HostStatus`: text, ok, actions), `EnableHttps`, `HttpsPage`, `Error`, `RenamedFrom` | `StartAsync`, `RefreshAsync`, `StopAsync`, `SetupLinkAsync`, `OwnSetupLinkAsync`, `RenameSeen` | setup_page ("This computer"), Settings → Account, hosting_view |
 | `Tailscale` (Hosting/) | the Tailscale CLI (Program Files, PATH, `POCKETTERM_TAILSCALE`) | — | `StatusAsync`, `ServeAsync`, `UnserveAsync`, `EnableHttpsLinkAsync`, `OpenAsync` | hosting_view |
-| `Vps`, `ServerAddress`, `ServerChecks` (Hosting/) | the own-server (VPS) setup: compose commands, address parsing, DNS/HTTPS/health checks | — | statics, `ResolvesAsync`, `HttpsAsync`, `AnswersAsync` | setup_page (Your own server) |
 | `Commands` (Setup/) | winget installs the setup offers | — | `RunAsync` | commands_view |
-| `SupabaseAdmin`, `SupabaseSetup`, `SupabaseFlow` (Setup/) | the Supabase Management API, migrations/function from the bundled `supabase\`, the setup flow (org, region, project, keys, deploy, sign-in) | `SupabaseFlow`: `Stage`, `Busy`, `Error`, `Orgs`, `Org`, `Region`, `Existing`, `CanCreate`, `Waiting`, `Ref` | `ContinueAsync`, `PickOrgAsync`, `CreateAsync`, `UpdateAsync`, `SetUpAsync`, `Back`, `Drop` | supabase_view |
-| `SetupLinks` (Setup/) | what's wrong with a pasted setup link | — | `Problem(text)` | setup_page |
+| `SetupLinks` (Setup/) | what's wrong with another computer's pasted setup link (release builds: `*.ts.net` only) | — | `Problem(text, anyServer)` | setup_page |
+| `TailscaleOnlyMigration` (Storage/) | once at launch: a computer signed in to Supabase or a VPS is signed out and setup shows a note | — | `RunAsync` | — |
 | `UpdateCheck` (UpdateCheck.cs) | GitHub's latest release, every 24 h | `Update` (`UpdateInfo`) | `Start`, `CheckAsync` | Settings, tray "Update available…" |
 | `TestHooks` (TestHooks.cs) | `E2E` builds (Debug, or `-p:PocketTermE2E=true`) read `POCKETTERM_TAILSCALE`, `POCKETTERM_CLI_JSON`, `POCKETTERM_KITTY_DIR`, `POCKETTERM_PROFILE` | — | `Env()` | test_hooks.dart |
 

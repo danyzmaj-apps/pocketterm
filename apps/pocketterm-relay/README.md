@@ -2,7 +2,7 @@
 
 The one service that can reach PocketTerm's phones through Apple (APNs) and Google (FCM), because it holds the
 publisher's APNs key and Firebase service account. Every PocketTerm server (the one built into each desktop app) sends
-its pushes here. It runs on danyzmaj-server, at **https://push.danyzmaj.com**.
+its pushes here. It runs on danyzmaj-server, the publisher's own server in Croatia, in the EU, at **https://push.danyzmaj.com**.
 
 It stores nothing. It can't read your notifications. What it and everyone around it can see is in
 [SECURITY.md](SECURITY.md).

@@ -78,7 +78,7 @@ Pushes are off until the person turns them on in the phone app, which explains w
 
 - The computer seals each notification (title, text, session, state) itself and hands the server `{tag, enc, collapse}`. `tag` is the first 8 bytes of HMAC-SHA256(channel key, `pocketterm/v1|push-tag`), so a phone finds the right key; `collapse` is a per-session HMAC under the same key, so a newer notification replaces an older one. Neither means anything without the key.
 - The server sends the relay one request per phone, its whole body sealed to the relay's X25519 public key (fresh ephemeral key, HKDF-SHA256, AES-256-GCM; `packages/pocketterm_server/lib/src/relay.dart`). No computer id or session key leaves the seal.
-- The relay (`https://push.danyzmaj.com/v1/push`, run by Danijel Lovric on his server in Germany) opens the request in memory, refuses unknown fields, forwards `enc` and the tags to APNs or FCM and stores nothing. A phone without the key shows a plain "PocketTerm" notification.
+- The relay (`https://push.danyzmaj.com/v1/push`, run by Danijel Lovric on his own server in Croatia, in the EU) opens the request in memory, refuses unknown fields, forwards `enc` and the tags to APNs or FCM and stores nothing. A phone without the key shows a plain "PocketTerm" notification.
 - A fork can run its own relay and point its servers at it with `PUSH_RELAY_URL` and `PUSH_RELAY_KEY`.
 
 ## Local API

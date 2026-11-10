@@ -1,7 +1,7 @@
 # Push relay: who can see what
 
-The relay is run by Danijel Lovric (the publisher) on danyzmaj-server in Germany (OVHcloud), behind a Cloudflare tunnel,
-at https://push.danyzmaj.com. It is used only if you turn notifications on in the phone app. The PocketTerm servers that
+The relay is run by Danijel Lovric (the publisher) on his own server in Croatia, in the EU (danyzmaj-server), behind a
+Cloudflare tunnel, at https://push.danyzmaj.com. It is used only if you turn notifications on in the phone app. The PocketTerm servers that
 call it are the ones built into the desktop apps (Mac, Windows). A push goes:
 
 ```

@@ -115,9 +115,10 @@ struct PushExplainer: View {
     VStack(alignment: .leading, spacing: 14) {
       Point(
         symbol: "server.rack",
-        text: "Notifications go through PocketTerm\u{2019}s push relay, run by Danijel Lovric on his server in "
-          + "Germany (push.danyzmaj.com). It passes encrypted notifications to Apple or Google. It can\u{2019}t "
-          + "read them and keeps nothing.")
+        text: "Notifications pass through PocketTerm\u{2019}s push relay, a small service the developer (Danijel "
+          + "Lovric) runs on his own server in Croatia, in the EU. It can\u{2019}t read them: your computer encrypts "
+          + "each notification so that only your phone can open it. The relay just hands it to Apple or Google to "
+          + "deliver. It never learns which computer or session a notification is about, and it keeps nothing.")
       Point(
         symbol: "lock",
         text: "The relay and Apple see an encrypted message, this phone\u{2019}s push token and when it was sent, "

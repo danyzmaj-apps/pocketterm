@@ -28,10 +28,10 @@ struct DataProtectionView: View {
     (
       "bell",
       "Notifications, if you turn them on",
-      "They go from your server through PocketTerm’s push relay (push.danyzmaj.com, run by Danijel Lovric on his "
-        + "server in Germany) to Apple or Google, then your phone. The relay, Apple and Google see an encrypted message, "
-        + "your phone’s push token and when it was sent, never which computer or session it is about. The relay stores "
-        + "nothing."
+      "They pass through PocketTerm’s push relay (push.danyzmaj.com), a small service Danijel Lovric runs on his own "
+        + "server in Croatia, in the EU. It can’t read them: your computer encrypts each notification so that only your "
+        + "phone can open it. The relay just hands it to Apple or Google to deliver. It never learns which computer or "
+        + "session a notification is about, and it keeps nothing."
     ),
     (
       "info.circle",

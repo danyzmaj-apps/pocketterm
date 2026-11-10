@@ -1,4 +1,4 @@
-# PocketTerm's push relay. Deployed by .github/workflows/relay-deploy.yml on
+# PocketTerm's push relay. Deployed by Baker's Relay workflow on
 # danyzmaj-server (deploy/compose.yaml); secrets come in as files under /run/secrets.
 FROM denoland/deno:alpine-2.9.6
 WORKDIR /app

@@ -150,9 +150,10 @@ fun PushExplainer(modifier: Modifier = Modifier) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Point(
                 Icons.Outlined.Dns,
-                "Notifications go through PocketTerm’s push relay, run by Danijel Lovric on his server in Germany " +
-                    "(push.danyzmaj.com). It passes encrypted notifications to Apple or Google. It can’t read them and " +
-                    "keeps nothing.",
+                "Notifications pass through PocketTerm’s push relay, a small service the developer (Danijel Lovric) " +
+                    "runs on his own server in Croatia, in the EU. It can’t read them: your computer encrypts each " +
+                    "notification so that only your phone can open it. The relay just hands it to Apple or Google to " +
+                    "deliver. It never learns which computer or session a notification is about, and it keeps nothing.",
             )
             Point(
                 Icons.Outlined.Lock,

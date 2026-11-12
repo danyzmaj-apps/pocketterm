@@ -7,6 +7,7 @@ import 'package:pocketterm_server/src/hub.dart';
 import 'package:pocketterm_server/src/relay.dart';
 import 'package:pocketterm_server/src/secrets.dart';
 import 'package:pocketterm_server/src/store.dart';
+import 'package:sentry/sentry.dart' show Sentry;
 
 /// This protocol's version, `pocketterm` in `GET /v1/health` (see PROTOCOL.md).
 const protocolVersion = 1;
@@ -325,6 +326,8 @@ class PocketTermServer {
       }
     } on Object catch (e, st) {
       _log?.call('${req.method} ${req.uri.path}: $e\n$st');
+      // A bug, not a bad request: reported when the operator turned error reports on (a no-op otherwise).
+      unawaited(Sentry.captureException(e, stackTrace: st));
       try {
         await _json(req, 500, {'error': 'internal', 'message': 'Something went wrong on the server.'});
       } on Object {

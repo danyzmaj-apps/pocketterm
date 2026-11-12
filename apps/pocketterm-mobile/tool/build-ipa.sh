@@ -45,7 +45,20 @@ overrides=()
 [[ -n "$name" ]] && overrides+=("MARKETING_VERSION=$name")
 [[ -n "$number" ]] && overrides+=("CURRENT_PROJECT_VERSION=$number")
 
-xcodebuild archive \
+# Where the app's crash reports go (Info.plist SentryDSN): SENTRY_DSN from the environment, else its KEY=VALUE
+# line in ios/.env (git-ignored; Baker writes it there). None → the app never starts reporting. It reaches
+# xcodebuild as the environment variable POCKETTERM_BUILD_SENTRY_DSN (project.yml), not as a command-line or
+# -xcconfig setting: xcodebuild prints those in its log.
+dsn="${SENTRY_DSN:-}"
+if [[ -z "$dsn" && -f "$ios/.env" ]]; then
+  # The last SENTRY_DSN= line (optionally `export`ed or quoted), without its quotes; a CRLF's CR goes with the
+  # trailing space.
+  dsn="$(sed -n \
+    "s/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}SENTRY_DSN[[:space:]]*=[[:space:]]*[\"']\{0,1\}\([^\"'[:space:]]*\)[\"']\{0,1\}[[:space:]]*\$/\2/p" \
+    "$ios/.env" | tail -n 1)"
+fi
+
+POCKETTERM_BUILD_SENTRY_DSN="$dsn" xcodebuild archive \
   -project "$ios/PocketTerm.xcodeproj" -scheme PocketTerm -configuration Release \
   -destination 'generic/platform=iOS' -archivePath "$archive" \
   -allowProvisioningUpdates DEVELOPMENT_TEAM="$team" ${overrides[@]+"${overrides[@]}"}

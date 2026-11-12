@@ -38,6 +38,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
   func application(
     _ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    // First: a crash in what follows is reported too (store builds with a DSN only).
+    ErrorReports.start()
     E2E.clearPreferencesIfAsked()
     // Before anything reads them: a reinstall doesn't pick up the last install's keys.
     PocketTermShared.wipeKeychainAfterInstall()

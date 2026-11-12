@@ -27,6 +27,10 @@
         android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.PocketTerm">
+        <!-- Error reports start in PocketTermApp (ErrorReports.kt), and only when the build has a DSN; the SDK's own
+             start from the manifest would ignore that and the privacy options. -->
+        <meta-data android:name="io.sentry.auto-init" android:value="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

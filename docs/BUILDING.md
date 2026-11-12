@@ -174,6 +174,10 @@ fvm dart run apps/pocketterm-server/bin/pocketterm_server.dart setup-link --data
 
 Paste that link in a test build of the desktop app (**Join another computer's PocketTerm…**; other builds take only `*.ts.net` addresses) to sign the computer in, then add a phone with **Settings → Phone → Add a phone…**. `pocketterm-server help` lists every option. Pushes go through the publisher's relay unless you pass `--relay`. A phone on a device (not the Simulator) can't reach `127.0.0.1`; for one, pick **On this computer**, the server built into the desktop app.
 
+## Error reports
+
+A build from source reports nothing. To send your own builds' crashes to your Sentry or GlitchTip: the phone apps take a DSN at build time (Android `-PsentryDsn=…` or `SENTRY_DSN` in the build's environment; iPhone `SENTRY_DSN` in `config/Local.xcconfig`, written `https:/$()/…`; [apps/pocketterm-mobile/README.md](../apps/pocketterm-mobile/README.md)), the desktop apps and the server read `POCKETTERM_SENTRY_DSN` when they start ([SELF_HOSTING.md](SELF_HOSTING.md#error-reports)). What a report holds: [SECURITY.md](../SECURITY.md#error-reports).
+
 ## Checks
 
 The checks to run before a pull request, and which of them CI runs (Baker on the maintainer's Mac, and `.github/workflows/ci.yml` for Windows), are listed in [CONTRIBUTING.md](../CONTRIBUTING.md#pull-requests).

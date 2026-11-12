@@ -27,6 +27,14 @@ val canSignRelease = listOf("storeFile", "storePassword", "keyAlias", "keyPasswo
 // pasted code, whose tips start seen and whose microphone hears a scripted speaker. Release builds never.
 val e2e = providers.gradleProperty("pockettermE2e").map { it.toBoolean() }.getOrElse(false)
 
+// Error reports (ErrorReports.kt): the GlitchTip DSN is baked in at build time, from -PsentryDsn or the
+// SENTRY_DSN environment variable (tool/build-aab.sh passes Baker's). Without one the SDK is never started,
+// so debug, CI and fork builds report nothing.
+val sentryDsn = providers.gradleProperty("sentryDsn")
+    .orElse(providers.environmentVariable("SENTRY_DSN"))
+    .getOrElse("")
+    .trim()
+
 android {
     namespace = "com.danyzmaj.pocketterm"
     // 37: Compose 1.12, navigation 2.10 and the Markdown renderer are built against it. Compiling against it
@@ -42,6 +50,7 @@ android {
         versionCode = providers.gradleProperty("versionCode").map { it.toInt() }.getOrElse(22)
         versionName = providers.gradleProperty("versionName").getOrElse("1.0.0")
         buildConfigField("boolean", "FIREBASE", "$firebase")
+        buildConfigField("String", "SENTRY_DSN", "\"${sentryDsn.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
     }
 
     signingConfigs {
@@ -143,6 +152,8 @@ dependencies {
 
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
+
+    implementation(libs.sentry.android)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)

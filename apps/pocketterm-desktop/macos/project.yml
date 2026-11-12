@@ -22,6 +22,11 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: 2.6.4
+  # Crash and error reports (PocketTerm/App/ErrorReports.swift), off unless POCKETTERM_SENTRY_DSN is in the app's
+  # environment.
+  Sentry:
+    url: https://github.com/getsentry/sentry-cocoa
+    from: 9.33.0
 settings:
   base:
     # What the About box and Sparkle show, and the build number every release raises (tool/release.sh reads
@@ -52,6 +57,8 @@ targets:
         product: PocketTermDesktop
       - package: Sparkle
         product: Sparkle
+      - package: Sentry
+        product: Sentry
     postBuildScripts:
       # The built-in server (tool/server-sidecar.sh) to Contents/Helpers, signed with the hardened runtime; the
       # coding agents' integrations and the themes' Dock icons to Resources.

@@ -16,6 +16,8 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <!-- DPAPI, for the secrets file (Windows only at run time). -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <!-- Error reports to GlitchTip (ErrorReports.cs): off unless the operator sets POCKETTERM_SENTRY_DSN. -->
+    <PackageReference Include="Sentry" Version="6.13.0" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="PocketTerm.Desktop.Core.Tests" />

@@ -17,6 +17,10 @@ fileGroups:
 packages:
   PocketTermKit:
     path: ../../../packages/PocketTermKit
+  # Crash and error reports (PocketTerm/App/ErrorReports.swift), in the app only: not the extensions.
+  Sentry:
+    url: https://github.com/getsentry/sentry-cocoa
+    from: 9.33.0
 settings:
   base:
     # The version the store shows, and the build number every upload raises (release scripts bump these).
@@ -29,6 +33,12 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     DEAD_CODE_STRIPPING: YES
+    # Where crash reports go (Info.plist SentryDSN): empty unless a build sets it, so nothing is sent.
+    # tool/build-ipa.sh hands it to xcodebuild as the POCKETTERM_BUILD_SENTRY_DSN environment variable (environment
+    # variables are build settings to xcodebuild, and unlike a command-line or -xcconfig setting it doesn't print
+    # them; not POCKETTERM_SENTRY_DSN, the Mac app's opt-in, which `launchctl setenv` makes global). It's set here,
+    # at the project level, so config/Local.xcconfig or the command line wins over it.
+    SENTRY_DSN: $(POCKETTERM_BUILD_SENTRY_DSN)
 targets:
   PocketTerm:
     type: application
@@ -42,6 +52,8 @@ targets:
     dependencies:
       - package: PocketTermKit
         product: PocketTermKit
+      - package: Sentry
+        product: Sentry
       - target: PocketTermLive
       - target: PocketTermPush
     settings:

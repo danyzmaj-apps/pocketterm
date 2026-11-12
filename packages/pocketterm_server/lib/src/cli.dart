@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:pocketterm_server/src/relay.dart';
 import 'package:pocketterm_server/src/server.dart';
 import 'package:pocketterm_server/src/store.dart';
+import 'package:sentry/sentry.dart' show Sentry;
 
 const _usage =
     '''
@@ -123,8 +124,14 @@ Future<int> runCli(
         }
         stderr.writeln("The server didn't start: $e");
         return 1;
-      } on Object catch (e) {
+      } on StorageException catch (e) {
+        // The data folder: the operator's to fix, and the log says how.
         stderr.writeln("The server didn't start: $e");
+        return 1;
+      } on Object catch (e, st) {
+        stderr.writeln("The server didn't start: $e");
+        // Awaited: the process ends right after. A no-op unless error reports are on.
+        await Sentry.captureException(e, stackTrace: st);
         return 1;
       }
       out.writeln(jsonEncode({'event': 'listening', 'address': address.address, 'port': server.port}));

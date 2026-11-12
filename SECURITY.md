@@ -32,6 +32,7 @@ PocketTerm trusts the computer it runs on and the phones that scanned its code. 
 | **Apple (APNs) / Google (FCM)** | The push token, the ciphertext, the opaque tags, the time; an iPhone Live Activity's state; that an Android followed-session notification ended | Notification text, computer ids, session keys or names |
 | **Tailscale** | Your devices' names and addresses, and when they connect | Anything PocketTerm sends (WireGuard, plus PocketTerm's own encryption inside HTTPS) |
 | **Cloudflare** (in front of the relay) | That your server sent an encrypted request of some size, and the status code | The push token, the tags, the kind of push |
+| **GlitchTip** (the publisher's error reports, `glitchtip.danyzmaj.com`; the store phone apps and the relay, and a desktop app only if you set `POCKETTERM_SENTRY_DSN`) | A crash or unexpected error: its type, its scrubbed message, the stack, the app version, the OS and device model, the time | Terminal contents, prompts, sessions, names, folders, keys, host names, addresses, what happened before the error |
 
 ## Keys and storage
 
@@ -80,6 +81,14 @@ Pushes are off until the person turns them on in the phone app, which explains w
 - The server sends the relay one request per phone, its whole body sealed to the relay's X25519 public key (fresh ephemeral key, HKDF-SHA256, AES-256-GCM; `packages/pocketterm_server/lib/src/relay.dart`). No computer id or session key leaves the seal.
 - The relay (`https://push.danyzmaj.com/v1/push`, run by Danijel Lovric on his own server in Croatia, in the EU) opens the request in memory, refuses unknown fields, forwards `enc` and the tags to APNs or FCM and stores nothing. A phone without the key shows a plain "PocketTerm" notification.
 - A fork can run its own relay and point its servers at it with `PUSH_RELAY_URL` and `PUSH_RELAY_KEY`.
+
+## Error reports
+
+Reports use the official Sentry SDK of each platform and go to a Sentry-compatible server: the publisher's self-hosted GlitchTip, or one of your own.
+
+- **Who reports.** The iPhone and Android apps from TestFlight and Google Play, with the DSN baked in at build time (`SENTRY_DSN` in Baker's build settings, never in git). The publisher's relay (`SENTRY_DSN` in its server settings). The desktop apps and the PocketTerm server only when whoever runs them sets the environment variable `POCKETTERM_SENTRY_DSN`; it is off by default, the desktop builds carry no DSN, and the built-in server inherits the desktop app's setting. They read no plain `SENTRY_DSN`, so a DSN set for another project on the same computer never turns PocketTerm's reports on. A phone app built from source has no DSN and reports nothing.
+- **What a report holds.** The error's type and stack; its message with URLs, IP addresses, host names (`*.ts.net`, `.local`, `.lan`) and email addresses replaced and the home folder shortened to `~`, cut to 300 characters; the app's version and environment; the OS, its version and the device model.
+- **What it never holds.** Breadcrumbs (the trail of logs, taps and requests before an error) are off, so no terminal output, prompt or URL rides along. Every SDK runs with `sendDefaultPii` off, and each report drops the user, the request, the machine's host name (`server_name`), the device's name and install id, and extra data before it leaves. No performance tracing, sessions, screenshots or view hierarchies.
 
 ## Local API
 

@@ -654,6 +654,9 @@ public sealed class BuiltInServer : ObservableObject, IDisposable
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8,
             };
+            // The server inherits this process's environment, POCKETTERM_SENTRY_DSN/_ENVIRONMENT/_RELEASE included
+            // (it reads the same names): the operator's error-report setting (ErrorReports) covers it too. Don't
+            // clear psi.Environment.
             foreach (var a in args) psi.ArgumentList.Add(a);
             var process = Start(psi);
             JobObject? job = null;

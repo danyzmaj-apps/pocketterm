@@ -6,13 +6,20 @@
 // the X25519 private key, PEM), RELAY_PREVIOUS_KEY_FILE (/run/secrets/relay_key_previous,
 // optional: the key before, kept while servers move to the new one), APNS_KEY_FILE
 // (/run/secrets/apns_key, the .p8), FCM_SERVICE_ACCOUNT_FILE (/run/secrets/fcm_service_account;
-// without it Android pushes answer 501).
+// without it Android pushes answer 501). SENTRY_DSN (optional): report errors to GlitchTip, with
+// SENTRY_ENVIRONMENT (production) and SENTRY_RELEASE; src/errors.ts says what a report holds.
 //
 // Logs: JSON lines with a level; a push logs only its platform, status and time.
 
+import * as Sentry from "npm:@sentry/deno@11";
+import { reportOptions } from "./src/errors.ts";
 import { Metrics } from "./src/metrics.ts";
 import { relay } from "./src/relay.ts";
 import { publicKeyText, relayKey } from "./src/seal.ts";
+
+// First, so a failure reading the settings below is reported too.
+const reports = reportOptions((name) => Deno.env.get(name));
+if (reports) Sentry.init(reports);
 
 const log = (level: "info" | "warn" | "error", msg: string, fields: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ level, msg, ...fields }));
@@ -62,6 +69,7 @@ Deno.serve({
     }),
   onError: (e) => {
     log("error", "request failed", { error: e instanceof Error ? e.name : "unknown" });
+    Sentry.captureException(e);
     return new Response(null, { status: 500 });
   },
 }, async (req) => {

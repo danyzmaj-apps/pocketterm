@@ -10,6 +10,7 @@ environment:
 dependencies:
   pocketterm_server:
     path: ../../packages/pocketterm_server
+  sentry: ^10.3.0
 
 dev_dependencies:
   very_good_analysis: ^11.0.0

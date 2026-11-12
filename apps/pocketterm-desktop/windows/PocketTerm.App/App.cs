@@ -26,6 +26,7 @@ internal sealed partial class App : Application, IXamlMetadataProvider
         {
             // A screen's bug shouldn't take the server and the phone's bridge down with the window.
             Log.Print($"PocketTerm: {e.Exception}");
+            ErrorReports.CaptureUnhandled(e.Exception, handled: true);
             e.Handled = true;
         };
         TaskScheduler.UnobservedTaskException += (_, e) =>
@@ -119,6 +120,8 @@ internal sealed partial class App : Application, IXamlMetadataProvider
         catch (Exception e)
         {
             Log.Print($"PocketTerm: couldn't start: {e}");
+            // Rethrown into a task nobody awaits: reported here, not whenever the finalizer gets to it.
+            ErrorReports.Capture(e);
             throw;
         }
     }

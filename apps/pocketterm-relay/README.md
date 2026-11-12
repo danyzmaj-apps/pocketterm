@@ -77,6 +77,7 @@ and `--relay-key` (`PUSH_RELAY_URL`, `PUSH_RELAY_KEY`) on its desktop apps' buil
 | `src/fcm.ts`     | FCM HTTP v1: service-account token, message, errors                                                      |
 | `src/limits.ts`  | in-memory rate limits, keyed by HMAC under a daily random salt                                           |
 | `src/metrics.ts` | Prometheus text format                                                                                   |
+| `src/errors.ts`  | error reports to GlitchTip (only with `SENTRY_DSN`): what they keep and what they scrub                  |
 | `tests/`         | `deno task test`: the relay against a fake network, and `vectors.json` (requests the Dart server sealed) |
 
 ```sh
@@ -95,12 +96,16 @@ folder, or on _Deploy_ in Baker.
 
 Settings and secrets live on the server only, in `/etc/danyzmaj/pocketterm-relay/` (folder `750 root:runner`):
 
-| File                       | Mode | What                                        |
-| -------------------------- | ---- | ------------------------------------------- |
-| `app.env`                  | 640  | `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_TOPIC` |
-| `relay-x25519.key`         | 644  | the relay's X25519 private key (PEM)        |
-| `apns.p8`                  | 644  | the APNs key, `AuthKey_<APNS_KEY_ID>.p8`    |
-| `fcm-service-account.json` | 644  | the Firebase service account                |
+| File                       | Mode | What                                                                      |
+| -------------------------- | ---- | ------------------------------------------------------------------------- |
+| `app.env`                  | 640  | `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_TOPIC`, `SENTRY_DSN` (error reports) |
+| `relay-x25519.key`         | 644  | the relay's X25519 private key (PEM)                                      |
+| `apns.p8`                  | 644  | the APNs key, `AuthKey_<APNS_KEY_ID>.p8`                                  |
+| `fcm-service-account.json` | 644  | the Firebase service account                                              |
+
+`SENTRY_DSN` is the DSN of GlitchTip project `pocketterm-relay` (https://glitchtip.danyzmaj.com); without it the relay
+reports nothing. A report carries the error, scrubbed, and no request data (`src/errors.ts`,
+[SECURITY.md](SECURITY.md)).
 
 The originals are in the publisher's `~/Dev/keys/` (`pocketterm-relay-x25519.key`, `AuthKey_<id>.p8`,
 `pocketterm-fcm-service-account.json`). To replace one:

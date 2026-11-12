@@ -51,6 +51,10 @@ Nothing. No database, no volume, no files written; the container's filesystem is
 
 - **Logs**: one line per push with the platform, the status code and how long it took, plus Apple's or Google's error
   reason on a 5xx. Never a token, an address or a body.
+- **Error reports**: when the relay itself fails (a crash, an unexpected error answering a request), it sends a report
+  to the publisher's self-hosted GlitchTip at glitchtip.danyzmaj.com: the error's type, its message with any URL,
+  address, host name or email cut out, the stack, and the Deno and OS versions. Never a request, a token, a body, an
+  address or a log line (`src/errors.ts`).
 - **Metrics**: counts by method, status code and platform.
 - **Rate limits**: counters in memory, keyed by HMAC-SHA256 of the caller's address (an IPv6 caller's /64) or the device
   token under a random salt that lives only in memory and is replaced every day. Gone on restart; one day's keys can't

@@ -104,6 +104,17 @@ a lost folder means every computer opens a new setup link and every phone scans 
 Push notifications go to the publisher's relay ([apps/pocketterm-relay](../pocketterm-relay/README.md)), which
 holds the Apple and Google keys and sees only the phone's push token and the encrypted text.
 
+## Error reports
+
+Off by default. With `POCKETTERM_SENTRY_DSN` set in its environment (the desktop app passes its own on), the server
+sends its crashes, its 500s and unexpected start failures to that Sentry-compatible service (GlitchTip, Sentry),
+tagged `component=server`. `POCKETTERM_SENTRY_ENVIRONMENT` (default `production`) and `POCKETTERM_SENTRY_RELEASE`
+(default `pocketterm-server@<version>`) label them. The SDK's own `SENTRY_DSN`, `SENTRY_ENVIRONMENT`,
+`SENTRY_RELEASE` and `SENTRY_DIST` are ignored, so a developer's Sentry setup never turns PocketTerm's reports on.
+A report holds the error's type, its message and stack; URLs, IP addresses, tailnet/LAN host names, email addresses
+and the home folder are blanked out of the message, cut to 300 characters. No log lines, requests, host name, user or
+data folder contents are sent.
+
 ## When something is wrong
 
 The server's log (stderr) says most of it; the desktop app shows the line that made it stop.

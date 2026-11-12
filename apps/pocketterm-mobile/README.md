@@ -18,6 +18,8 @@ Two native apps, one per platform, with the same features, strings and test ids:
 
 The two platforms do the same things, push included. Building Android from source, push needs your Firebase project's `android/app/google-services.json` (not committed); a debug build without it works without push, and a release build stops unless you pass `-PallowNoPush=true`.
 
+**Error reports.** Off unless the build bakes in a GlitchTip/Sentry DSN, as the store builds do. Android: `-PsentryDsn=…` or the `SENTRY_DSN` environment variable at build time. iPhone: `SENTRY_DSN` in `config/Local.xcconfig` (written `https:/$()/…`) or on the xcodebuild command line; it lands in Info.plist as `SentryDSN`. `tool/build-aab.sh` and `tool/build-ipa.sh` take `SENTRY_DSN` from the environment or from `android/.env` / `ios/.env` (git-ignored; Baker writes them). With one, crashes, ANRs and app hangs are sent with the exception type, stack and app/OS version; messages have URLs, IPs, host names and email addresses replaced and are cut to 300 characters; no breadcrumbs, sessions, screenshots, user, device name or terminal content. Builds from source have no DSN unless you give one, so they send nothing.
+
 Run it:
 
 ```sh

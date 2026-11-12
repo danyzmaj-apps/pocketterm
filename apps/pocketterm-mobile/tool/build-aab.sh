@@ -34,6 +34,14 @@ export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/
 args=(:app:bundleRelease)
 [[ -n "$name" ]] && args+=("-PversionName=$name")
 [[ -n "$number" ]] && args+=("-PversionCode=$number")
+# Error reports: the GlitchTip DSN from the environment, else from Baker's dotenv file (android/.env,
+# git-ignored). Never printed. Without one the app is built with reporting off.
+dsn="${SENTRY_DSN:-}"
+if [[ -z "$dsn" && -f "$android/.env" ]]; then
+  dsn="$(sed -n 's/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}SENTRY_DSN=//p' "$android/.env" | tail -n 1)"
+  dsn="${dsn%$'\r'}"; dsn="${dsn#[\"\']}"; dsn="${dsn%[\"\']}"
+fi
+[[ -n "$dsn" ]] && args+=("-PsentryDsn=$dsn")
 (cd "$android" && ./gradlew "${args[@]}")
 
 echo "$android/app/build/outputs/bundle/release/app-release.aab"

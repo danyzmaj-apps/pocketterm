@@ -5,7 +5,7 @@ WORKDIR /app
 COPY --chmod=755 deno.json deno.lock main.ts ./
 COPY --chmod=755 src ./src
 # Fetch the dependencies at build time (pinned by deno.lock), so the running relay
-# loads nothing and reaches nothing but Apple and Google.
+# loads nothing and reaches nothing but Apple, Google and (with SENTRY_DSN) GlitchTip.
 RUN deno cache --frozen main.ts && chown -R deno:deno /deno-dir
 USER deno
 EXPOSE 8080

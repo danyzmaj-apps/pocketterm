@@ -29,6 +29,8 @@ class PocketTermApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // First, so a crash while the graph is built is reported too.
+        ErrorReports.start(this)
         instance = this
         Timing.enabled = BuildConfig.DEBUG
         // Logcat, under the tag the end-to-end run's timing report reads (maestro/e2e/run.sh).

@@ -20,6 +20,9 @@ public static class Program
     private static int Main(string[] args)
     {
         App.Hooks(PocketTerm.Desktop.TestHooks.Env());
+        // Only when the operator set POCKETTERM_SENTRY_DSN; the SDK then reports crashes (AppDomain, unobserved tasks)
+        // from here on, and disposing at the end of Main sends what's still queued.
+        using var errorReports = PocketTerm.Desktop.ErrorReports.Start();
         AppDomain.CurrentDomain.UnhandledException += (_, e) => PocketTerm.Core.Log.Print($"PocketTerm: crashed: {e.ExceptionObject}");
         WinRT.ComWrappersSupport.InitializeComWrappers();
         var me = AppInstance.FindOrRegisterForKey(InstanceKey);

@@ -2,6 +2,7 @@
 library;
 
 export 'src/cli.dart' show exitPortInUse, runCli;
+export 'src/error_reports.dart' show errorReportOptions;
 export 'src/relay.dart' show defaultRelay, defaultRelayKey;
 export 'src/server.dart' show PocketTermServer, protocolVersion, serverVersion;
 export 'src/store.dart' show StorageException;

@@ -64,6 +64,9 @@
 	<false/>
 	<key>PocketTermAppGroup</key>
 	<string>$(POCKETTERM_APP_GROUP)</string>
+	<!-- Where crash reports go (App/ErrorReports.swift): the SENTRY_DSN build setting, empty unless the build sets it. -->
+	<key>SentryDSN</key>
+	<string>$(SENTRY_DSN)</string>
 	<!-- Coding sessions on the Lock Screen (Shared/SessionActivity.swift), updated by push. -->
 	<key>NSSupportsLiveActivities</key>
 	<true/>

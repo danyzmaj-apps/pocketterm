@@ -106,6 +106,18 @@ A computer pushes coding-session notifications (a run ended, the agent needs you
 
 A relay only reaches apps signed with the publisher's ids. A fork that ships its own phone app (its own bundle id or Android package) runs its own relay ([apps/pocketterm-relay](../apps/pocketterm-relay/README.md), a container): an APNs key from its Apple team, a Firebase project with its Android app (its `google-services.json` goes into its Android build), that project's service account, and an X25519 key pair of its own. Then build its desktop apps with that relay as the built-in server's default: `defaultRelay` and `defaultRelayKey` (the relay's public key, base64; the relay logs it at start) in `packages/pocketterm_server/lib/src/relay.dart`. The server also reads `PUSH_RELAY_URL` and `PUSH_RELAY_KEY` from the environment it starts in.
 
+## Error reports
+
+The desktop app and its built-in server send no error reports unless you ask for them. To get their crashes and unexpected errors in your own [Sentry](https://sentry.io) or [GlitchTip](https://glitchtip.com), give the app the project's DSN in the environment variable `POCKETTERM_SENTRY_DSN`; the built-in server inherits it and reports to the same project, tagged `component: server`. PocketTerm reads no plain `SENTRY_DSN`, so a DSN you set for your own projects doesn't turn it on.
+
+| Computer | Turn on | Turn off |
+| --- | --- | --- |
+| Mac | `launchctl setenv POCKETTERM_SENTRY_DSN '<dsn>'`, then quit and reopen PocketTerm. It lasts until you log out; to keep it, run the same command from a login item or a LaunchAgent | `launchctl unsetenv POCKETTERM_SENTRY_DSN`, then quit and reopen PocketTerm |
+| Windows | `setx POCKETTERM_SENTRY_DSN "<dsn>"`, then sign out of Windows and back in (or restart Explorer) and reopen PocketTerm | `reg delete HKCU\Environment /v POCKETTERM_SENTRY_DSN /f`, then the same |
+| The server on its own | `POCKETTERM_SENTRY_DSN=<dsn>` in the environment it starts in | Leave it unset |
+
+Optional: `POCKETTERM_SENTRY_ENVIRONMENT` (default `production`) and `POCKETTERM_SENTRY_RELEASE` (default the app's version). A report holds the error's type, its message with URLs, addresses, host names and emails cut out, and its stack; never terminal contents, prompts, sessions or your server's address ([SECURITY.md](../SECURITY.md#error-reports)).
+
 ## Updating
 
 The server is part of the desktop app and updates with it. The Mac app updates itself; on Windows, Settings links to a new version when one is out. Computers joined to another computer's server need a version that server's app understands: update them together. [CHANGELOG.md](../CHANGELOG.md) says when.

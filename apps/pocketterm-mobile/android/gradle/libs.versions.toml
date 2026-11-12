@@ -21,6 +21,9 @@ firebaseBom = "35.0.0"
 markdownRenderer = "0.46.0"
 robolectric = "4.16"
 androidxTestCore = "1.7.0"
+# Error reports to GlitchTip (Sentry-compatible), only from builds with a DSN (app/build.gradle.kts). No Sentry
+# Gradle plugin: its mapping upload needs an auth token.
+sentry = "8.64.0"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -53,6 +56,7 @@ firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
 markdown-renderer-m3 = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version.ref = "markdownRenderer" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 androidx-test-core = { module = "androidx.test:core", version.ref = "androidxTestCore" }
+sentry-android = { module = "io.sentry:sentry-android", version.ref = "sentry" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -67,6 +67,17 @@ itself is built, tested and run on Windows (CI's `dotnet-windows` job).
 - **Themes** color what is terminal-like (`CodeBlock`) and the accent; the rest follows Windows' light or dark mode.
   UX differences from the Flutter app: [UX-NOTES.md](UX-NOTES.md).
 
+## Error reports
+
+Off by default. Setting `POCKETTERM_SENTRY_DSN` (e.g. `setx POCKETTERM_SENTRY_DSN https://…@glitchtip.example/1`,
+then restart PocketTerm) sends crashes and unexpected failures to that GlitchTip/Sentry project
+(`Desktop.Core/ErrorReports.cs`); `POCKETTERM_SENTRY_ENVIRONMENT` and `POCKETTERM_SENTRY_RELEASE` override
+`production` and `pocketterm-windows@<version>`. Sentry's own `SENTRY_DSN`/`SENTRY_*` are ignored, so a developer's
+global setting doesn't opt PocketTerm in. The built-in server inherits all three and reports its own. What goes: the
+exception's type, its stack and its message with URLs, IP addresses, host names, emails and the user's folder taken
+out, cut to 300 characters, tagged `component=app`. No breadcrumbs, user, machine name, terminal contents, performance
+data or sessions. No DSN is built in.
+
 ## Test hooks
 
 Debug builds and `-p:PocketTermE2E=true` builds read, besides Desktop.Core's `POCKETTERM_TAILSCALE`,

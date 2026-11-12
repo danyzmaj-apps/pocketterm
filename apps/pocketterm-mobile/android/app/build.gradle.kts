@@ -35,6 +35,15 @@ val sentryDsn = providers.gradleProperty("sentryDsn")
     .getOrElse("")
     .trim()
 
+// Usage statistics (Analytics.kt in :core): the Umami website id is baked in at build time, from -PumamiWebsiteId
+// or the UMAMI_WEBSITE_ID environment variable (tool/build-aab.sh passes Baker's). Without one the app records
+// nothing and Settings has no switch for it, so debug, CI and fork builds send nothing.
+val umamiWebsiteId = providers.gradleProperty("umamiWebsiteId")
+    .orElse(providers.environmentVariable("UMAMI_WEBSITE_ID"))
+    .getOrElse("")
+    .trim()
+    .also { require(Regex("[0-9a-fA-F-]*").matches(it)) { "umamiWebsiteId must be a UUID" } }
+
 android {
     namespace = "com.danyzmaj.pocketterm"
     // 37: Compose 1.12, navigation 2.10 and the Markdown renderer are built against it. Compiling against it
@@ -51,6 +60,7 @@ android {
         versionName = providers.gradleProperty("versionName").getOrElse("1.0.0")
         buildConfigField("boolean", "FIREBASE", "$firebase")
         buildConfigField("String", "SENTRY_DSN", "\"${sentryDsn.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+        buildConfigField("String", "UMAMI_WEBSITE_ID", "\"$umamiWebsiteId\"")
     }
 
     signingConfigs {

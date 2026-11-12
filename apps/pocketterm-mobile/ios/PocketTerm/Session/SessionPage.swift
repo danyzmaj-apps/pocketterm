@@ -107,7 +107,7 @@ struct SessionPage: View {
     }
     .closeConfirmation(remote: remote, window: $closing) { dismiss() }
     .fullScreenCover(isPresented: $showQueue) {
-      QueueScreen(remote: remote, session: key).toasts()
+      QueueScreen(remote: remote, session: key).toasts().analyticsScreen("queue")
     }
     .onAppear { model.appear() }
     .onDisappear { model.disappear() }

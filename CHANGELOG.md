@@ -19,6 +19,7 @@ The first release of PocketTerm as it is now: native apps on every platform, and
   - omp profiles are listed and kept, and a new session opens as a tab in its project's window.
 - **Error reports.** The phone apps from TestFlight and Google Play report crashes and unexpected errors, scrubbed of terminal contents, names, addresses and host names, to the publisher's self-hosted GlitchTip. The desktop app and its server report only to a Sentry or GlitchTip you name in `POCKETTERM_SENTRY_DSN`; they are off by default ([SECURITY.md](SECURITY.md#error-reports)).
 - **The push relay** can report its own errors (with `SENTRY_DSN` in its settings); redeploy it to get them. Servers need nothing.
+- **Usage statistics, opt-in.** The phone apps from TestFlight and Google Play can share anonymous usage statistics (screens and a fixed list of events, never terminal contents, names or addresses) with the publisher's self-hosted Umami, only after you turn on **Settings → Share anonymous usage statistics**. The desktop app and its server send none ([SECURITY.md](SECURITY.md#usage-statistics)).
 
 ### Coming from 0.1.x
 

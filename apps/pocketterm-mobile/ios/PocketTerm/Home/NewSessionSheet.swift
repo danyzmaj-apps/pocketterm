@@ -190,6 +190,7 @@ struct NewSessionSheet: View {
     Task {
       do {
         let opened = try await remote.launch(cwd, startAgent: agent, profile: profile)
+        app.analytics.event("session_started", ["kind": .string(agent ? "agent" : "shell"), "project": .string("existing")])
         launching = nil
         onOpened(opened, agent)
       } catch {
@@ -253,6 +254,7 @@ struct NewSessionSheet: View {
     Task {
       do {
         let opened = try await remote.create(root, name, startAgent: agent, profile: profile)
+        app.analytics.event("session_started", ["kind": .string(agent ? "agent" : "shell"), "project": .string("new")])
         launching = nil
         onOpened(opened, agent)
       } catch {

@@ -8,10 +8,12 @@ struct AccountSheet: View {
   init(home: HomeModel) {
     self.home = home
     _app = ObservedObject(wrappedValue: home.app)
+    _analytics = ObservedObject(wrappedValue: home.app.analytics)
   }
 
   let home: HomeModel
   @ObservedObject private var app: AppModel
+  @ObservedObject private var analytics: Analytics
   @ObservedObject private var look = appearance
   @ObservedObject private var voice = VoiceLanguage.shared
   @Environment(\.dismiss) private var dismiss
@@ -26,6 +28,10 @@ struct AccountSheet: View {
       Form {
         Section { header }
         Section { notifications }
+        // Only builds that can send them (a website id baked in) have the switch.
+        if analytics.configured {
+          Section { statistics }
+        }
         Section {
           NavigationLink {
             ThemePicker(look: look)
@@ -116,6 +122,23 @@ struct AccountSheet: View {
     }
     .padding(.vertical, 4)
     .accessibilityElement(children: .combine)
+  }
+
+  /// Anonymous usage statistics on or off for this phone (off until turned on): which screens open and a few fixed
+  /// facts about what happened, never what a session or terminal holds. Off forgets this phone's random id.
+  private var statistics: some View {
+    Toggle(isOn: Binding(get: { analytics.enabled }, set: { analytics.setEnabled($0) })) {
+      VStack(alignment: .leading, spacing: 4) {
+        Text("Share anonymous usage statistics")
+        Text(
+          "Which screens you open and what works, never what your sessions or terminals hold. Sent to the "
+            + "publisher\u{2019}s Umami in the EU."
+        )
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+      }
+    }
+    .accessibilityIdentifier("statistics-toggle")
   }
 
   @ViewBuilder private var notifications: some View {

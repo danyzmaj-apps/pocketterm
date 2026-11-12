@@ -106,7 +106,7 @@ fun SessionScreen(route: SessionRoute, home: HomeController) {
     val toaster = rememberPageToaster()
     val haptics = rememberHaptics()
     val model = remember(remote, key) {
-        SessionModel(remote, key, route.starting, route.offerContinue, route.autoContinue, scope, graph.session.drafts)
+        SessionModel(remote, key, route.starting, route.offerContinue, route.autoContinue, scope, graph.session.drafts, graph.analytics)
     }
     model.toaster = toaster
     model.nav = nav

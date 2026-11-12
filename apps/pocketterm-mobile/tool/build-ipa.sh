@@ -57,8 +57,16 @@ if [[ -z "$dsn" && -f "$ios/.env" ]]; then
     "s/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}SENTRY_DSN[[:space:]]*=[[:space:]]*[\"']\{0,1\}\([^\"'[:space:]]*\)[\"']\{0,1\}[[:space:]]*\$/\2/p" \
     "$ios/.env" | tail -n 1)"
 fi
+# Where usage statistics go (Info.plist UmamiWebsiteID): UMAMI_WEBSITE_ID, the same way, as
+# POCKETTERM_BUILD_UMAMI_WEBSITE_ID. None → the app records nothing.
+umami="${UMAMI_WEBSITE_ID:-}"
+if [[ -z "$umami" && -f "$ios/.env" ]]; then
+  umami="$(sed -n \
+    "s/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}UMAMI_WEBSITE_ID[[:space:]]*=[[:space:]]*[\"']\{0,1\}\([^\"'[:space:]]*\)[\"']\{0,1\}[[:space:]]*\$/\2/p" \
+    "$ios/.env" | tail -n 1)"
+fi
 
-POCKETTERM_BUILD_SENTRY_DSN="$dsn" xcodebuild archive \
+POCKETTERM_BUILD_SENTRY_DSN="$dsn" POCKETTERM_BUILD_UMAMI_WEBSITE_ID="$umami" xcodebuild archive \
   -project "$ios/PocketTerm.xcodeproj" -scheme PocketTerm -configuration Release \
   -destination 'generic/platform=iOS' -archivePath "$archive" \
   -allowProvisioningUpdates DEVELOPMENT_TEAM="$team" ${overrides[@]+"${overrides[@]}"}

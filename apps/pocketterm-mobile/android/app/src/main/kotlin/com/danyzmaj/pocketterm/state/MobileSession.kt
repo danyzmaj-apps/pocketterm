@@ -2,6 +2,7 @@ package com.danyzmaj.pocketterm.state
 
 import com.danyzmaj.pocketterm.AndroidPreferences
 import com.danyzmaj.pocketterm.core.Account
+import com.danyzmaj.pocketterm.core.Analytics
 import com.danyzmaj.pocketterm.core.Backend
 import com.danyzmaj.pocketterm.core.ChannelKey
 import com.danyzmaj.pocketterm.core.ComputerKey
@@ -12,6 +13,7 @@ import com.danyzmaj.pocketterm.core.DeviceTokens
 import com.danyzmaj.pocketterm.core.Desktops
 import com.danyzmaj.pocketterm.core.Native
 import com.danyzmaj.pocketterm.core.NativeDeviceTokens
+import com.danyzmaj.pocketterm.core.PairingFailure
 import com.danyzmaj.pocketterm.core.Session
 import com.danyzmaj.pocketterm.core.debugPrint
 import com.danyzmaj.pocketterm.core.jsonDecode
@@ -49,6 +51,8 @@ class MobileSession(
     private val cacheDir: File,
     /** Whether the first-use tips start seen (E2E builds). */
     tipsStartSeen: Boolean = false,
+    /** The phone's usage statistics (off unless turned on). */
+    val analytics: Analytics,
 ) : Session(device, scope) {
     /** A phone signs in only with a code from the computer. */
     override val role: DeviceRole get() = DeviceRole.phone
@@ -171,6 +175,15 @@ class MobileSession(
         notifyListeners()
     }
 
+    override fun onPairing(scanned: Boolean, failure: PairingFailure?, another: Boolean) {
+        val method = if (scanned) "scan" else "link"
+        if (failure == null) {
+            analytics.event("pairing_completed", "method" to method, "computer" to if (another) "another" else "first")
+        } else {
+            analytics.event("pairing_failed", "method" to method, "code" to failure.name)
+        }
+    }
+
     // ------------------------------------------------------------------ demo
 
     /** "Try the demo": a made-up computer answered on this phone (demo/Demo.kt), shown while signed out; null otherwise. */
@@ -181,6 +194,7 @@ class MobileSession(
         if (user != null || demo != null) return
         demo = DemoComputer(File(cacheDir, "demo-${System.nanoTime()}").apply { mkdirs() }, scope)
         notifyListeners()
+        analytics.event("demo_opened")
     }
 
     /** Back to the setup screen (or on, once signed in). The demo goes once nothing shows it. */
@@ -312,6 +326,7 @@ class MobileSession(
             val was = pushEnabled ?: false
             pushUnsent = false
             prefs.setBool(key, false)
+            analytics.event("notifications_set", "on" to false)
             notifyListeners()
             // Not now, the first time: nothing was registered.
             if (was) pushOff()
@@ -320,6 +335,7 @@ class MobileSession(
         val registered = registerPush(u.device.id)
         if (choice != pushChoice) return true
         prefs.setBool(key, registered)
+        analytics.event("notifications_set", "on" to registered)
         checkNotifications()
         notifyListeners()
         return registered

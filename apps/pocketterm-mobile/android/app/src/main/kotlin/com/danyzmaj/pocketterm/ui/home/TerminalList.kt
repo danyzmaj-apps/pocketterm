@@ -200,6 +200,7 @@ fun TerminalList(remote: TerminalRemote, computer: String?, modifier: Modifier =
         graph.scope.launch {
             try {
                 val opened = remote.launch(cwd, startAgent = true, profile = newProfile())
+                session.analytics.event("session_started", "kind" to "agent", "project" to "existing")
                 // An agent the phone started: its session's key is its window's.
                 nav.openSession(opened.window, starting = true)
                 if (opened.where.isNotEmpty()) toaster.show("Opened in ${opened.where}")

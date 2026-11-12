@@ -1,5 +1,6 @@
 package com.danyzmaj.pocketterm.state
 
+import com.danyzmaj.pocketterm.core.AnalyticsEvents
 import com.danyzmaj.pocketterm.core.ChangeNotifier
 import com.danyzmaj.pocketterm.core.ChannelKey
 import com.danyzmaj.pocketterm.core.Desktops
@@ -156,6 +157,7 @@ class HomeController(
 
     private fun dropRemote(t: TerminalRemote) {
         attached = false
+        linkOnline = null
         t.removeListener(onlineListener)
         t.activities?.dispose()
         t.activities = null
@@ -165,13 +167,38 @@ class HomeController(
     /** The computer's connection is back: a push token the server missed goes again. */
     private fun pushWhenOnline() {
         val t = remote ?: return
+        countLink(t)
         if (t.online && session.pushUnsent && !demo) scope.launch { session.retryPush() }
+    }
+
+    /** Whether the computer answered when last looked, since the app came to the front; null: not known yet. */
+    private var linkOnline: Boolean? = null
+
+    /**
+     * `terminal_connected` when the computer starts answering, `terminal_disconnected` when it stops (the
+     * server unreachable, or the computer not answering); not for the app leaving the front, nor in the demo.
+     */
+    private fun countLink(t: TerminalRemote) {
+        if (demo || !attached) return
+        val link = t.link
+        val online = link == TerminalLink.online
+        val down = link == TerminalLink.unreachable || link == TerminalLink.offline
+        if (online && linkOnline != true) {
+            session.analytics.event("terminal_connected", "transport" to AnalyticsEvents.transport(t.backend.host))
+        } else if (down && linkOnline == true) {
+            session.analytics.event(
+                "terminal_disconnected",
+                "reason" to if (link == TerminalLink.unreachable) "unreachable" else "computer_offline",
+            )
+        }
+        if (online || down) linkOnline = online
     }
 
     private fun attach(on: Boolean) {
         val t = remote ?: return
         if (on == attached || t === demoRemote) return
         attached = on
+        linkOnline = null
         if (on) t.attach() else t.detach()
     }
 

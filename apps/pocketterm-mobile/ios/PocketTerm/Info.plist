@@ -67,6 +67,10 @@
 	<!-- Where crash reports go (App/ErrorReports.swift): the SENTRY_DSN build setting, empty unless the build sets it. -->
 	<key>SentryDSN</key>
 	<string>$(SENTRY_DSN)</string>
+	<!-- Where usage statistics go (App/AppAnalytics.swift): the UMAMI_WEBSITE_ID build setting, empty unless the build
+	     sets it; empty, nothing is recorded and the account sheet has no switch for it. -->
+	<key>UmamiWebsiteID</key>
+	<string>$(UMAMI_WEBSITE_ID)</string>
 	<!-- Coding sessions on the Lock Screen (Shared/SessionActivity.swift), updated by push. -->
 	<key>NSSupportsLiveActivities</key>
 	<true/>

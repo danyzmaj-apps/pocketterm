@@ -92,6 +92,7 @@ struct SetupView: View {
         if let link { connect(link) }
       }
       .toasts()
+      .analyticsScreen("scan")
     }
   }
 

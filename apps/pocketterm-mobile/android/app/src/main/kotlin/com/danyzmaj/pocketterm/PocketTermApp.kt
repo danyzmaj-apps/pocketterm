@@ -5,6 +5,9 @@ import android.os.Build
 import android.util.Log
 import android.os.LocaleList
 import android.provider.Settings
+import com.danyzmaj.pocketterm.core.Analytics
+import com.danyzmaj.pocketterm.core.AnalyticsDevice
+import com.danyzmaj.pocketterm.core.AnalyticsTarget
 import com.danyzmaj.pocketterm.core.Appearance
 import com.danyzmaj.pocketterm.core.DebugLog
 import com.danyzmaj.pocketterm.core.SpeechSource
@@ -67,6 +70,14 @@ class AppGraph(val app: Application) {
     }
     val speech: SpeechSource = if (e2e) ScriptedSpeech() else Dictation(app)
 
+    /** Anonymous usage statistics: off until turned on in Settings, and never in a build without a website id. */
+    val analytics = Analytics(
+        AnalyticsTarget.of(BuildConfig.UMAMI_WEBSITE_ID),
+        analyticsDevice(app),
+        prefs,
+        scope,
+    )
+
     val session = MobileSession(
         prefs,
         native,
@@ -74,6 +85,7 @@ class AppGraph(val app: Application) {
         scope = scope,
         cacheDir = app.cacheDir,
         tipsStartSeen = e2e,
+        analytics = analytics,
     )
 
     /** `pocketterm://` links opened from outside (setup links, followed sessions'): kept until the session reads them. */
@@ -88,4 +100,22 @@ class AppGraph(val app: Application) {
         // Started first: the app's first frame shows it's still reading what it kept, not setup.
         scope.launch { session.startPhone(links.receiveAsFlow()) }
     }
+}
+
+/**
+ * What Umami reads this phone as: a browser-like User-Agent (Umami drops bot-like ones, OkHttp's own among them)
+ * with the Android version and model, the screen in pixels, the language, and the app's version.
+ */
+private fun analyticsDevice(app: Application): AnalyticsDevice {
+    fun clean(text: String) = text.replace(Regex("[;()\\r\\n]"), " ").replace(Regex("\\s+"), " ").trim()
+    val metrics = app.resources.displayMetrics
+    return AnalyticsDevice(
+        platform = "android",
+        hostname = "android.pocketterm.app.danyzmaj.com",
+        userAgent = "Mozilla/5.0 (Linux; Android ${clean(Build.VERSION.RELEASE)}; ${clean(Build.MODEL)}) " +
+            "PocketTerm/${clean(BuildConfig.VERSION_NAME)}",
+        screen = "${metrics.widthPixels}x${metrics.heightPixels}",
+        language = Locale.getDefault().toLanguageTag(),
+        appVersion = BuildConfig.VERSION_NAME,
+    )
 }

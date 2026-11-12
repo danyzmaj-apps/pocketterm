@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -24,6 +25,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.danyzmaj.pocketterm.AppGraph
@@ -75,7 +77,7 @@ fun AppRoot(graph: AppGraph) {
             else -> Root.Home(user.id)
         }
         val controller = rememberNavController()
-        val nav = remember(controller) { Nav(controller) }
+        val nav = remember(controller) { Nav(controller, graph.analytics) }
         val scope = rememberCoroutineScope()
         val toaster = remember { Toaster(SnackbarHostState(), scope) }
         val coach = remember { Coach(session.tips) }
@@ -96,6 +98,10 @@ fun AppRoot(graph: AppGraph) {
                 )
             }
         }
+        // A screen view each time another page (or root) comes to the front.
+        val entry by controller.currentBackStackEntryAsState()
+        val screen = screenName(entry?.destination?.route, root)
+        LaunchedEffect(screen) { screen?.let(graph.analytics::screen) }
         // Pages and sheets over one root go with it (signed out here or by the computer, the demo left).
         // Done at once, before the new home gets its ui below: a coroutine (LaunchedEffect) would run after
         // the activity resumed and so take away the session page a link that launched the app just opened.
@@ -105,7 +111,7 @@ fun AppRoot(graph: AppGraph) {
         }
         DisposableEffect(home) {
             home?.ui = object : HomeController.Ui {
-                override fun openSession(remote: TerminalRemote, key: String) = nav.openSession(key)
+                override fun openSession(remote: TerminalRemote, key: String) = nav.openSession(key, from = "notification")
                 override fun showingSession(key: String) = nav.showingSession(key)
                 override fun closeSession(key: String) {
                     if (nav.showingSession(key)) nav.back()
@@ -121,7 +127,10 @@ fun AppRoot(graph: AppGraph) {
         DisposableEffect(lifecycle, home) {
             val observer = LifecycleEventObserver { _, e ->
                 when (e) {
-                    Lifecycle.Event.ON_RESUME -> home?.onResume()
+                    Lifecycle.Event.ON_RESUME -> {
+                        home?.onResume()
+                        graph.analytics.flush()
+                    }
                     Lifecycle.Event.ON_PAUSE -> home?.onPause()
                     else -> {}
                 }
@@ -181,4 +190,25 @@ private fun withHome(home: HomeController?, nav: Nav, content: @Composable (Home
         return
     }
     content(home)
+}
+
+/** The usage statistics' name of what's in front: page [route] over [root]; null while launching. */
+private fun screenName(route: String?, root: Root): String? {
+    fun on(r: kotlin.reflect.KClass<*>) = route?.startsWith(r.qualifiedName!!) == true
+    return when {
+        route == null -> null
+        route == RootRoute::class.qualifiedName -> when (root) {
+            Root.Launching -> null
+            Root.Setup -> "setup"
+            Root.Consent -> "push_consent"
+            is Root.Home -> "home"
+        }
+        on(SessionRoute::class) -> "session"
+        on(TerminalRoute::class) -> "terminal"
+        on(QueueRoute::class) -> "queue"
+        on(OrchestratorRoute::class) -> "orchestrator"
+        on(SettingsRoute::class) -> "settings"
+        on(ScanRoute::class) -> "scan"
+        else -> null
+    }
 }

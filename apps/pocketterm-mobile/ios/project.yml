@@ -39,6 +39,9 @@ settings:
     # them; not POCKETTERM_SENTRY_DSN, the Mac app's opt-in, which `launchctl setenv` makes global). It's set here,
     # at the project level, so config/Local.xcconfig or the command line wins over it.
     SENTRY_DSN: $(POCKETTERM_BUILD_SENTRY_DSN)
+    # Where usage statistics go (Info.plist UmamiWebsiteID): the Umami website id, empty unless a build sets it, so
+    # nothing is recorded. tool/build-ipa.sh hands it over as POCKETTERM_BUILD_UMAMI_WEBSITE_ID, the same way.
+    UMAMI_WEBSITE_ID: $(POCKETTERM_BUILD_UMAMI_WEBSITE_ID)
 targets:
   PocketTerm:
     type: application

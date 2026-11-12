@@ -61,7 +61,7 @@ private struct HomeContent: View {
       if home.isDemo { DemoBanner() }
     }
     .sheet(isPresented: $account) {
-      AccountSheet(home: home)
+      AccountSheet(home: home).analyticsScreen("settings")
     }
     .fullScreenCover(isPresented: $scanning) {
       ScanSheet(signedIn: true) { link in
@@ -69,6 +69,7 @@ private struct HomeContent: View {
         if let link { Task { await home.scanned(link) } }
       }
       .toasts()
+      .analyticsScreen("scan")
     }
   }
 

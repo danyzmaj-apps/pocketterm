@@ -99,13 +99,15 @@ fun NewSessionSheet(remote: TerminalRemote, cwd: String?, onDismiss: () -> Unit)
         if (o.where.isNotEmpty()) toaster.show("Opened in ${o.where}")
     }
 
-    fun start(at: String, open: suspend (startAgent: Boolean, profile: String) -> Opened) {
+    fun start(at: String, project: String, open: suspend (startAgent: Boolean, profile: String) -> Opened) {
         if (launching != null) return
         launching = at
         val withAgent = agent
         scope.launch {
             try {
-                opened(open(withAgent, if (withAgent) chosen else ""), withAgent)
+                val o = open(withAgent, if (withAgent) chosen else "")
+                session.analytics.event("session_started", "kind" to if (withAgent) "agent" else "shell", "project" to project)
+                opened(o, withAgent)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 launching = null
@@ -114,10 +116,10 @@ fun NewSessionSheet(remote: TerminalRemote, cwd: String?, onDismiss: () -> Unit)
         }
     }
 
-    fun launch(path: String) = start(path) { a, p -> remote.launch(path, startAgent = a, profile = p) }
+    fun launch(path: String) = start(path, "existing") { a, p -> remote.launch(path, startAgent = a, profile = p) }
 
     // Makes the project under [root] on the computer and opens a window there, as [launch].
-    fun create(root: String) = start(root) { a, p -> remote.create(root, name.trim(), startAgent = a, profile = p) }
+    fun create(root: String) = start(root, "new") { a, p -> remote.create(root, name.trim(), startAgent = a, profile = p) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(.85f).imePadding().tag("new-session-sheet")) {

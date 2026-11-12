@@ -25,7 +25,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     // The first frame in the right half of the theme; the root follows changes (Style.swift's themed).
     appearance.follow(dark: UITraitCollection.current.userInterfaceStyle == .dark)
     VoiceLanguage.shared.load(prefs)
-    let app = AppModel(prefs: prefs, device: UIDevice.current.name)
+    let app = AppModel(prefs: prefs, device: UIDevice.current.name, analytics: AppAnalytics.shared)
     // The home screen icon follows the theme (kept: dropping it stops that).
     iconFollower = followAppIcon(appearance) { try await AppIcons.set($0) }
     // Started first: the first frame shows it's still reading what it kept, not setup.

@@ -15,9 +15,9 @@ struct RootView: View {
       } else if app.user == nil, let demo = app.demo {
         HomeRoot(app: app, demo: demo).id("demo")
       } else if app.user == nil {
-        SetupView(app: app).id("setup")
+        SetupView(app: app).id("setup").analyticsScreen("setup")
       } else if app.pushEnabled == nil {
-        PushConsentView(app: app).id("consent")
+        PushConsentView(app: app).id("consent").analyticsScreen("push_consent")
       } else {
         HomeRoot(app: app, demo: nil).id(app.user!.id)
       }
@@ -63,13 +63,16 @@ struct HomeRoot: View {
   var body: some View {
     NavigationStack(path: $home.path) {
       HomeView(home: home)
+        .analyticsScreen("home")
         .navigationDestination(for: AppRoute.self) { route in
           if let remote = home.remote {
             switch route {
             case .session(let key, let starting, let after):
               SessionPage(home: home, remote: remote, sessionKey: key, starting: starting, after: after)
+                .analyticsScreen("session")
             case .terminal(let window, let starting):
               TerminalPage(home: home, remote: remote, window: window, starting: starting)
+                .analyticsScreen("terminal")
             }
           }
         }

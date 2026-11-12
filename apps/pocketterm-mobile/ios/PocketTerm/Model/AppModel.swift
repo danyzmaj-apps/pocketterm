@@ -9,11 +9,13 @@ import UIKit
 final class AppModel: Session {
   init(
     prefs: Preferences, device: String, deviceTokens: DeviceTokens = KeychainDeviceTokens(),
-    backendStore: BackendStore = AppGroupBackendStore(), native: PhoneNative = .ios
+    backendStore: BackendStore = AppGroupBackendStore(), native: PhoneNative = .ios,
+    analytics: Analytics? = nil
   ) {
     self.prefs = prefs
     self.native = native
     tips = TipsController(prefs: prefs)
+    self.analytics = analytics ?? Analytics(target: nil, device: { .current }, prefs: prefs)
     super.init(device: device, deviceTokens: deviceTokens, backendStore: backendStore)
   }
 
@@ -24,6 +26,19 @@ final class AppModel: Session {
 
   /// The first-use tips this phone has shown; kept across sign-outs, they're the phone's.
   let tips: TipsController
+
+  /// The phone's usage statistics (off unless turned on in the account sheet; none in a build without a website
+  /// id, nor in tests).
+  let analytics: Analytics
+
+  override func onPairing(scanned: Bool, failure: PairingFailure?, another: Bool) {
+    let method = AnalyticsValue.string(scanned ? "scan" : "link")
+    if let failure {
+      analytics.event("pairing_failed", ["method": method, "code": .string(failure.rawValue)])
+    } else {
+      analytics.event("pairing_completed", ["method": method, "computer": .string(another ? "another" : "first")])
+    }
+  }
 
   /// A phone signs in only with a code from the computer.
   override var role: DeviceRole { .phone }
@@ -159,6 +174,7 @@ final class AppModel: Session {
   func enterDemo() {
     if user != nil || demo != nil { return }
     demo = DemoComputer(cacheDir: FileManager.default.temporaryDirectory.appendingPathComponent("pocketterm_demo-\(UUID().uuidString)"))
+    analytics.event("demo_opened")
   }
 
   /// Back to the setup screen (or on, once signed in).
@@ -304,6 +320,7 @@ final class AppModel: Session {
       let was = pushEnabled ?? false
       pushUnsent = false
       prefs.setBool(key, false)
+      analytics.event("notifications_set", ["on": .bool(false)])
       objectWillChange.send()
       // Not now, the first time: nothing was registered.
       if was { await pushOff() }
@@ -312,6 +329,7 @@ final class AppModel: Session {
     let registered = await registerPush(u.device.id)
     if choice != pushChoice { return true }
     prefs.setBool(key, registered)
+    analytics.event("notifications_set", ["on": .bool(registered)])
     await checkNotifications()
     objectWillChange.send()
     return registered

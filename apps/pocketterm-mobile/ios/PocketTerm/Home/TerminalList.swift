@@ -367,6 +367,7 @@ struct TerminalList: View {
       defer { launching = nil }
       do {
         let opened = try await remote.launch(cwd, startAgent: true, profile: profile)
+        home.app.analytics.event("session_started", ["kind": .string("agent"), "project": .string("existing")])
         // Still this computer's list: its session opens (and says where), even if the list was left meanwhile.
         if home.remote === remote { home.opened(opened, agent: true) }
       } catch {

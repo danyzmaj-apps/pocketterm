@@ -79,6 +79,7 @@ struct OrchestratorBar: View {
         .environmentObject(look)
         .tint(look.theme.tint)
         .toasts()
+        .analyticsScreen("orchestrator")
       }
     }
   }
@@ -429,6 +430,7 @@ private struct OrchestratorChat: View {
     if prompt.isEmpty || sending { return }
     sending = true
     error = nil
+    AppAnalytics.shared.event("prompt_sent", ["mode": .string("orchestrator"), "attachments": .bool(false)])
     defer {
       sending = false
       starting = false

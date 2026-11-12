@@ -4,6 +4,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.navigation.NavHostController
 import androidx.navigation.toRoute
 import com.danyzmaj.pocketterm.AppGraph
+import com.danyzmaj.pocketterm.core.Analytics
 import com.danyzmaj.pocketterm.state.HomeController
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.serialization.Serializable
@@ -47,18 +48,30 @@ data object SettingsRoute
 @Serializable
 data class ScanRoute(val signedIn: Boolean)
 
-/** Where screens go: one per activity, [LocalNav]. */
-class Nav(val controller: NavHostController) {
-    fun openSession(key: String, starting: Boolean = false, offerContinue: Boolean = false, autoContinue: Boolean = false) =
+/** Where screens go: one per activity, [LocalNav]. Opening a session's page counts in the usage statistics (`session_opened`). */
+class Nav(val controller: NavHostController, private val analytics: Analytics) {
+    /** [from]: `list`, `notification` (a tapped push or followed session), `new` (just started), `switch` (a window switched to its conversation). */
+    fun openSession(
+        key: String,
+        starting: Boolean = false,
+        offerContinue: Boolean = false,
+        autoContinue: Boolean = false,
+        from: String = if (starting) "new" else "list",
+    ) {
+        analytics.event("session_opened", "view" to "conversation", "from" to from)
         controller.navigate(SessionRoute(key, starting, offerContinue, autoContinue))
+    }
 
     /** The session's page in place of the one in front (a window switched to its conversation). */
     fun replaceWithSession(key: String, offerContinue: Boolean, autoContinue: Boolean) {
         controller.popBackStack()
-        openSession(key, offerContinue = offerContinue, autoContinue = autoContinue)
+        openSession(key, offerContinue = offerContinue, autoContinue = autoContinue, from = "switch")
     }
 
-    fun openTerminal(window: String, starting: Boolean = false) = controller.navigate(TerminalRoute(window, starting))
+    fun openTerminal(window: String, starting: Boolean = false) {
+        analytics.event("session_opened", "view" to "screen", "from" to if (starting) "new" else "list")
+        controller.navigate(TerminalRoute(window, starting))
+    }
 
     fun openQueue(key: String) = controller.navigate(QueueRoute(key))
 

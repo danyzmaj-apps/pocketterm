@@ -156,6 +156,7 @@ final class HomeModel: ObservableObject {
 
   private func dropRemote(_ t: TerminalRemote) {
     attached = false
+    linkOnline = nil
     stopRemote?()
     stopRemote = nil
     t.activities?.dispose()
@@ -167,14 +168,35 @@ final class HomeModel: ObservableObject {
   private func remoteChanged() {
     guard let t = remote else { return }
     Finished.shared.note(t.sessions, watched: t.watchedSession)
+    countLink(t)
     // The computer's connection is back: a push token the server missed goes again.
     if t.online && app.pushUnsent && !isDemo { Task { await app.retryPush() } }
     advanceRouted()
   }
 
+  /// Whether the computer answered when last looked, since the app came to the front; nil: not known yet.
+  private var linkOnline: Bool?
+
+  /// `terminal_connected` when the computer starts answering, `terminal_disconnected` when it stops (the server
+  /// unreachable, or the computer not answering); not for the app leaving the front, nor in the demo.
+  private func countLink(_ t: TerminalRemote) {
+    guard attached, !isDemo else { return }
+    let link = t.link
+    let online = link == .online
+    let down = link == .unreachable || link == .offline
+    if online && linkOnline != true {
+      app.analytics.event("terminal_connected", ["transport": .string(AnalyticsEvents.transport(t.backend.host))])
+    } else if down && linkOnline == true {
+      app.analytics.event(
+        "terminal_disconnected", ["reason": .string(link == .unreachable ? "unreachable" : "computer_offline")])
+    }
+    if online || down { linkOnline = online }
+  }
+
   private func attach(_ on: Bool) {
     guard let t = remote, on != attached, remoteFor == nil else { return }
     attached = on
+    linkOnline = nil
     if on { t.attach() } else { t.detach() }
   }
 
@@ -183,6 +205,7 @@ final class HomeModel: ObservableObject {
     switch phase {
     case .active:
       active = true
+      app.analytics.flush()
       timing("resumed")
       // Before anything asks the server: connections from before may have died while away.
       app.server?.freshConnections()
@@ -261,12 +284,19 @@ final class HomeModel: ObservableObject {
   /// Opens coding session [key]; [starting]: it was just launched.
   func openSession(_ key: String, starting: Bool = false) {
     Finished.shared.seen(key)
+    countOpened("conversation", from: starting ? "new" : "list")
     path.append(.session(key: key, starting: starting))
   }
 
   /// Opens window [window]'s screen; [starting]: it was just launched.
   func openWindow(_ window: String, starting: Bool = false) {
+    countOpened("screen", from: starting ? "new" : "list")
     path.append(.terminal(window: window, starting: starting))
+  }
+
+  /// `session_opened`: [view] `conversation` or `screen`, [from] `list`, `notification`, `new` or `switch`.
+  private func countOpened(_ view: String, from: String) {
+    app.analytics.event("session_opened", ["view": .string(view), "from": .string(from)])
   }
 
   /// A window just opened from the phone (the new session sheet): its conversation if an agent started in it,
@@ -284,6 +314,7 @@ final class HomeModel: ObservableObject {
   /// A screen-only window switched to a conversation: its page replaces the screen's.
   func switched(window: String, key: String, after: AfterSwitch) {
     app.tips.switched(window)
+    countOpened("conversation", from: "switch")
     if let i = path.lastIndex(of: .terminal(window: window)) ?? path.lastIndex(where: {
       if case .terminal(let w, _) = $0 { w == window } else { false }
     }) {
@@ -351,6 +382,7 @@ final class HomeModel: ObservableObject {
       guard let t = remote, t.desktopId == desktop.id else { return }  // Until its remote is made.
       timing("session page")
       r.opened = true
+      countOpened("conversation", from: "notification")
       path = [.session(key: r.key)]
     }
     guard let t = remote else { return }

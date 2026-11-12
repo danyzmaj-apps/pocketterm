@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import com.danyzmaj.pocketterm.core.Analytics
 import com.danyzmaj.pocketterm.core.Agent
 import com.danyzmaj.pocketterm.core.ChatAttachment
 import com.danyzmaj.pocketterm.core.ChatAttachments
@@ -54,6 +55,7 @@ class SessionModel(
     autoContinue: Boolean,
     private val scope: CoroutineScope,
     private val drafts: Drafts,
+    private val analytics: Analytics,
 ) {
     /** Set by the page each composition. */
     lateinit var toaster: Toaster
@@ -159,6 +161,13 @@ class SessionModel(
         if (command && !can(windowKey(s), TermCap.line)) return toast(noCommands(agent(s)))
         val queue = busy && (followUp || !agent(s).steers)
         haptics.done()
+        val mode = when {
+            command -> "command"
+            queue -> "queue"
+            busy -> "steer"
+            else -> "prompt"
+        }
+        analytics.event("prompt_sent", "mode" to mode, "attachments" to attached.isNotEmpty())
         if (!command) return prompt(text, attached, followUp = queue)
         sending = true
         scope.launch {

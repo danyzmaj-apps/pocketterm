@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.NotificationsOff
@@ -165,6 +166,13 @@ fun SettingsScreen() {
                 Section("Notifications")
                 PushSetting()
             } }
+            // Only builds that can send them (a website id baked in) have the switch.
+            if (graph.analytics.configured) {
+                item(key = "statistics") { Column {
+                    Section("Privacy")
+                    StatisticsSetting()
+                } }
+            }
             item(key = "appearance") { Column {
                 Section("Appearance")
                 ListItem(
@@ -320,6 +328,25 @@ private fun PushSetting() {
             modifier = Modifier.padding(start = 56.dp).tag("push-settings"),
         ) { Text("Open Settings") }
     }
+}
+
+/**
+ * Anonymous usage statistics on or off for this phone (off until turned on): which screens open and a few
+ * fixed facts about what happened, never what a session or terminal holds. Off forgets this phone's random id.
+ */
+@Composable
+private fun StatisticsSetting() {
+    val analytics = LocalGraph.current.analytics.observe()
+    val on = analytics.enabled
+    ListItem(
+        modifier = Modifier.tag("statistics-toggle").clickable(role = Role.Switch) { analytics.setEnabled(!on) },
+        leadingContent = { Icon(Icons.Outlined.Insights, null) },
+        headlineContent = { Text("Share anonymous usage statistics") },
+        supportingContent = {
+            Text("Which screens you open and what works, never what your sessions or terminals hold. Sent to the publisher's Umami in the EU.")
+        },
+        trailingContent = { Switch(checked = on, onCheckedChange = null) },
+    )
 }
 
 /**

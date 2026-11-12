@@ -149,6 +149,7 @@ private fun OrchestratorPage(remote: TerminalRemote, computer: String?) {
         if (text.isEmpty() || sending) return
         sending = true
         error = null
+        graph.analytics.event("prompt_sent", "mode" to "orchestrator", "attachments" to false)
         // The app's scope: closed while it goes, the prompt is sent all the same, and its draft goes.
         graph.scope.launch {
             try {

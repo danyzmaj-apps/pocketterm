@@ -187,6 +187,8 @@ final class SessionModel: ObservableObject {
     if command && !can(windowKey(s), .line) { return toast(noCommandsText(agent(s))) }
     let queue = busy && (followUp || !agent(s).steers)
     Haptics.done()
+    let mode = command ? "command" : queue ? "queue" : busy ? "steer" : "prompt"
+    home.app.analytics.event("prompt_sent", ["mode": .string(mode), "attachments": .bool(!attached.isEmpty)])
     if !command { return await prompt(trimmed, attached, followUp: queue) }
     sending = true
     do {

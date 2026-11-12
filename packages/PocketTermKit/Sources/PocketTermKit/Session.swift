@@ -153,16 +153,20 @@ open class Session: ObservableObject {
             ? "That code is for a computer on \(backend.host), and this phone is on \(userName). To switch, leave "
               + "this server (Account → Leave this server), then scan the code again."
             : "Sign out before switching to \(backend.host).")
+        onPairing(scanned: scanned, failure: .otherServer)
       } else if let computer {
         let held = computerKey(computer.desktop)
         let problem = held == nil || held == computer.key ? nil : await codeWorks(backend, secret)
         if let problem {
           notice(problem)
+          onPairing(scanned: scanned, failure: problem == Self.codeUsed ? .codeUsed : .keyRejected)
           return
         }
         await addComputerKey(computer)
+        onPairing(scanned: scanned, failure: nil, another: true)
       } else if phone && Backend.computerKey(uri) != nil {
         notice("To connect to a computer, scan its code with PocketTerm's scanner.")
+        onPairing(scanned: scanned, failure: .notScanned)
       }
       objectWillChange.send()
       return
@@ -173,11 +177,13 @@ open class Session: ObservableObject {
         ? "That link has no sign-in code. On your computer, open PocketTerm: Settings → Phone → Add a phone…"
         : "That link has no setup token. On your server, run `pocketterm-server setup-link` and open the link "
           + "it prints."
+      onPairing(scanned: scanned, failure: .noCode)
       return
     }
     if backend != self.backend {
       if let problem = await backend.check() {
         authError = problem
+        onPairing(scanned: scanned, failure: .serverCheck)
         return
       }
       await connect(backend)
@@ -193,6 +199,7 @@ open class Session: ObservableObject {
       // Before the sign-in lands, so the computer shows unlocked at once.
       if let computer { await addComputerKey(computer) }
       setUser(account)
+      onPairing(scanned: scanned, failure: nil)
     } catch let e as ServerException {
       authError =
         switch e.code {
@@ -202,13 +209,21 @@ open class Session: ObservableObject {
             + "server and open the link it prints."
         default: e.message
         }
+      onPairing(scanned: scanned, failure: e.code == "invalid_code" ? .codeUsed : .serverError)
     } catch is SecureStoreError {
       authError = Self.keychainProblem
       retryLink = uri
+      onPairing(scanned: scanned, failure: .storage)
     } catch {
       authError = "Sign-in failed: \(error)"
+      onPairing(scanned: scanned, failure: .connection)
     }
   }
+
+  /// How a setup link went ([connectLink]): signed in, or with [another] one more computer's key added ([failure]
+  /// nil), else why not. [scanned]: read by the in-app scanner. The phone counts it in its usage statistics
+  /// (`pairing_completed` / `pairing_failed`); never the link, its host or its code.
+  open func onPairing(scanned: Bool, failure: PairingFailure?, another: Bool = false) {}
 
   static let codeUsed =
     "That code doesn't work: it was used, or it's more than 10 minutes old. Make a new one on your computer "

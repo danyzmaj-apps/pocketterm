@@ -42,6 +42,13 @@ if [[ -z "$dsn" && -f "$android/.env" ]]; then
   dsn="${dsn%$'\r'}"; dsn="${dsn#[\"\']}"; dsn="${dsn%[\"\']}"
 fi
 [[ -n "$dsn" ]] && args+=("-PsentryDsn=$dsn")
+# Usage statistics: the Umami website id, the same way (UMAMI_WEBSITE_ID). Without one the app records nothing.
+umami="${UMAMI_WEBSITE_ID:-}"
+if [[ -z "$umami" && -f "$android/.env" ]]; then
+  umami="$(sed -n 's/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}UMAMI_WEBSITE_ID=//p' "$android/.env" | tail -n 1)"
+  umami="${umami%$'\r'}"; umami="${umami#[\"\']}"; umami="${umami%[\"\']}"
+fi
+[[ -n "$umami" ]] && args+=("-PumamiWebsiteId=$umami")
 (cd "$android" && ./gradlew "${args[@]}")
 
 echo "$android/app/build/outputs/bundle/release/app-release.aab"

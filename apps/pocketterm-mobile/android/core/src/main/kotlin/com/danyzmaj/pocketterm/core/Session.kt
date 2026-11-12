@@ -181,16 +181,20 @@ abstract class Session(
                         "Sign out before switching to ${b.host}."
                     },
                 )
+                onPairing(scanned, PairingFailure.other_server)
             } else if (computer != null) {
                 val held = computerKey(computer.desktop)
                 val problem = if (held == null || held == computer.key) null else codeWorks(b, secret)
                 if (problem != null) {
                     notice(problem)
+                    onPairing(scanned, if (problem == CODE_USED) PairingFailure.code_used else PairingFailure.key_rejected)
                     return
                 }
                 addComputerKey(computer)
+                onPairing(scanned, null, another = true)
             } else if (phone && Backend.computerKey(link) != null) {
                 notice("To connect to a computer, scan its code with PocketTerm's scanner.")
+                onPairing(scanned, PairingFailure.not_scanned)
             }
             notifyListeners()
             return
@@ -202,6 +206,7 @@ abstract class Session(
                 "That link has no setup token. On your server, run `pocketterm-server setup-link` and open the link " +
                     "it prints."
             }
+            onPairing(scanned, PairingFailure.no_code)
             notifyListeners()
             return
         }
@@ -209,6 +214,7 @@ abstract class Session(
             val problem = b.check()
             if (problem != null) {
                 authError = problem
+                onPairing(scanned, PairingFailure.server_check)
                 notifyListeners()
                 return
             }
@@ -227,6 +233,7 @@ abstract class Session(
             // Before the sign-in lands, so the computer shows unlocked at once.
             if (computer != null) addComputerKey(computer)
             setUser(account)
+            onPairing(scanned, null)
             return
         } catch (e: ServerException) {
             authError = when {
@@ -236,6 +243,7 @@ abstract class Session(
                         "server and open the link it prints."
                 else -> e.message
             }
+            onPairing(scanned, if (e.code == "invalid_code") PairingFailure.code_used else PairingFailure.server_error)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -243,8 +251,10 @@ abstract class Session(
             if (problem != null) {
                 authError = problem
                 retryLink = link
+                onPairing(scanned, PairingFailure.storage)
             } else {
                 authError = "Sign-in failed: $e"
+                onPairing(scanned, PairingFailure.connection)
             }
         }
         notifyListeners()
@@ -264,6 +274,13 @@ abstract class Session(
             probe.close()
         }
     }
+
+    /**
+     * How a setup link went ([connectLink]): signed in, or with [another] one more computer's key added
+     * ([failure] null), else why not. [scanned]: read by the in-app scanner. The phone counts it in its usage
+     * statistics (`pairing_completed` / `pairing_failed`); never the link, its host or its code.
+     */
+    protected open fun onPairing(scanned: Boolean, failure: PairingFailure?, another: Boolean = false) {}
 
     /** A client for [backend] keeping its sign-in in [tokens]. */
     protected open fun client(backend: Backend, tokens: DeviceTokens): Server = Server(backend, tokens)

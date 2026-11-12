@@ -33,6 +33,7 @@ PocketTerm trusts the computer it runs on and the phones that scanned its code. 
 | **Tailscale** | Your devices' names and addresses, and when they connect | Anything PocketTerm sends (WireGuard, plus PocketTerm's own encryption inside HTTPS) |
 | **Cloudflare** (in front of the relay) | That your server sent an encrypted request of some size, and the status code | The push token, the tags, the kind of push |
 | **GlitchTip** (the publisher's error reports, `glitchtip.danyzmaj.com`; the store phone apps and the relay, and a desktop app only if you set `POCKETTERM_SENTRY_DSN`) | A crash or unexpected error: its type, its scrubbed message, the stack, the app version, the OS and device model, the time | Terminal contents, prompts, sessions, names, folders, keys, host names, addresses, what happened before the error |
+| **Umami** (the publisher's usage statistics, `umami.danyzmaj.com`; only store phone apps where the person turned it on) | Screen names, events from a fixed list with yes/no or category values, a random install id, the app version, OS, device model, language and screen size, the time, the address (for an approximate location; not stored) | Host names, addresses, commands, prompts, terminal contents, sessions, names, folders, keys |
 
 ## Keys and storage
 
@@ -89,6 +90,15 @@ Reports use the official Sentry SDK of each platform and go to a Sentry-compatib
 - **Who reports.** The iPhone and Android apps from TestFlight and Google Play, with the DSN baked in at build time (`SENTRY_DSN` in Baker's build settings, never in git). The publisher's relay (`SENTRY_DSN` in its server settings). The desktop apps and the PocketTerm server only when whoever runs them sets the environment variable `POCKETTERM_SENTRY_DSN`; it is off by default, the desktop builds carry no DSN, and the built-in server inherits the desktop app's setting. They read no plain `SENTRY_DSN`, so a DSN set for another project on the same computer never turns PocketTerm's reports on. A phone app built from source has no DSN and reports nothing.
 - **What a report holds.** The error's type and stack; its message with URLs, IP addresses, host names (`*.ts.net`, `.local`, `.lan`) and email addresses replaced and the home folder shortened to `~`, cut to 300 characters; the app's version and environment; the OS, its version and the device model.
 - **What it never holds.** Breadcrumbs (the trail of logs, taps and requests before an error) are off, so no terminal output, prompt or URL rides along. Every SDK runs with `sendDefaultPii` off, and each report drops the user, the request, the machine's host name (`server_name`), the device's name and install id, and extra data before it leaves. No performance tracing, sessions, screenshots or view hierarchies.
+
+## Usage statistics
+
+Off by default. **Settings → Share anonymous usage statistics** appears only in phone apps built with an Umami website id (the store builds: `UMAMI_WEBSITE_ID` in Baker's build settings, never in git). The desktop apps and the PocketTerm server send no usage statistics at all.
+
+- **What is sent** (to `https://umami.danyzmaj.com/api/send`, the publisher's self-hosted Umami in the EU, no cookies, no third parties): the screen (`setup`, `scan`, `push_consent`, `home`, `session`, `terminal`, `queue`, `orchestrator`, `settings`), and the events `pairing_completed` {method, computer}, `pairing_failed` {method, code}, `demo_opened`, `session_opened` {view, from}, `session_started` {kind, project}, `prompt_sent` {mode, attachments}, `terminal_connected` {transport: tailnet, local or other}, `terminal_disconnected` {reason}, `notifications_set` {on}. Every property is checked against a fixed list of allowed values (`Analytics.kt` in `:core`, `Analytics.swift` in PocketTermKit); anything else is dropped before it is queued. Each event carries the app version, platform, OS, device model, language and screen size, and a random install id (UUID) made when the person turns statistics on. No advertising or device id.
+- **What is never sent.** Host names, addresses, folders, commands, prompts, terminal contents, session names, keys or fingerprints.
+- **Turning it off** stops sending at once, deletes the install id and drops unsent events; turning it on again makes a new id. Events wait in memory (at most 100) and are lost when the app quits.
+- Umami derives country, region and city from the address and doesn't store the address. Data is kept for 14 months.
 
 ## Local API
 

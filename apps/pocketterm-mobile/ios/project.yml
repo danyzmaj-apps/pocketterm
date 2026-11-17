@@ -28,7 +28,6 @@ settings:
     CURRENT_PROJECT_VERSION: 22
     SWIFT_VERSION: "6.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
-    TARGETED_DEVICE_FAMILY: "1"
     DEVELOPMENT_TEAM: $(POCKETTERM_TEAM)
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: YES
@@ -60,6 +59,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(POCKETTERM_BUNDLE_ID)
         PRODUCT_NAME: PocketTerm
+        # iPhone only. Set on each target: xcodegen's iOS target preset ("1,2") beats a project-level setting, and
+        # an iPad build would need every orientation (App Store Connect rejects it otherwise, error 90474).
+        TARGETED_DEVICE_FAMILY: "1"
         INFOPLIST_FILE: PocketTerm/Info.plist
         CODE_SIGN_ENTITLEMENTS: PocketTerm/PocketTerm.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -93,6 +95,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(POCKETTERM_BUNDLE_ID).PocketTermLive
         PRODUCT_NAME: PocketTermLive
+        TARGETED_DEVICE_FAMILY: "1"
         INFOPLIST_FILE: PocketTermLive/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         SKIP_INSTALL: YES
@@ -110,6 +113,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(POCKETTERM_BUNDLE_ID).PocketTermPush
         PRODUCT_NAME: PocketTermPush
+        TARGETED_DEVICE_FAMILY: "1"
         INFOPLIST_FILE: PocketTermPush/Info.plist
         CODE_SIGN_ENTITLEMENTS: PocketTermPush/PocketTermPush.entitlements
         GENERATE_INFOPLIST_FILE: NO
@@ -131,6 +135,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(POCKETTERM_BUNDLE_ID).Tests
         GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
         TEST_HOST: $(BUILT_PRODUCTS_DIR)/PocketTerm.app/PocketTerm
         BUNDLE_LOADER: $(TEST_HOST)
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor

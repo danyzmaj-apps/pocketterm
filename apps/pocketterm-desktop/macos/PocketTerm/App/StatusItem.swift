@@ -31,6 +31,7 @@ final class StatusItem: NSObject, NSPopoverDelegate {
     let event = NSApp.currentEvent
     if event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true {
       let menu = NSMenu()
+      menu.addItem(withTitle: "Open Desk", action: #selector(openDesk), keyEquivalent: "").target = self
       menu.addItem(withTitle: "Open PocketTerm", action: #selector(openMain), keyEquivalent: "").target = self
       menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: "").target = self
       menu.addItem(model.updater.menuItem())
@@ -52,6 +53,7 @@ final class StatusItem: NSObject, NSPopoverDelegate {
   }
 
   @objc private func openMain() { model.openMain() }
+  @objc private func openDesk() { model.openDesk() }
   @objc private func openSettings() { model.openSettings() }
 
   /// The menu bar mark: the app icon's pocket with a phone showing a ">_" prompt tucked in, drawn as a template

@@ -352,8 +352,18 @@ fun groupedSessions(
 /** A tab of an app window on the computer: the terminals in it (split panes share it); [number] counts from 1 within its window. */
 data class MacTab(val id: String, val number: Int, val panes: List<TermWindow>)
 
-/** An app window on the computer (what Cmd+N opens) and its tabs; [number] counts from 1 among [app]'s windows ("kitty window 2"). */
-data class MacWindow(val id: String, val app: String, val number: Int, val tabs: List<MacTab>)
+/**
+ * An app window on the computer (what Cmd+N opens) and its tabs; [number] counts from 1 among [app]'s windows ("kitty window 2").
+ * PocketTerm Desk's windows are its projects (`desk:<folder>`), each terminal a tab.
+ */
+data class MacWindow(val id: String, val app: String, val number: Int, val tabs: List<MacTab>) {
+    /** How the phone names it: "kitty window 2", "Desk · api". */
+    val title: String
+        get() = if (id.startsWith("desk:")) "Desk · ${id.removePrefix("desk:").trimEnd('/').substringAfterLast('/')}" else "$app window $number"
+
+    /** What its tabs are: Desk's are terminals. */
+    val tabWord: String get() = if (id.startsWith("desk:")) "terminal" else "tab"
+}
 
 /** The app [w] shows in: the terminal app a tmux pane is shown in, else its own, as [terminals] (the computer's) name it. */
 fun termApp(w: TermWindow, terminals: List<TermStatus> = emptyList()): String =
@@ -379,9 +389,9 @@ fun macLayout(windows: List<TermWindow>, terminals: List<TermStatus> = emptyList
     }
 }
 
-/** Where each terminal of [layout] sits, by its key: "kitty window 2 · tab 1". */
+/** Where each terminal of [layout] sits, by its key: "kitty window 2 · tab 1", "Desk · api · terminal 2". */
 fun macPlaces(layout: List<MacWindow>): Map<String, String> = buildMap {
-    for (w in layout) for (t in w.tabs) for (p in t.panes) put(p.key, "${w.app} window ${w.number} · tab ${t.number}")
+    for (w in layout) for (t in w.tabs) for (p in t.panes) put(p.key, "${w.title} · ${w.tabWord} ${t.number}")
 }
 
 /** [layout] counted: "3 windows · 7 tabs". */

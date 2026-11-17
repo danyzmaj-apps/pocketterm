@@ -106,6 +106,25 @@ nonisolated final class HomeTests: XCTestCase {
     XCTAssertTrue(macLayout([pane("kitty-2/1", "", "")]).isEmpty, "an older computer shows no count")
   }
 
+  @MainActor func testDesksWindowsAreItsProjectsAndTheirTabsItsTerminals() {
+    let windows = [
+      pane("tmux:pocketterm/1", "desk:/Users/me/Dev/api", "tmux:pocketterm/1", app: "tmux", via: "PocketTerm Desk"),
+      pane("tmux:pocketterm/4", "desk:/Users/me/Dev/web", "tmux:pocketterm/4", app: "tmux", via: "PocketTerm Desk"),
+      pane("tmux:pocketterm/2", "desk:/Users/me/Dev/api", "tmux:pocketterm/2", app: "tmux", via: "PocketTerm Desk"),
+      pane("kitty-1/1", "kitty-1/w1", "kitty-1/t1"),
+    ]
+    let layout = macLayout(windows)
+    XCTAssertEqual(layout.map(\.title), ["Desk · api", "Desk · web", "kitty window 1"])
+    XCTAssertEqual(
+      macPlaces(layout),
+      [
+        "tmux:pocketterm/1": "Desk · api · terminal 1",
+        "tmux:pocketterm/2": "Desk · api · terminal 2",
+        "tmux:pocketterm/4": "Desk · web · terminal 1",
+        "kitty-1/1": "kitty window 1 · tab 1",
+      ])
+  }
+
   @MainActor func testATabShowsItsFocusedPane() {
     var focused = pane("kitty-1/3", "w", "t")
     focused.focused = true

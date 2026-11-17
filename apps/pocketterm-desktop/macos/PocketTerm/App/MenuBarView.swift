@@ -25,6 +25,7 @@ struct MenuBarView: View {
       if app.user != nil { signedIn }
       Divider()
       VStack(alignment: .leading, spacing: 2) {
+        row("Open Desk (Beta)", id: "menu-open-desk") { AppModel.shared.openDesk() }
         if app.backend == nil {
           row("Set up PocketTerm…", id: "menu-open") { AppModel.shared.openMain() }
         } else if app.user == nil {

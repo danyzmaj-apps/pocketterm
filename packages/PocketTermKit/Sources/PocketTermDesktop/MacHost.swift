@@ -29,19 +29,22 @@ public struct LaunchAtLoginError: Error, Sendable, Equatable, CustomStringConver
 @MainActor
 public final class MacHost: DesktopHost {
   /// `showWindow` / `hideWindow`: bring the main window up (front, key) / take it away. `mainWindow`: the window a
-  /// folder picker opens on as a sheet; a free-standing panel if nil. `iconDir`: where the themes' Dock icons are
-  /// (`macos-<icon>.png`, apps/pocketterm-desktop/assets/icon/), the app's `Resources/icon` if nil. `loginItem`:
-  /// `SMAppService.mainApp` if nil.
+  /// folder picker opens on as a sheet; a free-standing panel if nil. `windowShown`: whether a window of the app's
+  /// still shows once the main one went (Desk), which keeps the Dock icon and menu bar. `iconDir`: where the
+  /// themes' Dock icons are (`macos-<icon>.png`, apps/pocketterm-desktop/assets/icon/), the app's `Resources/icon`
+  /// if nil. `loginItem`: `SMAppService.mainApp` if nil.
   public init(
     showWindow: @escaping @MainActor () -> Void,
     hideWindow: @escaping @MainActor () -> Void,
     mainWindow: @escaping @MainActor () -> NSWindow? = { nil },
+    windowShown: @escaping @MainActor () -> Bool = { false },
     iconDir: String? = nil,
     loginItem: LoginItem? = nil
   ) {
     self.showWindow = showWindow
     self.hideWindow = hideWindow
     self.mainWindow = mainWindow
+    self.windowShown = windowShown
     self.iconDir = iconDir ?? Bundle.main.resourceURL?.appendingPathComponent("icon").path ?? "icon"
     self.loginItem = loginItem ?? SMAppService.mainApp
   }
@@ -49,6 +52,7 @@ public final class MacHost: DesktopHost {
   private let showWindow: @MainActor () -> Void
   private let hideWindow: @MainActor () -> Void
   private let mainWindow: @MainActor () -> NSWindow?
+  private let windowShown: @MainActor () -> Bool
   private let iconDir: String
   private let loginItem: LoginItem
   private var onEvent: (@MainActor (String) async -> Void)?
@@ -70,10 +74,24 @@ public final class MacHost: DesktopHost {
     Task { await onEvent(name) }
   }
 
-  /// The main window was closed (⌘W, the red button): back to the menu bar, PocketTerm keeps running.
+  /// The main window was closed (⌘W, the red button): back to the menu bar unless another window shows,
+  /// PocketTerm keeps running.
   public func windowClosed() {
-    NSApp.setActivationPolicy(.accessory)
+    toMenuBar()
     event("mainClosed")
+  }
+
+  /// No Dock icon or menu bar of its own, once no window of the app's shows.
+  public func toMenuBar() {
+    if !windowShown() { NSApp.setActivationPolicy(.accessory) }
+  }
+
+  /// Brings up another window of the app's (Desk) with `present`: a real app while it shows, as for the main one.
+  public func showOther(_ present: () -> Void) {
+    NSApp.setActivationPolicy(.regular)
+    if let appIcon { NSApp.applicationIconImage = appIcon }
+    present()
+    activate()
   }
 
   /// PocketTerm is quitting (`applicationShouldTerminate`): the controller takes its address out of cli.json so
@@ -92,10 +110,10 @@ public final class MacHost: DesktopHost {
     activate()
   }
 
-  /// Back to the menu bar: no Dock icon, no menu bar of its own.
+  /// Back to the menu bar: no Dock icon, no menu bar of its own (unless another window shows).
   public func hideMain() async {
     hideWindow()
-    NSApp.setActivationPolicy(.accessory)
+    toMenuBar()
   }
 
   /// Makes PocketTerm the active app, so the menu bar, ⌘W and ⌘Q are PocketTerm's.

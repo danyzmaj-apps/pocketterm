@@ -173,7 +173,7 @@ struct LayoutSheet: View {
       }
     }
     return VStack(alignment: .leading, spacing: 2) {
-      Text("\(w.app) window \(w.number)")
+      Text(w.title)
         .font(.headline)
         .foregroundStyle(.primary)
       if !projects.isEmpty {

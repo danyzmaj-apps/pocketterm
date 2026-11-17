@@ -16,20 +16,23 @@ struct TerminalsTab: View {
           "New sessions open in", selection: Binding(get: { terminalAppValue }, set: { id in app.setTerminalApp(id) })
         ) {
           Text("Auto").tag("auto")
-          ForEach(terminalApps, id: \.id) { h in Text(h.label).tag(h.id) }
+          ForEach(terminalApps, id: \.id) { h in Text(h.id == "desk" ? "\(h.label) (Beta)" : h.label).tag(h.id) }
         }
         .pickerStyle(.menu)
         .accessibilityIdentifier("settings-terminal-app")
         Text(opensInSub).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
       }
-      VStack(alignment: .leading, spacing: 4) {
-        Picker("Place them", selection: Binding(get: { app.placement }, set: { p in app.setPlacement(p) })) {
-          Text("Tab in the project’s window").tag(Placement.projectWindow)
-          Text("New window").tag(Placement.newWindow)
+      // Desk keeps each project's sessions together itself.
+      if app.terminalApp != "desk" {
+        VStack(alignment: .leading, spacing: 4) {
+          Picker("Place them", selection: Binding(get: { app.placement }, set: { p in app.setPlacement(p) })) {
+            Text("Tab in the project’s window").tag(Placement.projectWindow)
+            Text("New window").tag(Placement.newWindow)
+          }
+          .pickerStyle(.menu)
+          .accessibilityIdentifier("settings-placement")
+          Text(placementSub).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
-        .pickerStyle(.menu)
-        .accessibilityIdentifier("settings-placement")
-        Text(placementSub).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
       }
     }
     Section {
@@ -63,6 +66,9 @@ struct TerminalsTab: View {
   /// Where a session from the phone opens, and what tmux adds there.
   private var opensInSub: String {
     let chosen = app.terminals.apps.first { $0.id == app.terminalApp }
+    if chosen?.id == "desk" {
+      return "With the project’s other sessions in Desk, running in tmux: they stay when Desk or PocketTerm closes"
+    }
     let place = chosen.map { "Always \($0.label)" } ?? "Auto: the terminal app you used last"
     guard let tmux = status.terminals?.first(where: { $0.id == "tmux" }) else { return place }
     return tmux.state == .missing

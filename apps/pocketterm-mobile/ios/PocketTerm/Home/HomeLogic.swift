@@ -53,12 +53,22 @@ struct MacTab: Hashable {
 }
 
 /// An app window on the computer (what Cmd+N opens) and its tabs. [app] names its terminal app; [number] counts from
-/// 1 among that app's windows, so the phone can say "kitty window 2".
+/// 1 among that app's windows, so the phone can say "kitty window 2". PocketTerm Desk's windows are its projects
+/// (`desk:<folder>`), each terminal a tab.
 struct MacWindow: Hashable {
   let id: String
   let app: String
   let number: Int
   let tabs: [MacTab]
+
+  /// How the phone names it: "kitty window 2", "Desk · api".
+  var title: String {
+    guard id.hasPrefix("desk:") else { return "\(app) window \(number)" }
+    return "Desk · \(String(id.dropFirst(5)).split(separator: "/").last.map(String.init) ?? "")"
+  }
+
+  /// What its tabs are: Desk's are terminals.
+  var tabWord: String { id.hasPrefix("desk:") ? "terminal" : "tab" }
 }
 
 /// The app [w] shows in: the terminal app a tmux pane is shown in, else its own, named as [terminals] (the
@@ -97,7 +107,7 @@ func macPlaces(_ layout: [MacWindow]) -> [String: String] {
   var places: [String: String] = [:]
   for w in layout {
     for t in w.tabs {
-      for p in t.panes { places[p.key] = "\(w.app) window \(w.number) · tab \(t.number)" }
+      for p in t.panes { places[p.key] = "\(w.title) · \(w.tabWord) \(t.number)" }
     }
   }
   return places

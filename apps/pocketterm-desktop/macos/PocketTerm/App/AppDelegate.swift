@@ -44,21 +44,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     return .terminateLater
   }
 
-  // The Dock icon clicked (or the LaunchServices activation MacHost asks for): the window back, unless it shows.
+  // The Dock icon clicked (or the LaunchServices activation MacHost asks for): the window back, unless one shows.
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-    if model.windows.visibleWindow == nil { model.openMain() }
+    if model.windows.visibleWindow == nil && !model.desk.isVisible { model.openMain() }
     return true
   }
 
   func applicationDidBecomeActive(_ notification: Notification) {
-    model.windows.becameActive()
+    if model.windows.visibleWindow == nil, let desk = model.desk.nsWindow {
+      desk.makeKeyAndOrderFront(nil)
+    } else {
+      model.windows.becameActive()
+    }
   }
 
   func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
 }
 
-/// The menu bar while the window is open: the app menu (About, Check for Updates…, Settings… ⌘,, Quit ⌘Q), File
-/// (Close Window ⌘W), Edit (for the text fields: paste a setup link) and Window.
+/// The menu bar while a window is open: the app menu (About, Check for Updates…, Settings… ⌘,, Quit ⌘Q), File (new
+/// terminals, Close Window ⌘W), Edit (for the text fields: paste a setup link), Desk (moving around it) and Window.
+///
+/// Desk's keys are ⌘ ones only (a terminal never gets ⌘, so none is taken from the programs in it), few, and those
+/// Mac apps use for the same: ⌘K go to anything, ⌘J the next terminal waiting for you, ⌘1…⌘9 a terminal of the
+/// project, ⌘⇧[ ⌘⇧] the one before or after, ⌘T ⌘⇧T a new terminal or agent, ⌘⇧W end one, ⌘⇧↩ zoom.
 @MainActor
 enum MainMenu {
   static func make(_ model: AppModel) -> NSMenu {
@@ -88,7 +96,12 @@ enum MainMenu {
     add(app, to: main)
 
     let file = NSMenu(title: "File")
+    file.addItem(desk("New Terminal", "t") { $0.new() })
+    file.addItem(desk("New Agent Session", "t", [.command, .shift]) { $0.new(agent: $0.defaultAgent) })
+    file.addItem(desk("Open Project…", "o") { $0.chooseProject() })
+    file.addItem(.separator())
     file.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+    file.addItem(desk("End Terminal", "w", [.command, .shift]) { $0.endFocused() })
     add(file, to: main)
 
     let edit = NSMenu(title: "Edit")
@@ -102,6 +115,33 @@ enum MainMenu {
     edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
     add(edit, to: main)
 
+    let go = NSMenu(title: "Desk")
+    let open = Target { model.openDesk() }
+    targets.append(open)
+    go.addItem(item("Open Desk", "", open))
+    go.addItem(.separator())
+    go.addItem(desk("Go to…", "k") { $0.paletteShown.toggle() })
+    go.addItem(desk("Next Waiting for You", "j") { $0.nextWaiting() })
+    go.addItem(.separator())
+    go.addItem(desk("Next Terminal", "]", [.command, .shift]) { $0.cycle(1) })
+    go.addItem(desk("Previous Terminal", "[", [.command, .shift]) { $0.cycle(-1) })
+    let numbers = NSMenu(title: "Terminal")
+    for n in 1...9 { numbers.addItem(desk("Terminal \(n)", "\(n)") { $0.focus(number: n) }) }
+    let numbered = NSMenuItem(title: "Terminal", action: nil, keyEquivalent: "")
+    numbered.submenu = numbers
+    go.addItem(numbered)
+    go.addItem(.separator())
+    let layouts = NSMenu(title: "Layout")
+    for l in DeskLayout.allCases { layouts.addItem(desk(l.label, "") { $0.setLayout(l) }) }
+    let layout = NSMenuItem(title: "Layout", action: nil, keyEquivalent: "")
+    layout.submenu = layouts
+    go.addItem(layout)
+    go.addItem(desk("Zoom Terminal", "\r", [.command, .shift]) { $0.toggleZoom() })
+    go.addItem(.separator())
+    go.addItem(desk("Toggle Sidebar", "s", [.command, .control]) { $0.sidebarShown.toggle() })
+    go.addItem(desk("Toggle Project Details", "i", [.command, .option]) { $0.inspectorShown.toggle() })
+    add(go, to: main)
+
     let window = NSMenu(title: "Window")
     window.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
     window.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
@@ -111,7 +151,7 @@ enum MainMenu {
     NSApp.windowsMenu = window
     add(window, to: main)
 
-    targets = [settings]
+    targets.append(settings)
     return main
   }
 
@@ -128,6 +168,17 @@ enum MainMenu {
     let item = NSMenuItem(title: title, action: #selector(Target.run), keyEquivalent: key)
     item.target = target
     return item
+  }
+
+  /// A Desk menu item: opens Desk (when it isn't in front), then does `action` there.
+  private static func desk(
+    _ title: String, _ key: String, _ modifiers: NSEvent.ModifierFlags = .command, _ action: @escaping (DeskModel) -> Void
+  ) -> NSMenuItem {
+    let target = Target { AppModel.shared.openDesk(then: action) }
+    targets.append(target)
+    let i = item(title, key, target)
+    i.keyEquivalentModifierMask = modifiers
+    return i
   }
 }
 

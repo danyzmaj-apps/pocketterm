@@ -387,7 +387,7 @@ fun LayoutSheet(remote: TerminalRemote, onPick: (session: String?, window: Strin
                             .distinct()
                         Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp).tag("layout-window-${w.id}")) {
                             Text(
-                                "${w.app} window ${w.number}",
+                                w.title,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,

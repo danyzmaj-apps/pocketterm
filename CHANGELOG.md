@@ -2,6 +2,15 @@
 
 What each PocketTerm release brings.
 
+## Unreleased
+
+- **Desk (beta, Mac).** One window for all your projects' terminals: PocketTerm runs them itself, headless in tmux,
+  so there are no terminal windows or tabs to arrange and they keep running when Desk or PocketTerm closes. Pick a
+  project, not a folder; see what waits for you across every project; switch with ⌘K and ⌘J. How it works and its
+  keys: [docs/DESK.md](docs/DESK.md). Open it from the menu-bar panel (**Open Desk**). Needs tmux.
+- **Sessions from the phone can open in Desk**: **Settings → Terminals → New sessions open in → PocketTerm Desk**.
+- **Phone:** Desk shows as one window per project ("Desk · api · terminal 2").
+
 ## 1.0.0
 
 The first release of PocketTerm as it is now: native apps on every platform, and your own PocketTerm server running on one of your computers, reached over Tailscale.

@@ -26,6 +26,8 @@ public final class Terminals: @unchecked Sendable {
   public let wezterm: WezTerm?
   public let iterm: ITerm2?
   public let ghostty: Ghostty?
+  /// PocketTerm Desk (Desk.swift): its panes are tmux's, labelled with their project.
+  public let desk: Desk?
 
   /// App names, most recently used first (`lsappinfo`); tests pass their own.
   public let recency: @Sendable () async -> [String]
@@ -46,7 +48,7 @@ public final class Terminals: @unchecked Sendable {
 
   public init(
     home: String, kitty: Kitty? = nil, tmux: Tmux? = nil, wezterm: WezTerm? = nil, iterm: ITerm2? = nil,
-    ghostty: Ghostty? = nil, recency: @escaping @Sendable () async -> [String] = appsByRecency,
+    ghostty: Ghostty? = nil, desk: Desk? = nil, recency: @escaping @Sendable () async -> [String] = appsByRecency,
     snapshot: @escaping @Sendable () async -> Procs = Procs.snapshot
   ) {
     self.home = home
@@ -55,26 +57,28 @@ public final class Terminals: @unchecked Sendable {
     self.wezterm = wezterm
     self.iterm = iterm
     self.ghostty = ghostty
+    self.desk = desk
     self.recency = recency
     self.snapshot = snapshot
   }
 
-  /// The terminals of this Mac: all five (kitty's sockets in `kittyDir`).
+  /// The terminals of this Mac: all five (kitty's sockets in `kittyDir`), and Desk on tmux.
   public static func standard(kittyDir: String = "/tmp", home: String? = nil) -> Terminals {
     let h = home ?? homeDir()
+    let tmux = Tmux()
     return Terminals(
-      home: h, kitty: Kitty(home: h, socketDir: kittyDir), tmux: Tmux(), wezterm: WezTerm(home: h), iterm: ITerm2(),
-      ghostty: Ghostty())
+      home: h, kitty: Kitty(home: h, socketDir: kittyDir), tmux: tmux, wezterm: WezTerm(home: h), iterm: ITerm2(),
+      ghostty: Ghostty(), desk: Desk(tmux: tmux))
   }
 
   /// In the order their windows are listed.
   public var hosts: [TerminalHost] {
-    [kitty as TerminalHost?, tmux, wezterm, iterm, ghostty].compactMap { $0 }
+    [kitty as TerminalHost?, tmux, wezterm, iterm, ghostty, desk].compactMap { $0 }
   }
 
   /// The terminal apps (tmux isn't one), in the order Auto prefers them
-  /// when none was used lately.
-  public var apps: [TerminalHost] { [kitty as TerminalHost?, wezterm, iterm, ghostty].compactMap { $0 } }
+  /// when none was used lately: Desk last, as it's in beta.
+  public var apps: [TerminalHost] { [kitty as TerminalHost?, wezterm, iterm, ghostty, desk].compactMap { $0 } }
 
   /// What each terminal said went wrong on the last `windows`, by id.
   public var problems: [String: String] { state.get.problems }
@@ -136,8 +140,14 @@ public final class Terminals: @unchecked Sendable {
       }
     }
     let panes = clients.mapValues(\.pane)
-    return Self.merge(hosts, lists, panes, shows).map { w in
+    let merged = Self.merge(hosts, lists, panes, shows).map { w in
       w.agent == .omp && !w.tty.isEmpty ? w.copyWith(profile: ompProfileOfArgs(procs.foreground(w.tty)?.args ?? "")) : w
+    }
+    guard let desk else { return merged }
+    // Desk's panes as its own: one window per project (the phone lays them out so), each session a tab of it.
+    return merged.map { w in
+      guard desk.isDesk(w.key), let project = desk.projectOf(w.key) else { return w }
+      return w.copyWith(via: desk.label, osWindow: "desk:\(project)", tabId: w.key)
     }
   }
 
@@ -416,8 +426,11 @@ public final class Terminals: @unchecked Sendable {
       try await send(key, flags.isEmpty ? command : "\(command) \(flags)", enter: true)
     }
     let place =
-      into == nil
-      ? "a new \(host.label) window" : "a new tab in the \(host.label) window with \(Self.projectName(cwd, home: home))"
+      host === desk
+      ? "\(host.label), with \(Self.projectName(cwd, home: home))’s sessions"
+      : into == nil
+        ? "a new \(host.label) window"
+        : "a new tab in the \(host.label) window with \(Self.projectName(cwd, home: home))"
     return Opened(window: key, where: place)
   }
 

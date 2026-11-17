@@ -31,6 +31,21 @@ The native app (SwiftUI on AppKit, macOS 13+) keeps every feature, string and se
   checklist) is the first section of every tab; a tab with something to do has a red dot on its toolbar icon.
 - **Sparkle** doesn't check in test builds (`POCKETTERM_SMOKE`) either, so a smoke copy never replaces itself.
 
+## Desk (beta)
+
+New in the native app, not in the Flutter one ([docs/DESK.md](../../../docs/DESK.md)).
+
+- **A third window**, `PocketTermDesk` (`pocketterm-desk-window`), opened from the menu-bar panel (`menu-open-desk`),
+  the right-click menu or Desk → Open Desk. It keeps the Dock icon and menu bar while it shows, whatever the other
+  windows do (`MacHost.windowShown`); ⌘W hides it and its terminals keep running.
+- **Keyboard first, ⌘ keys only**: a terminal never gets ⌘, so no key is taken from the programs in it. A small set
+  that other Mac apps use for the same things (⌘K go to, ⌘J next waiting, ⌘1…⌘9, ⌘⇧[ ⌘⇧], ⌘T, ⌘⇧T, ⌘⇧W, ⌘⇧↩),
+  all in the File and Desk menus; the status bar names the three to remember. Every action moves the keyboard into
+  the focused terminal.
+- **Native parts**: a sidebar list (`NavigationSplitView`), the system's text colors in the terminals (light and
+  dark with the Mac), a segmented layout picker, alerts before ending what still runs.
+- Identifiers: `desk-*` (`desk-pane-<session>`, `desk-session-<session>`, `desk-palette`, `desk-new`, `desk-layout`).
+
 ## Setup: Tailscale only
 
 - **One setup page.** PocketTerm's server is only the one built into the app, published over Tailscale: the setup

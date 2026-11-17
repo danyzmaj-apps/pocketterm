@@ -56,6 +56,8 @@ final class AppModel {
   let updater = Updater()
   let status: StatusModel
   let windows: WindowRouter
+  /// Desk (beta): each project's terminals, headless in tmux, in one window.
+  let desk: DeskWindow
   private(set) var statusItem: StatusItem!
   private var stopIcon: (() -> Void)?
   private var started = false
@@ -76,8 +78,11 @@ final class AppModel {
     let windows = WindowRouter()
     windows.remembersFrames = profile == nil
     self.windows = windows
+    let desk = DeskWindow()
+    self.desk = desk
     host = MacHost(
-      showWindow: { windows.show() }, hideWindow: { windows.hideAll() }, mainWindow: { windows.visibleWindow })
+      showWindow: { windows.show() }, hideWindow: { windows.hideAll() }, mainWindow: { windows.visibleWindow },
+      windowShown: { desk.isVisible })
     let serverDir = Self.serverDir(env: env, profile: profile)
     #if DEBUG || POCKETTERM_SMOKE
       app =
@@ -120,6 +125,7 @@ final class AppModel {
   func launch() {
     statusItem = StatusItem(model: self)
     windows.attach(self)
+    desk.attach(self)
     stopIcon = followAppIcon(appearance) { [host] in await host.setAppIcon($0) }
     let notices = app.notices
     Task { [ui] in
@@ -165,6 +171,9 @@ final class AppModel {
     ui.pairingShown = true
     host.event("openSettings")
   }
+
+  /// Desk, then `then` with its model (Desk's menu items).
+  func openDesk(then: ((DeskModel) -> Void)? = nil) { desk.show(then: then) }
 }
 
 /// The views' shared objects, for any window's root.

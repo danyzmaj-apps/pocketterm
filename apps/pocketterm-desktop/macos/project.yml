@@ -22,6 +22,11 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: 2.6.4
+  # Desk's terminals (an AppKit view per tmux session). 1.11 is the last release without Metal shaders (later ones
+  # need Xcode's separate Metal toolchain) or a build-tool plugin (which Xcode makes every build trust first).
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    exactVersion: 1.11.2
 settings:
   base:
     # What the About box and Sparkle show, and the build number every release raises (tool/release.sh reads
@@ -52,6 +57,8 @@ targets:
         product: PocketTermDesktop
       - package: Sparkle
         product: Sparkle
+      - package: SwiftTerm
+        product: SwiftTerm
     postBuildScripts:
       # The built-in server (tool/server-sidecar.sh) to Contents/Helpers, signed with the hardened runtime; the
       # coding agents' integrations and the themes' Dock icons to Resources.

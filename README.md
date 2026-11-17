@@ -35,6 +35,7 @@ PocketTerm is a desktop app (macOS menu bar, Windows tray) and a phone app (iPho
 - **Switch to conversation.** A session opened before PocketTerm was installed shows only its screen. **Switch to conversation** restarts omp on the same conversation (`omp -c`), or reloads Claude Code's plugins.
 - **Notifications and Live Activities.** Opt-in pushes when a run finishes or the agent needs you, and a Live Activity (iPhone) or ongoing notification (Android) for the sessions you follow.
 - **Several computers.** One server, several Macs and Windows PCs on your tailnet; pick one on the phone.
+- **Desk (beta, Mac).** One window for every project's terminals, which PocketTerm runs itself in tmux: no terminal windows or tabs to arrange, nothing stops when the window closes, and ⌘K / ⌘J jump to any project or to whatever waits for you. See [docs/DESK.md](docs/DESK.md).
 - **A demo.** **Try the demo** on the phone shows made-up sessions, with no computer or server.
 
 ## How it works
